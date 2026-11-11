@@ -64,865 +64,948 @@ struct FormatResult
 };
 
 inline constexpr StringView kAliases_0[1] = {
-    Literal("PIPE001"),
+    Literal(""),
 };
 inline constexpr StringView kAliases_1[1] = {
-    Literal("PIPE002"),
+    Literal("PIPE001"),
 };
 inline constexpr StringView kAliases_2[1] = {
-    Literal("PIPE003"),
+    Literal("PIPE002"),
 };
 inline constexpr StringView kAliases_3[1] = {
-    Literal("PIPE004"),
+    Literal("PIPE003"),
 };
 inline constexpr StringView kAliases_4[1] = {
-    Literal("PIPE005"),
+    Literal("PIPE004"),
 };
 inline constexpr StringView kAliases_5[1] = {
-    Literal("PIPE006"),
+    Literal("PIPE005"),
 };
 inline constexpr StringView kAliases_6[1] = {
-    Literal("PIPE007"),
+    Literal("PIPE006"),
 };
 inline constexpr StringView kAliases_7[1] = {
-    Literal("PIPE008"),
+    Literal("PIPE007"),
 };
 inline constexpr StringView kAliases_8[1] = {
-    Literal("PIPE009"),
+    Literal("PIPE008"),
 };
 inline constexpr StringView kAliases_9[1] = {
-    Literal("PIPE011"),
+    Literal("PIPE009"),
 };
 inline constexpr StringView kAliases_10[1] = {
-    Literal("PIPE012"),
+    Literal("PIPE011"),
 };
 inline constexpr StringView kAliases_11[1] = {
-    Literal("PIPE013"),
+    Literal("PIPE012"),
 };
 inline constexpr StringView kAliases_12[1] = {
-    Literal("PIPE014"),
+    Literal("PIPE013"),
 };
 inline constexpr StringView kAliases_13[1] = {
-    Literal("PIPE015"),
+    Literal("PIPE014"),
 };
 inline constexpr StringView kAliases_14[1] = {
-    Literal("PIPE016"),
+    Literal("PIPE015"),
 };
 inline constexpr StringView kAliases_15[1] = {
-    Literal("PIPE017"),
+    Literal("PIPE016"),
 };
 inline constexpr StringView kAliases_16[1] = {
-    Literal("SCHED001"),
+    Literal("PIPE017"),
 };
 inline constexpr StringView kAliases_17[1] = {
-    Literal("SCHED004"),
+    Literal("PIPE018"),
 };
 inline constexpr StringView kAliases_18[1] = {
-    Literal("SCHED005"),
+    Literal("PIPE019"),
 };
 inline constexpr StringView kAliases_19[1] = {
-    Literal("SCHED006"),
+    Literal("SCHED001"),
 };
 inline constexpr StringView kAliases_20[1] = {
-    Literal("SCHED007"),
+    Literal("SCHED004"),
 };
 inline constexpr StringView kAliases_21[1] = {
-    Literal("SCHED008"),
+    Literal("SCHED005"),
 };
 inline constexpr StringView kAliases_22[1] = {
-    Literal("SCHED009"),
+    Literal("SCHED006"),
 };
 inline constexpr StringView kAliases_23[1] = {
-    Literal("UTACT001"),
+    Literal("SCHED007"),
 };
 inline constexpr StringView kAliases_24[1] = {
-    Literal("UTACT002"),
+    Literal("SCHED008"),
 };
 inline constexpr StringView kAliases_25[1] = {
-    Literal("UTACT003"),
+    Literal("SCHED009"),
 };
 inline constexpr StringView kAliases_26[1] = {
-    Literal("UTACT004"),
+    Literal("SCHED010"),
 };
 inline constexpr StringView kAliases_27[1] = {
-    Literal("UTACT005"),
+    Literal("SCHED011"),
 };
 inline constexpr StringView kAliases_28[1] = {
-    Literal("UTACT006"),
+    Literal("SCHED012"),
 };
 inline constexpr StringView kAliases_29[1] = {
-    Literal("UTACT007"),
+    Literal("SCHED013"),
 };
 inline constexpr StringView kAliases_30[1] = {
-    Literal("UTACT008"),
+    Literal("SCHED014"),
 };
 inline constexpr StringView kAliases_31[1] = {
-    Literal("UTACT009"),
+    Literal("SDFK021"),
 };
 inline constexpr StringView kAliases_32[1] = {
-    Literal("UTACT010"),
+    Literal("SDFK022"),
 };
 inline constexpr StringView kAliases_33[1] = {
-    Literal("UTACT011"),
+    Literal("SDFK023"),
 };
 inline constexpr StringView kAliases_34[1] = {
-    Literal("UTACT012"),
+    Literal("SDFK024"),
 };
 inline constexpr StringView kAliases_35[1] = {
-    Literal("UTACT013"),
+    Literal("SDFK025"),
 };
 inline constexpr StringView kAliases_36[1] = {
-    Literal("UTATTACH001"),
+    Literal("UTACT001"),
 };
 inline constexpr StringView kAliases_37[1] = {
-    Literal("UTCAP002"),
+    Literal("UTACT002"),
 };
 inline constexpr StringView kAliases_38[1] = {
-    Literal("UTCI001"),
+    Literal("UTACT003"),
 };
 inline constexpr StringView kAliases_39[1] = {
-    Literal("UTCI002"),
+    Literal("UTACT004"),
 };
 inline constexpr StringView kAliases_40[1] = {
-    Literal("UTCI003"),
+    Literal("UTACT005"),
 };
 inline constexpr StringView kAliases_41[1] = {
-    Literal("UTCND001"),
+    Literal("UTACT006"),
 };
 inline constexpr StringView kAliases_42[1] = {
-    Literal("UTCND002"),
+    Literal("UTACT007"),
 };
 inline constexpr StringView kAliases_43[1] = {
-    Literal("UTCND003"),
+    Literal("UTACT008"),
 };
 inline constexpr StringView kAliases_44[1] = {
-    Literal("UTCND004"),
+    Literal("UTACT009"),
 };
 inline constexpr StringView kAliases_45[1] = {
-    Literal("UTCND005"),
+    Literal("UTACT010"),
 };
 inline constexpr StringView kAliases_46[1] = {
-    Literal("UTCND006"),
+    Literal("UTACT011"),
 };
 inline constexpr StringView kAliases_47[1] = {
-    Literal("UTCND010"),
+    Literal("UTACT012"),
 };
 inline constexpr StringView kAliases_48[1] = {
-    Literal("UTCND011"),
+    Literal("UTACT013"),
 };
 inline constexpr StringView kAliases_49[1] = {
-    Literal("UTCND012"),
+    Literal("UTATTACH001"),
 };
 inline constexpr StringView kAliases_50[1] = {
-    Literal("UTCND013"),
+    Literal("UTCAP002"),
 };
 inline constexpr StringView kAliases_51[1] = {
-    Literal("UTCND014"),
+    Literal("UTCI001"),
 };
 inline constexpr StringView kAliases_52[1] = {
-    Literal("UTCND015"),
+    Literal("UTCI002"),
 };
 inline constexpr StringView kAliases_53[1] = {
-    Literal("UTCND016"),
+    Literal("UTCI003"),
 };
 inline constexpr StringView kAliases_54[1] = {
-    Literal("UTCND017"),
+    Literal("UTCND001"),
 };
 inline constexpr StringView kAliases_55[1] = {
-    Literal("UTCND018"),
+    Literal("UTCND002"),
 };
 inline constexpr StringView kAliases_56[1] = {
-    Literal("UTCND019"),
+    Literal("UTCND003"),
 };
 inline constexpr StringView kAliases_57[1] = {
-    Literal("UTCND101"),
+    Literal("UTCND004"),
 };
 inline constexpr StringView kAliases_58[1] = {
-    Literal("UTCND102"),
+    Literal("UTCND005"),
 };
 inline constexpr StringView kAliases_59[1] = {
-    Literal("UTCND103"),
+    Literal("UTCND006"),
 };
 inline constexpr StringView kAliases_60[1] = {
-    Literal("UTCND201"),
+    Literal("UTCND010"),
 };
 inline constexpr StringView kAliases_61[1] = {
-    Literal("UTCP001"),
+    Literal("UTCND011"),
 };
 inline constexpr StringView kAliases_62[1] = {
-    Literal("UTCR001"),
+    Literal("UTCND012"),
 };
 inline constexpr StringView kAliases_63[1] = {
-    Literal("UTDER001"),
+    Literal("UTCND013"),
 };
 inline constexpr StringView kAliases_64[1] = {
-    Literal("UTDER002"),
+    Literal("UTCND014"),
 };
 inline constexpr StringView kAliases_65[1] = {
-    Literal("UTDER003"),
+    Literal("UTCND015"),
 };
 inline constexpr StringView kAliases_66[1] = {
-    Literal("UTDER004"),
+    Literal("UTCND016"),
 };
 inline constexpr StringView kAliases_67[1] = {
-    Literal("UTDER005"),
+    Literal("UTCND017"),
 };
 inline constexpr StringView kAliases_68[1] = {
-    Literal("UTDER006"),
+    Literal("UTCND018"),
 };
 inline constexpr StringView kAliases_69[1] = {
-    Literal("UTDER008"),
+    Literal("UTCND019"),
 };
 inline constexpr StringView kAliases_70[1] = {
-    Literal("UTDER009"),
+    Literal("UTCND101"),
 };
 inline constexpr StringView kAliases_71[1] = {
-    Literal("UTDER010"),
+    Literal("UTCND102"),
 };
 inline constexpr StringView kAliases_72[1] = {
-    Literal("UTDER011"),
+    Literal("UTCND103"),
 };
 inline constexpr StringView kAliases_73[1] = {
-    Literal("UTDER013"),
+    Literal("UTCND201"),
 };
 inline constexpr StringView kAliases_74[1] = {
-    Literal("UTDER014"),
+    Literal("UTCODEGENSTORE001"),
 };
 inline constexpr StringView kAliases_75[1] = {
-    Literal("UTDER015"),
+    Literal("UTCP001"),
 };
 inline constexpr StringView kAliases_76[1] = {
-    Literal("UTEA001"),
+    Literal("UTCR001"),
 };
 inline constexpr StringView kAliases_77[1] = {
-    Literal("UTEA002"),
+    Literal("UTDER001"),
 };
 inline constexpr StringView kAliases_78[1] = {
-    Literal("UTEA003"),
+    Literal("UTDER002"),
 };
 inline constexpr StringView kAliases_79[1] = {
-    Literal("UTEFR001"),
+    Literal("UTDER003"),
 };
 inline constexpr StringView kAliases_80[1] = {
-    Literal("UTEFR002"),
+    Literal("UTDER004"),
 };
 inline constexpr StringView kAliases_81[1] = {
-    Literal("UTEFR003"),
+    Literal("UTDER005"),
 };
 inline constexpr StringView kAliases_82[1] = {
-    Literal("UTEFR004"),
+    Literal("UTDER006"),
 };
 inline constexpr StringView kAliases_83[1] = {
-    Literal("UTEFR005"),
+    Literal("UTDER008"),
 };
 inline constexpr StringView kAliases_84[1] = {
-    Literal("UTEFR006"),
+    Literal("UTDER009"),
 };
 inline constexpr StringView kAliases_85[1] = {
-    Literal("UTEFR007"),
+    Literal("UTDER010"),
 };
 inline constexpr StringView kAliases_86[1] = {
-    Literal("UTEMIT001"),
+    Literal("UTDER011"),
 };
 inline constexpr StringView kAliases_87[1] = {
-    Literal("UTEMIT002"),
+    Literal("UTDER013"),
 };
 inline constexpr StringView kAliases_88[1] = {
-    Literal("UTEMIT003"),
+    Literal("UTDER014"),
 };
 inline constexpr StringView kAliases_89[1] = {
-    Literal("UTFIELD001"),
+    Literal("UTDER015"),
 };
 inline constexpr StringView kAliases_90[1] = {
-    Literal("UTFIELD002"),
+    Literal("UTEA001"),
 };
 inline constexpr StringView kAliases_91[1] = {
-    Literal("UTFIELD003"),
+    Literal("UTEA002"),
 };
 inline constexpr StringView kAliases_92[1] = {
-    Literal("UTFIELD004"),
+    Literal("UTEA003"),
 };
 inline constexpr StringView kAliases_93[1] = {
-    Literal("UTGEN001"),
+    Literal("UTEFR001"),
 };
 inline constexpr StringView kAliases_94[1] = {
-    Literal("UTID001"),
+    Literal("UTEFR002"),
 };
 inline constexpr StringView kAliases_95[1] = {
-    Literal("UTID002"),
+    Literal("UTEFR003"),
 };
 inline constexpr StringView kAliases_96[1] = {
-    Literal("UTKF001"),
+    Literal("UTEFR004"),
 };
 inline constexpr StringView kAliases_97[1] = {
-    Literal("UTKF002"),
+    Literal("UTEFR005"),
 };
 inline constexpr StringView kAliases_98[1] = {
-    Literal("UTKF003"),
+    Literal("UTEFR006"),
 };
 inline constexpr StringView kAliases_99[1] = {
-    Literal("UTKQ001"),
+    Literal("UTEFR007"),
 };
 inline constexpr StringView kAliases_100[1] = {
-    Literal("UTKQ002"),
+    Literal("UTEMIT001"),
 };
 inline constexpr StringView kAliases_101[1] = {
-    Literal("UTKQ010"),
+    Literal("UTEMIT002"),
 };
 inline constexpr StringView kAliases_102[1] = {
-    Literal("UTKQ011"),
+    Literal("UTEMIT003"),
 };
 inline constexpr StringView kAliases_103[1] = {
-    Literal("UTKQ020"),
+    Literal("UTFIELD001"),
 };
 inline constexpr StringView kAliases_104[1] = {
-    Literal("UTKQ021"),
+    Literal("UTFIELD002"),
 };
 inline constexpr StringView kAliases_105[1] = {
-    Literal("UTKQ022"),
+    Literal("UTFIELD003"),
 };
 inline constexpr StringView kAliases_106[1] = {
-    Literal("UTKQ023"),
+    Literal("UTFIELD004"),
 };
 inline constexpr StringView kAliases_107[1] = {
-    Literal("UTKQ024"),
+    Literal("UTGEN001"),
 };
 inline constexpr StringView kAliases_108[1] = {
-    Literal("UTLEVEL001"),
+    Literal("UTID001"),
 };
 inline constexpr StringView kAliases_109[1] = {
-    Literal("UTLEVEL002"),
+    Literal("UTID002"),
 };
 inline constexpr StringView kAliases_110[1] = {
-    Literal("UTLEVEL003"),
+    Literal("UTKF001"),
 };
 inline constexpr StringView kAliases_111[1] = {
-    Literal("UTNATIVEDAG001"),
+    Literal("UTKF002"),
 };
 inline constexpr StringView kAliases_112[1] = {
-    Literal("UTNATIVEDAG002"),
+    Literal("UTKF003"),
 };
 inline constexpr StringView kAliases_113[1] = {
-    Literal("UTNATIVEDAG003"),
+    Literal("UTKQ001"),
 };
 inline constexpr StringView kAliases_114[1] = {
-    Literal("UTNATIVEDAG004"),
+    Literal("UTKQ002"),
 };
 inline constexpr StringView kAliases_115[1] = {
-    Literal("UTNATIVEDAG005"),
+    Literal("UTKQ010"),
 };
 inline constexpr StringView kAliases_116[1] = {
-    Literal("UTPC001"),
+    Literal("UTKQ011"),
 };
 inline constexpr StringView kAliases_117[1] = {
-    Literal("UTPC002"),
+    Literal("UTKQ020"),
 };
 inline constexpr StringView kAliases_118[1] = {
-    Literal("UTPC003"),
+    Literal("UTKQ021"),
 };
 inline constexpr StringView kAliases_119[1] = {
-    Literal("UTPLAN001"),
+    Literal("UTKQ022"),
 };
 inline constexpr StringView kAliases_120[1] = {
-    Literal("UTPLAN002"),
+    Literal("UTKQ023"),
 };
 inline constexpr StringView kAliases_121[1] = {
-    Literal("UTPLAN003"),
+    Literal("UTKQ024"),
 };
 inline constexpr StringView kAliases_122[1] = {
-    Literal("UTRATE001"),
+    Literal("UTLEVEL001"),
 };
 inline constexpr StringView kAliases_123[1] = {
-    Literal("UTRATE002"),
+    Literal("UTLEVEL002"),
 };
 inline constexpr StringView kAliases_124[1] = {
-    Literal("UTRUNTIME001"),
+    Literal("UTLEVEL003"),
 };
 inline constexpr StringView kAliases_125[1] = {
-    Literal("UTRUNTIME002"),
+    Literal("UTNATIVEDAG001"),
 };
 inline constexpr StringView kAliases_126[1] = {
-    Literal("UTRUNTIME003"),
+    Literal("UTNATIVEDAG002"),
 };
 inline constexpr StringView kAliases_127[1] = {
-    Literal("UTRUNTIME004"),
+    Literal("UTNATIVEDAG003"),
 };
 inline constexpr StringView kAliases_128[1] = {
-    Literal("UTRUNTIME005"),
+    Literal("UTNATIVEDAG004"),
 };
 inline constexpr StringView kAliases_129[1] = {
-    Literal("UTRUNTIME006"),
+    Literal("UTNATIVEDAG005"),
 };
 inline constexpr StringView kAliases_130[1] = {
-    Literal("UTRUNTIME007"),
+    Literal("UTPC001"),
 };
 inline constexpr StringView kAliases_131[1] = {
-    Literal("UTRUNTIME008"),
+    Literal("UTPC002"),
 };
 inline constexpr StringView kAliases_132[1] = {
-    Literal("UTRUNTIME009"),
+    Literal("UTPC003"),
 };
 inline constexpr StringView kAliases_133[1] = {
-    Literal("UTRUNTIME010"),
+    Literal("UTPLAN001"),
 };
 inline constexpr StringView kAliases_134[1] = {
-    Literal("UTRUNTIME011"),
+    Literal("UTPLAN002"),
 };
 inline constexpr StringView kAliases_135[1] = {
-    Literal("UTRUNTIME012"),
+    Literal("UTPLAN003"),
 };
 inline constexpr StringView kAliases_136[1] = {
-    Literal("UTRUNTIMECPP001"),
+    Literal("UTRATE001"),
 };
 inline constexpr StringView kAliases_137[1] = {
-    Literal("UTRUNTIMECPP002"),
+    Literal("UTRATE002"),
 };
 inline constexpr StringView kAliases_138[1] = {
-    Literal("UTRUNTIMECPP003"),
+    Literal("UTRUNTIME001"),
 };
 inline constexpr StringView kAliases_139[1] = {
-    Literal("UTRUNTIMECPP004"),
+    Literal("UTRUNTIME002"),
 };
 inline constexpr StringView kAliases_140[1] = {
-    Literal("UTRUNTIMECPP005"),
+    Literal("UTRUNTIME003"),
 };
 inline constexpr StringView kAliases_141[1] = {
-    Literal("UTRUNTIMECPP006"),
+    Literal("UTRUNTIME004"),
 };
 inline constexpr StringView kAliases_142[1] = {
-    Literal("UTRUNTIMECPP007"),
+    Literal("UTRUNTIME005"),
 };
 inline constexpr StringView kAliases_143[1] = {
-    Literal("UTRUNTIMECPP008"),
+    Literal("UTRUNTIME006"),
 };
 inline constexpr StringView kAliases_144[1] = {
-    Literal("UTRUNTIMECPP009"),
+    Literal("UTRUNTIME007"),
 };
 inline constexpr StringView kAliases_145[1] = {
-    Literal("UTRUNTIMECPP010"),
+    Literal("UTRUNTIME008"),
 };
 inline constexpr StringView kAliases_146[1] = {
-    Literal("UTRUNTIMECPP011"),
+    Literal("UTRUNTIME009"),
 };
 inline constexpr StringView kAliases_147[1] = {
-    Literal("UTRUNTIMECPP012"),
+    Literal("UTRUNTIME010"),
 };
 inline constexpr StringView kAliases_148[1] = {
-    Literal("UTSAVE001"),
+    Literal("UTRUNTIME011"),
 };
 inline constexpr StringView kAliases_149[1] = {
-    Literal("UTSAVE002"),
+    Literal("UTRUNTIME012"),
 };
 inline constexpr StringView kAliases_150[1] = {
-    Literal("UTSAVE004"),
+    Literal("UTRUNTIMECPP001"),
 };
 inline constexpr StringView kAliases_151[1] = {
-    Literal("UTSYS001"),
+    Literal("UTRUNTIMECPP002"),
 };
 inline constexpr StringView kAliases_152[1] = {
-    Literal("UTSYS002"),
+    Literal("UTRUNTIMECPP003"),
 };
 inline constexpr StringView kAliases_153[1] = {
-    Literal("UTSYS003"),
+    Literal("UTRUNTIMECPP004"),
 };
 inline constexpr StringView kAliases_154[1] = {
-    Literal("UTSYS004"),
+    Literal("UTRUNTIMECPP005"),
 };
 inline constexpr StringView kAliases_155[1] = {
-    Literal("UTSYS005"),
+    Literal("UTRUNTIMECPP006"),
 };
 inline constexpr StringView kAliases_156[1] = {
-    Literal("UTSYS006"),
+    Literal("UTRUNTIMECPP007"),
 };
 inline constexpr StringView kAliases_157[1] = {
-    Literal("UTSYS007"),
+    Literal("UTRUNTIMECPP008"),
 };
 inline constexpr StringView kAliases_158[1] = {
-    Literal("UTSYS008"),
+    Literal("UTRUNTIMECPP009"),
 };
 inline constexpr StringView kAliases_159[1] = {
-    Literal("UTSYS009"),
+    Literal("UTRUNTIMECPP010"),
 };
 inline constexpr StringView kAliases_160[1] = {
-    Literal("UTSYS010"),
+    Literal("UTRUNTIMECPP011"),
 };
 inline constexpr StringView kAliases_161[1] = {
-    Literal("UTSYS011"),
+    Literal("UTRUNTIMECPP012"),
 };
 inline constexpr StringView kAliases_162[1] = {
-    Literal("UTSYS012"),
+    Literal("UTSAVE001"),
 };
 inline constexpr StringView kAliases_163[1] = {
-    Literal("UTSYS013"),
+    Literal("UTSAVE002"),
 };
 inline constexpr StringView kAliases_164[1] = {
-    Literal("UTSYS014"),
+    Literal("UTSAVE004"),
 };
 inline constexpr StringView kAliases_165[1] = {
-    Literal("UTSYS015"),
+    Literal("UTSYS001"),
 };
 inline constexpr StringView kAliases_166[1] = {
-    Literal("UTSYS016"),
+    Literal("UTSYS002"),
 };
 inline constexpr StringView kAliases_167[1] = {
-    Literal("UTSYS017"),
+    Literal("UTSYS003"),
 };
 inline constexpr StringView kAliases_168[1] = {
-    Literal("UTSYS018"),
+    Literal("UTSYS004"),
 };
 inline constexpr StringView kAliases_169[1] = {
-    Literal("UTSYS019"),
+    Literal("UTSYS005"),
 };
 inline constexpr StringView kAliases_170[1] = {
-    Literal("UTSYS020"),
+    Literal("UTSYS006"),
 };
 inline constexpr StringView kAliases_171[1] = {
-    Literal("UTSYS021"),
+    Literal("UTSYS007"),
 };
 inline constexpr StringView kAliases_172[1] = {
-    Literal("UTSYS022"),
+    Literal("UTSYS008"),
 };
 inline constexpr StringView kAliases_173[1] = {
-    Literal("UTSYS023"),
+    Literal("UTSYS009"),
 };
 inline constexpr StringView kAliases_174[1] = {
-    Literal("UTSYS024"),
+    Literal("UTSYS010"),
 };
 inline constexpr StringView kAliases_175[1] = {
-    Literal("UTSYS025"),
+    Literal("UTSYS011"),
 };
 inline constexpr StringView kAliases_176[1] = {
-    Literal("UTSYS026"),
+    Literal("UTSYS012"),
 };
 inline constexpr StringView kAliases_177[1] = {
-    Literal("UTSYS027"),
+    Literal("UTSYS013"),
 };
 inline constexpr StringView kAliases_178[1] = {
-    Literal("UTSYS028"),
+    Literal("UTSYS014"),
 };
 inline constexpr StringView kAliases_179[1] = {
-    Literal("UTSYS029"),
+    Literal("UTSYS015"),
 };
 inline constexpr StringView kAliases_180[1] = {
-    Literal("UTSYS030"),
+    Literal("UTSYS016"),
 };
 inline constexpr StringView kAliases_181[1] = {
-    Literal("UTTEX001"),
+    Literal("UTSYS017"),
 };
 inline constexpr StringView kAliases_182[1] = {
-    Literal("UTTEX002"),
+    Literal("UTSYS018"),
 };
 inline constexpr StringView kAliases_183[1] = {
-    Literal("UTTEX003"),
+    Literal("UTSYS019"),
 };
 inline constexpr StringView kAliases_184[1] = {
-    Literal("UTTEX004"),
+    Literal("UTSYS020"),
 };
 inline constexpr StringView kAliases_185[1] = {
-    Literal("UTTRANSFORM001"),
+    Literal("UTSYS021"),
 };
 inline constexpr StringView kAliases_186[1] = {
-    Literal("UTTYPE001"),
+    Literal("UTSYS022"),
 };
 inline constexpr StringView kAliases_187[1] = {
-    Literal("UTTYPE002"),
+    Literal("UTSYS023"),
 };
 inline constexpr StringView kAliases_188[1] = {
-    Literal("UTTYPE003"),
+    Literal("UTSYS024"),
 };
 inline constexpr StringView kAliases_189[1] = {
-    Literal("UTTYPE004"),
+    Literal("UTSYS025"),
 };
 inline constexpr StringView kAliases_190[1] = {
-    Literal("UTTYPE005"),
+    Literal("UTSYS026"),
 };
 inline constexpr StringView kAliases_191[1] = {
-    Literal("UTUNIT001"),
+    Literal("UTSYS027"),
 };
 inline constexpr StringView kAliases_192[1] = {
-    Literal("UTUNIT002"),
+    Literal("UTSYS028"),
 };
 inline constexpr StringView kAliases_193[1] = {
-    Literal("UTUNIT008"),
+    Literal("UTSYS029"),
 };
 inline constexpr StringView kAliases_194[1] = {
-    Literal("UTUNIT009"),
+    Literal("UTSYS030"),
 };
 inline constexpr StringView kAliases_195[1] = {
-    Literal("UTUNIT010"),
+    Literal("UTTEX001"),
 };
 inline constexpr StringView kAliases_196[1] = {
-    Literal("UTUNIT011"),
+    Literal("UTTEX002"),
 };
 inline constexpr StringView kAliases_197[1] = {
-    Literal("UTUNIT012"),
+    Literal("UTTEX003"),
 };
 inline constexpr StringView kAliases_198[1] = {
-    Literal("UTUNIT013"),
+    Literal("UTTEX004"),
 };
 inline constexpr StringView kAliases_199[1] = {
-    Literal("UTUNIT014"),
+    Literal("UTTRANSFORM001"),
 };
 inline constexpr StringView kAliases_200[1] = {
-    Literal("UTUNIT015"),
+    Literal("UTTYPE001"),
 };
 inline constexpr StringView kAliases_201[1] = {
-    Literal("UTUNIT016"),
+    Literal("UTTYPE002"),
 };
 inline constexpr StringView kAliases_202[1] = {
-    Literal("UTUNIT017"),
+    Literal("UTTYPE003"),
 };
 inline constexpr StringView kAliases_203[1] = {
-    Literal("UTUNIT018"),
+    Literal("UTTYPE004"),
 };
 inline constexpr StringView kAliases_204[1] = {
-    Literal("UTVOC001"),
+    Literal("UTTYPE005"),
 };
 inline constexpr StringView kAliases_205[1] = {
-    Literal("UTWIZFAM001"),
+    Literal("UTUNIT001"),
 };
 inline constexpr StringView kAliases_206[1] = {
-    Literal("UTWIZFAM002"),
+    Literal("UTUNIT002"),
 };
 inline constexpr StringView kAliases_207[1] = {
-    Literal("UTWIZFAM003"),
+    Literal("UTUNIT008"),
 };
 inline constexpr StringView kAliases_208[1] = {
-    Literal("UTWIZTOOL001"),
+    Literal("UTUNIT009"),
 };
 inline constexpr StringView kAliases_209[1] = {
-    Literal("YK_KF_4008"),
+    Literal("UTUNIT010"),
 };
 inline constexpr StringView kAliases_210[1] = {
-    Literal("YK_KF_4009"),
+    Literal("UTUNIT011"),
 };
 inline constexpr StringView kAliases_211[1] = {
-    Literal("YK_KF_4010"),
+    Literal("UTUNIT012"),
 };
 inline constexpr StringView kAliases_212[1] = {
-    Literal("YK_KF_4011"),
+    Literal("UTUNIT013"),
 };
 inline constexpr StringView kAliases_213[1] = {
-    Literal("YK_KF_4012"),
+    Literal("UTUNIT014"),
 };
 inline constexpr StringView kAliases_214[1] = {
-    Literal("YK_KF_4013"),
+    Literal("UTUNIT015"),
 };
 inline constexpr StringView kAliases_215[1] = {
-    Literal("YK_KF_4014"),
+    Literal("UTUNIT016"),
 };
 inline constexpr StringView kAliases_216[1] = {
-    Literal("YK_KF_4015"),
+    Literal("UTUNIT017"),
 };
 inline constexpr StringView kAliases_217[1] = {
-    Literal("YK_KF_4016"),
+    Literal("UTUNIT018"),
 };
 inline constexpr StringView kAliases_218[1] = {
-    Literal("YK_KF_4017"),
+    Literal("UTVOC001"),
 };
 inline constexpr StringView kAliases_219[1] = {
-    Literal("YK_KF_4018"),
+    Literal("UTWIZDEP001"),
 };
 inline constexpr StringView kAliases_220[1] = {
-    Literal("YK_KF_4019"),
+    Literal("UTWIZDEP002"),
 };
 inline constexpr StringView kAliases_221[1] = {
-    Literal("YK_KF_4020"),
+    Literal("UTWIZFAM001"),
 };
 inline constexpr StringView kAliases_222[1] = {
-    Literal("YK_KF_4021"),
+    Literal("UTWIZFAM002"),
 };
 inline constexpr StringView kAliases_223[1] = {
-    Literal("YK_KF_4022"),
+    Literal("UTWIZFAM003"),
 };
 inline constexpr StringView kAliases_224[1] = {
-    Literal("YK_KF_4023"),
+    Literal("UTWIZIO001"),
 };
 inline constexpr StringView kAliases_225[1] = {
-    Literal("YK_KF_4024"),
+    Literal("UTWIZRES001"),
 };
 inline constexpr StringView kAliases_226[1] = {
-    Literal("YK_KF_4025"),
+    Literal("UTWIZTOOL001"),
 };
 inline constexpr StringView kAliases_227[1] = {
-    Literal("YK_KF_4026"),
+    Literal("YK_KF_4008"),
 };
 inline constexpr StringView kAliases_228[1] = {
-    Literal("YK_KF_4027"),
+    Literal("YK_KF_4009"),
 };
 inline constexpr StringView kAliases_229[1] = {
-    Literal("YK_KF_4028"),
+    Literal("YK_KF_4010"),
 };
 inline constexpr StringView kAliases_230[1] = {
-    Literal("YK_KF_4029"),
+    Literal("YK_KF_4011"),
 };
 inline constexpr StringView kAliases_231[1] = {
-    Literal("YK_KF_4030"),
+    Literal("YK_KF_4012"),
 };
 inline constexpr StringView kAliases_232[1] = {
-    Literal("YK_KF_4031"),
+    Literal("YK_KF_4013"),
 };
 inline constexpr StringView kAliases_233[1] = {
-    Literal("YK_KF_4032"),
+    Literal("YK_KF_4014"),
 };
 inline constexpr StringView kAliases_234[1] = {
-    Literal("YK_KF_4033"),
+    Literal("YK_KF_4015"),
 };
 inline constexpr StringView kAliases_235[1] = {
-    Literal("YK_KF_4034"),
+    Literal("YK_KF_4016"),
 };
 inline constexpr StringView kAliases_236[1] = {
-    Literal("YK_KF_4035"),
+    Literal("YK_KF_4017"),
 };
 inline constexpr StringView kAliases_237[1] = {
-    Literal("YK_KF_4036"),
+    Literal("YK_KF_4018"),
 };
 inline constexpr StringView kAliases_238[1] = {
-    Literal("YK_KF_4037"),
+    Literal("YK_KF_4019"),
 };
 inline constexpr StringView kAliases_239[1] = {
-    Literal("YK_KF_4038"),
+    Literal("YK_KF_4020"),
 };
 inline constexpr StringView kAliases_240[1] = {
-    Literal("YK_KF_4039"),
+    Literal("YK_KF_4021"),
 };
 inline constexpr StringView kAliases_241[1] = {
-    Literal("YK_KF_4046"),
+    Literal("YK_KF_4022"),
 };
 inline constexpr StringView kAliases_242[1] = {
-    Literal("YK_KF_4047"),
+    Literal("YK_KF_4023"),
 };
 inline constexpr StringView kAliases_243[1] = {
-    Literal("YK_KF_4048"),
+    Literal("YK_KF_4024"),
 };
 inline constexpr StringView kAliases_244[1] = {
-    Literal("YK_KF_4050"),
+    Literal("YK_KF_4025"),
 };
 inline constexpr StringView kAliases_245[1] = {
-    Literal("YK_KF_4051"),
+    Literal("YK_KF_4026"),
 };
 inline constexpr StringView kAliases_246[1] = {
-    Literal("YK_KF_4052"),
+    Literal("YK_KF_4027"),
 };
 inline constexpr StringView kAliases_247[1] = {
-    Literal("YK_KF_4053"),
+    Literal("YK_KF_4028"),
 };
 inline constexpr StringView kAliases_248[1] = {
-    Literal("YK_KF_4054"),
+    Literal("YK_KF_4029"),
 };
 inline constexpr StringView kAliases_249[1] = {
-    Literal("YK_KF_4055"),
+    Literal("YK_KF_4030"),
 };
 inline constexpr StringView kAliases_250[1] = {
-    Literal("YK_KF_4056"),
+    Literal("YK_KF_4031"),
 };
 inline constexpr StringView kAliases_251[1] = {
-    Literal("YK_KF_4059"),
+    Literal("YK_KF_4032"),
 };
 inline constexpr StringView kAliases_252[1] = {
-    Literal("YK_KF_4064"),
+    Literal("YK_KF_4033"),
 };
 inline constexpr StringView kAliases_253[1] = {
-    Literal("YK_KF_4065"),
+    Literal("YK_KF_4034"),
 };
 inline constexpr StringView kAliases_254[1] = {
-    Literal("YK_KF_4066"),
+    Literal("YK_KF_4035"),
 };
 inline constexpr StringView kAliases_255[1] = {
-    Literal("YK_KF_4069"),
+    Literal("YK_KF_4036"),
 };
 inline constexpr StringView kAliases_256[1] = {
-    Literal("YK_KF_4070"),
+    Literal("YK_KF_4037"),
 };
 inline constexpr StringView kAliases_257[1] = {
-    Literal("YK_KF_5001"),
+    Literal("YK_KF_4038"),
 };
 inline constexpr StringView kAliases_258[1] = {
-    Literal("YK_KF_5002"),
+    Literal("YK_KF_4039"),
 };
 inline constexpr StringView kAliases_259[1] = {
-    Literal("YK_KF_5003"),
+    Literal("YK_KF_4046"),
 };
 inline constexpr StringView kAliases_260[1] = {
-    Literal("YK_KF_5004"),
+    Literal("YK_KF_4047"),
 };
 inline constexpr StringView kAliases_261[1] = {
-    Literal("YK_KF_5005"),
+    Literal("YK_KF_4048"),
 };
 inline constexpr StringView kAliases_262[1] = {
-    Literal("YK_KF_5006"),
+    Literal("YK_KF_4050"),
 };
 inline constexpr StringView kAliases_263[1] = {
-    Literal("YK_KF_5007"),
+    Literal("YK_KF_4051"),
 };
 inline constexpr StringView kAliases_264[1] = {
-    Literal("YK_KF_5008"),
+    Literal("YK_KF_4052"),
 };
 inline constexpr StringView kAliases_265[1] = {
-    Literal("PIPE010"),
+    Literal("YK_KF_4053"),
 };
 inline constexpr StringView kAliases_266[1] = {
-    Literal("UTCG001"),
+    Literal("YK_KF_4054"),
 };
 inline constexpr StringView kAliases_267[1] = {
-    Literal("UTCG002"),
+    Literal("YK_KF_4055"),
 };
 inline constexpr StringView kAliases_268[1] = {
-    Literal("UTCND020"),
+    Literal("YK_KF_4056"),
 };
 inline constexpr StringView kAliases_269[1] = {
-    Literal("UTFX009"),
+    Literal("YK_KF_4059"),
 };
 inline constexpr StringView kAliases_270[1] = {
-    Literal("UTINV002"),
+    Literal("YK_KF_4064"),
 };
 inline constexpr StringView kAliases_271[1] = {
-    Literal("UTMOD000"),
+    Literal("YK_KF_4065"),
 };
 inline constexpr StringView kAliases_272[1] = {
-    Literal("UTMOD001"),
+    Literal("YK_KF_4066"),
 };
 inline constexpr StringView kAliases_273[1] = {
-    Literal("UTMOD002"),
+    Literal("YK_KF_4069"),
 };
 inline constexpr StringView kAliases_274[1] = {
-    Literal("UTMOD003"),
+    Literal("YK_KF_4070"),
 };
 inline constexpr StringView kAliases_275[1] = {
-    Literal("UTMOD004"),
+    Literal("YK_KF_5001"),
 };
 inline constexpr StringView kAliases_276[1] = {
-    Literal("UTMOD005"),
+    Literal("YK_KF_5002"),
 };
 inline constexpr StringView kAliases_277[1] = {
-    Literal("UTMOD006"),
+    Literal("YK_KF_5003"),
 };
 inline constexpr StringView kAliases_278[1] = {
-    Literal("UTMOD007"),
+    Literal("YK_KF_5004"),
 };
 inline constexpr StringView kAliases_279[1] = {
-    Literal("UTMOD008"),
+    Literal("YK_KF_5005"),
 };
 inline constexpr StringView kAliases_280[1] = {
-    Literal("UTMOD009"),
+    Literal("YK_KF_5006"),
 };
 inline constexpr StringView kAliases_281[1] = {
-    Literal("VIXEN001"),
+    Literal("YK_KF_5007"),
 };
 inline constexpr StringView kAliases_282[1] = {
-    Literal("VIXEN003"),
+    Literal("YK_KF_5008"),
 };
 inline constexpr StringView kAliases_283[1] = {
-    Literal("VIXEN004"),
+    Literal("YK_SG_4020"),
 };
 inline constexpr StringView kAliases_284[1] = {
+    Literal("YK_SG_4021"),
+};
+inline constexpr StringView kAliases_285[1] = {
+    Literal("YK_SG_4022"),
+};
+inline constexpr StringView kAliases_286[1] = {
+    Literal("YK_SG_4023"),
+};
+inline constexpr StringView kAliases_287[1] = {
+    Literal("YKCALC001"),
+};
+inline constexpr StringView kAliases_288[1] = {
+    Literal("PIPE010"),
+};
+inline constexpr StringView kAliases_289[1] = {
+    Literal("UTCG001"),
+};
+inline constexpr StringView kAliases_290[1] = {
+    Literal("UTCG002"),
+};
+inline constexpr StringView kAliases_291[1] = {
+    Literal("UTCND020"),
+};
+inline constexpr StringView kAliases_292[1] = {
+    Literal("UTFX009"),
+};
+inline constexpr StringView kAliases_293[1] = {
+    Literal("UTINV002"),
+};
+inline constexpr StringView kAliases_294[1] = {
+    Literal("UTMOD000"),
+};
+inline constexpr StringView kAliases_295[1] = {
+    Literal("UTMOD001"),
+};
+inline constexpr StringView kAliases_296[1] = {
+    Literal("UTMOD002"),
+};
+inline constexpr StringView kAliases_297[1] = {
+    Literal("UTMOD003"),
+};
+inline constexpr StringView kAliases_298[1] = {
+    Literal("UTMOD004"),
+};
+inline constexpr StringView kAliases_299[1] = {
+    Literal("UTMOD005"),
+};
+inline constexpr StringView kAliases_300[1] = {
+    Literal("UTMOD006"),
+};
+inline constexpr StringView kAliases_301[1] = {
+    Literal("UTMOD007"),
+};
+inline constexpr StringView kAliases_302[1] = {
+    Literal("UTMOD008"),
+};
+inline constexpr StringView kAliases_303[1] = {
+    Literal("UTMOD009"),
+};
+inline constexpr StringView kAliases_304[1] = {
+    Literal("VIXEN001"),
+};
+inline constexpr StringView kAliases_305[1] = {
+    Literal("VIXEN003"),
+};
+inline constexpr StringView kAliases_306[1] = {
+    Literal("VIXEN004"),
+};
+inline constexpr StringView kAliases_307[1] = {
     Literal("VIXEN002"),
 };
 
 inline constexpr DescriptorView kDescriptor_0{
+    Literal("kernel.codegen.unhandled-exception"),
+    Literal(""),
+    kAliases_0,
+    static_cast<std::uint16_t>(0),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("Code generation raised {exceptionType}: {message}"),
+    Literal("The selected emitter threw instead of returning a catalog-backed failure outcome."),
+    Literal("Use the location, log reference, and correlation id to fix the producer; convert a known condition to an early catalog-backed diagnostic."),
+    Literal("kernel-codegen-unhandled-exception"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_1{
     Literal("kernel.legacy.pipe001"),
     Literal("PIPE001"),
-    kAliases_0,
+    kAliases_1,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -933,10 +1016,10 @@ inline constexpr DescriptorView kDescriptor_0{
     Literal("kernel-legacy-pipe001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_1{
+inline constexpr DescriptorView kDescriptor_2{
     Literal("kernel.legacy.pipe002"),
     Literal("PIPE002"),
-    kAliases_1,
+    kAliases_2,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -947,10 +1030,10 @@ inline constexpr DescriptorView kDescriptor_1{
     Literal("kernel-legacy-pipe002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_2{
+inline constexpr DescriptorView kDescriptor_3{
     Literal("kernel.legacy.pipe003"),
     Literal("PIPE003"),
-    kAliases_2,
+    kAliases_3,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -961,10 +1044,10 @@ inline constexpr DescriptorView kDescriptor_2{
     Literal("kernel-legacy-pipe003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_3{
+inline constexpr DescriptorView kDescriptor_4{
     Literal("kernel.legacy.pipe004"),
     Literal("PIPE004"),
-    kAliases_3,
+    kAliases_4,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -975,10 +1058,10 @@ inline constexpr DescriptorView kDescriptor_3{
     Literal("kernel-legacy-pipe004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_4{
+inline constexpr DescriptorView kDescriptor_5{
     Literal("kernel.legacy.pipe005"),
     Literal("PIPE005"),
-    kAliases_4,
+    kAliases_5,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -989,10 +1072,10 @@ inline constexpr DescriptorView kDescriptor_4{
     Literal("kernel-legacy-pipe005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_5{
+inline constexpr DescriptorView kDescriptor_6{
     Literal("kernel.legacy.pipe006"),
     Literal("PIPE006"),
-    kAliases_5,
+    kAliases_6,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1003,10 +1086,10 @@ inline constexpr DescriptorView kDescriptor_5{
     Literal("kernel-legacy-pipe006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_6{
+inline constexpr DescriptorView kDescriptor_7{
     Literal("kernel.legacy.pipe007"),
     Literal("PIPE007"),
-    kAliases_6,
+    kAliases_7,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1017,10 +1100,10 @@ inline constexpr DescriptorView kDescriptor_6{
     Literal("kernel-legacy-pipe007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_7{
+inline constexpr DescriptorView kDescriptor_8{
     Literal("kernel.legacy.pipe008"),
     Literal("PIPE008"),
-    kAliases_7,
+    kAliases_8,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1031,10 +1114,10 @@ inline constexpr DescriptorView kDescriptor_7{
     Literal("kernel-legacy-pipe008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_8{
+inline constexpr DescriptorView kDescriptor_9{
     Literal("kernel.legacy.pipe009"),
     Literal("PIPE009"),
-    kAliases_8,
+    kAliases_9,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1045,10 +1128,10 @@ inline constexpr DescriptorView kDescriptor_8{
     Literal("kernel-legacy-pipe009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_9{
+inline constexpr DescriptorView kDescriptor_10{
     Literal("kernel.legacy.pipe011"),
     Literal("PIPE011"),
-    kAliases_9,
+    kAliases_10,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1059,10 +1142,10 @@ inline constexpr DescriptorView kDescriptor_9{
     Literal("kernel-legacy-pipe011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_10{
+inline constexpr DescriptorView kDescriptor_11{
     Literal("kernel.legacy.pipe012"),
     Literal("PIPE012"),
-    kAliases_10,
+    kAliases_11,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1073,10 +1156,10 @@ inline constexpr DescriptorView kDescriptor_10{
     Literal("kernel-legacy-pipe012"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_11{
+inline constexpr DescriptorView kDescriptor_12{
     Literal("kernel.legacy.pipe013"),
     Literal("PIPE013"),
-    kAliases_11,
+    kAliases_12,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1087,10 +1170,10 @@ inline constexpr DescriptorView kDescriptor_11{
     Literal("kernel-legacy-pipe013"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_12{
+inline constexpr DescriptorView kDescriptor_13{
     Literal("kernel.legacy.pipe014"),
     Literal("PIPE014"),
-    kAliases_12,
+    kAliases_13,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1101,10 +1184,10 @@ inline constexpr DescriptorView kDescriptor_12{
     Literal("kernel-legacy-pipe014"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_13{
+inline constexpr DescriptorView kDescriptor_14{
     Literal("kernel.legacy.pipe015"),
     Literal("PIPE015"),
-    kAliases_13,
+    kAliases_14,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1115,10 +1198,10 @@ inline constexpr DescriptorView kDescriptor_13{
     Literal("kernel-legacy-pipe015"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_14{
+inline constexpr DescriptorView kDescriptor_15{
     Literal("kernel.legacy.pipe016"),
     Literal("PIPE016"),
-    kAliases_14,
+    kAliases_15,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1129,10 +1212,10 @@ inline constexpr DescriptorView kDescriptor_14{
     Literal("kernel-legacy-pipe016"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_15{
+inline constexpr DescriptorView kDescriptor_16{
     Literal("kernel.legacy.pipe017"),
     Literal("PIPE017"),
-    kAliases_15,
+    kAliases_16,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1143,10 +1226,38 @@ inline constexpr DescriptorView kDescriptor_15{
     Literal("kernel-legacy-pipe017"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_16{
+inline constexpr DescriptorView kDescriptor_17{
+    Literal("kernel.legacy.pipe018"),
+    Literal("PIPE018"),
+    kAliases_17,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("PIPE018: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-pipe018"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_18{
+    Literal("kernel.legacy.pipe019"),
+    Literal("PIPE019"),
+    kAliases_18,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("PIPE019: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-pipe019"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_19{
     Literal("kernel.legacy.sched001"),
     Literal("SCHED001"),
-    kAliases_16,
+    kAliases_19,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1157,10 +1268,10 @@ inline constexpr DescriptorView kDescriptor_16{
     Literal("kernel-legacy-sched001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_17{
+inline constexpr DescriptorView kDescriptor_20{
     Literal("kernel.legacy.sched004"),
     Literal("SCHED004"),
-    kAliases_17,
+    kAliases_20,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1171,10 +1282,10 @@ inline constexpr DescriptorView kDescriptor_17{
     Literal("kernel-legacy-sched004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_18{
+inline constexpr DescriptorView kDescriptor_21{
     Literal("kernel.legacy.sched005"),
     Literal("SCHED005"),
-    kAliases_18,
+    kAliases_21,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1185,10 +1296,10 @@ inline constexpr DescriptorView kDescriptor_18{
     Literal("kernel-legacy-sched005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_19{
+inline constexpr DescriptorView kDescriptor_22{
     Literal("kernel.legacy.sched006"),
     Literal("SCHED006"),
-    kAliases_19,
+    kAliases_22,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1199,10 +1310,10 @@ inline constexpr DescriptorView kDescriptor_19{
     Literal("kernel-legacy-sched006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_20{
+inline constexpr DescriptorView kDescriptor_23{
     Literal("kernel.legacy.sched007"),
     Literal("SCHED007"),
-    kAliases_20,
+    kAliases_23,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1213,10 +1324,10 @@ inline constexpr DescriptorView kDescriptor_20{
     Literal("kernel-legacy-sched007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_21{
+inline constexpr DescriptorView kDescriptor_24{
     Literal("kernel.legacy.sched008"),
     Literal("SCHED008"),
-    kAliases_21,
+    kAliases_24,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1227,10 +1338,10 @@ inline constexpr DescriptorView kDescriptor_21{
     Literal("kernel-legacy-sched008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_22{
+inline constexpr DescriptorView kDescriptor_25{
     Literal("kernel.legacy.sched009"),
     Literal("SCHED009"),
-    kAliases_22,
+    kAliases_25,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1241,10 +1352,150 @@ inline constexpr DescriptorView kDescriptor_22{
     Literal("kernel-legacy-sched009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_23{
+inline constexpr DescriptorView kDescriptor_26{
+    Literal("kernel.legacy.sched010"),
+    Literal("SCHED010"),
+    kAliases_26,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Compile,
+    Literal("SCHED010: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sched010"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_27{
+    Literal("kernel.legacy.sched011"),
+    Literal("SCHED011"),
+    kAliases_27,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Compile,
+    Literal("SCHED011: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sched011"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_28{
+    Literal("kernel.legacy.sched012"),
+    Literal("SCHED012"),
+    kAliases_28,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Compile,
+    Literal("SCHED012: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sched012"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_29{
+    Literal("kernel.legacy.sched013"),
+    Literal("SCHED013"),
+    kAliases_29,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Compile,
+    Literal("SCHED013: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sched013"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_30{
+    Literal("kernel.legacy.sched014"),
+    Literal("SCHED014"),
+    kAliases_30,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Compile,
+    Literal("SCHED014: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sched014"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_31{
+    Literal("kernel.legacy.sdfk021"),
+    Literal("SDFK021"),
+    kAliases_31,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("SDFK021: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sdfk021"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_32{
+    Literal("kernel.legacy.sdfk022"),
+    Literal("SDFK022"),
+    kAliases_32,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("SDFK022: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sdfk022"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_33{
+    Literal("kernel.legacy.sdfk023"),
+    Literal("SDFK023"),
+    kAliases_33,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("SDFK023: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sdfk023"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_34{
+    Literal("kernel.legacy.sdfk024"),
+    Literal("SDFK024"),
+    kAliases_34,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("SDFK024: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sdfk024"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_35{
+    Literal("kernel.legacy.sdfk025"),
+    Literal("SDFK025"),
+    kAliases_35,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("SDFK025: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-sdfk025"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_36{
     Literal("kernel.legacy.utact001"),
     Literal("UTACT001"),
-    kAliases_23,
+    kAliases_36,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1255,10 +1506,10 @@ inline constexpr DescriptorView kDescriptor_23{
     Literal("kernel-legacy-utact001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_24{
+inline constexpr DescriptorView kDescriptor_37{
     Literal("kernel.legacy.utact002"),
     Literal("UTACT002"),
-    kAliases_24,
+    kAliases_37,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1269,10 +1520,10 @@ inline constexpr DescriptorView kDescriptor_24{
     Literal("kernel-legacy-utact002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_25{
+inline constexpr DescriptorView kDescriptor_38{
     Literal("kernel.legacy.utact003"),
     Literal("UTACT003"),
-    kAliases_25,
+    kAliases_38,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1283,10 +1534,10 @@ inline constexpr DescriptorView kDescriptor_25{
     Literal("kernel-legacy-utact003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_26{
+inline constexpr DescriptorView kDescriptor_39{
     Literal("kernel.legacy.utact004"),
     Literal("UTACT004"),
-    kAliases_26,
+    kAliases_39,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1297,10 +1548,10 @@ inline constexpr DescriptorView kDescriptor_26{
     Literal("kernel-legacy-utact004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_27{
+inline constexpr DescriptorView kDescriptor_40{
     Literal("kernel.legacy.utact005"),
     Literal("UTACT005"),
-    kAliases_27,
+    kAliases_40,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1311,10 +1562,10 @@ inline constexpr DescriptorView kDescriptor_27{
     Literal("kernel-legacy-utact005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_28{
+inline constexpr DescriptorView kDescriptor_41{
     Literal("kernel.legacy.utact006"),
     Literal("UTACT006"),
-    kAliases_28,
+    kAliases_41,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1325,10 +1576,10 @@ inline constexpr DescriptorView kDescriptor_28{
     Literal("kernel-legacy-utact006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_29{
+inline constexpr DescriptorView kDescriptor_42{
     Literal("kernel.legacy.utact007"),
     Literal("UTACT007"),
-    kAliases_29,
+    kAliases_42,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1339,10 +1590,10 @@ inline constexpr DescriptorView kDescriptor_29{
     Literal("kernel-legacy-utact007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_30{
+inline constexpr DescriptorView kDescriptor_43{
     Literal("kernel.legacy.utact008"),
     Literal("UTACT008"),
-    kAliases_30,
+    kAliases_43,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1353,10 +1604,10 @@ inline constexpr DescriptorView kDescriptor_30{
     Literal("kernel-legacy-utact008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_31{
+inline constexpr DescriptorView kDescriptor_44{
     Literal("kernel.legacy.utact009"),
     Literal("UTACT009"),
-    kAliases_31,
+    kAliases_44,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1367,10 +1618,10 @@ inline constexpr DescriptorView kDescriptor_31{
     Literal("kernel-legacy-utact009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_32{
+inline constexpr DescriptorView kDescriptor_45{
     Literal("kernel.legacy.utact010"),
     Literal("UTACT010"),
-    kAliases_32,
+    kAliases_45,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1381,10 +1632,10 @@ inline constexpr DescriptorView kDescriptor_32{
     Literal("kernel-legacy-utact010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_33{
+inline constexpr DescriptorView kDescriptor_46{
     Literal("kernel.legacy.utact011"),
     Literal("UTACT011"),
-    kAliases_33,
+    kAliases_46,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1395,10 +1646,10 @@ inline constexpr DescriptorView kDescriptor_33{
     Literal("kernel-legacy-utact011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_34{
+inline constexpr DescriptorView kDescriptor_47{
     Literal("kernel.legacy.utact012"),
     Literal("UTACT012"),
-    kAliases_34,
+    kAliases_47,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1409,10 +1660,10 @@ inline constexpr DescriptorView kDescriptor_34{
     Literal("kernel-legacy-utact012"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_35{
+inline constexpr DescriptorView kDescriptor_48{
     Literal("kernel.legacy.utact013"),
     Literal("UTACT013"),
-    kAliases_35,
+    kAliases_48,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1423,10 +1674,10 @@ inline constexpr DescriptorView kDescriptor_35{
     Literal("kernel-legacy-utact013"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_36{
+inline constexpr DescriptorView kDescriptor_49{
     Literal("kernel.legacy.utattach001"),
     Literal("UTATTACH001"),
-    kAliases_36,
+    kAliases_49,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1437,10 +1688,10 @@ inline constexpr DescriptorView kDescriptor_36{
     Literal("kernel-legacy-utattach001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_37{
+inline constexpr DescriptorView kDescriptor_50{
     Literal("kernel.legacy.utcap002"),
     Literal("UTCAP002"),
-    kAliases_37,
+    kAliases_50,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1451,10 +1702,10 @@ inline constexpr DescriptorView kDescriptor_37{
     Literal("kernel-legacy-utcap002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_38{
+inline constexpr DescriptorView kDescriptor_51{
     Literal("kernel.legacy.utci001"),
     Literal("UTCI001"),
-    kAliases_38,
+    kAliases_51,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1465,10 +1716,10 @@ inline constexpr DescriptorView kDescriptor_38{
     Literal("kernel-legacy-utci001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_39{
+inline constexpr DescriptorView kDescriptor_52{
     Literal("kernel.legacy.utci002"),
     Literal("UTCI002"),
-    kAliases_39,
+    kAliases_52,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1479,10 +1730,10 @@ inline constexpr DescriptorView kDescriptor_39{
     Literal("kernel-legacy-utci002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_40{
+inline constexpr DescriptorView kDescriptor_53{
     Literal("kernel.legacy.utci003"),
     Literal("UTCI003"),
-    kAliases_40,
+    kAliases_53,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1493,10 +1744,10 @@ inline constexpr DescriptorView kDescriptor_40{
     Literal("kernel-legacy-utci003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_41{
+inline constexpr DescriptorView kDescriptor_54{
     Literal("kernel.legacy.utcnd001"),
     Literal("UTCND001"),
-    kAliases_41,
+    kAliases_54,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1507,10 +1758,10 @@ inline constexpr DescriptorView kDescriptor_41{
     Literal("kernel-legacy-utcnd001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_42{
+inline constexpr DescriptorView kDescriptor_55{
     Literal("kernel.legacy.utcnd002"),
     Literal("UTCND002"),
-    kAliases_42,
+    kAliases_55,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1521,10 +1772,10 @@ inline constexpr DescriptorView kDescriptor_42{
     Literal("kernel-legacy-utcnd002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_43{
+inline constexpr DescriptorView kDescriptor_56{
     Literal("kernel.legacy.utcnd003"),
     Literal("UTCND003"),
-    kAliases_43,
+    kAliases_56,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1535,10 +1786,10 @@ inline constexpr DescriptorView kDescriptor_43{
     Literal("kernel-legacy-utcnd003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_44{
+inline constexpr DescriptorView kDescriptor_57{
     Literal("kernel.legacy.utcnd004"),
     Literal("UTCND004"),
-    kAliases_44,
+    kAliases_57,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1549,10 +1800,10 @@ inline constexpr DescriptorView kDescriptor_44{
     Literal("kernel-legacy-utcnd004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_45{
+inline constexpr DescriptorView kDescriptor_58{
     Literal("kernel.legacy.utcnd005"),
     Literal("UTCND005"),
-    kAliases_45,
+    kAliases_58,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1563,10 +1814,10 @@ inline constexpr DescriptorView kDescriptor_45{
     Literal("kernel-legacy-utcnd005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_46{
+inline constexpr DescriptorView kDescriptor_59{
     Literal("kernel.legacy.utcnd006"),
     Literal("UTCND006"),
-    kAliases_46,
+    kAliases_59,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1577,10 +1828,10 @@ inline constexpr DescriptorView kDescriptor_46{
     Literal("kernel-legacy-utcnd006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_47{
+inline constexpr DescriptorView kDescriptor_60{
     Literal("kernel.legacy.utcnd010"),
     Literal("UTCND010"),
-    kAliases_47,
+    kAliases_60,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1591,10 +1842,10 @@ inline constexpr DescriptorView kDescriptor_47{
     Literal("kernel-legacy-utcnd010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_48{
+inline constexpr DescriptorView kDescriptor_61{
     Literal("kernel.legacy.utcnd011"),
     Literal("UTCND011"),
-    kAliases_48,
+    kAliases_61,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1605,10 +1856,10 @@ inline constexpr DescriptorView kDescriptor_48{
     Literal("kernel-legacy-utcnd011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_49{
+inline constexpr DescriptorView kDescriptor_62{
     Literal("kernel.legacy.utcnd012"),
     Literal("UTCND012"),
-    kAliases_49,
+    kAliases_62,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1619,10 +1870,10 @@ inline constexpr DescriptorView kDescriptor_49{
     Literal("kernel-legacy-utcnd012"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_50{
+inline constexpr DescriptorView kDescriptor_63{
     Literal("kernel.legacy.utcnd013"),
     Literal("UTCND013"),
-    kAliases_50,
+    kAliases_63,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1633,10 +1884,10 @@ inline constexpr DescriptorView kDescriptor_50{
     Literal("kernel-legacy-utcnd013"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_51{
+inline constexpr DescriptorView kDescriptor_64{
     Literal("kernel.legacy.utcnd014"),
     Literal("UTCND014"),
-    kAliases_51,
+    kAliases_64,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1647,10 +1898,10 @@ inline constexpr DescriptorView kDescriptor_51{
     Literal("kernel-legacy-utcnd014"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_52{
+inline constexpr DescriptorView kDescriptor_65{
     Literal("kernel.legacy.utcnd015"),
     Literal("UTCND015"),
-    kAliases_52,
+    kAliases_65,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1661,10 +1912,10 @@ inline constexpr DescriptorView kDescriptor_52{
     Literal("kernel-legacy-utcnd015"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_53{
+inline constexpr DescriptorView kDescriptor_66{
     Literal("kernel.legacy.utcnd016"),
     Literal("UTCND016"),
-    kAliases_53,
+    kAliases_66,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1675,10 +1926,10 @@ inline constexpr DescriptorView kDescriptor_53{
     Literal("kernel-legacy-utcnd016"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_54{
+inline constexpr DescriptorView kDescriptor_67{
     Literal("kernel.legacy.utcnd017"),
     Literal("UTCND017"),
-    kAliases_54,
+    kAliases_67,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1689,10 +1940,10 @@ inline constexpr DescriptorView kDescriptor_54{
     Literal("kernel-legacy-utcnd017"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_55{
+inline constexpr DescriptorView kDescriptor_68{
     Literal("kernel.legacy.utcnd018"),
     Literal("UTCND018"),
-    kAliases_55,
+    kAliases_68,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1703,10 +1954,10 @@ inline constexpr DescriptorView kDescriptor_55{
     Literal("kernel-legacy-utcnd018"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_56{
+inline constexpr DescriptorView kDescriptor_69{
     Literal("kernel.legacy.utcnd019"),
     Literal("UTCND019"),
-    kAliases_56,
+    kAliases_69,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1717,10 +1968,10 @@ inline constexpr DescriptorView kDescriptor_56{
     Literal("kernel-legacy-utcnd019"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_57{
+inline constexpr DescriptorView kDescriptor_70{
     Literal("kernel.legacy.utcnd101"),
     Literal("UTCND101"),
-    kAliases_57,
+    kAliases_70,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1731,10 +1982,10 @@ inline constexpr DescriptorView kDescriptor_57{
     Literal("kernel-legacy-utcnd101"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_58{
+inline constexpr DescriptorView kDescriptor_71{
     Literal("kernel.legacy.utcnd102"),
     Literal("UTCND102"),
-    kAliases_58,
+    kAliases_71,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1745,10 +1996,10 @@ inline constexpr DescriptorView kDescriptor_58{
     Literal("kernel-legacy-utcnd102"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_59{
+inline constexpr DescriptorView kDescriptor_72{
     Literal("kernel.legacy.utcnd103"),
     Literal("UTCND103"),
-    kAliases_59,
+    kAliases_72,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1759,10 +2010,10 @@ inline constexpr DescriptorView kDescriptor_59{
     Literal("kernel-legacy-utcnd103"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_60{
+inline constexpr DescriptorView kDescriptor_73{
     Literal("kernel.legacy.utcnd201"),
     Literal("UTCND201"),
-    kAliases_60,
+    kAliases_73,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1773,10 +2024,24 @@ inline constexpr DescriptorView kDescriptor_60{
     Literal("kernel-legacy-utcnd201"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_61{
+inline constexpr DescriptorView kDescriptor_74{
+    Literal("kernel.legacy.utcodegenstore001"),
+    Literal("UTCODEGENSTORE001"),
+    kAliases_74,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("UTCODEGENSTORE001: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-utcodegenstore001"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_75{
     Literal("kernel.legacy.utcp001"),
     Literal("UTCP001"),
-    kAliases_61,
+    kAliases_75,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1787,10 +2052,10 @@ inline constexpr DescriptorView kDescriptor_61{
     Literal("kernel-legacy-utcp001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_62{
+inline constexpr DescriptorView kDescriptor_76{
     Literal("kernel.legacy.utcr001"),
     Literal("UTCR001"),
-    kAliases_62,
+    kAliases_76,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1801,10 +2066,10 @@ inline constexpr DescriptorView kDescriptor_62{
     Literal("kernel-legacy-utcr001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_63{
+inline constexpr DescriptorView kDescriptor_77{
     Literal("kernel.legacy.utder001"),
     Literal("UTDER001"),
-    kAliases_63,
+    kAliases_77,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1815,10 +2080,10 @@ inline constexpr DescriptorView kDescriptor_63{
     Literal("kernel-legacy-utder001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_64{
+inline constexpr DescriptorView kDescriptor_78{
     Literal("kernel.legacy.utder002"),
     Literal("UTDER002"),
-    kAliases_64,
+    kAliases_78,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1829,10 +2094,10 @@ inline constexpr DescriptorView kDescriptor_64{
     Literal("kernel-legacy-utder002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_65{
+inline constexpr DescriptorView kDescriptor_79{
     Literal("kernel.legacy.utder003"),
     Literal("UTDER003"),
-    kAliases_65,
+    kAliases_79,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1843,10 +2108,10 @@ inline constexpr DescriptorView kDescriptor_65{
     Literal("kernel-legacy-utder003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_66{
+inline constexpr DescriptorView kDescriptor_80{
     Literal("kernel.legacy.utder004"),
     Literal("UTDER004"),
-    kAliases_66,
+    kAliases_80,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1857,10 +2122,10 @@ inline constexpr DescriptorView kDescriptor_66{
     Literal("kernel-legacy-utder004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_67{
+inline constexpr DescriptorView kDescriptor_81{
     Literal("kernel.legacy.utder005"),
     Literal("UTDER005"),
-    kAliases_67,
+    kAliases_81,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1871,10 +2136,10 @@ inline constexpr DescriptorView kDescriptor_67{
     Literal("kernel-legacy-utder005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_68{
+inline constexpr DescriptorView kDescriptor_82{
     Literal("kernel.legacy.utder006"),
     Literal("UTDER006"),
-    kAliases_68,
+    kAliases_82,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1885,10 +2150,10 @@ inline constexpr DescriptorView kDescriptor_68{
     Literal("kernel-legacy-utder006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_69{
+inline constexpr DescriptorView kDescriptor_83{
     Literal("kernel.legacy.utder008"),
     Literal("UTDER008"),
-    kAliases_69,
+    kAliases_83,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1899,10 +2164,10 @@ inline constexpr DescriptorView kDescriptor_69{
     Literal("kernel-legacy-utder008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_70{
+inline constexpr DescriptorView kDescriptor_84{
     Literal("kernel.legacy.utder009"),
     Literal("UTDER009"),
-    kAliases_70,
+    kAliases_84,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1913,10 +2178,10 @@ inline constexpr DescriptorView kDescriptor_70{
     Literal("kernel-legacy-utder009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_71{
+inline constexpr DescriptorView kDescriptor_85{
     Literal("kernel.legacy.utder010"),
     Literal("UTDER010"),
-    kAliases_71,
+    kAliases_85,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1927,10 +2192,10 @@ inline constexpr DescriptorView kDescriptor_71{
     Literal("kernel-legacy-utder010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_72{
+inline constexpr DescriptorView kDescriptor_86{
     Literal("kernel.legacy.utder011"),
     Literal("UTDER011"),
-    kAliases_72,
+    kAliases_86,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1941,10 +2206,10 @@ inline constexpr DescriptorView kDescriptor_72{
     Literal("kernel-legacy-utder011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_73{
+inline constexpr DescriptorView kDescriptor_87{
     Literal("kernel.legacy.utder013"),
     Literal("UTDER013"),
-    kAliases_73,
+    kAliases_87,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1955,10 +2220,10 @@ inline constexpr DescriptorView kDescriptor_73{
     Literal("kernel-legacy-utder013"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_74{
+inline constexpr DescriptorView kDescriptor_88{
     Literal("kernel.legacy.utder014"),
     Literal("UTDER014"),
-    kAliases_74,
+    kAliases_88,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1969,10 +2234,10 @@ inline constexpr DescriptorView kDescriptor_74{
     Literal("kernel-legacy-utder014"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_75{
+inline constexpr DescriptorView kDescriptor_89{
     Literal("kernel.legacy.utder015"),
     Literal("UTDER015"),
-    kAliases_75,
+    kAliases_89,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1983,10 +2248,10 @@ inline constexpr DescriptorView kDescriptor_75{
     Literal("kernel-legacy-utder015"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_76{
+inline constexpr DescriptorView kDescriptor_90{
     Literal("kernel.legacy.utea001"),
     Literal("UTEA001"),
-    kAliases_76,
+    kAliases_90,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -1997,10 +2262,10 @@ inline constexpr DescriptorView kDescriptor_76{
     Literal("kernel-legacy-utea001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_77{
+inline constexpr DescriptorView kDescriptor_91{
     Literal("kernel.legacy.utea002"),
     Literal("UTEA002"),
-    kAliases_77,
+    kAliases_91,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2011,10 +2276,10 @@ inline constexpr DescriptorView kDescriptor_77{
     Literal("kernel-legacy-utea002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_78{
+inline constexpr DescriptorView kDescriptor_92{
     Literal("kernel.legacy.utea003"),
     Literal("UTEA003"),
-    kAliases_78,
+    kAliases_92,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2025,10 +2290,10 @@ inline constexpr DescriptorView kDescriptor_78{
     Literal("kernel-legacy-utea003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_79{
+inline constexpr DescriptorView kDescriptor_93{
     Literal("kernel.legacy.utefr001"),
     Literal("UTEFR001"),
-    kAliases_79,
+    kAliases_93,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2039,10 +2304,10 @@ inline constexpr DescriptorView kDescriptor_79{
     Literal("kernel-legacy-utefr001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_80{
+inline constexpr DescriptorView kDescriptor_94{
     Literal("kernel.legacy.utefr002"),
     Literal("UTEFR002"),
-    kAliases_80,
+    kAliases_94,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2053,10 +2318,10 @@ inline constexpr DescriptorView kDescriptor_80{
     Literal("kernel-legacy-utefr002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_81{
+inline constexpr DescriptorView kDescriptor_95{
     Literal("kernel.legacy.utefr003"),
     Literal("UTEFR003"),
-    kAliases_81,
+    kAliases_95,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2067,10 +2332,10 @@ inline constexpr DescriptorView kDescriptor_81{
     Literal("kernel-legacy-utefr003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_82{
+inline constexpr DescriptorView kDescriptor_96{
     Literal("kernel.legacy.utefr004"),
     Literal("UTEFR004"),
-    kAliases_82,
+    kAliases_96,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2081,10 +2346,10 @@ inline constexpr DescriptorView kDescriptor_82{
     Literal("kernel-legacy-utefr004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_83{
+inline constexpr DescriptorView kDescriptor_97{
     Literal("kernel.legacy.utefr005"),
     Literal("UTEFR005"),
-    kAliases_83,
+    kAliases_97,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2095,10 +2360,10 @@ inline constexpr DescriptorView kDescriptor_83{
     Literal("kernel-legacy-utefr005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_84{
+inline constexpr DescriptorView kDescriptor_98{
     Literal("kernel.legacy.utefr006"),
     Literal("UTEFR006"),
-    kAliases_84,
+    kAliases_98,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2109,10 +2374,10 @@ inline constexpr DescriptorView kDescriptor_84{
     Literal("kernel-legacy-utefr006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_85{
+inline constexpr DescriptorView kDescriptor_99{
     Literal("kernel.legacy.utefr007"),
     Literal("UTEFR007"),
-    kAliases_85,
+    kAliases_99,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2123,10 +2388,10 @@ inline constexpr DescriptorView kDescriptor_85{
     Literal("kernel-legacy-utefr007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_86{
+inline constexpr DescriptorView kDescriptor_100{
     Literal("kernel.legacy.utemit001"),
     Literal("UTEMIT001"),
-    kAliases_86,
+    kAliases_100,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2137,10 +2402,10 @@ inline constexpr DescriptorView kDescriptor_86{
     Literal("kernel-legacy-utemit001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_87{
+inline constexpr DescriptorView kDescriptor_101{
     Literal("kernel.legacy.utemit002"),
     Literal("UTEMIT002"),
-    kAliases_87,
+    kAliases_101,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2151,10 +2416,10 @@ inline constexpr DescriptorView kDescriptor_87{
     Literal("kernel-legacy-utemit002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_88{
+inline constexpr DescriptorView kDescriptor_102{
     Literal("kernel.legacy.utemit003"),
     Literal("UTEMIT003"),
-    kAliases_88,
+    kAliases_102,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2165,10 +2430,10 @@ inline constexpr DescriptorView kDescriptor_88{
     Literal("kernel-legacy-utemit003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_89{
+inline constexpr DescriptorView kDescriptor_103{
     Literal("kernel.legacy.utfield001"),
     Literal("UTFIELD001"),
-    kAliases_89,
+    kAliases_103,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2179,10 +2444,10 @@ inline constexpr DescriptorView kDescriptor_89{
     Literal("kernel-legacy-utfield001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_90{
+inline constexpr DescriptorView kDescriptor_104{
     Literal("kernel.legacy.utfield002"),
     Literal("UTFIELD002"),
-    kAliases_90,
+    kAliases_104,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2193,10 +2458,10 @@ inline constexpr DescriptorView kDescriptor_90{
     Literal("kernel-legacy-utfield002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_91{
+inline constexpr DescriptorView kDescriptor_105{
     Literal("kernel.legacy.utfield003"),
     Literal("UTFIELD003"),
-    kAliases_91,
+    kAliases_105,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2207,10 +2472,10 @@ inline constexpr DescriptorView kDescriptor_91{
     Literal("kernel-legacy-utfield003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_92{
+inline constexpr DescriptorView kDescriptor_106{
     Literal("kernel.legacy.utfield004"),
     Literal("UTFIELD004"),
-    kAliases_92,
+    kAliases_106,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2221,10 +2486,10 @@ inline constexpr DescriptorView kDescriptor_92{
     Literal("kernel-legacy-utfield004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_93{
+inline constexpr DescriptorView kDescriptor_107{
     Literal("kernel.legacy.utgen001"),
     Literal("UTGEN001"),
-    kAliases_93,
+    kAliases_107,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2235,10 +2500,10 @@ inline constexpr DescriptorView kDescriptor_93{
     Literal("kernel-legacy-utgen001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_94{
+inline constexpr DescriptorView kDescriptor_108{
     Literal("kernel.legacy.utid001"),
     Literal("UTID001"),
-    kAliases_94,
+    kAliases_108,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2249,10 +2514,10 @@ inline constexpr DescriptorView kDescriptor_94{
     Literal("kernel-legacy-utid001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_95{
+inline constexpr DescriptorView kDescriptor_109{
     Literal("kernel.legacy.utid002"),
     Literal("UTID002"),
-    kAliases_95,
+    kAliases_109,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2263,10 +2528,10 @@ inline constexpr DescriptorView kDescriptor_95{
     Literal("kernel-legacy-utid002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_96{
+inline constexpr DescriptorView kDescriptor_110{
     Literal("kernel.legacy.utkf001"),
     Literal("UTKF001"),
-    kAliases_96,
+    kAliases_110,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2277,10 +2542,10 @@ inline constexpr DescriptorView kDescriptor_96{
     Literal("kernel-legacy-utkf001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_97{
+inline constexpr DescriptorView kDescriptor_111{
     Literal("kernel.legacy.utkf002"),
     Literal("UTKF002"),
-    kAliases_97,
+    kAliases_111,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2291,10 +2556,10 @@ inline constexpr DescriptorView kDescriptor_97{
     Literal("kernel-legacy-utkf002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_98{
+inline constexpr DescriptorView kDescriptor_112{
     Literal("kernel.legacy.utkf003"),
     Literal("UTKF003"),
-    kAliases_98,
+    kAliases_112,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2305,10 +2570,10 @@ inline constexpr DescriptorView kDescriptor_98{
     Literal("kernel-legacy-utkf003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_99{
+inline constexpr DescriptorView kDescriptor_113{
     Literal("kernel.legacy.utkq001"),
     Literal("UTKQ001"),
-    kAliases_99,
+    kAliases_113,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2319,10 +2584,10 @@ inline constexpr DescriptorView kDescriptor_99{
     Literal("kernel-legacy-utkq001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_100{
+inline constexpr DescriptorView kDescriptor_114{
     Literal("kernel.legacy.utkq002"),
     Literal("UTKQ002"),
-    kAliases_100,
+    kAliases_114,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2333,10 +2598,10 @@ inline constexpr DescriptorView kDescriptor_100{
     Literal("kernel-legacy-utkq002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_101{
+inline constexpr DescriptorView kDescriptor_115{
     Literal("kernel.legacy.utkq010"),
     Literal("UTKQ010"),
-    kAliases_101,
+    kAliases_115,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2347,10 +2612,10 @@ inline constexpr DescriptorView kDescriptor_101{
     Literal("kernel-legacy-utkq010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_102{
+inline constexpr DescriptorView kDescriptor_116{
     Literal("kernel.legacy.utkq011"),
     Literal("UTKQ011"),
-    kAliases_102,
+    kAliases_116,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2361,10 +2626,10 @@ inline constexpr DescriptorView kDescriptor_102{
     Literal("kernel-legacy-utkq011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_103{
+inline constexpr DescriptorView kDescriptor_117{
     Literal("kernel.legacy.utkq020"),
     Literal("UTKQ020"),
-    kAliases_103,
+    kAliases_117,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2375,10 +2640,10 @@ inline constexpr DescriptorView kDescriptor_103{
     Literal("kernel-legacy-utkq020"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_104{
+inline constexpr DescriptorView kDescriptor_118{
     Literal("kernel.legacy.utkq021"),
     Literal("UTKQ021"),
-    kAliases_104,
+    kAliases_118,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2389,10 +2654,10 @@ inline constexpr DescriptorView kDescriptor_104{
     Literal("kernel-legacy-utkq021"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_105{
+inline constexpr DescriptorView kDescriptor_119{
     Literal("kernel.legacy.utkq022"),
     Literal("UTKQ022"),
-    kAliases_105,
+    kAliases_119,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2403,10 +2668,10 @@ inline constexpr DescriptorView kDescriptor_105{
     Literal("kernel-legacy-utkq022"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_106{
+inline constexpr DescriptorView kDescriptor_120{
     Literal("kernel.legacy.utkq023"),
     Literal("UTKQ023"),
-    kAliases_106,
+    kAliases_120,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2417,10 +2682,10 @@ inline constexpr DescriptorView kDescriptor_106{
     Literal("kernel-legacy-utkq023"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_107{
+inline constexpr DescriptorView kDescriptor_121{
     Literal("kernel.legacy.utkq024"),
     Literal("UTKQ024"),
-    kAliases_107,
+    kAliases_121,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2431,10 +2696,10 @@ inline constexpr DescriptorView kDescriptor_107{
     Literal("kernel-legacy-utkq024"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_108{
+inline constexpr DescriptorView kDescriptor_122{
     Literal("kernel.legacy.utlevel001"),
     Literal("UTLEVEL001"),
-    kAliases_108,
+    kAliases_122,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2445,10 +2710,10 @@ inline constexpr DescriptorView kDescriptor_108{
     Literal("kernel-legacy-utlevel001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_109{
+inline constexpr DescriptorView kDescriptor_123{
     Literal("kernel.legacy.utlevel002"),
     Literal("UTLEVEL002"),
-    kAliases_109,
+    kAliases_123,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2459,10 +2724,10 @@ inline constexpr DescriptorView kDescriptor_109{
     Literal("kernel-legacy-utlevel002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_110{
+inline constexpr DescriptorView kDescriptor_124{
     Literal("kernel.legacy.utlevel003"),
     Literal("UTLEVEL003"),
-    kAliases_110,
+    kAliases_124,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2473,10 +2738,10 @@ inline constexpr DescriptorView kDescriptor_110{
     Literal("kernel-legacy-utlevel003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_111{
+inline constexpr DescriptorView kDescriptor_125{
     Literal("kernel.legacy.utnativedag001"),
     Literal("UTNATIVEDAG001"),
-    kAliases_111,
+    kAliases_125,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2487,10 +2752,10 @@ inline constexpr DescriptorView kDescriptor_111{
     Literal("kernel-legacy-utnativedag001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_112{
+inline constexpr DescriptorView kDescriptor_126{
     Literal("kernel.legacy.utnativedag002"),
     Literal("UTNATIVEDAG002"),
-    kAliases_112,
+    kAliases_126,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2501,10 +2766,10 @@ inline constexpr DescriptorView kDescriptor_112{
     Literal("kernel-legacy-utnativedag002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_113{
+inline constexpr DescriptorView kDescriptor_127{
     Literal("kernel.legacy.utnativedag003"),
     Literal("UTNATIVEDAG003"),
-    kAliases_113,
+    kAliases_127,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2515,10 +2780,10 @@ inline constexpr DescriptorView kDescriptor_113{
     Literal("kernel-legacy-utnativedag003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_114{
+inline constexpr DescriptorView kDescriptor_128{
     Literal("kernel.legacy.utnativedag004"),
     Literal("UTNATIVEDAG004"),
-    kAliases_114,
+    kAliases_128,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2529,10 +2794,10 @@ inline constexpr DescriptorView kDescriptor_114{
     Literal("kernel-legacy-utnativedag004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_115{
+inline constexpr DescriptorView kDescriptor_129{
     Literal("kernel.legacy.utnativedag005"),
     Literal("UTNATIVEDAG005"),
-    kAliases_115,
+    kAliases_129,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2543,10 +2808,10 @@ inline constexpr DescriptorView kDescriptor_115{
     Literal("kernel-legacy-utnativedag005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_116{
+inline constexpr DescriptorView kDescriptor_130{
     Literal("kernel.legacy.utpc001"),
     Literal("UTPC001"),
-    kAliases_116,
+    kAliases_130,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2557,10 +2822,10 @@ inline constexpr DescriptorView kDescriptor_116{
     Literal("kernel-legacy-utpc001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_117{
+inline constexpr DescriptorView kDescriptor_131{
     Literal("kernel.legacy.utpc002"),
     Literal("UTPC002"),
-    kAliases_117,
+    kAliases_131,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2571,10 +2836,10 @@ inline constexpr DescriptorView kDescriptor_117{
     Literal("kernel-legacy-utpc002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_118{
+inline constexpr DescriptorView kDescriptor_132{
     Literal("kernel.legacy.utpc003"),
     Literal("UTPC003"),
-    kAliases_118,
+    kAliases_132,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2585,10 +2850,10 @@ inline constexpr DescriptorView kDescriptor_118{
     Literal("kernel-legacy-utpc003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_119{
+inline constexpr DescriptorView kDescriptor_133{
     Literal("kernel.legacy.utplan001"),
     Literal("UTPLAN001"),
-    kAliases_119,
+    kAliases_133,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2599,10 +2864,10 @@ inline constexpr DescriptorView kDescriptor_119{
     Literal("kernel-legacy-utplan001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_120{
+inline constexpr DescriptorView kDescriptor_134{
     Literal("kernel.legacy.utplan002"),
     Literal("UTPLAN002"),
-    kAliases_120,
+    kAliases_134,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2613,10 +2878,10 @@ inline constexpr DescriptorView kDescriptor_120{
     Literal("kernel-legacy-utplan002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_121{
+inline constexpr DescriptorView kDescriptor_135{
     Literal("kernel.legacy.utplan003"),
     Literal("UTPLAN003"),
-    kAliases_121,
+    kAliases_135,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2627,10 +2892,10 @@ inline constexpr DescriptorView kDescriptor_121{
     Literal("kernel-legacy-utplan003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_122{
+inline constexpr DescriptorView kDescriptor_136{
     Literal("kernel.legacy.utrate001"),
     Literal("UTRATE001"),
-    kAliases_122,
+    kAliases_136,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2641,10 +2906,10 @@ inline constexpr DescriptorView kDescriptor_122{
     Literal("kernel-legacy-utrate001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_123{
+inline constexpr DescriptorView kDescriptor_137{
     Literal("kernel.legacy.utrate002"),
     Literal("UTRATE002"),
-    kAliases_123,
+    kAliases_137,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2655,10 +2920,10 @@ inline constexpr DescriptorView kDescriptor_123{
     Literal("kernel-legacy-utrate002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_124{
+inline constexpr DescriptorView kDescriptor_138{
     Literal("kernel.legacy.utruntime001"),
     Literal("UTRUNTIME001"),
-    kAliases_124,
+    kAliases_138,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2669,10 +2934,10 @@ inline constexpr DescriptorView kDescriptor_124{
     Literal("kernel-legacy-utruntime001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_125{
+inline constexpr DescriptorView kDescriptor_139{
     Literal("kernel.legacy.utruntime002"),
     Literal("UTRUNTIME002"),
-    kAliases_125,
+    kAliases_139,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2683,10 +2948,10 @@ inline constexpr DescriptorView kDescriptor_125{
     Literal("kernel-legacy-utruntime002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_126{
+inline constexpr DescriptorView kDescriptor_140{
     Literal("kernel.legacy.utruntime003"),
     Literal("UTRUNTIME003"),
-    kAliases_126,
+    kAliases_140,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2697,10 +2962,10 @@ inline constexpr DescriptorView kDescriptor_126{
     Literal("kernel-legacy-utruntime003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_127{
+inline constexpr DescriptorView kDescriptor_141{
     Literal("kernel.legacy.utruntime004"),
     Literal("UTRUNTIME004"),
-    kAliases_127,
+    kAliases_141,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2711,10 +2976,10 @@ inline constexpr DescriptorView kDescriptor_127{
     Literal("kernel-legacy-utruntime004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_128{
+inline constexpr DescriptorView kDescriptor_142{
     Literal("kernel.legacy.utruntime005"),
     Literal("UTRUNTIME005"),
-    kAliases_128,
+    kAliases_142,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2725,10 +2990,10 @@ inline constexpr DescriptorView kDescriptor_128{
     Literal("kernel-legacy-utruntime005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_129{
+inline constexpr DescriptorView kDescriptor_143{
     Literal("kernel.legacy.utruntime006"),
     Literal("UTRUNTIME006"),
-    kAliases_129,
+    kAliases_143,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2739,10 +3004,10 @@ inline constexpr DescriptorView kDescriptor_129{
     Literal("kernel-legacy-utruntime006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_130{
+inline constexpr DescriptorView kDescriptor_144{
     Literal("kernel.legacy.utruntime007"),
     Literal("UTRUNTIME007"),
-    kAliases_130,
+    kAliases_144,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2753,10 +3018,10 @@ inline constexpr DescriptorView kDescriptor_130{
     Literal("kernel-legacy-utruntime007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_131{
+inline constexpr DescriptorView kDescriptor_145{
     Literal("kernel.legacy.utruntime008"),
     Literal("UTRUNTIME008"),
-    kAliases_131,
+    kAliases_145,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2767,10 +3032,10 @@ inline constexpr DescriptorView kDescriptor_131{
     Literal("kernel-legacy-utruntime008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_132{
+inline constexpr DescriptorView kDescriptor_146{
     Literal("kernel.legacy.utruntime009"),
     Literal("UTRUNTIME009"),
-    kAliases_132,
+    kAliases_146,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2781,10 +3046,10 @@ inline constexpr DescriptorView kDescriptor_132{
     Literal("kernel-legacy-utruntime009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_133{
+inline constexpr DescriptorView kDescriptor_147{
     Literal("kernel.legacy.utruntime010"),
     Literal("UTRUNTIME010"),
-    kAliases_133,
+    kAliases_147,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2795,10 +3060,10 @@ inline constexpr DescriptorView kDescriptor_133{
     Literal("kernel-legacy-utruntime010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_134{
+inline constexpr DescriptorView kDescriptor_148{
     Literal("kernel.legacy.utruntime011"),
     Literal("UTRUNTIME011"),
-    kAliases_134,
+    kAliases_148,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2809,10 +3074,10 @@ inline constexpr DescriptorView kDescriptor_134{
     Literal("kernel-legacy-utruntime011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_135{
+inline constexpr DescriptorView kDescriptor_149{
     Literal("kernel.legacy.utruntime012"),
     Literal("UTRUNTIME012"),
-    kAliases_135,
+    kAliases_149,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2823,10 +3088,10 @@ inline constexpr DescriptorView kDescriptor_135{
     Literal("kernel-legacy-utruntime012"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_136{
+inline constexpr DescriptorView kDescriptor_150{
     Literal("kernel.legacy.utruntimecpp001"),
     Literal("UTRUNTIMECPP001"),
-    kAliases_136,
+    kAliases_150,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2837,10 +3102,10 @@ inline constexpr DescriptorView kDescriptor_136{
     Literal("kernel-legacy-utruntimecpp001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_137{
+inline constexpr DescriptorView kDescriptor_151{
     Literal("kernel.legacy.utruntimecpp002"),
     Literal("UTRUNTIMECPP002"),
-    kAliases_137,
+    kAliases_151,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2851,10 +3116,10 @@ inline constexpr DescriptorView kDescriptor_137{
     Literal("kernel-legacy-utruntimecpp002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_138{
+inline constexpr DescriptorView kDescriptor_152{
     Literal("kernel.legacy.utruntimecpp003"),
     Literal("UTRUNTIMECPP003"),
-    kAliases_138,
+    kAliases_152,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2865,10 +3130,10 @@ inline constexpr DescriptorView kDescriptor_138{
     Literal("kernel-legacy-utruntimecpp003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_139{
+inline constexpr DescriptorView kDescriptor_153{
     Literal("kernel.legacy.utruntimecpp004"),
     Literal("UTRUNTIMECPP004"),
-    kAliases_139,
+    kAliases_153,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2879,10 +3144,10 @@ inline constexpr DescriptorView kDescriptor_139{
     Literal("kernel-legacy-utruntimecpp004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_140{
+inline constexpr DescriptorView kDescriptor_154{
     Literal("kernel.legacy.utruntimecpp005"),
     Literal("UTRUNTIMECPP005"),
-    kAliases_140,
+    kAliases_154,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2893,10 +3158,10 @@ inline constexpr DescriptorView kDescriptor_140{
     Literal("kernel-legacy-utruntimecpp005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_141{
+inline constexpr DescriptorView kDescriptor_155{
     Literal("kernel.legacy.utruntimecpp006"),
     Literal("UTRUNTIMECPP006"),
-    kAliases_141,
+    kAliases_155,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2907,10 +3172,10 @@ inline constexpr DescriptorView kDescriptor_141{
     Literal("kernel-legacy-utruntimecpp006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_142{
+inline constexpr DescriptorView kDescriptor_156{
     Literal("kernel.legacy.utruntimecpp007"),
     Literal("UTRUNTIMECPP007"),
-    kAliases_142,
+    kAliases_156,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2921,10 +3186,10 @@ inline constexpr DescriptorView kDescriptor_142{
     Literal("kernel-legacy-utruntimecpp007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_143{
+inline constexpr DescriptorView kDescriptor_157{
     Literal("kernel.legacy.utruntimecpp008"),
     Literal("UTRUNTIMECPP008"),
-    kAliases_143,
+    kAliases_157,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2935,10 +3200,10 @@ inline constexpr DescriptorView kDescriptor_143{
     Literal("kernel-legacy-utruntimecpp008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_144{
+inline constexpr DescriptorView kDescriptor_158{
     Literal("kernel.legacy.utruntimecpp009"),
     Literal("UTRUNTIMECPP009"),
-    kAliases_144,
+    kAliases_158,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2949,10 +3214,10 @@ inline constexpr DescriptorView kDescriptor_144{
     Literal("kernel-legacy-utruntimecpp009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_145{
+inline constexpr DescriptorView kDescriptor_159{
     Literal("kernel.legacy.utruntimecpp010"),
     Literal("UTRUNTIMECPP010"),
-    kAliases_145,
+    kAliases_159,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2963,10 +3228,10 @@ inline constexpr DescriptorView kDescriptor_145{
     Literal("kernel-legacy-utruntimecpp010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_146{
+inline constexpr DescriptorView kDescriptor_160{
     Literal("kernel.legacy.utruntimecpp011"),
     Literal("UTRUNTIMECPP011"),
-    kAliases_146,
+    kAliases_160,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2977,10 +3242,10 @@ inline constexpr DescriptorView kDescriptor_146{
     Literal("kernel-legacy-utruntimecpp011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_147{
+inline constexpr DescriptorView kDescriptor_161{
     Literal("kernel.legacy.utruntimecpp012"),
     Literal("UTRUNTIMECPP012"),
-    kAliases_147,
+    kAliases_161,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -2991,10 +3256,10 @@ inline constexpr DescriptorView kDescriptor_147{
     Literal("kernel-legacy-utruntimecpp012"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_148{
+inline constexpr DescriptorView kDescriptor_162{
     Literal("kernel.legacy.utsave001"),
     Literal("UTSAVE001"),
-    kAliases_148,
+    kAliases_162,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3005,10 +3270,10 @@ inline constexpr DescriptorView kDescriptor_148{
     Literal("kernel-legacy-utsave001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_149{
+inline constexpr DescriptorView kDescriptor_163{
     Literal("kernel.legacy.utsave002"),
     Literal("UTSAVE002"),
-    kAliases_149,
+    kAliases_163,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3019,10 +3284,10 @@ inline constexpr DescriptorView kDescriptor_149{
     Literal("kernel-legacy-utsave002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_150{
+inline constexpr DescriptorView kDescriptor_164{
     Literal("kernel.legacy.utsave004"),
     Literal("UTSAVE004"),
-    kAliases_150,
+    kAliases_164,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3033,10 +3298,10 @@ inline constexpr DescriptorView kDescriptor_150{
     Literal("kernel-legacy-utsave004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_151{
+inline constexpr DescriptorView kDescriptor_165{
     Literal("kernel.legacy.utsys001"),
     Literal("UTSYS001"),
-    kAliases_151,
+    kAliases_165,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3047,10 +3312,10 @@ inline constexpr DescriptorView kDescriptor_151{
     Literal("kernel-legacy-utsys001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_152{
+inline constexpr DescriptorView kDescriptor_166{
     Literal("kernel.legacy.utsys002"),
     Literal("UTSYS002"),
-    kAliases_152,
+    kAliases_166,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3061,10 +3326,10 @@ inline constexpr DescriptorView kDescriptor_152{
     Literal("kernel-legacy-utsys002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_153{
+inline constexpr DescriptorView kDescriptor_167{
     Literal("kernel.legacy.utsys003"),
     Literal("UTSYS003"),
-    kAliases_153,
+    kAliases_167,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3075,10 +3340,10 @@ inline constexpr DescriptorView kDescriptor_153{
     Literal("kernel-legacy-utsys003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_154{
+inline constexpr DescriptorView kDescriptor_168{
     Literal("kernel.legacy.utsys004"),
     Literal("UTSYS004"),
-    kAliases_154,
+    kAliases_168,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3089,10 +3354,10 @@ inline constexpr DescriptorView kDescriptor_154{
     Literal("kernel-legacy-utsys004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_155{
+inline constexpr DescriptorView kDescriptor_169{
     Literal("kernel.legacy.utsys005"),
     Literal("UTSYS005"),
-    kAliases_155,
+    kAliases_169,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3103,10 +3368,10 @@ inline constexpr DescriptorView kDescriptor_155{
     Literal("kernel-legacy-utsys005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_156{
+inline constexpr DescriptorView kDescriptor_170{
     Literal("kernel.legacy.utsys006"),
     Literal("UTSYS006"),
-    kAliases_156,
+    kAliases_170,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3117,10 +3382,10 @@ inline constexpr DescriptorView kDescriptor_156{
     Literal("kernel-legacy-utsys006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_157{
+inline constexpr DescriptorView kDescriptor_171{
     Literal("kernel.legacy.utsys007"),
     Literal("UTSYS007"),
-    kAliases_157,
+    kAliases_171,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3131,10 +3396,10 @@ inline constexpr DescriptorView kDescriptor_157{
     Literal("kernel-legacy-utsys007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_158{
+inline constexpr DescriptorView kDescriptor_172{
     Literal("kernel.legacy.utsys008"),
     Literal("UTSYS008"),
-    kAliases_158,
+    kAliases_172,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3145,10 +3410,10 @@ inline constexpr DescriptorView kDescriptor_158{
     Literal("kernel-legacy-utsys008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_159{
+inline constexpr DescriptorView kDescriptor_173{
     Literal("kernel.legacy.utsys009"),
     Literal("UTSYS009"),
-    kAliases_159,
+    kAliases_173,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3159,10 +3424,10 @@ inline constexpr DescriptorView kDescriptor_159{
     Literal("kernel-legacy-utsys009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_160{
+inline constexpr DescriptorView kDescriptor_174{
     Literal("kernel.legacy.utsys010"),
     Literal("UTSYS010"),
-    kAliases_160,
+    kAliases_174,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3173,10 +3438,10 @@ inline constexpr DescriptorView kDescriptor_160{
     Literal("kernel-legacy-utsys010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_161{
+inline constexpr DescriptorView kDescriptor_175{
     Literal("kernel.legacy.utsys011"),
     Literal("UTSYS011"),
-    kAliases_161,
+    kAliases_175,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3187,10 +3452,10 @@ inline constexpr DescriptorView kDescriptor_161{
     Literal("kernel-legacy-utsys011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_162{
+inline constexpr DescriptorView kDescriptor_176{
     Literal("kernel.legacy.utsys012"),
     Literal("UTSYS012"),
-    kAliases_162,
+    kAliases_176,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3201,10 +3466,10 @@ inline constexpr DescriptorView kDescriptor_162{
     Literal("kernel-legacy-utsys012"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_163{
+inline constexpr DescriptorView kDescriptor_177{
     Literal("kernel.legacy.utsys013"),
     Literal("UTSYS013"),
-    kAliases_163,
+    kAliases_177,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3215,10 +3480,10 @@ inline constexpr DescriptorView kDescriptor_163{
     Literal("kernel-legacy-utsys013"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_164{
+inline constexpr DescriptorView kDescriptor_178{
     Literal("kernel.legacy.utsys014"),
     Literal("UTSYS014"),
-    kAliases_164,
+    kAliases_178,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3229,10 +3494,10 @@ inline constexpr DescriptorView kDescriptor_164{
     Literal("kernel-legacy-utsys014"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_165{
+inline constexpr DescriptorView kDescriptor_179{
     Literal("kernel.legacy.utsys015"),
     Literal("UTSYS015"),
-    kAliases_165,
+    kAliases_179,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3243,10 +3508,10 @@ inline constexpr DescriptorView kDescriptor_165{
     Literal("kernel-legacy-utsys015"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_166{
+inline constexpr DescriptorView kDescriptor_180{
     Literal("kernel.legacy.utsys016"),
     Literal("UTSYS016"),
-    kAliases_166,
+    kAliases_180,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3257,10 +3522,10 @@ inline constexpr DescriptorView kDescriptor_166{
     Literal("kernel-legacy-utsys016"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_167{
+inline constexpr DescriptorView kDescriptor_181{
     Literal("kernel.legacy.utsys017"),
     Literal("UTSYS017"),
-    kAliases_167,
+    kAliases_181,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3271,10 +3536,10 @@ inline constexpr DescriptorView kDescriptor_167{
     Literal("kernel-legacy-utsys017"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_168{
+inline constexpr DescriptorView kDescriptor_182{
     Literal("kernel.legacy.utsys018"),
     Literal("UTSYS018"),
-    kAliases_168,
+    kAliases_182,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3285,10 +3550,10 @@ inline constexpr DescriptorView kDescriptor_168{
     Literal("kernel-legacy-utsys018"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_169{
+inline constexpr DescriptorView kDescriptor_183{
     Literal("kernel.legacy.utsys019"),
     Literal("UTSYS019"),
-    kAliases_169,
+    kAliases_183,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3299,10 +3564,10 @@ inline constexpr DescriptorView kDescriptor_169{
     Literal("kernel-legacy-utsys019"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_170{
+inline constexpr DescriptorView kDescriptor_184{
     Literal("kernel.legacy.utsys020"),
     Literal("UTSYS020"),
-    kAliases_170,
+    kAliases_184,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3313,10 +3578,10 @@ inline constexpr DescriptorView kDescriptor_170{
     Literal("kernel-legacy-utsys020"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_171{
+inline constexpr DescriptorView kDescriptor_185{
     Literal("kernel.legacy.utsys021"),
     Literal("UTSYS021"),
-    kAliases_171,
+    kAliases_185,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3327,10 +3592,10 @@ inline constexpr DescriptorView kDescriptor_171{
     Literal("kernel-legacy-utsys021"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_172{
+inline constexpr DescriptorView kDescriptor_186{
     Literal("kernel.legacy.utsys022"),
     Literal("UTSYS022"),
-    kAliases_172,
+    kAliases_186,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3341,10 +3606,10 @@ inline constexpr DescriptorView kDescriptor_172{
     Literal("kernel-legacy-utsys022"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_173{
+inline constexpr DescriptorView kDescriptor_187{
     Literal("kernel.legacy.utsys023"),
     Literal("UTSYS023"),
-    kAliases_173,
+    kAliases_187,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3355,10 +3620,10 @@ inline constexpr DescriptorView kDescriptor_173{
     Literal("kernel-legacy-utsys023"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_174{
+inline constexpr DescriptorView kDescriptor_188{
     Literal("kernel.legacy.utsys024"),
     Literal("UTSYS024"),
-    kAliases_174,
+    kAliases_188,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3369,10 +3634,10 @@ inline constexpr DescriptorView kDescriptor_174{
     Literal("kernel-legacy-utsys024"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_175{
+inline constexpr DescriptorView kDescriptor_189{
     Literal("kernel.legacy.utsys025"),
     Literal("UTSYS025"),
-    kAliases_175,
+    kAliases_189,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3383,10 +3648,10 @@ inline constexpr DescriptorView kDescriptor_175{
     Literal("kernel-legacy-utsys025"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_176{
+inline constexpr DescriptorView kDescriptor_190{
     Literal("kernel.legacy.utsys026"),
     Literal("UTSYS026"),
-    kAliases_176,
+    kAliases_190,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3397,10 +3662,10 @@ inline constexpr DescriptorView kDescriptor_176{
     Literal("kernel-legacy-utsys026"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_177{
+inline constexpr DescriptorView kDescriptor_191{
     Literal("kernel.legacy.utsys027"),
     Literal("UTSYS027"),
-    kAliases_177,
+    kAliases_191,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3411,10 +3676,10 @@ inline constexpr DescriptorView kDescriptor_177{
     Literal("kernel-legacy-utsys027"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_178{
+inline constexpr DescriptorView kDescriptor_192{
     Literal("kernel.legacy.utsys028"),
     Literal("UTSYS028"),
-    kAliases_178,
+    kAliases_192,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3425,10 +3690,10 @@ inline constexpr DescriptorView kDescriptor_178{
     Literal("kernel-legacy-utsys028"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_179{
+inline constexpr DescriptorView kDescriptor_193{
     Literal("kernel.legacy.utsys029"),
     Literal("UTSYS029"),
-    kAliases_179,
+    kAliases_193,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3439,10 +3704,10 @@ inline constexpr DescriptorView kDescriptor_179{
     Literal("kernel-legacy-utsys029"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_180{
+inline constexpr DescriptorView kDescriptor_194{
     Literal("kernel.legacy.utsys030"),
     Literal("UTSYS030"),
-    kAliases_180,
+    kAliases_194,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3453,10 +3718,10 @@ inline constexpr DescriptorView kDescriptor_180{
     Literal("kernel-legacy-utsys030"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_181{
+inline constexpr DescriptorView kDescriptor_195{
     Literal("kernel.legacy.uttex001"),
     Literal("UTTEX001"),
-    kAliases_181,
+    kAliases_195,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3467,10 +3732,10 @@ inline constexpr DescriptorView kDescriptor_181{
     Literal("kernel-legacy-uttex001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_182{
+inline constexpr DescriptorView kDescriptor_196{
     Literal("kernel.legacy.uttex002"),
     Literal("UTTEX002"),
-    kAliases_182,
+    kAliases_196,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3481,10 +3746,10 @@ inline constexpr DescriptorView kDescriptor_182{
     Literal("kernel-legacy-uttex002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_183{
+inline constexpr DescriptorView kDescriptor_197{
     Literal("kernel.legacy.uttex003"),
     Literal("UTTEX003"),
-    kAliases_183,
+    kAliases_197,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3495,10 +3760,10 @@ inline constexpr DescriptorView kDescriptor_183{
     Literal("kernel-legacy-uttex003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_184{
+inline constexpr DescriptorView kDescriptor_198{
     Literal("kernel.legacy.uttex004"),
     Literal("UTTEX004"),
-    kAliases_184,
+    kAliases_198,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3509,10 +3774,10 @@ inline constexpr DescriptorView kDescriptor_184{
     Literal("kernel-legacy-uttex004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_185{
+inline constexpr DescriptorView kDescriptor_199{
     Literal("kernel.legacy.uttransform001"),
     Literal("UTTRANSFORM001"),
-    kAliases_185,
+    kAliases_199,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3523,10 +3788,10 @@ inline constexpr DescriptorView kDescriptor_185{
     Literal("kernel-legacy-uttransform001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_186{
+inline constexpr DescriptorView kDescriptor_200{
     Literal("kernel.legacy.uttype001"),
     Literal("UTTYPE001"),
-    kAliases_186,
+    kAliases_200,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3537,10 +3802,10 @@ inline constexpr DescriptorView kDescriptor_186{
     Literal("kernel-legacy-uttype001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_187{
+inline constexpr DescriptorView kDescriptor_201{
     Literal("kernel.legacy.uttype002"),
     Literal("UTTYPE002"),
-    kAliases_187,
+    kAliases_201,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3551,10 +3816,10 @@ inline constexpr DescriptorView kDescriptor_187{
     Literal("kernel-legacy-uttype002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_188{
+inline constexpr DescriptorView kDescriptor_202{
     Literal("kernel.legacy.uttype003"),
     Literal("UTTYPE003"),
-    kAliases_188,
+    kAliases_202,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3565,10 +3830,10 @@ inline constexpr DescriptorView kDescriptor_188{
     Literal("kernel-legacy-uttype003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_189{
+inline constexpr DescriptorView kDescriptor_203{
     Literal("kernel.legacy.uttype004"),
     Literal("UTTYPE004"),
-    kAliases_189,
+    kAliases_203,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3579,10 +3844,10 @@ inline constexpr DescriptorView kDescriptor_189{
     Literal("kernel-legacy-uttype004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_190{
+inline constexpr DescriptorView kDescriptor_204{
     Literal("kernel.legacy.uttype005"),
     Literal("UTTYPE005"),
-    kAliases_190,
+    kAliases_204,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3593,10 +3858,10 @@ inline constexpr DescriptorView kDescriptor_190{
     Literal("kernel-legacy-uttype005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_191{
+inline constexpr DescriptorView kDescriptor_205{
     Literal("kernel.legacy.utunit001"),
     Literal("UTUNIT001"),
-    kAliases_191,
+    kAliases_205,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3607,10 +3872,10 @@ inline constexpr DescriptorView kDescriptor_191{
     Literal("kernel-legacy-utunit001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_192{
+inline constexpr DescriptorView kDescriptor_206{
     Literal("kernel.legacy.utunit002"),
     Literal("UTUNIT002"),
-    kAliases_192,
+    kAliases_206,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3621,10 +3886,10 @@ inline constexpr DescriptorView kDescriptor_192{
     Literal("kernel-legacy-utunit002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_193{
+inline constexpr DescriptorView kDescriptor_207{
     Literal("kernel.legacy.utunit008"),
     Literal("UTUNIT008"),
-    kAliases_193,
+    kAliases_207,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3635,10 +3900,10 @@ inline constexpr DescriptorView kDescriptor_193{
     Literal("kernel-legacy-utunit008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_194{
+inline constexpr DescriptorView kDescriptor_208{
     Literal("kernel.legacy.utunit009"),
     Literal("UTUNIT009"),
-    kAliases_194,
+    kAliases_208,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3649,10 +3914,10 @@ inline constexpr DescriptorView kDescriptor_194{
     Literal("kernel-legacy-utunit009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_195{
+inline constexpr DescriptorView kDescriptor_209{
     Literal("kernel.legacy.utunit010"),
     Literal("UTUNIT010"),
-    kAliases_195,
+    kAliases_209,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3663,10 +3928,10 @@ inline constexpr DescriptorView kDescriptor_195{
     Literal("kernel-legacy-utunit010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_196{
+inline constexpr DescriptorView kDescriptor_210{
     Literal("kernel.legacy.utunit011"),
     Literal("UTUNIT011"),
-    kAliases_196,
+    kAliases_210,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3677,10 +3942,10 @@ inline constexpr DescriptorView kDescriptor_196{
     Literal("kernel-legacy-utunit011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_197{
+inline constexpr DescriptorView kDescriptor_211{
     Literal("kernel.legacy.utunit012"),
     Literal("UTUNIT012"),
-    kAliases_197,
+    kAliases_211,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3691,10 +3956,10 @@ inline constexpr DescriptorView kDescriptor_197{
     Literal("kernel-legacy-utunit012"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_198{
+inline constexpr DescriptorView kDescriptor_212{
     Literal("kernel.legacy.utunit013"),
     Literal("UTUNIT013"),
-    kAliases_198,
+    kAliases_212,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3705,10 +3970,10 @@ inline constexpr DescriptorView kDescriptor_198{
     Literal("kernel-legacy-utunit013"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_199{
+inline constexpr DescriptorView kDescriptor_213{
     Literal("kernel.legacy.utunit014"),
     Literal("UTUNIT014"),
-    kAliases_199,
+    kAliases_213,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3719,10 +3984,10 @@ inline constexpr DescriptorView kDescriptor_199{
     Literal("kernel-legacy-utunit014"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_200{
+inline constexpr DescriptorView kDescriptor_214{
     Literal("kernel.legacy.utunit015"),
     Literal("UTUNIT015"),
-    kAliases_200,
+    kAliases_214,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3733,10 +3998,10 @@ inline constexpr DescriptorView kDescriptor_200{
     Literal("kernel-legacy-utunit015"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_201{
+inline constexpr DescriptorView kDescriptor_215{
     Literal("kernel.legacy.utunit016"),
     Literal("UTUNIT016"),
-    kAliases_201,
+    kAliases_215,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3747,10 +4012,10 @@ inline constexpr DescriptorView kDescriptor_201{
     Literal("kernel-legacy-utunit016"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_202{
+inline constexpr DescriptorView kDescriptor_216{
     Literal("kernel.legacy.utunit017"),
     Literal("UTUNIT017"),
-    kAliases_202,
+    kAliases_216,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3761,10 +4026,10 @@ inline constexpr DescriptorView kDescriptor_202{
     Literal("kernel-legacy-utunit017"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_203{
+inline constexpr DescriptorView kDescriptor_217{
     Literal("kernel.legacy.utunit018"),
     Literal("UTUNIT018"),
-    kAliases_203,
+    kAliases_217,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3775,10 +4040,10 @@ inline constexpr DescriptorView kDescriptor_203{
     Literal("kernel-legacy-utunit018"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_204{
+inline constexpr DescriptorView kDescriptor_218{
     Literal("kernel.legacy.utvoc001"),
     Literal("UTVOC001"),
-    kAliases_204,
+    kAliases_218,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3789,10 +4054,38 @@ inline constexpr DescriptorView kDescriptor_204{
     Literal("kernel-legacy-utvoc001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_205{
+inline constexpr DescriptorView kDescriptor_219{
+    Literal("kernel.legacy.utwizdep001"),
+    Literal("UTWIZDEP001"),
+    kAliases_219,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("UTWIZDEP001: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-utwizdep001"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_220{
+    Literal("kernel.legacy.utwizdep002"),
+    Literal("UTWIZDEP002"),
+    kAliases_220,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("UTWIZDEP002: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-utwizdep002"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_221{
     Literal("kernel.legacy.utwizfam001"),
     Literal("UTWIZFAM001"),
-    kAliases_205,
+    kAliases_221,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3803,10 +4096,10 @@ inline constexpr DescriptorView kDescriptor_205{
     Literal("kernel-legacy-utwizfam001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_206{
+inline constexpr DescriptorView kDescriptor_222{
     Literal("kernel.legacy.utwizfam002"),
     Literal("UTWIZFAM002"),
-    kAliases_206,
+    kAliases_222,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3817,10 +4110,10 @@ inline constexpr DescriptorView kDescriptor_206{
     Literal("kernel-legacy-utwizfam002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_207{
+inline constexpr DescriptorView kDescriptor_223{
     Literal("kernel.legacy.utwizfam003"),
     Literal("UTWIZFAM003"),
-    kAliases_207,
+    kAliases_223,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3831,10 +4124,38 @@ inline constexpr DescriptorView kDescriptor_207{
     Literal("kernel-legacy-utwizfam003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_208{
+inline constexpr DescriptorView kDescriptor_224{
+    Literal("kernel.legacy.utwizio001"),
+    Literal("UTWIZIO001"),
+    kAliases_224,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("UTWIZIO001: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-utwizio001"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_225{
+    Literal("kernel.legacy.utwizres001"),
+    Literal("UTWIZRES001"),
+    kAliases_225,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("UTWIZRES001: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-utwizres001"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_226{
     Literal("kernel.legacy.utwiztool001"),
     Literal("UTWIZTOOL001"),
-    kAliases_208,
+    kAliases_226,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3845,10 +4166,10 @@ inline constexpr DescriptorView kDescriptor_208{
     Literal("kernel-legacy-utwiztool001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_209{
+inline constexpr DescriptorView kDescriptor_227{
     Literal("kernel.legacy.yk-kf-4008"),
     Literal("YK_KF_4008"),
-    kAliases_209,
+    kAliases_227,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3859,10 +4180,10 @@ inline constexpr DescriptorView kDescriptor_209{
     Literal("kernel-legacy-yk-kf-4008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_210{
+inline constexpr DescriptorView kDescriptor_228{
     Literal("kernel.legacy.yk-kf-4009"),
     Literal("YK_KF_4009"),
-    kAliases_210,
+    kAliases_228,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3873,10 +4194,10 @@ inline constexpr DescriptorView kDescriptor_210{
     Literal("kernel-legacy-yk-kf-4009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_211{
+inline constexpr DescriptorView kDescriptor_229{
     Literal("kernel.legacy.yk-kf-4010"),
     Literal("YK_KF_4010"),
-    kAliases_211,
+    kAliases_229,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3887,10 +4208,10 @@ inline constexpr DescriptorView kDescriptor_211{
     Literal("kernel-legacy-yk-kf-4010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_212{
+inline constexpr DescriptorView kDescriptor_230{
     Literal("kernel.legacy.yk-kf-4011"),
     Literal("YK_KF_4011"),
-    kAliases_212,
+    kAliases_230,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3901,10 +4222,10 @@ inline constexpr DescriptorView kDescriptor_212{
     Literal("kernel-legacy-yk-kf-4011"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_213{
+inline constexpr DescriptorView kDescriptor_231{
     Literal("kernel.legacy.yk-kf-4012"),
     Literal("YK_KF_4012"),
-    kAliases_213,
+    kAliases_231,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3915,10 +4236,10 @@ inline constexpr DescriptorView kDescriptor_213{
     Literal("kernel-legacy-yk-kf-4012"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_214{
+inline constexpr DescriptorView kDescriptor_232{
     Literal("kernel.legacy.yk-kf-4013"),
     Literal("YK_KF_4013"),
-    kAliases_214,
+    kAliases_232,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3929,10 +4250,10 @@ inline constexpr DescriptorView kDescriptor_214{
     Literal("kernel-legacy-yk-kf-4013"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_215{
+inline constexpr DescriptorView kDescriptor_233{
     Literal("kernel.legacy.yk-kf-4014"),
     Literal("YK_KF_4014"),
-    kAliases_215,
+    kAliases_233,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3943,10 +4264,10 @@ inline constexpr DescriptorView kDescriptor_215{
     Literal("kernel-legacy-yk-kf-4014"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_216{
+inline constexpr DescriptorView kDescriptor_234{
     Literal("kernel.legacy.yk-kf-4015"),
     Literal("YK_KF_4015"),
-    kAliases_216,
+    kAliases_234,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3957,10 +4278,10 @@ inline constexpr DescriptorView kDescriptor_216{
     Literal("kernel-legacy-yk-kf-4015"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_217{
+inline constexpr DescriptorView kDescriptor_235{
     Literal("kernel.legacy.yk-kf-4016"),
     Literal("YK_KF_4016"),
-    kAliases_217,
+    kAliases_235,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3971,10 +4292,10 @@ inline constexpr DescriptorView kDescriptor_217{
     Literal("kernel-legacy-yk-kf-4016"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_218{
+inline constexpr DescriptorView kDescriptor_236{
     Literal("kernel.legacy.yk-kf-4017"),
     Literal("YK_KF_4017"),
-    kAliases_218,
+    kAliases_236,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3985,10 +4306,10 @@ inline constexpr DescriptorView kDescriptor_218{
     Literal("kernel-legacy-yk-kf-4017"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_219{
+inline constexpr DescriptorView kDescriptor_237{
     Literal("kernel.legacy.yk-kf-4018"),
     Literal("YK_KF_4018"),
-    kAliases_219,
+    kAliases_237,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -3999,10 +4320,10 @@ inline constexpr DescriptorView kDescriptor_219{
     Literal("kernel-legacy-yk-kf-4018"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_220{
+inline constexpr DescriptorView kDescriptor_238{
     Literal("kernel.legacy.yk-kf-4019"),
     Literal("YK_KF_4019"),
-    kAliases_220,
+    kAliases_238,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4013,10 +4334,10 @@ inline constexpr DescriptorView kDescriptor_220{
     Literal("kernel-legacy-yk-kf-4019"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_221{
+inline constexpr DescriptorView kDescriptor_239{
     Literal("kernel.legacy.yk-kf-4020"),
     Literal("YK_KF_4020"),
-    kAliases_221,
+    kAliases_239,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4027,10 +4348,10 @@ inline constexpr DescriptorView kDescriptor_221{
     Literal("kernel-legacy-yk-kf-4020"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_222{
+inline constexpr DescriptorView kDescriptor_240{
     Literal("kernel.legacy.yk-kf-4021"),
     Literal("YK_KF_4021"),
-    kAliases_222,
+    kAliases_240,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4041,10 +4362,10 @@ inline constexpr DescriptorView kDescriptor_222{
     Literal("kernel-legacy-yk-kf-4021"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_223{
+inline constexpr DescriptorView kDescriptor_241{
     Literal("kernel.legacy.yk-kf-4022"),
     Literal("YK_KF_4022"),
-    kAliases_223,
+    kAliases_241,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4055,10 +4376,10 @@ inline constexpr DescriptorView kDescriptor_223{
     Literal("kernel-legacy-yk-kf-4022"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_224{
+inline constexpr DescriptorView kDescriptor_242{
     Literal("kernel.legacy.yk-kf-4023"),
     Literal("YK_KF_4023"),
-    kAliases_224,
+    kAliases_242,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4069,10 +4390,10 @@ inline constexpr DescriptorView kDescriptor_224{
     Literal("kernel-legacy-yk-kf-4023"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_225{
+inline constexpr DescriptorView kDescriptor_243{
     Literal("kernel.legacy.yk-kf-4024"),
     Literal("YK_KF_4024"),
-    kAliases_225,
+    kAliases_243,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4083,10 +4404,10 @@ inline constexpr DescriptorView kDescriptor_225{
     Literal("kernel-legacy-yk-kf-4024"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_226{
+inline constexpr DescriptorView kDescriptor_244{
     Literal("kernel.legacy.yk-kf-4025"),
     Literal("YK_KF_4025"),
-    kAliases_226,
+    kAliases_244,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4097,10 +4418,10 @@ inline constexpr DescriptorView kDescriptor_226{
     Literal("kernel-legacy-yk-kf-4025"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_227{
+inline constexpr DescriptorView kDescriptor_245{
     Literal("kernel.legacy.yk-kf-4026"),
     Literal("YK_KF_4026"),
-    kAliases_227,
+    kAliases_245,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4111,10 +4432,10 @@ inline constexpr DescriptorView kDescriptor_227{
     Literal("kernel-legacy-yk-kf-4026"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_228{
+inline constexpr DescriptorView kDescriptor_246{
     Literal("kernel.legacy.yk-kf-4027"),
     Literal("YK_KF_4027"),
-    kAliases_228,
+    kAliases_246,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4125,10 +4446,10 @@ inline constexpr DescriptorView kDescriptor_228{
     Literal("kernel-legacy-yk-kf-4027"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_229{
+inline constexpr DescriptorView kDescriptor_247{
     Literal("kernel.legacy.yk-kf-4028"),
     Literal("YK_KF_4028"),
-    kAliases_229,
+    kAliases_247,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4139,10 +4460,10 @@ inline constexpr DescriptorView kDescriptor_229{
     Literal("kernel-legacy-yk-kf-4028"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_230{
+inline constexpr DescriptorView kDescriptor_248{
     Literal("kernel.legacy.yk-kf-4029"),
     Literal("YK_KF_4029"),
-    kAliases_230,
+    kAliases_248,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4153,10 +4474,10 @@ inline constexpr DescriptorView kDescriptor_230{
     Literal("kernel-legacy-yk-kf-4029"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_231{
+inline constexpr DescriptorView kDescriptor_249{
     Literal("kernel.legacy.yk-kf-4030"),
     Literal("YK_KF_4030"),
-    kAliases_231,
+    kAliases_249,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4167,10 +4488,10 @@ inline constexpr DescriptorView kDescriptor_231{
     Literal("kernel-legacy-yk-kf-4030"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_232{
+inline constexpr DescriptorView kDescriptor_250{
     Literal("kernel.legacy.yk-kf-4031"),
     Literal("YK_KF_4031"),
-    kAliases_232,
+    kAliases_250,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4181,10 +4502,10 @@ inline constexpr DescriptorView kDescriptor_232{
     Literal("kernel-legacy-yk-kf-4031"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_233{
+inline constexpr DescriptorView kDescriptor_251{
     Literal("kernel.legacy.yk-kf-4032"),
     Literal("YK_KF_4032"),
-    kAliases_233,
+    kAliases_251,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4195,10 +4516,10 @@ inline constexpr DescriptorView kDescriptor_233{
     Literal("kernel-legacy-yk-kf-4032"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_234{
+inline constexpr DescriptorView kDescriptor_252{
     Literal("kernel.legacy.yk-kf-4033"),
     Literal("YK_KF_4033"),
-    kAliases_234,
+    kAliases_252,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4209,10 +4530,10 @@ inline constexpr DescriptorView kDescriptor_234{
     Literal("kernel-legacy-yk-kf-4033"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_235{
+inline constexpr DescriptorView kDescriptor_253{
     Literal("kernel.legacy.yk-kf-4034"),
     Literal("YK_KF_4034"),
-    kAliases_235,
+    kAliases_253,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4223,10 +4544,10 @@ inline constexpr DescriptorView kDescriptor_235{
     Literal("kernel-legacy-yk-kf-4034"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_236{
+inline constexpr DescriptorView kDescriptor_254{
     Literal("kernel.legacy.yk-kf-4035"),
     Literal("YK_KF_4035"),
-    kAliases_236,
+    kAliases_254,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4237,10 +4558,10 @@ inline constexpr DescriptorView kDescriptor_236{
     Literal("kernel-legacy-yk-kf-4035"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_237{
+inline constexpr DescriptorView kDescriptor_255{
     Literal("kernel.legacy.yk-kf-4036"),
     Literal("YK_KF_4036"),
-    kAliases_237,
+    kAliases_255,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4251,10 +4572,10 @@ inline constexpr DescriptorView kDescriptor_237{
     Literal("kernel-legacy-yk-kf-4036"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_238{
+inline constexpr DescriptorView kDescriptor_256{
     Literal("kernel.legacy.yk-kf-4037"),
     Literal("YK_KF_4037"),
-    kAliases_238,
+    kAliases_256,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4265,10 +4586,10 @@ inline constexpr DescriptorView kDescriptor_238{
     Literal("kernel-legacy-yk-kf-4037"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_239{
+inline constexpr DescriptorView kDescriptor_257{
     Literal("kernel.legacy.yk-kf-4038"),
     Literal("YK_KF_4038"),
-    kAliases_239,
+    kAliases_257,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4279,10 +4600,10 @@ inline constexpr DescriptorView kDescriptor_239{
     Literal("kernel-legacy-yk-kf-4038"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_240{
+inline constexpr DescriptorView kDescriptor_258{
     Literal("kernel.legacy.yk-kf-4039"),
     Literal("YK_KF_4039"),
-    kAliases_240,
+    kAliases_258,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4293,10 +4614,10 @@ inline constexpr DescriptorView kDescriptor_240{
     Literal("kernel-legacy-yk-kf-4039"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_241{
+inline constexpr DescriptorView kDescriptor_259{
     Literal("kernel.legacy.yk-kf-4046"),
     Literal("YK_KF_4046"),
-    kAliases_241,
+    kAliases_259,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4307,10 +4628,10 @@ inline constexpr DescriptorView kDescriptor_241{
     Literal("kernel-legacy-yk-kf-4046"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_242{
+inline constexpr DescriptorView kDescriptor_260{
     Literal("kernel.legacy.yk-kf-4047"),
     Literal("YK_KF_4047"),
-    kAliases_242,
+    kAliases_260,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4321,10 +4642,10 @@ inline constexpr DescriptorView kDescriptor_242{
     Literal("kernel-legacy-yk-kf-4047"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_243{
+inline constexpr DescriptorView kDescriptor_261{
     Literal("kernel.legacy.yk-kf-4048"),
     Literal("YK_KF_4048"),
-    kAliases_243,
+    kAliases_261,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4335,10 +4656,10 @@ inline constexpr DescriptorView kDescriptor_243{
     Literal("kernel-legacy-yk-kf-4048"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_244{
+inline constexpr DescriptorView kDescriptor_262{
     Literal("kernel.legacy.yk-kf-4050"),
     Literal("YK_KF_4050"),
-    kAliases_244,
+    kAliases_262,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4349,10 +4670,10 @@ inline constexpr DescriptorView kDescriptor_244{
     Literal("kernel-legacy-yk-kf-4050"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_245{
+inline constexpr DescriptorView kDescriptor_263{
     Literal("kernel.legacy.yk-kf-4051"),
     Literal("YK_KF_4051"),
-    kAliases_245,
+    kAliases_263,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4363,10 +4684,10 @@ inline constexpr DescriptorView kDescriptor_245{
     Literal("kernel-legacy-yk-kf-4051"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_246{
+inline constexpr DescriptorView kDescriptor_264{
     Literal("kernel.legacy.yk-kf-4052"),
     Literal("YK_KF_4052"),
-    kAliases_246,
+    kAliases_264,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4377,10 +4698,10 @@ inline constexpr DescriptorView kDescriptor_246{
     Literal("kernel-legacy-yk-kf-4052"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_247{
+inline constexpr DescriptorView kDescriptor_265{
     Literal("kernel.legacy.yk-kf-4053"),
     Literal("YK_KF_4053"),
-    kAliases_247,
+    kAliases_265,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4391,10 +4712,10 @@ inline constexpr DescriptorView kDescriptor_247{
     Literal("kernel-legacy-yk-kf-4053"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_248{
+inline constexpr DescriptorView kDescriptor_266{
     Literal("kernel.legacy.yk-kf-4054"),
     Literal("YK_KF_4054"),
-    kAliases_248,
+    kAliases_266,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4405,10 +4726,10 @@ inline constexpr DescriptorView kDescriptor_248{
     Literal("kernel-legacy-yk-kf-4054"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_249{
+inline constexpr DescriptorView kDescriptor_267{
     Literal("kernel.legacy.yk-kf-4055"),
     Literal("YK_KF_4055"),
-    kAliases_249,
+    kAliases_267,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4419,10 +4740,10 @@ inline constexpr DescriptorView kDescriptor_249{
     Literal("kernel-legacy-yk-kf-4055"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_250{
+inline constexpr DescriptorView kDescriptor_268{
     Literal("kernel.legacy.yk-kf-4056"),
     Literal("YK_KF_4056"),
-    kAliases_250,
+    kAliases_268,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4433,10 +4754,10 @@ inline constexpr DescriptorView kDescriptor_250{
     Literal("kernel-legacy-yk-kf-4056"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_251{
+inline constexpr DescriptorView kDescriptor_269{
     Literal("kernel.legacy.yk-kf-4059"),
     Literal("YK_KF_4059"),
-    kAliases_251,
+    kAliases_269,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4447,10 +4768,10 @@ inline constexpr DescriptorView kDescriptor_251{
     Literal("kernel-legacy-yk-kf-4059"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_252{
+inline constexpr DescriptorView kDescriptor_270{
     Literal("kernel.legacy.yk-kf-4064"),
     Literal("YK_KF_4064"),
-    kAliases_252,
+    kAliases_270,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4461,10 +4782,10 @@ inline constexpr DescriptorView kDescriptor_252{
     Literal("kernel-legacy-yk-kf-4064"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_253{
+inline constexpr DescriptorView kDescriptor_271{
     Literal("kernel.legacy.yk-kf-4065"),
     Literal("YK_KF_4065"),
-    kAliases_253,
+    kAliases_271,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4475,10 +4796,10 @@ inline constexpr DescriptorView kDescriptor_253{
     Literal("kernel-legacy-yk-kf-4065"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_254{
+inline constexpr DescriptorView kDescriptor_272{
     Literal("kernel.legacy.yk-kf-4066"),
     Literal("YK_KF_4066"),
-    kAliases_254,
+    kAliases_272,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4489,10 +4810,10 @@ inline constexpr DescriptorView kDescriptor_254{
     Literal("kernel-legacy-yk-kf-4066"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_255{
+inline constexpr DescriptorView kDescriptor_273{
     Literal("kernel.legacy.yk-kf-4069"),
     Literal("YK_KF_4069"),
-    kAliases_255,
+    kAliases_273,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4503,10 +4824,10 @@ inline constexpr DescriptorView kDescriptor_255{
     Literal("kernel-legacy-yk-kf-4069"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_256{
+inline constexpr DescriptorView kDescriptor_274{
     Literal("kernel.legacy.yk-kf-4070"),
     Literal("YK_KF_4070"),
-    kAliases_256,
+    kAliases_274,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4517,10 +4838,10 @@ inline constexpr DescriptorView kDescriptor_256{
     Literal("kernel-legacy-yk-kf-4070"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_257{
+inline constexpr DescriptorView kDescriptor_275{
     Literal("kernel.legacy.yk-kf-5001"),
     Literal("YK_KF_5001"),
-    kAliases_257,
+    kAliases_275,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4531,10 +4852,10 @@ inline constexpr DescriptorView kDescriptor_257{
     Literal("kernel-legacy-yk-kf-5001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_258{
+inline constexpr DescriptorView kDescriptor_276{
     Literal("kernel.legacy.yk-kf-5002"),
     Literal("YK_KF_5002"),
-    kAliases_258,
+    kAliases_276,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4545,10 +4866,10 @@ inline constexpr DescriptorView kDescriptor_258{
     Literal("kernel-legacy-yk-kf-5002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_259{
+inline constexpr DescriptorView kDescriptor_277{
     Literal("kernel.legacy.yk-kf-5003"),
     Literal("YK_KF_5003"),
-    kAliases_259,
+    kAliases_277,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4559,10 +4880,10 @@ inline constexpr DescriptorView kDescriptor_259{
     Literal("kernel-legacy-yk-kf-5003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_260{
+inline constexpr DescriptorView kDescriptor_278{
     Literal("kernel.legacy.yk-kf-5004"),
     Literal("YK_KF_5004"),
-    kAliases_260,
+    kAliases_278,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4573,10 +4894,10 @@ inline constexpr DescriptorView kDescriptor_260{
     Literal("kernel-legacy-yk-kf-5004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_261{
+inline constexpr DescriptorView kDescriptor_279{
     Literal("kernel.legacy.yk-kf-5005"),
     Literal("YK_KF_5005"),
-    kAliases_261,
+    kAliases_279,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4587,10 +4908,10 @@ inline constexpr DescriptorView kDescriptor_261{
     Literal("kernel-legacy-yk-kf-5005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_262{
+inline constexpr DescriptorView kDescriptor_280{
     Literal("kernel.legacy.yk-kf-5006"),
     Literal("YK_KF_5006"),
-    kAliases_262,
+    kAliases_280,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4601,10 +4922,10 @@ inline constexpr DescriptorView kDescriptor_262{
     Literal("kernel-legacy-yk-kf-5006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_263{
+inline constexpr DescriptorView kDescriptor_281{
     Literal("kernel.legacy.yk-kf-5007"),
     Literal("YK_KF_5007"),
-    kAliases_263,
+    kAliases_281,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4615,10 +4936,10 @@ inline constexpr DescriptorView kDescriptor_263{
     Literal("kernel-legacy-yk-kf-5007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_264{
+inline constexpr DescriptorView kDescriptor_282{
     Literal("kernel.legacy.yk-kf-5008"),
     Literal("YK_KF_5008"),
-    kAliases_264,
+    kAliases_282,
     static_cast<std::uint16_t>(1),
     Literal("kernel"),
     Severity::Error,
@@ -4629,10 +4950,80 @@ inline constexpr DescriptorView kDescriptor_264{
     Literal("kernel-legacy-yk-kf-5008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_265{
+inline constexpr DescriptorView kDescriptor_283{
+    Literal("kernel.legacy.yk-sg-4020"),
+    Literal("YK_SG_4020"),
+    kAliases_283,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("YK_SG_4020: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-yk-sg-4020"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_284{
+    Literal("kernel.legacy.yk-sg-4021"),
+    Literal("YK_SG_4021"),
+    kAliases_284,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("YK_SG_4021: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-yk-sg-4021"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_285{
+    Literal("kernel.legacy.yk-sg-4022"),
+    Literal("YK_SG_4022"),
+    kAliases_285,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("YK_SG_4022: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-yk-sg-4022"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_286{
+    Literal("kernel.legacy.yk-sg-4023"),
+    Literal("YK_SG_4023"),
+    kAliases_286,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("YK_SG_4023: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-yk-sg-4023"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_287{
+    Literal("kernel.legacy.ykcalc001"),
+    Literal("YKCALC001"),
+    kAliases_287,
+    static_cast<std::uint16_t>(1),
+    Literal("kernel"),
+    Severity::Error,
+    Phase::Generate,
+    Literal("YKCALC001: {message}"),
+    Literal("The existing kernel producer reported its frozen compatibility code."),
+    Literal("Follow the unchanged producer message for {message}; migrate that producer to the typed occurrence envelope before changing this compatibility text."),
+    Literal("kernel-legacy-ykcalc001"),
+    Literal("")
+};
+inline constexpr DescriptorView kDescriptor_288{
     Literal("undertow.legacy.pipe010"),
     Literal("PIPE010"),
-    kAliases_265,
+    kAliases_288,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4643,10 +5034,10 @@ inline constexpr DescriptorView kDescriptor_265{
     Literal("undertow-legacy-pipe010"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_266{
+inline constexpr DescriptorView kDescriptor_289{
     Literal("undertow.legacy.utcg001"),
     Literal("UTCG001"),
-    kAliases_266,
+    kAliases_289,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4657,10 +5048,10 @@ inline constexpr DescriptorView kDescriptor_266{
     Literal("undertow-legacy-utcg001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_267{
+inline constexpr DescriptorView kDescriptor_290{
     Literal("undertow.legacy.utcg002"),
     Literal("UTCG002"),
-    kAliases_267,
+    kAliases_290,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4671,10 +5062,10 @@ inline constexpr DescriptorView kDescriptor_267{
     Literal("undertow-legacy-utcg002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_268{
+inline constexpr DescriptorView kDescriptor_291{
     Literal("undertow.legacy.utcnd020"),
     Literal("UTCND020"),
-    kAliases_268,
+    kAliases_291,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4685,10 +5076,10 @@ inline constexpr DescriptorView kDescriptor_268{
     Literal("undertow-legacy-utcnd020"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_269{
+inline constexpr DescriptorView kDescriptor_292{
     Literal("undertow.legacy.utfx009"),
     Literal("UTFX009"),
-    kAliases_269,
+    kAliases_292,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4699,10 +5090,10 @@ inline constexpr DescriptorView kDescriptor_269{
     Literal("undertow-legacy-utfx009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_270{
+inline constexpr DescriptorView kDescriptor_293{
     Literal("undertow.legacy.utinv002"),
     Literal("UTINV002"),
-    kAliases_270,
+    kAliases_293,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4713,10 +5104,10 @@ inline constexpr DescriptorView kDescriptor_270{
     Literal("undertow-legacy-utinv002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_271{
+inline constexpr DescriptorView kDescriptor_294{
     Literal("undertow.legacy.utmod000"),
     Literal("UTMOD000"),
-    kAliases_271,
+    kAliases_294,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4727,10 +5118,10 @@ inline constexpr DescriptorView kDescriptor_271{
     Literal("undertow-legacy-utmod000"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_272{
+inline constexpr DescriptorView kDescriptor_295{
     Literal("undertow.legacy.utmod001"),
     Literal("UTMOD001"),
-    kAliases_272,
+    kAliases_295,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4741,10 +5132,10 @@ inline constexpr DescriptorView kDescriptor_272{
     Literal("undertow-legacy-utmod001"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_273{
+inline constexpr DescriptorView kDescriptor_296{
     Literal("undertow.legacy.utmod002"),
     Literal("UTMOD002"),
-    kAliases_273,
+    kAliases_296,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4755,10 +5146,10 @@ inline constexpr DescriptorView kDescriptor_273{
     Literal("undertow-legacy-utmod002"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_274{
+inline constexpr DescriptorView kDescriptor_297{
     Literal("undertow.legacy.utmod003"),
     Literal("UTMOD003"),
-    kAliases_274,
+    kAliases_297,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4769,10 +5160,10 @@ inline constexpr DescriptorView kDescriptor_274{
     Literal("undertow-legacy-utmod003"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_275{
+inline constexpr DescriptorView kDescriptor_298{
     Literal("undertow.legacy.utmod004"),
     Literal("UTMOD004"),
-    kAliases_275,
+    kAliases_298,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4783,10 +5174,10 @@ inline constexpr DescriptorView kDescriptor_275{
     Literal("undertow-legacy-utmod004"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_276{
+inline constexpr DescriptorView kDescriptor_299{
     Literal("undertow.legacy.utmod005"),
     Literal("UTMOD005"),
-    kAliases_276,
+    kAliases_299,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4797,10 +5188,10 @@ inline constexpr DescriptorView kDescriptor_276{
     Literal("undertow-legacy-utmod005"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_277{
+inline constexpr DescriptorView kDescriptor_300{
     Literal("undertow.legacy.utmod006"),
     Literal("UTMOD006"),
-    kAliases_277,
+    kAliases_300,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4811,10 +5202,10 @@ inline constexpr DescriptorView kDescriptor_277{
     Literal("undertow-legacy-utmod006"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_278{
+inline constexpr DescriptorView kDescriptor_301{
     Literal("undertow.legacy.utmod007"),
     Literal("UTMOD007"),
-    kAliases_278,
+    kAliases_301,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4825,10 +5216,10 @@ inline constexpr DescriptorView kDescriptor_278{
     Literal("undertow-legacy-utmod007"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_279{
+inline constexpr DescriptorView kDescriptor_302{
     Literal("undertow.legacy.utmod008"),
     Literal("UTMOD008"),
-    kAliases_279,
+    kAliases_302,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4839,10 +5230,10 @@ inline constexpr DescriptorView kDescriptor_279{
     Literal("undertow-legacy-utmod008"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_280{
+inline constexpr DescriptorView kDescriptor_303{
     Literal("undertow.legacy.utmod009"),
     Literal("UTMOD009"),
-    kAliases_280,
+    kAliases_303,
     static_cast<std::uint16_t>(1),
     Literal("undertow"),
     Severity::Error,
@@ -4853,10 +5244,10 @@ inline constexpr DescriptorView kDescriptor_280{
     Literal("undertow-legacy-utmod009"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_281{
+inline constexpr DescriptorView kDescriptor_304{
     Literal("vixen.renderer.device-lost"),
     Literal("VIXEN001"),
-    kAliases_281,
+    kAliases_304,
     static_cast<std::uint16_t>(1),
     Literal("vixen"),
     Severity::Fatal,
@@ -4867,10 +5258,10 @@ inline constexpr DescriptorView kDescriptor_281{
     Literal("vixen-renderer-device-lost"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_282{
+inline constexpr DescriptorView kDescriptor_305{
     Literal("vixen.renderer.out-of-device-memory"),
     Literal("VIXEN003"),
-    kAliases_282,
+    kAliases_305,
     static_cast<std::uint16_t>(1),
     Literal("vixen"),
     Severity::Error,
@@ -4881,10 +5272,10 @@ inline constexpr DescriptorView kDescriptor_282{
     Literal("vixen-renderer-out-of-device-memory"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_283{
+inline constexpr DescriptorView kDescriptor_306{
     Literal("vixen.renderer.shader-compile-failed"),
     Literal("VIXEN004"),
-    kAliases_283,
+    kAliases_306,
     static_cast<std::uint16_t>(1),
     Literal("vixen"),
     Severity::Error,
@@ -4895,10 +5286,10 @@ inline constexpr DescriptorView kDescriptor_283{
     Literal("vixen-renderer-shader-compile-failed"),
     Literal("")
 };
-inline constexpr DescriptorView kDescriptor_284{
+inline constexpr DescriptorView kDescriptor_307{
     Literal("vixen.renderer.swapchain-out-of-date"),
     Literal("VIXEN002"),
-    kAliases_284,
+    kAliases_307,
     static_cast<std::uint16_t>(1),
     Literal("vixen"),
     Severity::Warning,
@@ -5196,6 +5587,29 @@ inline constexpr DescriptorView kDescriptors[] = {
     kDescriptor_282,
     kDescriptor_283,
     kDescriptor_284,
+    kDescriptor_285,
+    kDescriptor_286,
+    kDescriptor_287,
+    kDescriptor_288,
+    kDescriptor_289,
+    kDescriptor_290,
+    kDescriptor_291,
+    kDescriptor_292,
+    kDescriptor_293,
+    kDescriptor_294,
+    kDescriptor_295,
+    kDescriptor_296,
+    kDescriptor_297,
+    kDescriptor_298,
+    kDescriptor_299,
+    kDescriptor_300,
+    kDescriptor_301,
+    kDescriptor_302,
+    kDescriptor_303,
+    kDescriptor_304,
+    kDescriptor_305,
+    kDescriptor_306,
+    kDescriptor_307,
 };
 inline constexpr std::size_t DescriptorCount = sizeof(kDescriptors) / sizeof(kDescriptors[0]);
 
