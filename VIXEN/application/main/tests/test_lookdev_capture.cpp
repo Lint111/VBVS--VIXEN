@@ -595,7 +595,8 @@ bool LoadRecipeGlyphRows(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
     for (const unsigned char character : text) {
         const FT_UInt glyphIndex = FT_Get_Char_Index(face, character);
         if (!glyphIndex) continue;
-        atlas.GetOrAddOutlineIndex(face, glyphIndex);
+        // Only the atlas side effect is wanted: the rows are read back through OutlineBlob() below.
+        static_cast<void>(atlas.GetOrAddOutlineIndex(face, glyphIndex));
     }
     const auto rows = atlas.OutlineBlob();
     if (rows.size() < glyphCount) {
