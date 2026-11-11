@@ -69,19 +69,16 @@ else()
     include_directories(BEFORE ${stbrumme_hash_SOURCE_DIR})
 endif()
 
-# Project-level hash provider. The non-OpenSSL path must link the pinned
-# implementation; including sha256.h alone only declares its class methods.
+# Project-level hash provider interface
+add_library(ProjectHash INTERFACE)
 if(OpenSSL_FOUND)
-    add_library(ProjectHash INTERFACE)
     target_link_libraries(ProjectHash INTERFACE OpenSSL::Crypto)
     target_include_directories(ProjectHash INTERFACE $<BUILD_INTERFACE:${OPENSSL_INCLUDE_DIR}>)
     target_compile_definitions(ProjectHash INTERFACE HAS_OPENSSL)
 elseif(TARGET stbrumme_hash OR DEFINED stbrumme_hash_SOURCE_DIR)
-    add_library(ProjectHash STATIC ${stbrumme_hash_SOURCE_DIR}/sha256.cpp)
     target_include_directories(ProjectHash INTERFACE $<BUILD_INTERFACE:${stbrumme_hash_SOURCE_DIR}> $<INSTALL_INTERFACE:include>)
     target_compile_definitions(ProjectHash INTERFACE HAS_STBRUMME_HASH)
 else()
-    add_library(ProjectHash INTERFACE)
     target_compile_definitions(ProjectHash INTERFACE HAS_HASH_FALLBACK)
 endif()
 set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")

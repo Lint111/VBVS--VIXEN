@@ -122,11 +122,6 @@ void VulkanGraphApplication::Initialize() {
     mainLogger->Debug("VulkanGraphApplication::Initialize() - START");
     mainLogger->Info("VulkanGraphApplication Initialize START");
 
-    // Validate the immutable runtime-data closure before Vulkan graph construction. A missing
-    // producer member is explicitly handled by the compatibility adapter; malformed or stale
-    // selected bundles fail closed and never reach BuildRenderGraph().
-    if (!LoadRuntimeInputBundle()) return;
-
     // WSL2: select the provisioned Mesa Dozen ICD before the base creates the Vulkan instance below
     // (no-op off WSL / when already configured). Must precede VulkanApplicationBase::Initialize().
     // Shared with vixen_benchmark (see VulkanGlobalNames.h) so every VIXEN binary uses the same
@@ -207,12 +202,6 @@ void VulkanGraphApplication::CreateEngineContext() {
 }
 
 void VulkanGraphApplication::Prepare() {
-    if (!runtimeInputReady_) {
-        isPrepared = false;
-        if (lastError_.empty()) lastError_ = "Prepare failed: runtime input bundle is not ready";
-        if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Prepare] " + lastError_);
-        return;
-    }
     upscalerInitializationFailures_.clear();
     PrepareWithUpscalerFallback();
 }

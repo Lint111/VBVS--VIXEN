@@ -6,7 +6,6 @@
 #include "Data/ReconstructionJitter.h"
 #include "Core/EngineContext.h"  // AR#7: instantiable engine aggregate
 #include "RuntimeCachePaths.h"
-#include "RuntimeInputBundle.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/TypedConnection.h"
 #include "Core/CalibrationStore.h"  // Sprint 6.3: Persistence
@@ -121,12 +120,6 @@ public:
     void Prepare() override;
     void Update() override;
     bool Render() override;
-    // Runtime-data migration seam. A candidate is fully validated into separate owned storage;
-    // it becomes visible only when the next frame boundary commits it.
-    bool RequestRuntimeInputReload(const std::filesystem::path& indexOrBundleRoot);
-    std::shared_ptr<const Vixen::RuntimeInputBundle> ActiveRuntimeInputBundle() const {
-        return runtimeInputStore_.Active();
-    }
     // View Contract Inc-2 Task 5: parses VIXEN_HUD_SCRIPT/VIXEN_HUD_CAPTURE_FRAMES/
     // VIXEN_HUD_CAPTURE_DIR once and injects the scripted HUD payload due this tick (mirrors
     // EditorApplication::PreTick's scripted-action injector — this app has no subclass, so the
@@ -323,7 +316,6 @@ protected:
     void UpdateBodySceneResidency();
 
 private:
-    bool LoadRuntimeInputBundle();
     void CreateEngineContext();
     // Prepare()'s provider-fallback loop. Prepare() clears the failure list first; a mid-run
     // demotion re-enters here with the faulted provider already recorded.
@@ -347,10 +339,6 @@ private:
     // CalibrationStore). The app keeps non-owning views named as before so the existing call
     // sites are unchanged; they point into engine_ and are valid for its lifetime.
     std::unique_ptr<Vixen::RenderGraph::EngineContext> engine_;
-    Vixen::RuntimeInputBundleStore runtimeInputStore_;
-    Vixen::RuntimeInputCompatibilityAdapter runtimeInputCompatibility_;
-    bool runtimeInputReady_ = true;
-    bool runtimeInputUsesCompatibilityAdapter_ = true;
     std::unique_ptr<Vixen::Profiler::FrameCapture> frameCapture_;
     std::string pendingFrameCapturePath_;
     NodeTypeRegistry* nodeRegistry = nullptr;             // view: &engine_->Registry()
