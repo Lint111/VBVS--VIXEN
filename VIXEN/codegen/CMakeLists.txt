@@ -873,7 +873,9 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         target_compile_features(${_recipe_service} PRIVATE cxx_std_23)
         target_include_directories(${_recipe_service} PUBLIC "${_recipe_services_dir}")
         target_link_libraries(${_recipe_service} PRIVATE glm)
-        target_compile_definitions(${_recipe_service} PRIVATE YK_RECIPE_RUNTIME_BUILD=1)
+        # The services are static libraries: consumers must not see __declspec(dllimport) on MSVC (__imp_ link errors),
+        # so the build macro is public and every consumer declares the API as plain exports.
+        target_compile_definitions(${_recipe_service} PUBLIC YK_RECIPE_RUNTIME_BUILD=1)
         if(MSVC)
             target_compile_options(${_recipe_service} PRIVATE /fp:strict /arch:AVX2)
         else()
