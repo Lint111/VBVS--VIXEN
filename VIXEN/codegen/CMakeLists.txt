@@ -492,6 +492,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl" _out_recipe_tape_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h" _out_recipe_glsl_literals_run)
         _codegen_to_wsl_path("${CMAKE_CURRENT_BINARY_DIR}/recipe-services" _recipe_services_dir_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeContainer.g.h" _recipe_container_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
@@ -598,6 +599,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_recipe_tape_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl")
         set(_out_recipe_glsl_literals_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeGlslLiterals.g.h")
         set(_recipe_services_dir_run "${CMAKE_CURRENT_BINARY_DIR}/recipe-services")
+        set(_recipe_container_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeContainer.g.h")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
@@ -852,7 +854,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
-        --recipe-container "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeContainer.g.h"
+        --recipe-container "${_recipe_container_run}"
         --out-dir "${_recipe_services_dir_run}")
     add_custom_command(OUTPUT ${_recipe_services_outputs}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${_recipe_services_dir}"
