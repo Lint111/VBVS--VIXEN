@@ -33,6 +33,10 @@ void RefreshEditorPrimitivesView(EditorLayersView& view, const std::vector<Edito
     view.PopulatePrimitives(primitives);
 }
 
+std::string EditorPickerFilter(const EditorLayersView& view) { return view.PickerFilter(); }
+
+void ClearEditorPickerFilter(EditorLayersView& view) { view.ClearPickerFilter(); }
+
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes) {
     view.PopulateRecipes(recipes);
 }

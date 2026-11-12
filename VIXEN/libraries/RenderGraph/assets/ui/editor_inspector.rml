@@ -42,7 +42,8 @@
             <input type="text" class="value-field" data-attr-id="field.valueId" data-attr-value="field.value"/>
             <div class="button" data-attr-id="field.downId" hit-mask="none">−</div>
             <div class="button" data-attr-id="field.upId" hit-mask="none">+</div>
-            <div class="parameter-range" data-if="field.hasRange">range {{field.minimum}}–{{field.maximum}}</div>
+            <div class="button" data-if="!field.isDefault" data-attr-id="field.resetId" hit-mask="none">reset {{field.defaultValue}}</div>
+            <span class="range" data-if="field.hasRange">{{field.minimum}}..{{field.maximum}}</span>
         </div>
         <div class="subtitle">Placement of {{selectedLayerName}} (layer {{selectedLayer}})</div>
         <div class="parameter-row" data-for="field : transform">

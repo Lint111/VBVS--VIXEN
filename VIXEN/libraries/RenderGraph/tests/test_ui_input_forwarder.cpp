@@ -297,4 +297,52 @@ TEST_F(UiInputForwarderTest, InspectorFieldCommitsASelectorAndARefusedValueSnaps
     EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
 }
 
+// sn-editorpicker1: the Add flyout's document. Showing it focuses the filter field (autofocus), typing writes the View's
+// filter live through the data binding (no commit needed), Enter commits the ChoosePrimitive selector with the typed text,
+// and Escape restores the empty value and drops focus.
+TEST_F(UiInputForwarderTest, FlyoutFilterFieldTakesFocusOnShowFiltersLiveAndEnterCommitsTheSelector) {
+    Vixen::App::EditorLayersView view;
+    Rml::DataModelConstructor constructor = ctx_->CreateDataModel(view.ModelName());
+    ASSERT_TRUE(static_cast<bool>(constructor));
+    view.Register(constructor);
+    Rml::DataModelHandle model = constructor.GetModelHandle();
+    view.PopulatePrimitives({{"Box", "Box", "Primitive"}, {"CappedTorus", "Capped Torus", "Primitive"}, {"Torus", "Torus", "Primitive"}});
+    doc_ = ctx_->LoadDocument("assets/ui/editor_picker.rml");
+    ASSERT_NE(doc_, nullptr);
+    doc_->Hide();
+    ctx_->Update();
+    EXPECT_FALSE(forwarder_.WantsKeyboard()) << "a hidden flyout holds no focus";
+    doc_->Show();   // what UIRenderNode::ApplyPlacements does when the dock opens the panel
+    ctx_->Update();
+    ASSERT_TRUE(forwarder_.WantsKeyboard()) << "opening the flyout focuses its filter field";
+
+    Rml::Element* field = doc_->GetElementById("picker-filter-{filter}");
+    ASSERT_NE(field, nullptr);
+    Run(Frame{}.Type(U"tor"));
+    EXPECT_EQ(view.PickerFilter(), "tor") << "typing filters live: the field writes the View's filter as it changes";
+    Run(Frame{}.Key(GLFW_KEY_ENTER));
+    const auto commits = forwarder_.DrainCommits();
+    ASSERT_EQ(commits.size(), 1u);
+    EXPECT_EQ(commits[0].selector, "picker-filter-tor");
+    EXPECT_FALSE(forwarder_.WantsKeyboard()) << "Enter commits and releases the keyboard";
+
+    // The editor clears the filter when the flyout closes; the field shows it.
+    view.ClearPickerFilter();
+    ctx_->Update();
+    EXPECT_EQ(field->GetAttribute<Rml::String>("value", ""), "");
+
+    // Escape: the typed text is put back (empty) and the field blurs.
+    doc_->Hide();
+    doc_->Show();
+    ctx_->Update();
+    ASSERT_TRUE(forwarder_.WantsKeyboard());
+    Run(Frame{}.Type(U"to"));
+    EXPECT_EQ(view.PickerFilter(), "to");
+    Run(Frame{}.Key(GLFW_KEY_ESCAPE));
+    EXPECT_FALSE(forwarder_.WantsKeyboard());
+    EXPECT_EQ(view.PickerFilter(), "") << "Escape cancels the edit";
+    EXPECT_TRUE(forwarder_.DrainCommits().empty()) << "a cancelled edit commits nothing";
+    EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
+}
+
 }  // namespace

@@ -11,9 +11,9 @@ namespace Vixen::Views {
 struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; float blendRadius; Rml::String blendUpId; Rml::String blendDownId; Rml::String selectId; bool isSelected; Rml::String blendValueId; };
 struct EditorParameterRow { Rml::String name; Rml::String unit; Rml::String upId; Rml::String downId; float value; float minimum; float maximum; Rml::String setId; };
 struct EditorTransformRow { Rml::String label; float value; Rml::String upId; Rml::String downId; Rml::String valueId; };
-struct EditorPrimitiveRow { Rml::String name; Rml::String category; Rml::String elementId; };
+struct EditorPrimitiveRow { Rml::String name; Rml::String display; Rml::String category; Rml::String elementId; };
 struct EditorLayerOpRow { Rml::String name; Rml::String elementId; bool isCurrent; };
-struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; };
+struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool isDefault; Rml::String resetId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorLayersBind {
     std::vector<EditorLayerRow>* layers;
@@ -26,6 +26,7 @@ struct EditorLayersBind {
     std::vector<EditorShapeFieldRow>* shape;
     Rml::String* selectedShape;
     Rml::String* shapeNote;
+    Rml::String* pickerFilter;
     int* activeLayerCount;
     std::vector<EditorRecipeRow>* recipes;
     Rml::String* statusDocument;
@@ -72,6 +73,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     }
     if (auto sh = c.RegisterStruct<EditorPrimitiveRow>()) {
         sh.RegisterMember("name", &EditorPrimitiveRow::name);
+        sh.RegisterMember("display", &EditorPrimitiveRow::display);
         sh.RegisterMember("category", &EditorPrimitiveRow::category);
         sh.RegisterMember("elementId", &EditorPrimitiveRow::elementId);
     }
@@ -89,6 +91,9 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("upId", &EditorShapeFieldRow::upId);
         sh.RegisterMember("downId", &EditorShapeFieldRow::downId);
         sh.RegisterMember("valueId", &EditorShapeFieldRow::valueId);
+        sh.RegisterMember("defaultValue", &EditorShapeFieldRow::defaultValue);
+        sh.RegisterMember("isDefault", &EditorShapeFieldRow::isDefault);
+        sh.RegisterMember("resetId", &EditorShapeFieldRow::resetId);
     }
     if (auto sh = c.RegisterStruct<EditorRecipeRow>()) {
         sh.RegisterMember("id", &EditorRecipeRow::id);
@@ -112,6 +117,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.Bind("shape", b.shape);
     c.Bind("selectedShape", b.selectedShape);
     c.Bind("shapeNote", b.shapeNote);
+    c.Bind("pickerFilter", b.pickerFilter);
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
     c.Bind("recipes", b.recipes);
     c.Bind("statusDocument", b.statusDocument);

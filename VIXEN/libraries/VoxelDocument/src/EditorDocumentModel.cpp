@@ -1,6 +1,7 @@
 #include "EditorDocumentModel.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -187,6 +188,60 @@ bool EditorDocumentModel::MakePrimitiveLayer(SdfOpCode primitive, const std::str
     return true;
 }
 
+std::string EditorDocumentModel::DisplayName(std::string_view opcodeName) {
+    const auto isUpper = [](char ch) { return ch >= 'A' && ch <= 'Z'; };
+    const auto isLower = [](char ch) { return ch >= 'a' && ch <= 'z'; };
+    std::string out;
+    out.reserve(opcodeName.size() + 4);
+    for (size_t i = 0; i < opcodeName.size(); ++i) {
+        const char ch = opcodeName[i];
+        const bool boundary = i != 0 && isUpper(ch) &&
+            (isLower(opcodeName[i - 1]) || (isUpper(opcodeName[i - 1]) && i + 1 < opcodeName.size() && isLower(opcodeName[i + 1])));
+        if (boundary) out.push_back(' ');
+        out.push_back(ch);
+    }
+    return out;
+}
+
+int EditorDocumentModel::FilterRank(std::string_view opcodeName, std::string_view filter) {
+    const auto lower = [](std::string_view text) {
+        std::string out(text);
+        for (char& ch : out) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        return out;
+    };
+    const std::string needle = lower(filter);
+    if (needle.empty()) return 0;
+    const std::string name = lower(opcodeName);
+    const std::string display = lower(DisplayName(opcodeName));
+    if (name.rfind(needle, 0) == 0 || display.rfind(needle, 0) == 0) return 0;
+    for (size_t i = 1; i < display.size(); ++i) {
+        if (display[i - 1] == ' ' && display.compare(i, needle.size(), needle) == 0) return 1;
+    }
+    if (name.find(needle) != std::string::npos || display.find(needle) != std::string::npos) return 2;
+    return -1;
+}
+
+std::vector<EditorDocumentModel::PrimitiveChoice> EditorDocumentModel::CreatablePrimitives(std::string_view filter) {
+    static constexpr const char* kCategories[] = {"Control", "Domain", "Vector", "Primitive",
+                                                  "Combine", "Modifier", "Input", "Expression"};
+    struct Ranked { int rank; PrimitiveChoice choice; };
+    std::vector<Ranked> ranked;
+    for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+        if (info.category != Vixen::SVO::Recipe::SdfOpCategory::Primitive ||
+            !CanMakePrimitive(static_cast<SdfOpCode>(info.opcode))) continue;
+        const int rank = FilterRank(info.name, filter);
+        if (rank < 0) continue;
+        ranked.push_back({rank, {info.name, DisplayName(info.name), kCategories[static_cast<size_t>(info.category)]}});
+    }
+    std::sort(ranked.begin(), ranked.end(), [](const Ranked& a, const Ranked& b) {
+        return a.rank != b.rank ? a.rank < b.rank : a.choice.name < b.choice.name;
+    });
+    std::vector<PrimitiveChoice> out;
+    out.reserve(ranked.size());
+    for (auto& entry : ranked) out.push_back(std::move(entry.choice));
+    return out;
+}
+
 bool EditorDocumentModel::CanMakePrimitive(SdfOpCode primitive, std::string* reason) {
     EditableDocumentLayer scratch;
     DocumentDiagnostic diagnostic;
@@ -246,10 +301,13 @@ bool EditorDocumentModel::GetLayerPrimitiveFields(uint32_t index, std::vector<Pr
         PrimitiveFieldInfo field;
         field.name = argument->name;
         field.type = argument->type;
+        field.label = argument->label;
         field.width = argument->width;
         field.hasRange = argument->hasRange != 0u;
         field.minimum = argument->minValue;
         field.maximum = argument->maxValue;
+        field.hasDefault = argument->hasDefault != 0u;
+        for (uint32_t c = 0; c < argument->width && c < 4u; ++c) field.defaultValue[c] = argument->defaultValue[c];
         for (uint32_t c = 0; c < argument->width && c < 4u; ++c) {
             field.value[c] = instruction.data[argument->offset + c];
         }

@@ -146,6 +146,14 @@ bool ParseFloatParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const
     return false;
 }
 
+std::vector<Vixen::App::EditorPrimitiveData> PickerPrimitives(const std::string& filter) {
+    std::vector<Vixen::App::EditorPrimitiveData> out;
+    for (auto& choice : Vixen::Editor::EditorDocumentModel::CreatablePrimitives(filter)) {
+        out.push_back({std::move(choice.name), std::move(choice.display), std::move(choice.category)});
+    }
+    return out;
+}
+
 bool ParseTextParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const char* name, std::string& out) {
     for (const auto& [n, v] : params) {
         if (n != name) continue;
@@ -374,10 +382,12 @@ void EditorApplication::RefreshLayersView() {
             static constexpr const char* kComponents[4] = {"x", "y", "z", "w"};
             for (const auto& field : fields) {
                 for (uint32_t c = 0; c < field.width && c < 4u; ++c) {
+                    // The label is the catalogue's own text (+ the component for a vector); the key stays the argument name.
                     shape.fields.push_back({std::string(field.name) + "." + kComponents[c],
-                                            field.width > 1u ? std::string(field.name) + " " + kComponents[c]
-                                                             : std::string(field.name),
-                                            field.value[c], field.hasRange, field.minimum, field.maximum});
+                                            field.width > 1u ? std::string(field.label) + " " + kComponents[c]
+                                                             : std::string(field.label),
+                                            field.value[c], field.hasRange, field.minimum, field.maximum,
+                                            field.defaultValue[c], field.hasDefault && field.value[c] == field.defaultValue[c]});
                 }
             }
         } else {
@@ -386,20 +396,44 @@ void EditorApplication::RefreshLayersView() {
     }
     Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), layers, parameters, placement, shape);
     if (!primitivesPublished_) {
-        // The picker rows are the catalogue's Primitive rows, sorted by name; the table never changes at run time.
-        std::vector<Vixen::App::EditorPrimitiveData> primitives;
-        static constexpr const char* kCategories[] = {"Control", "Domain", "Vector", "Primitive",
-                                                      "Combine", "Modifier", "Input", "Expression"};
-        for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
-            if (info.category != Vixen::SVO::Recipe::SdfOpCategory::Primitive ||
-                !Vixen::Editor::EditorDocumentModel::CanMakePrimitive(static_cast<Vixen::SVO::Recipe::SdfOpCode>(info.opcode))) continue;
-            primitives.push_back({info.name, kCategories[static_cast<size_t>(info.category)]});
-        }
-        std::sort(primitives.begin(), primitives.end(),
-                  [](const auto& a, const auto& b) { return a.name < b.name; });
-        Vixen::App::RefreshEditorPrimitivesView(*layersView_, primitives);
         primitivesPublished_ = true;
+        PublishPickerPrimitives();
     }
+}
+
+void EditorApplication::PublishPickerPrimitives() {
+    publishedPickerFilter_ = Vixen::App::EditorPickerFilter(*layersView_);
+    Vixen::App::RefreshEditorPrimitivesView(*layersView_, PickerPrimitives(publishedPickerFilter_));
+}
+
+bool EditorApplication::PickerOpen() const {
+    for (const auto& row : Panels().Dock().Rows().panels) {
+        if (row.panel == kPickerPanelId) return row.visible;
+    }
+    return false;
+}
+
+void EditorApplication::ClosePicker() {
+    AfterPanelVerb("close", Panels().Dock().Close(kPickerPanelId));
+    Vixen::App::ClearEditorPickerFilter(*layersView_);
+    PublishPickerPrimitives();
+}
+
+void EditorApplication::StepPicker() {
+    if (!PickerOpen()) {
+        // A closed flyout holds no filter: the next open lists everything.
+        if (!Vixen::App::EditorPickerFilter(*layersView_).empty()) Vixen::App::ClearEditorPickerFilter(*layersView_);
+    } else if (auto* graph = GetRenderGraph()) {
+        // Escape cancels the filter field's edit (the UI forwarder restores the value and blurs); it also dismisses
+        // the flyout. Read from the frame's key events, because a tap's press and release can land in one frame.
+        if (auto* input = static_cast<Vixen::RenderGraph::InputNode*>(graph->GetInstanceByName("input_handler"))) {
+            for (const auto& key : input->GetInputState().keyEventsThisFrame) {
+                if (key.glfwKey == GLFW_KEY_ESCAPE && key.action == GLFW_PRESS) { ClosePicker(); break; }
+            }
+        }
+    }
+    // The picker's text field writes the filter as the user types; list what it now matches.
+    if (Vixen::App::EditorPickerFilter(*layersView_) != publishedPickerFilter_) PublishPickerPrimitives();
 }
 
 void EditorApplication::SyncAfterDocumentMutation() {
@@ -518,20 +552,25 @@ void EditorApplication::RegisterAppFlowHandlers() {
 
     // CreateLayer and CreatePrimitiveLayer append one catalogue primitive at its declared defaults
     // (CreateLayer is the fixed Sphere shortcut; there is no hand-built layer body any more).
-    const auto createPrimitiveLayer = [this](FlowActionId actionId, Vixen::SVO::Recipe::SdfOpCode primitive) {
+    const auto createPrimitiveLayer = [this](FlowActionId actionId, Vixen::SVO::Recipe::SdfOpCode primitive) -> bool {
         if (doc_.LayerCount() >= Vixen::Editor::EditorDocumentModel::kMaximumLayerCount) {
             ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::TooManyLayers,
                 std::string(magic_enum::enum_name(actionId)) + ": the document already holds the maximum of " +
                 std::to_string(Vixen::Editor::EditorDocumentModel::kMaximumLayerCount) + " layers"});
-            return;
+            return false;
         }
         Vixen::Editor::EditableDocumentLayer layer;
         Vixen::Editor::DocumentDiagnostic makeDiagnostic;
-        if (!Vixen::Editor::EditorDocumentModel::MakePrimitiveLayer(
-                primitive, std::string(Vixen::SVO::Recipe::SdfOpCodeName(primitive)) + " " +
-                               std::to_string(doc_.LayerCount() + 1u), layer, makeDiagnostic)) {
+        // The default layer name is the presentation of the opcode name ("Capped Torus 4"); kMaximumLayerNameBytes
+        // is 31, so a long display name is cut before the " <n>" suffix rather than refused.
+        const std::string suffix = " " + std::to_string(doc_.LayerCount() + 1u);
+        std::string baseName = Vixen::Editor::EditorDocumentModel::DisplayName(Vixen::SVO::Recipe::SdfOpCodeName(primitive));
+        if (baseName.size() + suffix.size() > Vixen::Editor::EditorDocumentModel::kMaximumLayerNameBytes) {
+            baseName.resize(Vixen::Editor::EditorDocumentModel::kMaximumLayerNameBytes - suffix.size());
+        }
+        if (!Vixen::Editor::EditorDocumentModel::MakePrimitiveLayer(primitive, baseName + suffix, layer, makeDiagnostic)) {
             ReportEditorDiagnostic(makeDiagnostic);
-            return;
+            return false;
         }
         const uint32_t index = doc_.LayerCount();
         rt_.Stack().Dispatch(actionId, [this, layer, index](bool forward) {
@@ -546,6 +585,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
             }
             SyncAfterDocumentMutation();
         });
+        return true;
     };
     rt_.RegisterHandler(FlowActionId::CreateLayer, [createPrimitiveLayer](const Vixen::AppFlow::AppFlowRuntime::Params&) {
         createPrimitiveLayer(FlowActionId::CreateLayer, Vixen::SVO::Recipe::SdfOpCode::Sphere);
@@ -558,7 +598,22 @@ void EditorApplication::RegisterAppFlowHandlers() {
                 "CreatePrimitiveLayer: '" + name + "' is not an opcode name in the recipe op catalogue"});
             return;
         }
-        createPrimitiveLayer(FlowActionId::CreatePrimitiveLayer, primitive);
+        // A layer added from the flyout (click on a row) dismisses it; the document edit is already recorded.
+        if (createPrimitiveLayer(FlowActionId::CreatePrimitiveLayer, primitive) && PickerOpen()) ClosePicker();
+    });
+    // Enter in the flyout's filter field: add the best match and close. A view verb: the only ActionStack entry is
+    // the layer it adds. No match is a refusal (status line) and the flyout stays open.
+    rt_.RegisterHandler(FlowActionId::ChoosePrimitive, [this, createPrimitiveLayer](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        std::string filter;
+        ParseTextParam(p, "filter", filter);
+        const auto matches = PickerPrimitives(filter);
+        Vixen::SVO::Recipe::SdfOpCode primitive{};
+        if (matches.empty() || !Vixen::SVO::Recipe::FindSdfOpCode(matches.front().name, primitive)) {
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::InvalidPrimitive,
+                "ChoosePrimitive: no primitive matches '" + filter + "'"});
+            return;
+        }
+        if (createPrimitiveLayer(FlowActionId::CreatePrimitiveLayer, primitive) && PickerOpen()) ClosePicker();
     });
 
     rt_.RegisterHandler(FlowActionId::DeleteLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
@@ -1169,6 +1224,8 @@ void EditorApplication::BuildRenderGraph() {
 
     // R766: the editor's panels (DeclarePanels) were mounted on the UI node by the base graph build's
     // panel dock; there is no hard-wired editor document to re-point any more.
+    // The Add flyout starts closed whatever the saved layout says (the base build has applied it by now).
+    (void)Panels().Dock().Close(kPickerPanelId);
 
     if (auto* cameraInst = GetRenderGraph() ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
         using CC = Vixen::RenderGraph::CameraNodeConfig;
@@ -1596,7 +1653,8 @@ void EditorApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
     using Vixen::RenderGraph::PanelDecl;
     Vixen::RenderGraph::IView& view = Vixen::App::EditorLayersAsView(*layersView_);
     const auto declare = [&](std::string id, std::string title, std::string document, DockRegion region,
-                             uint32_t stack, float size, float minSize, bool closable, bool header) {
+                             uint32_t stack, float size, float minSize, bool closable, bool header,
+                             Vixen::RenderGraph::PanelRect floatRect = {80.0f, 80.0f, 360.0f, 420.0f}) {
         PanelDecl decl;
         decl.id = std::move(id);
         decl.title = std::move(title);
@@ -1608,6 +1666,7 @@ void EditorApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
         decl.minSize = minSize;
         decl.closable = closable;
         decl.header = header;
+        decl.floatRect = floatRect;
         dock.Declare(std::move(decl));
     };
     // R765 three regions: layers | viewport | inspector, plus the status line. The viewport is what
@@ -1616,6 +1675,11 @@ void EditorApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
     declare("layers", "Layers", "assets/ui/editor_layers.rml", DockRegion::Left, 1, 340.0f, 220.0f, true, true);
     declare("inspector", "Inspector", "assets/ui/editor_inspector.rml", DockRegion::Right, 0, 320.0f, 220.0f, true, true);
     declare("status", "Status", "assets/ui/editor_status.rml", DockRegion::Bottom, 0, 28.0f, 24.0f, false, false);
+    // sn-editorpicker1: the Add flyout, a Floating panel opened by the Layers toolbar's Add button (OpenPanel).
+    // It sits just right of the left column, over the viewport edge. BuildRenderGraph closes it at start: it is
+    // transient, never restored from a saved layout.
+    declare(kPickerPanelId, "Add primitive", "assets/ui/editor_picker.rml", DockRegion::Floating, 0, 300.0f, 220.0f,
+            true, true, {348.0f, 56.0f, 300.0f, 360.0f});
 }
 
 void EditorApplication::AfterPanelVerb(const char* verb, Vixen::RenderGraph::DockResult result) {
@@ -1800,6 +1864,7 @@ void EditorApplication::Update() {
         }
     }
 
+    StepPicker();
     ReconcileLayersView();
     RefreshStatusView();
     if (doc_.EnabledMask() != channelObservedMask_) {

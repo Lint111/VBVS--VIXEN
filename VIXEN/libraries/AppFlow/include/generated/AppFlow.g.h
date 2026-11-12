@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0xFCF45423u;
+inline constexpr uint32_t kAppFlowShapeHash = 0x05763615u;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -16,7 +16,7 @@ inline constexpr std::array<FlowStateId, 0> kTerminalStateIds = {  };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41, CreatePrimitiveLayer=42, SetLayerOp=43, SetLayerPrimitiveField=44 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41, CreatePrimitiveLayer=42, SetLayerOp=43, SetLayerPrimitiveField=44, ChoosePrimitive=45 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -87,6 +87,8 @@ namespace FlowElementTriggerId {
     inline constexpr const char* UndoButtonTrigger = "UndoButtonTrigger";
     inline constexpr const char* RedoButtonTrigger = "RedoButtonTrigger";
     inline constexpr const char* SaveButtonTrigger = "SaveButtonTrigger";
+    inline constexpr const char* OpenPanelTrigger = "OpenPanelTrigger";
+    inline constexpr const char* ChoosePrimitiveTrigger = "ChoosePrimitiveTrigger";
     inline constexpr const char* FocusPanelTrigger = "FocusPanelTrigger";
     inline constexpr const char* ClosePanelTrigger = "ClosePanelTrigger";
     inline constexpr const char* MovePanelTrigger = "MovePanelTrigger";
@@ -134,6 +136,7 @@ inline constexpr FlowParamSchema kSetLayerTransformParams[] = { {"layerIndex", F
 inline constexpr FlowParamSchema kSelectLayerParams[] = { {"layerIndex", FlowParamType::Int} };
 inline constexpr FlowParamSchema kNudgeLayerFieldParams[] = { {"layerIndex", FlowParamType::Int}, {"field", FlowParamType::String} };
 inline constexpr FlowParamSchema kCreatePrimitiveLayerParams[] = { {"primitive", FlowParamType::String} };
+inline constexpr FlowParamSchema kChoosePrimitiveParams[] = { {"filter", FlowParamType::String} };
 inline constexpr FlowParamSchema kSetLayerOpParams[] = { {"layerIndex", FlowParamType::Int}, {"op", FlowParamType::String} };
 inline constexpr FlowParamSchema kSetLayerPrimitiveFieldParams[] = { {"layerIndex", FlowParamType::Int}, {"field", FlowParamType::String}, {"x", FlowParamType::Float}, {"y", FlowParamType::Float}, {"z", FlowParamType::Float}, {"w", FlowParamType::Float} };
 inline constexpr FlowParamSchema kOpenPanelParams[] = { {"panelId", FlowParamType::String} };
@@ -196,7 +199,8 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::ScrubParameter, sizeof(LayerState), true, kScrubParameterParams, 1 },
     { FlowActionId::CreatePrimitiveLayer, sizeof(LayerState), true, kCreatePrimitiveLayerParams, 1 },
     { FlowActionId::SetLayerOp, sizeof(LayerState), true, kSetLayerOpParams, 2 },
-    { FlowActionId::SetLayerPrimitiveField, sizeof(LayerState), true, kSetLayerPrimitiveFieldParams, 6 }
+    { FlowActionId::SetLayerPrimitiveField, sizeof(LayerState), true, kSetLayerPrimitiveFieldParams, 6 },
+    { FlowActionId::ChoosePrimitive, sizeof(LayerState), true, kChoosePrimitiveParams, 1 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -242,6 +246,8 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::UndoButtonTrigger, "undo-button", FlowActionId::Undo, "", "click" },
     { FlowElementTriggerId::RedoButtonTrigger, "redo-button", FlowActionId::Redo, "", "click" },
     { FlowElementTriggerId::SaveButtonTrigger, "save-button", FlowActionId::Save, "", "click" },
+    { FlowElementTriggerId::OpenPanelTrigger, "panel-{panelId}-open", FlowActionId::OpenPanel, "panelId", "click" },
+    { FlowElementTriggerId::ChoosePrimitiveTrigger, "picker-filter-{filter}", FlowActionId::ChoosePrimitive, "filter", "click" },
     { FlowElementTriggerId::FocusPanelTrigger, "panel-{panelId}-tab", FlowActionId::FocusPanel, "panelId", "click" },
     { FlowElementTriggerId::ClosePanelTrigger, "panel-{panelId}-close", FlowActionId::ClosePanel, "panelId", "click" },
     { FlowElementTriggerId::MovePanelTrigger, "panel-{panelId}-to-{region}", FlowActionId::MovePanel, "panelId", "click" },

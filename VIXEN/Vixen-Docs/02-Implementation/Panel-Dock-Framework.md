@@ -73,3 +73,17 @@ sees only `:hover`/pointer state, so the game HUD is unchanged.
   the node re-evaluates every bound value, so a refused value snaps back to the model's.
 - **Agents** use the same path: the channel verb `appflow.input` queues text, keys and pointer events into `InputNode`'s callback
   ring (see AppFlow-Agent-Channel.md), so typing in a field can be witnessed without a human.
+
+## Flyout panels (sn-editorpicker1)
+
+A flyout is an ordinary declared panel (the editor's `picker`: Floating, closable, header), opened by `OpenPanel` (selector
+`panel-{panelId}-open`) and closed by `ClosePanel`; it adds no framework concept. What it relies on:
+
+- **Focus on open.** `UIRenderNode::ApplyPlacements` calls `ElementDocument::Show()` when a placement makes a panel visible, and
+  RmlUi's default focus flag focuses the document's first `autofocus` element: a text control marked `autofocus` takes the keyboard
+  the moment its panel opens (and the focus rule above then applies).
+- **Live text.** A text control with `data-value="<view field>"` writes the bound `Rml::String` on every change (RmlUi's own two-way
+  binding over the generated `Bind(name, ptr)`); the host reads the field next frame. Typed values that must reach an *action* still use
+  the committed `{slot}` id.
+- **Start closed.** `PanelDecl` has no initial-visibility flag, so the editor closes the flyout after the dock is built and
+  never trusts the saved layout for it.

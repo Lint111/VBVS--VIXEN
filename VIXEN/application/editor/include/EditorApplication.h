@@ -153,6 +153,14 @@ private:
     void RefreshRecipesView();
     // R872.1: the picker rows are published once (the catalogue never changes at run time).
     bool primitivesPublished_ = false;
+    // sn-editorpicker1: the Add flyout is a declared Floating panel (DeclarePanels); its text field writes the
+    // filter into the View and the editor republishes the ranked primitive rows when it changes.
+    static constexpr const char* kPickerPanelId = "picker";
+    void PublishPickerPrimitives();
+    bool PickerOpen() const;
+    void ClosePicker();
+    void StepPicker();
+    std::string publishedPickerFilter_;
     // R766: the status-line panel (document, flow state, undo depth, last message).
     void RefreshStatusView();
     // R766: applies one panel verb's result: persists the layout and records a channel event.

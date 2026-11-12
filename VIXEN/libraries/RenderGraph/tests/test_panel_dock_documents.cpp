@@ -13,10 +13,14 @@
 #include <RmlUi/Core/SystemInterface.h>
 
 #include "EditorLayersView.h"
+#include "Recipe/generated/SdfOpCodes.g.h"
+
 #include "Text/RmlFontEngine.h"
 #include "Ui/PanelDock.h"
 #include "Ui/PanelLayoutView.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -79,6 +83,8 @@ protected:
         declare("layers", "assets/ui/editor_layers.rml", DockRegion::Left, 1, 340.0f, true, true);
         declare("inspector", "assets/ui/editor_inspector.rml", DockRegion::Right, 0, 320.0f, true, true);
         declare("status", "assets/ui/editor_status.rml", DockRegion::Bottom, 0, 28.0f, false, false);
+        declare("picker", "assets/ui/editor_picker.rml", DockRegion::Floating, 0, 300.0f, true, true);
+        ASSERT_EQ(dock_.Close("picker"), DockResult::Ok);   // the flyout starts closed
 
         Rml::DataModelConstructor chrome = ctx_->CreateDataModel(chromeView_.ModelName());
         ASSERT_TRUE(static_cast<bool>(chrome));
@@ -188,7 +194,7 @@ TEST_F(PanelDockDocumentsTest, EditorPanelsShareOneModelAndLandInTheirRegions) {
 TEST_F(PanelDockDocumentsTest, LayersPanelKeepsItsWidthWithThePickerAndManyRows) {
     std::vector<Vixen::App::EditorPrimitiveData> primitives;
     for (const char* name : {"Box", "BoxRounded", "CappedTorus", "Capsule", "Cone", "Cylinder", "Sphere", "Torus"}) {
-        primitives.push_back({name, "Primitive"});
+        primitives.push_back({name, name, "Primitive"});
     }
     layers_.PopulatePrimitives(primitives);
     Rml::ElementDocument* doc = panelDocs_.at("layers");
@@ -199,12 +205,129 @@ TEST_F(PanelDockDocumentsTest, LayersPanelKeepsItsWidthWithThePickerAndManyRows)
         Layout();
         EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
         EXPECT_GT(doc->GetClientWidth(), 300.0f) << count << " rows: the layers document's content width collapsed";
-        for (const char* id : {"primitive-Torus-add", "undo-button"}) {
+        for (const char* id : {"panel-picker-open", "undo-button"}) {
             Rml::Element* element = doc->GetElementById(id);
             ASSERT_NE(element, nullptr) << id;
             EXPECT_GT(element->GetBox().GetSize(Rml::BoxArea::Border).x, 40.0f) << count << " rows: " << id;
         }
     }
+}
+
+// sn-editorpicker1: the Layers toolbar (Add, Undo, Redo, Save, Reopen saved) stays inside the panel and pinned above the
+// rows however many layers there are, at the default size and at the panel's minimum width; the rows scroll within the panel.
+TEST_F(PanelDockDocumentsTest, LayersToolbarStaysPinnedInsideThePanelWithEightLayers) {
+    std::vector<Vixen::App::EditorLayerData> rows;
+    for (int i = 0; i < 8; ++i) rows.push_back({"layer" + std::to_string(i), "Union", true, 0.5f});
+    layers_.PopulateFromDocument(0xFFu, rows, {});
+    Rml::ElementDocument* doc = panelDocs_.at("layers");
+    for (const float width : {340.0f, 220.0f}) {
+        ASSERT_EQ(dock_.Resize(DockRegion::Left, width), DockResult::Ok);
+        const DockFrame frame = Layout();
+        EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
+        PanelRect content{};
+        for (const auto& panel : frame.panels) if (panel.panel == "layers") content = panel.content;
+        ASSERT_GT(content.width, 0.0f);
+        const Rml::Vector2f docOffset = doc->GetAbsoluteOffset(Rml::BoxArea::Border);
+        EXPECT_FLOAT_EQ(docOffset.x, content.x);
+        EXPECT_FLOAT_EQ(docOffset.y, content.y);
+
+        // Every toolbar button lies inside the panel's box, in the first rows of it.
+        float lowest = 0.0f;
+        for (const char* id : {"panel-picker-open", "undo-button", "redo-button", "save-button", "reopen-button"}) {
+            Rml::Element* button = doc->GetElementById(id);
+            ASSERT_NE(button, nullptr) << id;
+            const Rml::Vector2f at = button->GetAbsoluteOffset(Rml::BoxArea::Border);
+            const Rml::Vector2f size = button->GetBox().GetSize(Rml::BoxArea::Border);
+            EXPECT_GE(at.x, content.x) << id << " at width " << width;
+            EXPECT_LE(at.x + size.x, content.x + content.width + 0.5f) << id << " at width " << width;
+            EXPECT_GE(at.y, content.y) << id << " at width " << width;
+            EXPECT_LE(at.y + size.y, content.y + content.height) << id << " at width " << width;
+            lowest = std::max(lowest, at.y + size.y);
+        }
+        // The rows are below the toolbar, inside the panel, and scroll (8 two-line rows outgrow a ~346 px panel).
+        Rml::Element* rowsBox = doc->QuerySelector(".layer-rows");
+        ASSERT_NE(rowsBox, nullptr);
+        const Rml::Vector2f rowsAt = rowsBox->GetAbsoluteOffset(Rml::BoxArea::Border);
+        EXPECT_GE(rowsAt.y, lowest) << "the rows start below the toolbar at width " << width;
+        EXPECT_LE(rowsAt.y + rowsBox->GetClientHeight(), content.y + content.height + 0.5f) << "rows end inside the panel at width " << width;
+        EXPECT_GT(rowsBox->GetScrollHeight(), rowsBox->GetClientHeight()) << "8 layers overflow the rows box, which scrolls";
+        EXPECT_GT(rowsBox->GetClientWidth(), 100.0f) << "the scrollbar leaves the rows their width";
+        // The document itself does not scroll: nothing hides the toolbar by moving it.
+        EXPECT_FLOAT_EQ(doc->GetScrollTop(), 0.0f);
+        EXPECT_LE(doc->GetScrollHeight(), doc->GetClientHeight() + 1.0f);
+    }
+}
+
+// sn-editorpicker1: the flyout is a declared Floating panel, closed until OpenPanel; it lists one row per published
+// primitive (the display text; the id keeps the exact opcode name) above a filter field that takes focus.
+TEST_F(PanelDockDocumentsTest, FlyoutPanelOpensFloatingAndListsOneRowPerPublishedPrimitive) {
+    std::vector<Vixen::App::EditorPrimitiveData> all;
+    for (int i = 0; i < 22; ++i) {
+        all.push_back({"Prim" + std::to_string(i) + "Thing", "Prim " + std::to_string(i) + " Thing", "Primitive"});
+    }
+    layers_.PopulatePrimitives(all);
+    DockFrame frame = Layout();
+    EXPECT_FALSE(panelDocs_.at("picker")->IsVisible()) << "closed by default";
+    ASSERT_EQ(dock_.Open("picker"), DockResult::Ok);
+    frame = Layout();
+    EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
+    Rml::ElementDocument* doc = panelDocs_.at("picker");
+    EXPECT_TRUE(doc->IsVisible());
+    PanelRect content{};
+    for (const auto& panel : frame.panels) if (panel.panel == "picker") content = panel.content;
+    EXPECT_GT(content.width, 0.0f);
+    EXPECT_FLOAT_EQ(doc->GetAbsoluteOffset(Rml::BoxArea::Border).x, content.x);
+
+    Rml::ElementList rowsFound;
+    doc->GetElementsByClassName(rowsFound, "picker-row");
+    EXPECT_EQ(rowsFound.size(), all.size());
+    EXPECT_EQ(rowsFound.front()->GetId(), "primitive-Prim0Thing-add") << "the id keeps the exact opcode name";
+    EXPECT_NE(rowsFound.front()->GetInnerRML().find("Prim 0 Thing"), std::string::npos) << "the text is the display name";
+    Rml::Element* filter = doc->GetElementById("picker-filter-{filter}");
+    ASSERT_NE(filter, nullptr);
+    EXPECT_EQ(ctx_->GetFocusElement(), filter) << "opening the flyout focuses the filter field";
+
+    // A narrower list is just fewer rows; an empty list says so.
+    layers_.PopulatePrimitives({all[3], all[4]});
+    ctx_->Update();
+    rowsFound.clear();
+    doc->GetElementsByClassName(rowsFound, "picker-row");
+    EXPECT_EQ(rowsFound.size(), 2u);
+    layers_.DebugSetPickerFilter("zzz");
+    layers_.PopulatePrimitives({});
+    ctx_->Update();
+    rowsFound.clear();
+    doc->GetElementsByClassName(rowsFound, "picker-row");
+    EXPECT_TRUE(rowsFound.empty());
+    EXPECT_NE(doc->GetInnerRML().find("No primitive matches"), std::string::npos);
+}
+
+// sn-editorpicker1: the inspector's primitive fields show the catalogue label (the label text the table carries,
+// plus the component for a vector), the declared range inline, and a reset button only while the value differs
+// from the declared default.
+TEST_F(PanelDockDocumentsTest, InspectorShapeFieldsShowCatalogueLabelsRangesAndAResetButton) {
+    const Vixen::SVO::Recipe::SdfOpArgument* halfExtents = nullptr;
+    for (const auto& argument : Vixen::SVO::Recipe::SdfOpArgumentTable) {
+        if (argument.opcode == static_cast<std::uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Box) &&
+            std::string(argument.name) == "b") halfExtents = &argument;
+    }
+    ASSERT_NE(halfExtents, nullptr);
+    Vixen::App::EditorShapeData shape;
+    shape.primitive = "Box";
+    shape.opChoices = {{"Union", true}};
+    shape.fields = {{"b.x", std::string(halfExtents->label) + " x", 2.0f, true, 0.0f, 100.0f, halfExtents->defaultValue[0], false},
+                    {"b.y", std::string(halfExtents->label) + " y", 0.5f, true, 0.0f, 100.0f, halfExtents->defaultValue[1], true}};
+    layers_.PopulateFromDocument(0b01u, {{"body", "Union", true, 0.0f}}, {}, {}, shape);
+    Layout();
+    EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
+    Rml::ElementDocument* doc = panelDocs_.at("inspector");
+    const std::string text = doc->GetInnerRML();
+    EXPECT_NE(text.find("half extents x"), std::string::npos) << "the catalogue's label for Box.b, not the argument name";
+    EXPECT_NE(text.find("half extents y"), std::string::npos);
+    EXPECT_EQ(text.find(">b x<"), std::string::npos) << "no raw argument name as a label";
+    EXPECT_NE(text.find("0..100"), std::string::npos) << "the declared range, inline";
+    EXPECT_NE(doc->GetElementById("layer-0-field-b-x-0.5"), nullptr) << "reset: the typed-value selector with the default filled in";
+    EXPECT_EQ(doc->GetElementById("layer-0-field-b-y-0.5"), nullptr) << "no reset while the value is the default";
 }
 
 TEST_F(PanelDockDocumentsTest, RearrangedLayoutMovesTheDocumentsAndTheChrome) {

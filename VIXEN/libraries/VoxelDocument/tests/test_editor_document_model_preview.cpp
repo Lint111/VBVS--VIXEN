@@ -767,4 +767,85 @@ TEST(EditorDocumentModelCatalogue, PrimitiveFieldsRoundTripAreRangeCheckedAndNon
     EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::FieldNotEditable);
 }
 
+// sn-editorpicker1: labels come from the generated catalogue, never from a hand list.
+TEST(EditorDocumentModelCatalogue, PrimitiveFieldsCarryTheCataloguesLabelAndDefault) {
+    using Vixen::SVO::Recipe::SdfOpCategory;
+    using Vixen::SVO::Recipe::SdfOpCode;
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    size_t fieldsChecked = 0;
+    for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+        if (info.category != SdfOpCategory::Primitive) continue;
+        const auto opcode = static_cast<SdfOpCode>(info.opcode);
+        if (!EditorDocumentModel::CanMakePrimitive(opcode)) continue;
+        Vixen::Editor::EditableDocumentLayer layer;
+        ASSERT_TRUE(EditorDocumentModel::MakePrimitiveLayer(opcode, "probe", layer, diagnostic)) << diagnostic.message;
+        const uint32_t index = model.LayerCount();
+        ASSERT_TRUE(model.InsertLayer(index, layer, diagnostic)) << info.name << ": " << diagnostic.message;
+        std::vector<Vixen::Editor::PrimitiveFieldInfo> fields;
+        ASSERT_TRUE(model.GetLayerPrimitiveFields(index, fields, diagnostic)) << info.name << ": " << diagnostic.message;
+        const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(info);
+        size_t next = 0;
+        for (uint32_t i = 0; i < info.argumentCount; ++i) {
+            if (arguments[i].source != Vixen::SVO::Recipe::SdfArgumentSource::InstructionData) continue;
+            ASSERT_LT(next, fields.size());
+            EXPECT_STREQ(fields[next].label, arguments[i].label) << info.name << "." << arguments[i].name;
+            EXPECT_NE(std::string(fields[next].label), "") << info.name << "." << arguments[i].name;
+            EXPECT_TRUE(fields[next].hasDefault);
+            // A freshly made layer holds exactly the declared defaults, which the reset button writes back.
+            for (uint32_t c = 0; c < arguments[i].width; ++c) {
+                EXPECT_EQ(fields[next].defaultValue[c], arguments[i].defaultValue[c]);
+                EXPECT_EQ(fields[next].value[c], fields[next].defaultValue[c]);
+                ++fieldsChecked;
+            }
+            ++next;
+        }
+        EXPECT_EQ(next, fields.size()) << info.name;
+        ASSERT_TRUE(model.DeleteLayer(index, nullptr, diagnostic)) << diagnostic.message;
+    }
+    EXPECT_GT(fieldsChecked, 20u);
+}
+
+TEST(EditorDocumentModelCatalogue, DisplayNamesSplitAtCamelCaseBoundariesAndIdsKeepTheOpcodeName) {
+    EXPECT_EQ(EditorDocumentModel::DisplayName("Torus"), "Torus");
+    EXPECT_EQ(EditorDocumentModel::DisplayName("CappedTorus"), "Capped Torus");
+    EXPECT_EQ(EditorDocumentModel::DisplayName("BoxRounded"), "Box Rounded");
+    EXPECT_EQ(EditorDocumentModel::DisplayName("SDFBox"), "SDF Box");
+    EXPECT_EQ(EditorDocumentModel::DisplayName(""), "");
+    // Every creatable primitive's default layer name ("<display> <n>", n up to 32) must fit a layer name.
+    for (const auto& choice : EditorDocumentModel::CreatablePrimitives()) {
+        EXPECT_EQ(choice.name.find(' '), std::string::npos) << "the exact opcode name is the id";
+        EXPECT_LE(choice.display.size() + 3u, EditorDocumentModel::kMaximumLayerNameBytes) << choice.display;
+    }
+}
+
+TEST(EditorDocumentModelCatalogue, FlyoutRowsAreTheCreatablePrimitivesAndTheFilterRanksPrefixThenWordThenSubstring) {
+    using Vixen::SVO::Recipe::SdfOpCategory;
+    size_t creatable = 0;
+    for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+        if (info.category == SdfOpCategory::Primitive &&
+            EditorDocumentModel::CanMakePrimitive(static_cast<Vixen::SVO::Recipe::SdfOpCode>(info.opcode))) ++creatable;
+    }
+    const auto all = EditorDocumentModel::CreatablePrimitives();
+    EXPECT_EQ(all.size(), creatable);
+    EXPECT_GT(creatable, 0u);
+    for (size_t i = 1; i < all.size(); ++i) EXPECT_LT(all[i - 1].name, all[i].name) << "no filter: ordered by name";
+
+    const auto names = [](const std::vector<EditorDocumentModel::PrimitiveChoice>& rows) {
+        std::vector<std::string> out;
+        for (const auto& row : rows) out.push_back(row.name);
+        return out;
+    };
+    // "tor": Torus (prefix) before CappedTorus (a display word starts with it); nothing else in the catalogue matches.
+    EXPECT_EQ(names(EditorDocumentModel::CreatablePrimitives("tor")), (std::vector<std::string>{"Torus", "CappedTorus"}));
+    EXPECT_EQ(names(EditorDocumentModel::CreatablePrimitives("TOR")), (std::vector<std::string>{"Torus", "CappedTorus"}));
+    EXPECT_EQ(names(EditorDocumentModel::CreatablePrimitives("capped t")), (std::vector<std::string>{"CappedTorus"}));
+    EXPECT_TRUE(EditorDocumentModel::CreatablePrimitives("zzzz").empty());
+    EXPECT_EQ(EditorDocumentModel::FilterRank("CappedTorus", "orus"), 2) << "a substring inside a word";
+    EXPECT_EQ(EditorDocumentModel::FilterRank("CappedTorus", "cap"), 0);
+    EXPECT_EQ(EditorDocumentModel::FilterRank("CappedTorus", "x"), -1);
+    EXPECT_EQ(EditorDocumentModel::FilterRank("Box", ""), 0);
+}
+
 }  // namespace

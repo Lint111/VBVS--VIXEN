@@ -36,6 +36,9 @@ namespace Vixen.AppFlow.Reference
         SetParameter = 39, ResetParameter = 40, ScrubParameter = 41,
         // sn-editorshape2 block (R872.1 catalogue consumer): names are validated against the generated recipe-op catalogue.
         CreatePrimitiveLayer = 42, SetLayerOp = 43, SetLayerPrimitiveField = 44,
+        // sn-editorpicker1 block: Enter in the Add flyout's filter field adds the best match (a view verb; the
+        // layer it adds is the CreatePrimitiveLayer document edit).
+        ChoosePrimitive = 45,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -200,6 +203,14 @@ namespace Vixen.AppFlow.Reference
     public static class CreatePrimitiveLayerParams
     {
         public const string Param0Name = "primitive";
+        public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    // sn-editorpicker1: the Add flyout's filter text; the best match (FilterRank, then name) is added.
+    [FlowActionParams(nameof(FlowAction.ChoosePrimitive))]
+    public static class ChoosePrimitiveParams
+    {
+        public const string Param0Name = "filter";
         public const int Param0Type = (int)FlowParamType.String;
     }
 
@@ -670,6 +681,24 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Element = "save-button";
         public const string ParamName = "";
+        public const string On = "click";
+    }
+
+    // sn-editorpicker1: "panel-picker-open" (the Layers toolbar's Add button) opens the declared flyout panel.
+    [FlowElementTrigger(nameof(FlowAction.OpenPanel))]
+    public static class OpenPanelTrigger
+    {
+        public const string Element = "panel-{panelId}-open";
+        public const string ParamName = "panelId";
+        public const string On = "click";
+    }
+
+    // The flyout's filter field: its id keeps the value slot "picker-filter-{filter}" (committed with Enter).
+    [FlowElementTrigger(nameof(FlowAction.ChoosePrimitive))]
+    public static class ChoosePrimitiveTrigger
+    {
+        public const string Element = "picker-filter-{filter}";
+        public const string ParamName = "filter";
         public const string On = "click";
     }
 

@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0xFCF45423
+shape 0x05763615
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -52,6 +52,7 @@ action ScrubParameter 41
 action CreatePrimitiveLayer 42
 action SetLayerOp 43
 action SetLayerPrimitiveField 44
+action ChoosePrimitive 45
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -169,6 +170,7 @@ decl 41 sizeof(LayerState) 1
 decl 42 sizeof(LayerState) 1
 decl 43 sizeof(LayerState) 1
 decl 44 sizeof(LayerState) 1
+decl 45 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -196,6 +198,7 @@ param 28 layerIndex 1
 param 29 layerIndex 1
 param 29 field 0
 param 42 primitive 0
+param 45 filter 0
 param 43 layerIndex 1
 param 43 op 0
 param 44 layerIndex 1
@@ -267,6 +270,8 @@ trigger ReopenSavedButtonTrigger reopen-button 27 - click
 trigger UndoButtonTrigger undo-button 1 - click
 trigger RedoButtonTrigger redo-button 2 - click
 trigger SaveButtonTrigger save-button 3 - click
+trigger OpenPanelTrigger panel-{panelId}-open 16 panelId click
+trigger ChoosePrimitiveTrigger picker-filter-{filter} 45 filter click
 trigger FocusPanelTrigger panel-{panelId}-tab 18 panelId click
 trigger ClosePanelTrigger panel-{panelId}-close 17 panelId click
 trigger MovePanelTrigger panel-{panelId}-to-{region} 19 panelId click

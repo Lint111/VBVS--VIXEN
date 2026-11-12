@@ -4,6 +4,7 @@
 #include "Generated/EditorLayers.g.h"   // Vixen::Views::{EditorLayerRow,EditorLayersBind,BindEditorLayersModel}
 #include <RmlUi/Core/DataModelHandle.h>
 #include <bit>
+#include <charconv>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -52,7 +53,7 @@ public:
         Vixen::Views::BindEditorLayersModel(c,
             Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
                                             &selectedLayer_, &primitives_, &opChoices_, &shape_,
-                                            &selectedShape_, &shapeNote_, &activeLayerCountRaw_, &recipes_,
+                                            &selectedShape_, &shapeNote_, &pickerFilter_, &activeLayerCountRaw_, &recipes_,
                                             &statusDocument_, &statusMessage_, &flowState_,
                                             &undoDepth_, &redoDepth_ });
         model_ = c.GetModelHandle();
@@ -158,6 +159,10 @@ public:
                 const std::string argument = dot == std::string::npos ? field.key : field.key.substr(0, dot);
                 const std::string component = dot == std::string::npos ? std::string("x") : field.key.substr(dot + 1);
                 row.valueId = layerStem + "-field-" + argument + "-" + component + "-{" + component + "}";
+                row.defaultValue = field.defaultValue;
+                row.isDefault = field.isDefault;
+                // The reset button is the typed-value selector with the default filled in (one SetLayerPrimitiveField).
+                row.resetId = layerStem + "-field-" + argument + "-" + component + "-" + FloatText(field.defaultValue);
                 shape_.push_back(std::move(row));
             }
         }
@@ -188,6 +193,7 @@ public:
         for (const auto& primitive : primitiveData) {
             Vixen::Views::EditorPrimitiveRow row;
             row.name = Rml::String(primitive.name);
+            row.display = Rml::String(primitive.display);
             row.category = Rml::String(primitive.category);
             row.elementId = "primitive-" + primitive.name + "-add";
             primitives_.push_back(std::move(row));
@@ -225,6 +231,17 @@ public:
         }
     }
 
+    // sn-editorpicker1: the Add flyout's filter text. The picker's text field writes `pickerFilter_` through the
+    // data binding as the user types; the editor reads it each frame and republishes the primitive rows.
+    std::string PickerFilter() const { return std::string(pickerFilter_); }
+    void ClearPickerFilter() {
+        if (pickerFilter_.empty()) return;
+        pickerFilter_.clear();
+        if (model_) model_.DirtyVariable("pickerFilter");
+    }
+    // Test hook: what the document's text field does on a keystroke.
+    void DebugSetPickerFilter(const std::string& text) { pickerFilter_ = Rml::String(text); }
+
     // Debug accessor for tests.
     size_t DebugLayerCount() const { return layers_.size(); }
     const Vixen::Views::EditorLayerRow& DebugLayer(size_t i) const { return layers_.at(i); }
@@ -241,6 +258,13 @@ public:
     }
 
 private:
+    // Shortest text that parses back to the same float (the reset selector's value slot).
+    static std::string FloatText(float value) {
+        char buffer[32];
+        const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+        return std::string(buffer, result.ptr);
+    }
+
     std::vector<Vixen::Views::EditorLayerRow> layers_;
     std::vector<Vixen::Views::EditorParameterRow> parameters_;
     std::vector<Vixen::Views::EditorTransformRow> transform_;
@@ -251,6 +275,7 @@ private:
     std::vector<Vixen::Views::EditorShapeFieldRow> shape_;
     Rml::String selectedShape_;
     Rml::String shapeNote_;
+    Rml::String pickerFilter_;
     int activeLayerCountRaw_ = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes_;
     Rml::String statusDocument_;

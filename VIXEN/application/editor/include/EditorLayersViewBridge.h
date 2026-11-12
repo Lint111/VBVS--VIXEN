@@ -36,7 +36,8 @@ struct EditorLayerData {
 // R872.1: the catalogue-driven shape block of the selected layer. Everything here comes from the
 // generated recipe-op catalogue through EditorDocumentModel; the view holds no op knowledge.
 struct EditorPrimitiveData {
-    std::string name;
+    std::string name;      // the exact opcode name (ids and action params)
+    std::string display;   // presentation of the name (split at camel-case boundaries)
     std::string category;
 };
 
@@ -52,6 +53,8 @@ struct EditorShapeFieldData {
     bool hasRange = false;
     float minimum = 0.0f;
     float maximum = 0.0f;
+    float defaultValue = 0.0f;   // the catalogue default of this component
+    bool isDefault = false;
 };
 
 struct EditorShapeData {
@@ -113,6 +116,10 @@ void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
 
 // R872.1: the picker rows (static for a build of the catalogue).
 void RefreshEditorPrimitivesView(EditorLayersView& view, const std::vector<EditorPrimitiveData>& primitives);
+
+// sn-editorpicker1: the Add flyout's filter text as the picker's text field last wrote it, and clearing it.
+std::string EditorPickerFilter(const EditorLayersView& view);
+void ClearEditorPickerFilter(EditorLayersView& view);
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
 

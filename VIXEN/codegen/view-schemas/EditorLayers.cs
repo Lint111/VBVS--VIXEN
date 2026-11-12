@@ -44,6 +44,8 @@ namespace Vixen.ViewSchemas
     // Rows come from the generated recipe-op catalogue (category Primitive), never from a hand list.
     public struct EditorPrimitiveRow {
         public string name;
+        // Presentation of the opcode name (split at camel-case boundaries); ids keep the exact name.
+        public string display;
         public string category;
         public string elementId;
     }
@@ -67,6 +69,11 @@ namespace Vixen.ViewSchemas
         public string downId;
         // sn-rmlinput1: the typed field's id, "layer-<i>-field-<argument>-<component>-{<component>}".
         public string valueId;
+        // sn-editorpicker1: the catalogue default of this component and its reset button, which is the
+        // SetLayerPrimitiveField selector with the default filled in ("layer-<i>-field-<argument>-<component>-<default>").
+        public float defaultValue;
+        public bool isDefault;
+        public string resetId;
     }
 
     public struct EditorParameterRow {
@@ -115,6 +122,10 @@ namespace Vixen.ViewSchemas
         [ViewSection(Layout = ViewLayout.Aos)] public EditorShapeFieldRow[] shape;
         public string selectedShape;
         public string shapeNote;
+        // sn-editorpicker1: the Add flyout's filter text. View state, not a document value: the picker's
+        // text field writes it as the user types (the data binding is two-way) and the editor republishes
+        // `primitives` filtered and ranked by it.
+        public string pickerFilter;
 
         // Inc-Ovr (design §5b Override proof): the framework generates NO read/write/reconcile
         // logic for this field -- only a forward-declared hook,

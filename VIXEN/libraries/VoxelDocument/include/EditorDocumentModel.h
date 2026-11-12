@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Recipe/generated/VoxelDocument.g.h"
@@ -78,10 +79,13 @@ struct LayerTransform {
 struct PrimitiveFieldInfo {
     const char* name = "";
     const char* type = "";
+    const char* label = "";   // the catalogue's display label (points into the generated table)
     uint32_t width = 0;
     bool hasRange = false;
     float minimum = 0.0f;
     float maximum = 0.0f;
+    bool hasDefault = false;
+    std::array<float, 4> defaultValue{0.0f, 0.0f, 0.0f, 0.0f};
     std::array<float, 4> value{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
@@ -188,6 +192,23 @@ public:
     // and leaves the document and its revision untouched.
     bool SetLayerPrimitiveField(uint32_t index, const std::string& argumentName,
                                 const std::array<float, 4>& value, DocumentDiagnostic& diagnostic);
+
+    // Pure presentation of a catalogue opcode name: split at camel-case boundaries ("CappedTorus" ->
+    // "Capped Torus"). Ids, selectors and action params keep the exact opcode name; the catalogue
+    // declares no per-opcode display name (a later kernel question), so this is display only.
+    static std::string DisplayName(std::string_view opcodeName);
+    // How well `filter` matches a primitive (case-insensitive, over the opcode name and its display
+    // text): 0 = a prefix of either, 1 = a prefix of one of the display words, 2 = a substring, -1 = no
+    // match. An empty filter matches everything at rank 0. The flyout lists matches by rank, then name.
+    static int FilterRank(std::string_view opcodeName, std::string_view filter);
+    // The flyout's rows: every primitive MakePrimitiveLayer can build, read from the generated op table, that
+    // matches `filter`, ordered by FilterRank then opcode name.
+    struct PrimitiveChoice {
+        std::string name;      // the exact opcode name (ids and action params)
+        std::string display;   // DisplayName(name)
+        std::string category;  // the catalogue category ("Primitive")
+    };
+    static std::vector<PrimitiveChoice> CreatablePrimitives(std::string_view filter = {});
 
     std::string LayerName(uint32_t i) const;
     static const char* OpName(uint8_t op);

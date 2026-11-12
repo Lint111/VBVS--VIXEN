@@ -131,19 +131,87 @@ body {
     margin-top: 3px;
 }
 
-/* R872.1: the primitive picker is a compact scrolling list; each row is one catalogue primitive. */
-.primitive-list {
-    display: block;
-    height: 76px;
-    margin-top: 3px;
-    overflow-y: auto;
+/* sn-editorpicker1: the Layers panel pins its toolbar above scrolling rows (the body does not scroll). */
+body.layers {
+    overflow: hidden;
 }
 
-.primitive-list .button {
+.layers-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.layers-panel .toolbar {
+    flex: none;
+    margin-top: 0;
+    margin-bottom: 4px;
+}
+
+.layer-rows {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    pointer-events: auto;  /* the wheel scrolls the rows, not the world */
+}
+
+/* The Add flyout: a filter field above the matching catalogue primitives (R872.1 rows, ranked by match). */
+body.picker {
+    overflow: hidden;
+}
+
+.picker-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+input.filter-field {
+    flex: none;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    height: 24px;
+    padding: 3px 6px;
+    color: #e8f0ff;
+    font-size: 14px;
+    background-color: #20263c;
+    border-width: 1px;
+    border-color: #50609a;
+    pointer-events: auto;
+    cursor: text;
+}
+
+input.filter-field:focus {
+    background-color: #2a3350;
+    border-color: #a0c0ff;
+}
+
+input.filter-field selection {
+    background-color: #50609a;
+}
+
+.picker-rows {
+    flex: 1 1 0;
+    min-height: 0;
+    margin-top: 6px;
+    overflow-y: auto;
+    pointer-events: auto;
+}
+
+.picker-rows .picker-row {
     display: block;
     margin-left: 0;
     margin-bottom: 2px;
     text-align: left;
+}
+
+.picker-hint {
+    flex: none;
+    margin-top: 4px;
+    padding-top: 4px;
 }
 
 .program-controls {
@@ -197,6 +265,13 @@ input.value-field selection, input.name-field selection {
 .toolbar {
     display: block;
     margin-top: 8px;
+}
+
+.range {
+    display: inline-block;
+    margin-left: 6px;
+    color: #707090;
+    font-size: 11px;
 }
 
 .parameter-row {
