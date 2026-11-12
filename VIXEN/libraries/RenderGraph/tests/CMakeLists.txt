@@ -721,6 +721,12 @@ if(TARGET GTest::gtest_main)
     vixen_stage_assets(test_panel_dock_documents ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
     set_target_properties(test_panel_dock_documents PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_panel_dock_documents)
+    # R765: the editor's raw-input -> camera-action translation (pure; synthetic InputState, no window or device).
+    add_executable(test_editor_camera_input test_editor_camera_input.cpp)
+    target_link_libraries(test_editor_camera_input PRIVATE GTest::gtest_main RenderGraph AppFlow)
+    target_include_directories(test_editor_camera_input PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+    set_target_properties(test_editor_camera_input PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_editor_camera_input)
     message(STATUS "✓ test_panel_dock + test_panel_dock_documents configured (R766 panel dock)")
 endif()
 

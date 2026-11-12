@@ -21,6 +21,7 @@
 #include "Core/RenderGraph.h"
 #include "Debug/RenderTargetReadback.h"       // shared IRenderTarget -> PNG readback
 #include "KeyMap.h"                           // Inc-4 R5a: GLFW keycode -> typed KeyId
+#include "CameraInputTranslation.h"             // R765: raw mouse/axis input -> camera actions
 #include "AppFlowBlobFile.h"                   // T1.2: external AppFlow watch/reload
 #include "GaiaLayerViewDataProvider.h"        // Inc-B: view->model seam, Gaia-backed provider
 #include "VixenHash.h"
@@ -899,45 +900,22 @@ void EditorApplication::TranslateCameraInput() {
     auto* camera = EditorCamera();
     if (!input || !camera) return;
     using Vixen::AppFlow::Generated::FlowActionId;
-    using Vixen::RenderGraph::InputAxis;
-    const Vixen::RenderGraph::InputState& state = input->GetInputState();
-    const float dt = std::min(state.deltaTime, 0.1f);
-    const float sensitivity = camera->GetMouseSensitivity();
-    const auto dispatchOrbit = [this](float dYaw, float dPitch) {
-        rt_.DispatchById(FlowActionId::OrbitCamera,
-                         {{"dYaw", FloatParamText(dYaw)}, {"dPitch", FloatParamText(dPitch)}});
-    };
-
-    // R765: right-mouse orbit. Pixels become radians here; the action carries radians.
-    if (state.mouseButtons[1] && (state.mouseDelta.x != 0.0f || state.mouseDelta.y != 0.0f)) {
-        dispatchOrbit(state.mouseDelta.x * sensitivity, -state.mouseDelta.y * sensitivity);
-    }
-    if (state.wheelZoom && state.wheelDelta.y != 0.0f) {
-        rt_.DispatchById(FlowActionId::ZoomCamera, {{"delta", FloatParamText(state.wheelDelta.y * state.wheelZoomSpeed)}});
-    }
-
-    // Held-key axes (WASD/QE pan+zoom, arrows look). Ctrl chords (Ctrl+S/Z/Y/R) must not also move the camera.
     GLFWwindow* window = GetWindowHandle();
     const bool ctrl = window && (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
                                  glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS);
-    if (ctrl) return;
-    const auto axis = [&state](InputAxis a) { return state.axes[static_cast<std::size_t>(a)]; };
-    constexpr float kZoomSpeed = 100.0f;       // world units per second per full forward axis (as W/S always did)
-    constexpr float kArrowLookSpeed = 120.0f;  // pixel-equivalents per second (as the arrow keys always did)
-    if (const float forward = axis(InputAxis::MoveForward); forward != 0.0f) {
-        rt_.DispatchById(FlowActionId::ZoomCamera, {{"delta", FloatParamText(forward * kZoomSpeed * dt)}});
-    }
-    const float horizontal = axis(InputAxis::MoveHorizontal);
-    const float vertical = axis(InputAxis::MoveUp);
-    if (horizontal != 0.0f || vertical != 0.0f) {
-        const float step = camera->GetMoveSpeed() * dt;
-        rt_.DispatchById(FlowActionId::PanCamera,
-                         {{"dx", FloatParamText(horizontal * step)}, {"dy", FloatParamText(vertical * step)}});
-    }
-    const float lookH = axis(InputAxis::LookHorizontal);
-    const float lookV = axis(InputAxis::LookVertical);
-    if (lookH != 0.0f || lookV != 0.0f) {
-        dispatchOrbit(lookH * kArrowLookSpeed * dt * sensitivity, lookV * kArrowLookSpeed * dt * sensitivity);
+    for (const auto& dispatch : Vixen::Editor::CameraDispatchesFromInput(
+             input->GetInputState(), ctrl, camera->GetMouseSensitivity(), camera->GetMoveSpeed())) {
+        switch (dispatch.action) {
+            case FlowActionId::OrbitCamera:
+                rt_.DispatchById(dispatch.action, {{"dYaw", FloatParamText(dispatch.a)}, {"dPitch", FloatParamText(dispatch.b)}});
+                break;
+            case FlowActionId::PanCamera:
+                rt_.DispatchById(dispatch.action, {{"dx", FloatParamText(dispatch.a)}, {"dy", FloatParamText(dispatch.b)}});
+                break;
+            default:
+                rt_.DispatchById(dispatch.action, {{"delta", FloatParamText(dispatch.a)}});
+                break;
+        }
     }
 }
 
