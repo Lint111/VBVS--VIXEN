@@ -35,7 +35,8 @@ void ActionStack::BeginGroup(uint32_t group) {
 
 void ActionStack::EndGroup() {
     if (hasOpenGroup_) {
-        undo_.push_back(std::move(openGroup_));
+        // A group that recorded nothing is not an undo step.
+        if (!openGroup_.entries.empty()) undo_.push_back(std::move(openGroup_));
         openGroup_ = Group{};
         hasOpenGroup_ = false;
     }

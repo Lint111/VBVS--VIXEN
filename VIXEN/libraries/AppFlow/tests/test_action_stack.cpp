@@ -43,6 +43,33 @@ TEST(ActionStack, GroupUndoneAsOneUnit) {
     EXPECT_EQ(st.UndoDepth(), 0u);
 }
 
+TEST(ActionStack, EmptyGroupIsNotAnUndoStep) {
+    ActionStack st;
+    st.LoadActions(AppFlowContainerView::actions().data(),
+                   AppFlowContainerView::actions().size());
+    st.BeginGroup(1);
+    st.EndGroup();
+    EXPECT_EQ(st.UndoDepth(), 0u);
+    EXPECT_EQ(st.Undo(), DispatchResult::NothingToUndo);
+}
+
+TEST(ActionStack, GroupOfThreeDispatchesAddsOneUndoDepth) {
+    ActionStack st;
+    st.LoadActions(AppFlowContainerView::actions().data(),
+                   AppFlowContainerView::actions().size());
+    int value = 0; auto step = [&](bool fwd){ value += fwd ? 1 : -1; };
+    st.Dispatch(FlowActionId::ToggleLayer, step);
+    ASSERT_EQ(st.UndoDepth(), 1u);
+    st.BeginGroup(7);
+    for (int i = 0; i < 3; ++i) st.Dispatch(FlowActionId::ToggleLayer, step);
+    st.EndGroup();
+    EXPECT_EQ(st.UndoDepth(), 2u);
+    EXPECT_EQ(value, 4);
+    EXPECT_EQ(st.Undo(), DispatchResult::Ok);
+    EXPECT_EQ(value, 1);
+    EXPECT_EQ(st.UndoDepth(), 1u);
+}
+
 TEST(ActionStack, UndoEmptyReturnsNothingToUndo) {
     ActionStack st;
     st.LoadActions(AppFlowContainerView::actions().data(),

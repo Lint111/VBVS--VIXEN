@@ -215,8 +215,8 @@ namespace {
 // selects one of two hard-coded known HudFactionIn/HudEventIn sets (see PreTick below) — the live
 // gate's A/B-on-known-data proof needs a SPECIFIC known payload per capture, not free-form data,
 // so the script vocabulary is deliberately just 'A'/'B' rather than the editor's richer toggle/
-// undo/redo actions. Malformed tokens are skipped with a warning (mirrors ParseEditorScript's
-// never-abort contract), never NULL-widening a whole run over one bad token.
+// undo/redo actions. Malformed tokens are skipped with a warning (the same
+// never-abort contract as the editor's retired env script), never NULL-widening a whole run over one bad token.
 std::vector<std::pair<long, char>> ParseHudScript(const std::string& spec, Vixen::Log::Logger* logger) {
     std::vector<std::pair<long, char>> actions;
     std::stringstream ss(spec);

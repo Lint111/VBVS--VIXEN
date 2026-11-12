@@ -11,6 +11,12 @@
 #include <cstdint>
 #include "generated/AppFlow.g.h"
 
+#include <magic_enum.hpp>
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
 namespace Vixen::Editor {
 
 using Vixen::AppFlow::Generated::KeyId;
@@ -99,5 +105,30 @@ public:
 private:
     std::array<bool, kMappedKeys.size()> wasDown_{};
 };
+
+// One chord-modifier grammar for the agent channel: `appflow.list` reports a chord's mods and
+// `appflow.dispatch` accepts them as an array of generated KeyMod names ("Ctrl", "Shift", ...), so a
+// listed chord can be dispatched as listed.
+inline std::vector<std::string> ChordModNames(KeyMod mods) {
+    std::vector<std::string> names;
+    for (const KeyMod mod : magic_enum::enum_values<KeyMod>()) {
+        if (mod != KeyMod::None && (uint8_t(mods) & uint8_t(mod)) != 0) {
+            names.emplace_back(magic_enum::enum_name(mod));
+        }
+    }
+    return names;
+}
+
+// False when a name is not a generated KeyMod.
+inline bool ParseChordMods(const std::vector<std::string>& names, KeyMod& out) {
+    uint8_t bits = 0;
+    for (const std::string& name : names) {
+        const auto mod = magic_enum::enum_cast<KeyMod>(name);
+        if (!mod) return false;
+        bits |= uint8_t(*mod);
+    }
+    out = static_cast<KeyMod>(bits);
+    return true;
+}
 
 }  // namespace Vixen::Editor

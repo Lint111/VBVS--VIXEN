@@ -3,13 +3,12 @@
  * @brief AppFlow Inc-2b / Inc-4 R6 -- the authoritative WINDOWED live proof that toggle/undo/redo
  * work end-to-end in the RUNNING editor, through the real click-equivalent -> registry dispatch ->
  * ActionStack -> re-flatten path (EditorApplication's registered handlers, via
- * DispatchBySelector/DispatchByKey), not a shortcut. Reads the artifacts of an unattended
- * vixen_editor run (script "parameter_up:0@20,parameter_up:0@21,parameter_up:0@22,
- * parameter_up:0@23,toggle:2@30,undo@60,redo@90,save@100,reopen@110,settings@120,back@130",
- * capture frames "5,25,45,75,105,115"). Pure file I/O -- no Vulkan/GPU here; the
- * GPU work already happened when the .bat produced the PNGs + log. Registered OUTSIDE the
- * glslc-gated GPU-render test group (test_critical_nodes.cmake) so it builds+runs Windows-side too,
- * matching where the windowed editor itself runs.
+ * DispatchBySelector/DispatchByKey), not a shortcut. Reads the artifacts of a live vixen_editor run
+ * driven through its AppFlow agent channel by tools/editor_capture_producer.py (R468.4: the
+ * VIXEN_EDITOR_SCRIPT frame timeline is retired). Pure file I/O -- no Vulkan/GPU here; the
+ * GPU work already happened when the producer wrote the PNGs, the editor log and the channel
+ * state trail. Registered OUTSIDE the glslc-gated GPU-render test group (test_critical_nodes.cmake)
+ * so it builds+runs Windows-side too.
  *
  * ============================================================================================
  * R6 finding history -- byte-exact visual round-trip removed, then RESTORED (durable record)
@@ -42,9 +41,9 @@
  * are restored with a threshold calibrated to the ACTUAL measured delta, not a guessed one.
  *
  * What this gate asserts:
- *   1. ToggleUndoRedoStateTrailThroughWindowedRun -- parses the running editor's own
- *      "[EDITOR/state] <op> mask=.. undoDepth=.. redoDepth=.." trail (emitted by
- *      EditorApplication::PreTick on each scripted edit) and asserts the mask trail is exactly
+ *   1. ToggleUndoRedoStateTrailThroughWindowedRun -- parses the "[CHANNEL/state] <op> mask=..
+ *      undoDepth=.. redoDepth=.." trail the producer reads back from the editor over the channel
+ *      (appflow.read after each awaited dispatch) and asserts the mask trail is exactly
  *      7 -> 3(toggle) -> 7(undo) -> 3(redo) with correct undo/redo depth movement. THIS is the real
  *      proof undo/redo work: from the running windowed editor, through the registry-dispatch path.
  *   2. ParameterEditReachesRenderPipeline and LayerEditReachesRenderPipeline -- compare the
@@ -52,23 +51,21 @@
  *      edits have independently visible pixel deltas.
  *   3. UndoRedoRestoresRenderByteExact -- capture_75.rgb == capture_25.rgb (undo restores the
  *      layer edit while retaining the parameter edit) and capture_105.rgb == capture_45.rgb (redo
- *      reapplies the layer edit), byte-for-byte. The post-reopen capture also matches frame 105.
- *   4. ParameterSnapshotAndSaveReopenStayCanonical -- bake and preview values match for each
- *      revision, and reopening reports saved program/parameter/mask parity.
+ *      reapplies the layer edit), byte-for-byte.
+ *   4. ParameterSnapshotAndSaveStayCanonical -- bake and preview values match for each revision,
+ *      and the save records the edited layer mask and parameter count. (The reopen-parity leg of
+ *      the old script gate had no AppFlow action to be driven through; see the lane report.)
  *   5. BackButtonReachesReturnInRunningEditor -- back-button -> Return in the running editor
  *      (afterBack == FlowStateId::Editing). Proven + real; unchanged.
  *
- * Frame timeline (matches VIXEN_EDITOR_SCRIPT/VIXEN_EDITOR_CAPTURE_FRAMES in run_editor_script.bat):
- *   frame 5   -- baseline capture, default parameter, all layers enabled.
- *   frames 20-23 -- four parameter_up edits raise the bulge radius past the box boundary.
- *   frame 25  -- capture records the parameter's visible geometry change.
- *   frame 30  -- toggle:2 fires (mask cut becomes visible -- residency is now unconditional, so
- *                this is not confounded with a mip->resident transition).
- *   frame 45  -- capture (post-toggle; differs from frame 20 by the mask cut).
- *   frame 60  -- undo fires.   frame 75 -- capture (mask back to 7, render byte-identical to 25).
- *   frame 90  -- redo fires.   frame 105 -- capture (mask 3 again, byte-identical to 45).
- *   frame 100 -- save. frame 110 -- reopen. frame 115 -- capture (byte-identical to 105).
- *   frame 120 -- settings (NavTo). frame 130 -- back-button (DispatchBySelector("back-button")).
+ * Producer timeline (tools/editor_capture_producer.py; capture labels keep the old frame names):
+ *   capture 5   -- baseline, default parameter, all layers enabled.
+ *   four AdjustParameterUp dispatches raise the bulge radius past the box boundary.
+ *   capture 25  -- records the parameter's visible geometry change (after a 15-frame settle).
+ *   ToggleLayer(2) -- capture 45 (post-toggle; differs from capture 25 by the mask cut).
+ *   Undo           -- capture 75 (mask back to 7, render byte-identical to 25).
+ *   Redo           -- capture 105 (mask 3 again, byte-identical to 45).
+ *   Save, then appflow.navigate(ToSettings) and the back-button selector (Return).
  */
 
 #include <gtest/gtest.h>
@@ -96,9 +93,8 @@ struct Image {
     std::vector<uint8_t> rgb;  // width*height*3, empty if load failed
 };
 
-// VIXEN_EDITOR_CAPTURE_DIR defaults to "temp" in both run_editor_script.bat and
-// EditorApplication's own default (captureDir_ = "temp"); allow an override via the same env
-// name so this test can point at a different capture dir without touching the .bat.
+// The capture producer writes its fixtures under VIXEN_CAPTURE_ROOT/editor (or the queue's
+// capture root); VIXEN_EDITOR_CAPTURE_DIR overrides that for a hand-run fixture.
 std::string CaptureDir() {
     // The box queue supplies this only when the test is running; it must win over the
     // configure-time fallback injected by vixen_gtest_discover_tests.
@@ -145,10 +141,11 @@ int WholeImageDiffPixels(const Image& a, const Image& b) {
     return diff;
 }
 
-// Log dir mirrors CaptureDir()'s VIXEN_EDITOR_CAPTURE_DIR override -- run_editor_script.bat
-// writes the log at "temp\run_editor_script.log" (relative to the VIXEN dir it cd's into),
-// same directory the .bat points VIXEN_EDITOR_CAPTURE_DIR at by default.
+// The editor's own log, written by the capture producer beside the captures.
 std::string LogPath() { return CaptureDir() + "/run_editor_script.log"; }
+
+// The state trail the producer reads back from the editor over the AppFlow channel.
+std::string TrailPath() { return CaptureDir() + "/appflow_state_trail.log"; }
 
 // Parses "key=<int>" out of one log line (positional-by-key, whitespace-delimited). Returns
 // nullopt if the key isn't present. Tolerant of trailing tokens after the value.
@@ -162,7 +159,7 @@ std::optional<int> ParseIntField(const std::string& line, const std::string& key
     return std::nullopt;
 }
 
-// One parsed "[EDITOR/state] <op> mask=.. undoDepth=.. redoDepth=.." edit line.
+// One parsed "[CHANNEL/state] <op> mask=.. undoDepth=.. redoDepth=.." edit line.
 struct EditState {
     std::string op;      // "toggle" | "undo" | "redo"
     int mask = -1;
@@ -170,14 +167,14 @@ struct EditState {
     int redoDepth = -1;
 };
 
-// Scans run_editor_script.log for the ordered "[EDITOR/state] <op> ..." edit lines (toggle/undo/
-// redo), in emission order. Ignores the "[EDITOR/state] capture ..." and "afterBack=" lines --
-// those have no <op>/mask=/depth triple. Returns them in the order the editor logged them.
+// Scans the channel state trail for the ordered "[CHANNEL/state] <op> ..." edit lines (toggle/undo/
+// redo), in emission order. Ignores the parameter, save, settings and "afterBack=" lines -- only
+// these three carry the asserted mask/depth triple. Returns them in the order they were recorded.
 std::vector<EditState> ReadEditStates(const std::string& logPath) {
     std::vector<EditState> out;
     std::ifstream in(logPath);
     if (!in) return out;
-    const std::string marker = "[EDITOR/state] ";
+    const std::string marker = "[CHANNEL/state] ";
     std::string line;
     while (std::getline(in, line)) {
         const size_t pos = line.find(marker);
@@ -185,7 +182,7 @@ std::vector<EditState> ReadEditStates(const std::string& logPath) {
         std::istringstream iss(line.substr(pos + marker.size()));
         std::string op;
         iss >> op;  // first token after the marker
-        if (op != "toggle" && op != "undo" && op != "redo") continue;  // skip capture/afterBack
+        if (op != "toggle" && op != "undo" && op != "redo") continue;  // skip the other steps
         const auto mask = ParseIntField(line, "mask");
         const auto ud   = ParseIntField(line, "undoDepth");
         const auto rd   = ParseIntField(line, "redoDepth");
@@ -195,12 +192,12 @@ std::vector<EditState> ReadEditStates(const std::string& logPath) {
     return out;
 }
 
-// Scans for the LAST "[EDITOR/state] afterBack=<int>" line (last, not first, in case a future
+// Scans for the LAST "[CHANNEL/state] afterBack=<int>" line (last, not first, in case a future
 // script schedules more than one Back). Returns nullopt if absent.
 std::optional<int> ReadAfterBackState(const std::string& logPath) {
     std::ifstream in(logPath);
     if (!in) return std::nullopt;
-    const std::string marker = "[EDITOR/state] afterBack=";
+    const std::string marker = "[CHANNEL/state] afterBack=";
     std::optional<int> found;
     std::string line;
     while (std::getline(in, line)) {
@@ -233,12 +230,12 @@ TEST(EditorToggleUndoCapture, ToggleUndoRedoStateTrailThroughWindowedRun) {
     // state trail it logs on each scripted edit. mask=7 (all layers) -> 3 (layer 2 cut off) -> 7
     // (undo) -> 3 (redo), with the ActionStack depths moving correctly. This exercises the full
     // click-equivalent -> registry -> handler -> ActionStack -> re-flatten path, windowed.
-    const std::string logPath = LogPath();
+    const std::string logPath = TrailPath();
     const std::vector<EditState> edits = ReadEditStates(logPath);
 
     ASSERT_EQ(edits.size(), 3u)
-        << "expected exactly 3 [EDITOR/state] edit lines (toggle,undo,redo) in " << logPath
-        << " -- run VIXEN/temp/run_editor_script.bat first (found " << edits.size() << ")";
+        << "expected exactly 3 [CHANNEL/state] edit lines (toggle,undo,redo) in " << logPath
+        << " -- run the vixen_editor_capture_producer fixture first (found " << edits.size() << ")";
 
     // toggle:2@30 -- mask 7 -> 3; the edit pushes one undo entry, clears redo.
     EXPECT_EQ(edits[0].op, "toggle");
@@ -265,7 +262,7 @@ TEST(EditorToggleUndoCapture, ParameterEditReachesRenderPipeline) {
     const Image png25 = LoadPng(dir + "/editor_capture_25.png");
 
     ASSERT_FALSE(png5.rgb.empty())  << "missing " << dir << "/editor_capture_5.png -- run "
-                                        "VIXEN/temp/run_editor_script.bat first";
+                                        "the vixen_editor_capture_producer fixture first";
     ASSERT_FALSE(png25.rgb.empty()) << "missing " << dir << "/editor_capture_25.png";
     ASSERT_EQ(png5.width, png25.width);
     ASSERT_EQ(png5.height, png25.height);
@@ -295,16 +292,23 @@ TEST(EditorToggleUndoCapture, LayerEditReachesRenderPipeline) {
         << "the layer edit produced too small a render change at the same parameter value";
 }
 
-TEST(EditorToggleUndoCapture, ParameterSnapshotAndSaveReopenStayCanonical) {
+TEST(EditorToggleUndoCapture, ParameterSnapshotAndSaveStayCanonical) {
     std::ifstream in(LogPath());
     ASSERT_TRUE(in.good()) << "cannot read editor log " << LogPath();
 
     bool sawParameterEdit = false;
     bool sawSave = false;
-    bool sawReopen = false;
     bool sawChangedValues = false;
     std::optional<std::string> firstCpuValues;
     std::string line;
+    std::ifstream trail(TrailPath());
+    ASSERT_TRUE(trail.good()) << "cannot read channel state trail " << TrailPath();
+    while (std::getline(trail, line)) {
+        if (line.find("[CHANNEL/state] parameter_up ") != std::string::npos &&
+            line.find("result=Ok") != std::string::npos) {
+            sawParameterEdit = true;
+        }
+    }
     const auto bracketValue = [](const std::string& text, const std::string& field)
         -> std::optional<std::string> {
         const std::string marker = field + "=[";
@@ -317,17 +321,9 @@ TEST(EditorToggleUndoCapture, ParameterSnapshotAndSaveReopenStayCanonical) {
     };
 
     while (std::getline(in, line)) {
-        if (line.find("[EDITOR/state] parameter_up parameterIndex=0") != std::string::npos &&
-            line.find("result=0") != std::string::npos) {
-            sawParameterEdit = true;
-        }
         if (line.find("[EDITOR/state] save ") != std::string::npos &&
             line.find("mask=3 parameterCount=1") != std::string::npos) {
             sawSave = true;
-        }
-        if (line.find("[EDITOR/state] reopen ") != std::string::npos &&
-            line.find("programMatch=1 parametersMatch=1 maskMatch=1") != std::string::npos) {
-            sawReopen = true;
         }
         if (line.find("[EDITOR/snapshot]") == std::string::npos) continue;
 
@@ -340,10 +336,9 @@ TEST(EditorToggleUndoCapture, ParameterSnapshotAndSaveReopenStayCanonical) {
         else if (*cpuValues != *firstCpuValues) sawChangedValues = true;
     }
 
-    EXPECT_TRUE(sawParameterEdit) << "scripted parameter control did not dispatch successfully";
+    EXPECT_TRUE(sawParameterEdit) << "the channel parameter control did not dispatch successfully";
     EXPECT_TRUE(sawChangedValues) << "no changed effective parameter snapshot was recorded";
-    EXPECT_TRUE(sawSave) << "scripted save did not record the edited layer mask and parameter count";
-    EXPECT_TRUE(sawReopen) << "reopened document did not match its saved program, parameters, and mask";
+    EXPECT_TRUE(sawSave) << "the channel save did not record the edited layer mask and parameter count";
 }
 
 TEST(EditorToggleUndoCapture, UndoRedoRestoresRenderByteExact) {
@@ -356,16 +351,14 @@ TEST(EditorToggleUndoCapture, UndoRedoRestoresRenderByteExact) {
     const Image png45  = LoadPng(dir + "/editor_capture_45.png");
     const Image png75  = LoadPng(dir + "/editor_capture_75.png");
     const Image png105 = LoadPng(dir + "/editor_capture_105.png");
-    const Image png115 = LoadPng(dir + "/editor_capture_115.png");
 
     ASSERT_FALSE(png5.rgb.empty())   << "missing " << dir << "/editor_capture_5.png -- run "
-                                         "VIXEN/temp/run_editor_script.bat first";
+                                         "the vixen_editor_capture_producer fixture first";
     ASSERT_FALSE(png45.rgb.empty())  << "missing " << dir << "/editor_capture_45.png";
     ASSERT_FALSE(png75.rgb.empty())  << "missing " << dir << "/editor_capture_75.png";
     ASSERT_FALSE(png105.rgb.empty()) << "missing " << dir << "/editor_capture_105.png";
-    ASSERT_FALSE(png115.rgb.empty()) << "missing " << dir << "/editor_capture_115.png";
 
-    // Undo (frame 60) restores mask=7 while retaining the parameter edit; frame 75 must match 25.
+    // Undo restores mask=7 while retaining the parameter edit; capture 75 must match 25.
     const Image png25 = LoadPng(dir + "/editor_capture_25.png");
     ASSERT_FALSE(png25.rgb.empty()) << "missing " << dir << "/editor_capture_25.png";
     ASSERT_EQ(png75.width, png25.width);
@@ -373,29 +366,24 @@ TEST(EditorToggleUndoCapture, UndoRedoRestoresRenderByteExact) {
     EXPECT_EQ(png75.rgb, png25.rgb)
         << "undo did not restore the layer-edited render byte-for-byte (frame 75 vs frame 25)";
 
-    // Redo (frame 90) re-applies mask=3 -- frame 105's render must byte-match frame 45's.
+    // Redo re-applies mask=3 -- capture 105's render must byte-match capture 45's.
     ASSERT_EQ(png105.width, png45.width);
     ASSERT_EQ(png105.height, png45.height);
     EXPECT_EQ(png105.rgb, png45.rgb)
         << "redo did not restore the render byte-for-byte (frame 105 vs frame 45)";
-
-    ASSERT_EQ(png115.width, png105.width);
-    ASSERT_EQ(png115.height, png105.height);
-    EXPECT_EQ(png115.rgb, png105.rgb)
-        << "reopen changed the saved canonical render (frame 115 vs frame 105)";
 }
 
 TEST(EditorToggleUndoCapture, BackButtonReachesReturnInRunningEditor) {
-    // Inc-4 R6a: settings@100 (NavTo(Settings)) then back@110 (DispatchBySelector("back-button"))
+    // Inc-4 R6a: appflow.navigate(ToSettings) then the back-button selector dispatch
     // -- proves the SAME edge test_flow_return.cpp's FSM unit test proves, but through the real,
     // wired, windowed dispatch path (registry -> BindingStore -> Return handler -> NavPop),
     // exactly as design D15/R6 requires ("prove Esc AND back-button reach Return in the RUNNING
     // editor, not just the unit test").
-    const std::string logPath = LogPath();
+    const std::string logPath = TrailPath();
     const std::optional<int> afterBack = ReadAfterBackState(logPath);
     ASSERT_TRUE(afterBack.has_value())
-        << "missing \"[EDITOR/state] afterBack=\" in " << logPath << " -- run "
-           "VIXEN/temp/run_editor_script.bat first (script must include settings@.../back@...)";
+        << "missing \"[CHANNEL/state] afterBack=\" in " << logPath << " -- run "
+           "the vixen_editor_capture_producer fixture first";
 
     // FlowStateId::Editing == 0 (AppFlow.g.h) -- Settings is only ever entered from Editing in
     // this script, and back-button (bound to FlowActionId::Return in Settings, kSelectorBindings)

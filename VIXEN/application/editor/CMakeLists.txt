@@ -106,22 +106,9 @@ set(VIXEN_EDITOR_PRODUCER_COST 27)
 # process to VIXEN_CAPTURE_ROOT (else UT_QUEUE_CAPTURE_ROOT) at run time so documents, logs, and captures stay together.
 # The shared application test environment supplies Dozen and its loader paths.
 if(BUILD_TESTS AND TARGET VIXEN)
-    # One timeline for the producer, the Windows .bat and the cache gate; the .bat cannot include
-    # CMake, so a drift fails the configure instead of surfacing as a missing capture later.
-    include("${CMAKE_CURRENT_SOURCE_DIR}/editor_capture_contract.cmake")
-    set(_editor_capture_bat "${VIXEN_ROOT}/temp/run_editor_script.bat")
-    file(STRINGS "${_editor_capture_bat}" _editor_capture_bat_lines REGEX "^set VIXEN_(EDITOR_SCRIPT|EDITOR_CAPTURE_FRAMES|EXIT_AFTER_FRAMES)=")
-    foreach(_expected
-        "set VIXEN_EDITOR_SCRIPT=${VIXEN_EDITOR_CAPTURE_SCRIPT}"
-        "set VIXEN_EDITOR_CAPTURE_FRAMES=${VIXEN_EDITOR_CAPTURE_FRAME_LIST}"
-        "set VIXEN_EXIT_AFTER_FRAMES=${VIXEN_EDITOR_CAPTURE_EXIT_AFTER_FRAMES}")
-        if(NOT "${_expected}" IN_LIST _editor_capture_bat_lines)
-            message(FATAL_ERROR "editor capture timeline drift: ${_editor_capture_bat} lacks the line "
-                "'${_expected}'. The shared timeline lives in application/editor/editor_capture_contract.cmake "
-                "(the CTest producer and test_editor_toggle_undo_capture.cpp use it); edit the .bat to match "
-                "so the Windows batch producer and the test do not disagree.")
-        endif()
-    endforeach()
+    # The producer drives the editor through its AppFlow channel (tools/editor_capture_producer.py);
+    # the edit timeline lives there, not in an environment script (R468.4).
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(VIXEN_EDITOR_CAPTURE_ROOT "${VIXEN_CAPTURE_DEFAULT_ROOT}")
     set(VIXEN_EDITOR_CAPTURE_DIR "${VIXEN_EDITOR_CAPTURE_ROOT}/editor")
     file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}")
@@ -132,15 +119,11 @@ if(BUILD_TESTS AND TARGET VIXEN)
         "${VIXEN_EDITOR_TEST_DOCUMENT}" COPYONLY)
     set(VIXEN_EDITOR_TARGET_FILE
         "${VIXEN_BINARIES_DIR}/vixen_editor${CMAKE_EXECUTABLE_SUFFIX}")
-    # Keep the action specification from editor_capture_contract.cmake separate from the
-    # CMake producer path.  The editor consumes VIXEN_EDITOR_SCRIPT as a comma-delimited
-    # action timeline; reusing that variable for the producer made it parse this .cmake file
-    # and silently skip every scripted action.
     set(_editor_capture_cmake_script "${CMAKE_CURRENT_BINARY_DIR}/run_editor_capture.cmake")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_editor_capture.cmake.in"
         "${_editor_capture_cmake_script}" @ONLY)
 
-    vixen_fresh_capture_shell(VIXEN_EDITOR_FRESH editor_capture_ 5 25 45 75 105 115)
+    vixen_fresh_capture_shell(VIXEN_EDITOR_FRESH editor_capture_ 5 25 45 75 105)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME vixen_editor_capture_producer
             COMMAND bash -c
@@ -154,7 +137,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
                 rm -f \"\${capture_dir}\"/*.png
                 export VIXEN_EDITOR_CAPTURE_DIR=\"\${capture_dir}\"
                 ${VIXEN_EDITOR_FRESH_CLEAN}
-                \"$<TARGET_FILE:vixen_editor>\" \"\${document}\" > \"\${capture_dir}/run_editor_script.log\" 2>&1
+                \"${Python3_EXECUTABLE}\" \"${VIXEN_ROOT}/tools/editor_capture_producer.py\" --editor \"$<TARGET_FILE:vixen_editor>\" --document \"\${document}\" --capture-dir \"\${capture_dir}\"
                 compgen -G \"\${capture_dir}/*.png\" > /dev/null || { echo \"vixen_editor wrote no PNG under \${capture_dir} in this run; see \${capture_dir}/run_editor_script.log\" >&2; exit 1; }
                 ${VIXEN_EDITOR_FRESH_CHECK}")
     else()
@@ -171,8 +154,6 @@ if(BUILD_TESTS AND TARGET VIXEN)
         TEST_ENVIRONMENT
             # R426 makes bi-modal cel the body-shading default; keep the legacy test override off.
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=0"
-            "VIXEN_EDITOR_SCRIPT=${VIXEN_EDITOR_CAPTURE_SCRIPT}"
-            "VIXEN_EDITOR_CAPTURE_FRAMES=${VIXEN_EDITOR_CAPTURE_FRAME_LIST}"
             "VIXEN_EDITOR_CAPTURE_DIR=${VIXEN_EDITOR_CAPTURE_DIR}"
             "VIXEN_EDITOR_OFFSCREEN_CAPTURE=1"
             "VIXEN_EDITOR_TEST_CAMERA=top-down"
@@ -181,8 +162,7 @@ if(BUILD_TESTS AND TARGET VIXEN)
             # function of the frame, not of its history.
             "VIXEN_HDR_EXPOSURE_DT=0.5"
             "VIXEN_HDR_EXPOSURE_SPEED_UP=100"
-            "VIXEN_HDR_EXPOSURE_SPEED_DOWN=100"
-            "VIXEN_EXIT_AFTER_FRAMES=${VIXEN_EDITOR_CAPTURE_EXIT_AFTER_FRAMES}")
+            "VIXEN_HDR_EXPOSURE_SPEED_DOWN=100")
 
     if(VIXEN_FAIL_SCENARIOS)
         set(VIXEN_DEVICE_LOSS_LOG "${VIXEN_CAPTURE_DEFAULT_ROOT}/device_loss_recovery.log")
@@ -353,7 +333,6 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
 endif()
 
 if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGET vixen_editor)
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME vixen_editor_appflow_channel_gate
         COMMAND bash -c
             "set -eu

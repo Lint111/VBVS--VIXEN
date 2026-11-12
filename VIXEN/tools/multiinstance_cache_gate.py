@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
-import re
 import shutil
 import struct
 import subprocess
@@ -22,22 +21,6 @@ from typing import IO
 
 from vixen_gpu_env import gpu_test_environment
 
-
-EDITOR_CAPTURE_CONTRACT = (
-    pathlib.Path(__file__).resolve().parent.parent / "application" / "editor" / "editor_capture_contract.cmake"
-)
-
-
-def editor_capture_contract(name: str) -> str:
-    """Read one value of the shared editor capture timeline (the CTest producer uses the same file)."""
-    text = EDITOR_CAPTURE_CONTRACT.read_text(encoding="utf-8")
-    match = re.search(rf'set\(\s*{re.escape(name)}\s+"([^"]*)"\s*\)', text)
-    if match is None:
-        raise SystemExit(
-            f"editor capture contract: {name} not found in {EDITOR_CAPTURE_CONTRACT}; "
-            "keep it as a set(NAME \"value\") entry there"
-        )
-    return match.group(1)
 
 
 def process_state(pid: int) -> str:
@@ -104,8 +87,6 @@ def capture_environment(base: dict[str, str], cache: pathlib.Path, output: pathl
     })
     if editor:
         env.update({
-            "VIXEN_EDITOR_SCRIPT": editor_capture_contract("VIXEN_EDITOR_CAPTURE_SCRIPT"),
-            "VIXEN_EDITOR_CAPTURE_FRAMES": editor_capture_contract("VIXEN_EDITOR_CAPTURE_FRAME_LIST"),
             "VIXEN_EDITOR_CAPTURE_DIR": str(output),
             "VIXEN_EDITOR_OFFSCREEN_CAPTURE": "1",
             "VIXEN_EDITOR_TEST_CAMERA": "top-down",
@@ -129,7 +110,9 @@ def start_app(name: str, executable: pathlib.Path, cache: pathlib.Path, output: 
     if editor:
         document_copy = output / f"{name}.vxd"
         shutil.copy2(document, document_copy)
-        command.append(str(document_copy))
+        # The editor is driven through its AppFlow channel by the capture producer (R468.4).
+        command = [sys.executable, str(pathlib.Path(__file__).resolve().parent / "editor_capture_producer.py"),
+                   "--editor", str(executable), "--document", str(document_copy), "--capture-dir", str(output)]
     return Child(name, command, env, log)
 
 

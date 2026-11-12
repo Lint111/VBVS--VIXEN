@@ -128,3 +128,25 @@ TEST(KeyChord, EqualityAndMods) {
     auto shiftCtrl = static_cast<KeyMod>(static_cast<uint8_t>(KeyMod::Shift) | static_cast<uint8_t>(KeyMod::Ctrl));
     EXPECT_EQ(static_cast<uint8_t>(ctrlShift), static_cast<uint8_t>(shiftCtrl));
 }
+
+// E-channel chord grammar: `appflow.list` emits a chord's mods with ChordModNames and
+// `appflow.dispatch` reads them back with ParseChordMods, so every listed chord round-trips.
+TEST(KeyChord, ListedModsRoundTripThroughDispatchGrammar) {
+    for (const auto& binding : kKeyDefaults) {
+        const std::vector<std::string> names = Vixen::Editor::ChordModNames(binding.chord.mods);
+        KeyMod parsed = KeyMod::Alt;  // must be overwritten, including by None
+        ASSERT_TRUE(Vixen::Editor::ParseChordMods(names, parsed));
+        EXPECT_EQ(static_cast<uint8_t>(parsed), static_cast<uint8_t>(binding.chord.mods));
+    }
+}
+
+TEST(KeyChord, ModNamesAreGeneratedNamesNotIntegers) {
+    const auto ctrlShift = static_cast<KeyMod>(static_cast<uint8_t>(KeyMod::Ctrl) | static_cast<uint8_t>(KeyMod::Shift));
+    EXPECT_EQ(Vixen::Editor::ChordModNames(KeyMod::None), std::vector<std::string>{});
+    EXPECT_EQ(Vixen::Editor::ChordModNames(ctrlShift), (std::vector<std::string>{"Ctrl", "Shift"}));
+    KeyMod parsed = KeyMod::None;
+    EXPECT_TRUE(Vixen::Editor::ParseChordMods({"Shift", "Ctrl"}, parsed));
+    EXPECT_EQ(static_cast<uint8_t>(parsed), static_cast<uint8_t>(ctrlShift));
+    EXPECT_FALSE(Vixen::Editor::ParseChordMods({"Hyper"}, parsed));
+    EXPECT_FALSE(Vixen::Editor::ParseChordMods({"1"}, parsed));
+}

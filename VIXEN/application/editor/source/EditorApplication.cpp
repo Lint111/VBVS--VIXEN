@@ -72,87 +72,8 @@ void TraceEditorLatency(const char* phase, const char* edge, long tick, int acti
 #endif
 }
 
-// Parses selector-equivalent editor operations such as
-// "parameter_up:0@30,program_up:0@45,undo@60,redo@75,save@90,reopen@105".
-// A malformed token is logged and skipped; it never aborts the editor.
-// `logger` may be null (never in practice here, but keeps this a free function testable in
-// isolation without a Logger instance).
-std::vector<EditorApplication::ScriptedAction> ParseEditorScript(const std::string& spec,
-                                                                  Vixen::Log::Logger* logger) {
-    std::vector<EditorApplication::ScriptedAction> actions;
-    std::stringstream ss(spec);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        if (token.empty()) continue;
-        const size_t at = token.find('@');
-        if (at == std::string::npos) {
-            if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: skipping token missing '@frame': " + token);
-            continue;
-        }
-        const std::string actionPart = token.substr(0, at);
-        const std::string framePart  = token.substr(at + 1);
-        if (framePart.empty() || framePart.find_first_not_of("0123456789") != std::string::npos) {
-            if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: skipping token with non-numeric frame: " + token);
-            continue;
-        }
-        const long frame = std::strtol(framePart.c_str(), nullptr, 10);
-
-        const size_t colon = actionPart.find(':');
-        const std::string actionName = (colon == std::string::npos) ? actionPart : actionPart.substr(0, colon);
-
-        EditorApplication::ScriptedAction action;
-        action.frame = frame;
-        const bool needsIndex = actionName == "toggle" || actionName == "delete" ||
-            actionName == "move_up" || actionName == "move_down" ||
-            actionName == "program_up" || actionName == "program_down" ||
-            actionName == "parameter_up" || actionName == "parameter_down";
-        if (needsIndex) {
-            if (colon == std::string::npos) {
-                if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: action requires ':<index>': " + token);
-                continue;
-            }
-            const std::string arg = actionPart.substr(colon + 1);
-            if (arg.empty() || arg.find_first_not_of("0123456789") != std::string::npos) {
-                if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: action index is not numeric: " + token);
-                continue;
-            }
-            action.index = static_cast<uint32_t>(std::strtoul(arg.c_str(), nullptr, 10));
-            if (actionName == "toggle") action.kind = EditorApplication::ScriptedAction::Kind::Toggle;
-            else if (actionName == "delete") action.kind = EditorApplication::ScriptedAction::Kind::DeleteLayer;
-            else if (actionName == "move_up") action.kind = EditorApplication::ScriptedAction::Kind::MoveLayerUp;
-            else if (actionName == "move_down") action.kind = EditorApplication::ScriptedAction::Kind::MoveLayerDown;
-            else if (actionName == "program_up") action.kind = EditorApplication::ScriptedAction::Kind::ProgramFieldUp;
-            else if (actionName == "program_down") action.kind = EditorApplication::ScriptedAction::Kind::ProgramFieldDown;
-            else if (actionName == "parameter_up") action.kind = EditorApplication::ScriptedAction::Kind::ParameterUp;
-            else action.kind = EditorApplication::ScriptedAction::Kind::ParameterDown;
-        } else if (colon != std::string::npos) {
-            if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: action does not take an index: " + token);
-            continue;
-        } else if (actionName == "create") {
-            action.kind = EditorApplication::ScriptedAction::Kind::CreateLayer;
-        } else if (actionName == "undo") {
-            action.kind = EditorApplication::ScriptedAction::Kind::Undo;
-        } else if (actionName == "redo") {
-            action.kind = EditorApplication::ScriptedAction::Kind::Redo;
-        } else if (actionName == "save") {
-            action.kind = EditorApplication::ScriptedAction::Kind::Save;
-        } else if (actionName == "reopen") {
-            action.kind = EditorApplication::ScriptedAction::Kind::Reopen;
-        } else if (actionName == "settings") {
-            action.kind = EditorApplication::ScriptedAction::Kind::Settings;
-        } else if (actionName == "back") {
-            action.kind = EditorApplication::ScriptedAction::Kind::Back;
-        } else {
-            if (logger) logger->Warning("[EditorApplication] VIXEN_EDITOR_SCRIPT: unknown action, skipping: " + token);
-            continue;
-        }
-        actions.push_back(action);
-    }
-    return actions;
-}
-
 // Parses "0,45,75,105" into frame numbers. Malformed entries are skipped with a warning (same
-// never-abort contract as ParseEditorScript).
+// never-abort contract as the rest of the capture controls).
 std::vector<long> ParseCaptureFrames(const std::string& spec, Vixen::Log::Logger* logger) {
     std::vector<long> frames;
     std::stringstream ss(spec);
@@ -357,6 +278,13 @@ EditorApplication::~EditorApplication() {
     Vixen::App::DestroyEditorLayersView(layersView_);
 }
 
+void EditorApplication::DeInitialize() {
+    // The readback ring owns Vulkan objects of the device that the base teardown destroys; freeing
+    // them afterwards (member destruction) hit an invalid device on every clean channel session.
+    appFlowReadback_.reset();
+    VulkanGraphApplication::DeInitialize();
+}
+
 void EditorApplication::RefreshLayersView() {
     std::vector<Vixen::App::EditorLayerData> layers;
     layers.reserve(doc_.LayerCount());
@@ -429,11 +357,11 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     Vixen::Editor::EditorDocumentModel candidate;
     Vixen::Editor::DocumentDiagnostic diagnostic;
     if (!candidate.Load(path, diagnostic)) {
-        lastEditorError_ = diagnostic.message;
+        ReportEditorDiagnostic(diagnostic);
         return false;
     }
     if (rt_.Load(nullptr, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
-        lastEditorError_ = "AppFlowRuntime initial load failed";
+        ReportEditorError("AppFlowRuntime initial load failed");
         return false;
     }
     rt_.Layers().SetLayerCount(candidate.LayerCount());
@@ -449,7 +377,7 @@ bool EditorApplication::LoadDocument(const std::string& path) {
 
     doc_ = std::move(candidate);
     documentPath_ = path;
-    lastEditorError_.clear();
+    ClearEditorError();
 
     // Inc-A2: initial model->view population -- the editor layer view's bound "layers" array now
     // reflects the ACTUAL mask/names/ops of the freshly loaded document (was static markup with 3
@@ -457,6 +385,8 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     // SetLayerCount resync above.
     RefreshLayersView();
 
+    channelGroupOpen_ = false;
+    channelGroupLabel_.clear();
     RegisterAppFlowHandlers();
     std::error_code appFlowEc;
     appFlowMtime_ = std::filesystem::last_write_time(appFlowPath_, appFlowEc);
@@ -471,8 +401,9 @@ void EditorApplication::RegisterAppFlowHandlers() {
     rt_.RegisterHandler(FlowActionId::ToggleLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         const uint32_t idx = ParseParam(p, "layerIndex");
         if (idx >= doc_.LayerCount()) {
-            logger_->Warning("[EditorApplication] ToggleLayer ignored invalid layerIndex=" +
-                             std::to_string(idx));
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::InvalidLayerIndex,
+                "ToggleLayer: layerIndex " + std::to_string(idx) + " is outside the " +
+                std::to_string(doc_.LayerCount()) + " document layers"});
             return;
         }
         const bool wasEnabled = ((doc_.EnabledMask() >> idx) & 1u) != 0u;
@@ -481,7 +412,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
                              [this, idx, wasEnabled, nextEnabled](bool forward) {
                 Vixen::Editor::DocumentDiagnostic diagnostic;
                 if (!doc_.SetLayerEnabled(idx, forward ? nextEnabled : wasEnabled, diagnostic)) {
-                    lastEditorError_ = diagnostic.message;
+                    ReportEditorDiagnostic(diagnostic);
                     logger_->Error("[EditorApplication] ToggleLayer operation failed: " +
                                    diagnostic.message);
                     return;
@@ -492,7 +423,9 @@ void EditorApplication::RegisterAppFlowHandlers() {
 
     rt_.RegisterHandler(FlowActionId::CreateLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
         if (doc_.LayerCount() >= Vixen::Editor::EditorDocumentModel::kMaximumLayerCount) {
-            logger_->Warning("[EditorApplication] CreateLayer ignored: document layer limit reached");
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::TooManyLayers,
+                "CreateLayer: the document already holds the maximum of " +
+                std::to_string(Vixen::Editor::EditorDocumentModel::kMaximumLayerCount) + " layers"});
             return;
         }
         Vixen::Editor::EditableDocumentLayer layer;
@@ -509,7 +442,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
                 ? doc_.InsertLayer(index, layer, diagnostic)
                 : doc_.DeleteLayer(index, nullptr, diagnostic);
             if (!ok) {
-                lastEditorError_ = diagnostic.message;
+                ReportEditorDiagnostic(diagnostic);
                 logger_->Error("[EditorApplication] CreateLayer operation failed: " + diagnostic.message);
                 return;
             }
@@ -520,13 +453,14 @@ void EditorApplication::RegisterAppFlowHandlers() {
     rt_.RegisterHandler(FlowActionId::DeleteLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         const uint32_t index = ParseParam(p, "layerIndex");
         if (doc_.LayerCount() <= 1u) {
-            logger_->Warning("[EditorApplication] DeleteLayer ignored: a document must retain one rule layer");
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::InvalidLayerIndex,
+                "DeleteLayer: a document must retain one rule layer"});
             return;
         }
         Vixen::Editor::EditableDocumentLayer removed;
         Vixen::Editor::DocumentDiagnostic diagnostic;
         if (!doc_.GetLayer(index, removed, diagnostic)) {
-            logger_->Warning("[EditorApplication] DeleteLayer ignored: " + diagnostic.message);
+            ReportEditorDiagnostic(diagnostic);
             return;
         }
         rt_.Stack().Dispatch(FlowActionId::DeleteLayer, [this, index, removed](bool forward) {
@@ -535,7 +469,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
                 ? doc_.DeleteLayer(index, nullptr, opDiagnostic)
                 : doc_.InsertLayer(index, removed, opDiagnostic);
             if (!ok) {
-                lastEditorError_ = opDiagnostic.message;
+                ReportEditorDiagnostic(opDiagnostic);
                 logger_->Error("[EditorApplication] DeleteLayer operation failed: " + opDiagnostic.message);
                 return;
             }
@@ -547,12 +481,17 @@ void EditorApplication::RegisterAppFlowHandlers() {
         rt_.RegisterHandler(actionId, [this, actionId, up](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
             const uint32_t from = ParseParam(p, "layerIndex");
             if (from >= doc_.LayerCount() || (up && from == 0u) ||
-                (!up && from + 1u >= doc_.LayerCount())) return;
+                (!up && from + 1u >= doc_.LayerCount())) {
+                ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::InvalidLayerIndex,
+                    "MoveLayer: layer " + std::to_string(from) + " cannot move " + (up ? "up" : "down") +
+                    " in a document of " + std::to_string(doc_.LayerCount()) + " layers"});
+                return;
+            }
             const uint32_t to = up ? from - 1u : from + 1u;
             rt_.Stack().Dispatch(actionId, [this, from, to](bool forward) {
                 Vixen::Editor::DocumentDiagnostic diagnostic;
                 if (!doc_.MoveLayer(forward ? from : to, forward ? to : from, diagnostic)) {
-                    lastEditorError_ = diagnostic.message;
+                    ReportEditorDiagnostic(diagnostic);
                     logger_->Error("[EditorApplication] MoveLayer operation failed: " + diagnostic.message);
                     return;
                 }
@@ -571,7 +510,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
             float before = 0.0f;
             Vixen::Editor::DocumentDiagnostic diagnostic;
             if (!doc_.GetLayerProgramField(layerIndex, kInstruction, kData0, before, diagnostic)) {
-                logger_->Warning("[EditorApplication] EditProgramField ignored: " + diagnostic.message);
+                ReportEditorDiagnostic(diagnostic);
                 return;
             }
             const float after = before + (increase ? 0.25f : -0.25f);
@@ -581,7 +520,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
                 Vixen::Editor::DocumentDiagnostic opDiagnostic;
                 if (!doc_.SetLayerProgramField(layerIndex, kInstruction, kData0,
                                                forward ? after : before, opDiagnostic)) {
-                    lastEditorError_ = opDiagnostic.message;
+                    ReportEditorDiagnostic(opDiagnostic);
                     logger_->Error("[EditorApplication] EditProgramField operation failed: " + opDiagnostic.message);
                     return;
                 }
@@ -595,7 +534,12 @@ void EditorApplication::RegisterAppFlowHandlers() {
     auto registerParameterEdit = [this](FlowActionId actionId, bool increase) {
         rt_.RegisterHandler(actionId, [this, actionId, increase](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
             const uint32_t index = ParseParam(p, "parameterIndex");
-            if (index >= doc_.ParameterCount()) return;
+            if (index >= doc_.ParameterCount()) {
+                ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::InvalidParameterValue,
+                    "AdjustParameter: parameterIndex " + std::to_string(index) + " is outside the " +
+                    std::to_string(doc_.ParameterCount()) + " document parameters"});
+                return;
+            }
             const float span = doc_.ParameterMax(index) - doc_.ParameterMin(index);
             const float step = span > 0.0f ? span / 8.0f : 0.1f;
             CommitParameter(actionId, index, doc_.ParameterValue(index) + (increase ? step : -step));
@@ -663,7 +607,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
         pack_.Refresh();
         std::string path;
         if (!pack_.TryResolve(recipeId, path)) {
-            lastEditorError_ = "OpenRecipe: the open pack has no recipe '" + recipeId + "'";
+            ReportEditorError("OpenRecipe: the open pack has no recipe '" + recipeId + "'");
             logger_->Warning("[EditorApplication] " + lastEditorError_);
             return;
         }
@@ -671,9 +615,17 @@ void EditorApplication::RegisterAppFlowHandlers() {
     });
 
     rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        if (channelGroupOpen_) {
+            ReportEditorError("Undo: refused while the undo group '" + channelGroupLabel_ + "' is open", "GroupOpen");
+            return;
+        }
         rt_.Stack().Undo();
     });
     rt_.RegisterHandler(FlowActionId::Redo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        if (channelGroupOpen_) {
+            ReportEditorError("Redo: refused while the undo group '" + channelGroupLabel_ + "' is open", "GroupOpen");
+            return;
+        }
         rt_.Stack().Redo();
     });
     rt_.RegisterHandler(FlowActionId::Save, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
@@ -814,12 +766,12 @@ void EditorApplication::BuildRenderGraph() {
                 proceduralPreviewRegistered_ = true;
                 lastProceduralProgram_ = entry.bytecode;
             } else {
-                lastEditorError_ = "RegisterProceduralRecipe failed (code " +
-                    std::to_string(static_cast<int>(result)) + ")";
+                ReportEditorError("RegisterProceduralRecipe failed (code " +
+                    std::to_string(static_cast<int>(result)) + ")");
                 logger_->Error("[EditorApplication] " + lastEditorError_);
             }
         } else {
-            lastEditorError_ = diagnostic.message;
+            ReportEditorDiagnostic(diagnostic);
             logger_->Error("[EditorApplication] BuildRenderGraph could not flatten the preview: " + lastEditorError_);
         }
     }
@@ -870,7 +822,7 @@ void EditorApplication::CommitParameter(Vixen::AppFlow::Generated::FlowActionId 
     rt_.Stack().Dispatch(actionId, [this, index, before, after](bool forward) {
         Vixen::Editor::DocumentDiagnostic diagnostic;
         if (!doc_.SetParameterValue(index, forward ? after : before, diagnostic)) {
-            lastEditorError_ = diagnostic.message;
+            ReportEditorDiagnostic(diagnostic);
             logger_->Error("[EditorApplication] SetParameter operation failed: " + diagnostic.message);
             return;
         }
@@ -954,7 +906,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     Vixen::Editor::DocumentDiagnostic diagnostic;
     const Vixen::Editor::DocumentBakeSnapshot snapshot = doc_.CaptureBakeSnapshot();
     if (!doc_.FlattenToRecipeEntry(entry, snapshot, diagnostic)) {
-        lastEditorError_ = diagnostic.message;
+        ReportEditorDiagnostic(diagnostic);
         return false;
     }
     ApplyEditorPreviewBounds(entry, doc_);
@@ -966,8 +918,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     if (!proceduralPreviewRegistered_) {
         const auto result = RegisterProceduralRecipe(kEditorProceduralRecipeId, entry);
         if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
-            lastEditorError_ = "RegisterProceduralRecipe failed (code " +
-                std::to_string(static_cast<int>(result)) + ")";
+            ReportEditorError("RegisterProceduralRecipe failed (code " +
+                std::to_string(static_cast<int>(result)) + ")");
             return false;
         }
         proceduralPreviewRegistered_ = true;
@@ -978,8 +930,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     } else if (!SameProgram(entry.bytecode, lastProceduralProgram_)) {
         const auto result = ReplaceProceduralRecipe(kEditorProceduralRecipeId, entry);
         if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
-            lastEditorError_ = "ReplaceProceduralRecipe failed (code " +
-                std::to_string(static_cast<int>(result)) + ")";
+            ReportEditorError("ReplaceProceduralRecipe failed (code " +
+                std::to_string(static_cast<int>(result)) + ")");
             return false;
         }
         lastProceduralProgram_ = entry.bytecode;
@@ -994,8 +946,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     static constexpr uint32_t kRecipeId = 1u;
     const auto result = reg.Register(kRecipeId, entry);
     if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
-        lastEditorError_ = "RecipeRegistry::Register failed (code " +
-                            std::to_string(static_cast<int>(result)) + ")";
+        ReportEditorError("RecipeRegistry::Register failed (code " +
+                          std::to_string(static_cast<int>(result)) + ")");
         return false;
     }
 
@@ -1034,7 +986,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     if (entry.parameterValues.size() != snapshot.parameterValues.size() ||
         !std::equal(snapshot.parameterValues.begin(), snapshot.parameterValues.end(),
                     entry.parameterValues.begin())) {
-        lastEditorError_ = "CPU bake and virtual preview parameter snapshots diverged";
+        ReportEditorError("CPU bake and virtual preview parameter snapshots diverged");
         return false;
     }
 
@@ -1141,7 +1093,7 @@ bool EditorApplication::SaveDocument() {
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
     Vixen::Editor::DocumentDiagnostic diagnostic;
     if (!doc_.FlattenToRecipeEntry(canonical, snapshot, diagnostic)) {
-        lastEditorError_ = diagnostic.message;
+        ReportEditorDiagnostic(diagnostic);
         return false;
     }
 
@@ -1150,17 +1102,17 @@ bool EditorApplication::SaveDocument() {
         // R765: a pack recipe saves its layered document back into the pack's authored form; the pack
         // build flattens it. No side file and no flattened .vrc is written.
         if (!pack_.TryResolve(openRecipeId_, outPath)) {
-            lastEditorError_ = "the open pack no longer lists recipe '" + openRecipeId_ + "'";
+            ReportEditorError("the open pack no longer lists recipe '" + openRecipeId_ + "'");
             return false;
         }
         std::vector<uint8_t> bytes;
         if (!doc_.Serialize(bytes, diagnostic)) {
-            lastEditorError_ = diagnostic.message;
+            ReportEditorDiagnostic(diagnostic);
             return false;
         }
         std::string writeError;
         if (!Vixen::Editor::PackRecipeSource::WriteAtomically(outPath, bytes, writeError)) {
-            lastEditorError_ = writeError;
+            ReportEditorError(writeError);
             return false;
         }
     } else {
@@ -1168,7 +1120,7 @@ bool EditorApplication::SaveDocument() {
         const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
         outPath = base + ".edited.vxd";
         if (!doc_.Save(outPath, diagnostic)) {
-            lastEditorError_ = diagnostic.message;
+            ReportEditorDiagnostic(diagnostic);
             return false;
         }
     }
@@ -1176,7 +1128,7 @@ bool EditorApplication::SaveDocument() {
     lastSavedProgram_ = std::move(canonical.bytecode);
     lastSavedParameters_ = snapshot.parameterValues;
     lastSavedMask_ = doc_.EnabledMask();
-    lastEditorError_.clear();
+    ClearEditorError();
     logger_->Info("[EditorApplication] Saved document to " + outPath);
     std::ostringstream state;
     state << "[EDITOR/state] save revision=" << snapshot.revision << " mask=" << lastSavedMask_
@@ -1188,20 +1140,20 @@ bool EditorApplication::SaveDocument() {
 
 bool EditorApplication::ReopenSavedDocument() {
     if (lastSavedPath_.empty()) {
-        lastEditorError_ = "ReopenSavedDocument requires a successful save first";
+        ReportEditorError("ReopenSavedDocument requires a successful save first");
         return false;
     }
     Vixen::Editor::EditorDocumentModel candidate;
     Vixen::Editor::DocumentDiagnostic diagnostic;
     if (!candidate.Load(lastSavedPath_, diagnostic)) {
-        lastEditorError_ = diagnostic.message;
+        ReportEditorDiagnostic(diagnostic);
         return false;
     }
 
     const auto snapshot = candidate.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
     if (!candidate.FlattenToRecipeEntry(canonical, snapshot, diagnostic)) {
-        lastEditorError_ = diagnostic.message;
+        ReportEditorDiagnostic(diagnostic);
         return false;
     }
     const bool programMatch = SameProgram(canonical.bytecode, lastSavedProgram_);
@@ -1209,7 +1161,7 @@ bool EditorApplication::ReopenSavedDocument() {
                                             lastSavedParameters_.begin());
     const bool maskMatch = candidate.EnabledMask() == lastSavedMask_;
     if (!programMatch || !parametersMatch || !maskMatch) {
-        lastEditorError_ = "reopened document differs from the saved canonical program, parameters, or layer mask";
+        ReportEditorError("reopened document differs from the saved canonical program, parameters, or layer mask");
         logger_->Error("[EditorApplication] " + lastEditorError_);
         return false;
     }
@@ -1224,15 +1176,17 @@ bool EditorApplication::AdoptDocument(Vixen::Editor::EditorDocumentModel candida
     auto blob = Vixen::AppFlow::AppFlowBlobFile::Load(appFlowPath_);
     const Vixen::AppFlow::Generated::AppFlowContainerView* view = blob ? &blob->View() : nullptr;
     if (rt_.Load(view, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
-        lastEditorError_ = "AppFlowRuntime reload failed while adopting a document";
+        ReportEditorError("AppFlowRuntime reload failed while adopting a document");
         return false;
     }
+    channelGroupOpen_ = false;  // the reloaded runtime starts with an empty undo history
+    channelGroupLabel_.clear();
     doc_ = std::move(candidate);
     rt_.Layers().SetLayerCount(doc_.LayerCount());
     rt_.Layers().SetMask(doc_.EnabledMask());
     RegisterAppFlowHandlers();
     SyncAfterDocumentMutation();
-    lastEditorError_.clear();
+    ClearEditorError();
     return true;
 }
 
@@ -1247,7 +1201,8 @@ void EditorApplication::RefreshStatusView() {
     Vixen::App::EditorStatusData status;
     status.document = !openRecipeId_.empty() ? openRecipeId_
         : std::filesystem::path(documentPath_).filename().string();
-    status.message = !lastEditorError_.empty() ? lastEditorError_ : statusMessage_;
+    status.message = !lastEditorError_.empty()
+        ? "[" + lastEditorDiagnosticCode_ + "] " + lastEditorError_ : statusMessage_;
     status.flowState = std::string(magic_enum::enum_name(rt_.Current()));
     status.undoDepth = static_cast<uint32_t>(rt_.Stack().UndoDepth());
     status.redoDepth = static_cast<uint32_t>(rt_.Stack().RedoDepth());
@@ -1302,7 +1257,7 @@ void EditorApplication::AfterPanelVerb(const char* verb, Vixen::RenderGraph::Doc
 bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::string& schemaPath) {
     std::string error;
     if (!pack_.Configure(packRoot, schemaPath, error)) {
-        lastEditorError_ = error;
+        ReportEditorError(error);
         return false;
     }
     logger_->Info("[EDITOR/state] pack root=" + pack_.PackRoot() + " id=" + pack_.PackId() +
@@ -1315,7 +1270,7 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
 bool EditorApplication::OpenPackRecipe(const std::string& recipeId) {
     std::string path;
     if (!pack_.TryResolve(recipeId, path)) {
-        lastEditorError_ = "the open pack has no recipe '" + recipeId + "'";
+        ReportEditorError("the open pack has no recipe '" + recipeId + "'");
         return false;
     }
     if (GetRenderGraph() == nullptr) {
@@ -1325,7 +1280,7 @@ bool EditorApplication::OpenPackRecipe(const std::string& recipeId) {
         Vixen::Editor::EditorDocumentModel candidate;
         Vixen::Editor::DocumentDiagnostic diagnostic;
         if (!candidate.Load(path, diagnostic)) {
-            lastEditorError_ = diagnostic.message;
+            ReportEditorDiagnostic(diagnostic);
             return false;
         }
         if (!AdoptDocument(std::move(candidate))) return false;
@@ -1353,153 +1308,19 @@ bool EditorApplication::OpenPackRecipe(const std::string& recipeId) {
 
 void EditorApplication::PreTick() {
     TraceEditorLatency("frame", "begin", updateTick_);
+    AttachAppFlowEventBus();
     if (channelPaused_ && channelStepBudget_ == 0) return;
-    // graph.Run() consolidation: the scripted-action injector runs in PreTick() (before Update())
-    // instead of at the top of Update(). Behavior-identical: PreTick() is called by
-    // VulkanApplicationBase::Tick() immediately before Update(), and updateTick_ only advances at
-    // the END of Update() -- so the injector sees the same updateTick_ it saw when it lived inside
-    // Update(), and the dirty_ it sets is re-flattened by Update()'s existing dirty tail the same
-    // tick. Own try/catch (mirrors Update()'s) so a malformed script never throws across the tick.
-    try {
-    // Inc-2b Task 4: parse VIXEN_EDITOR_SCRIPT / VIXEN_EDITOR_CAPTURE_FRAMES /
-    // VIXEN_EDITOR_CAPTURE_DIR exactly once (mirrors VulkanGraphApplication.cpp's
-    // VIXEN_RESIZE_AT_FRAME static-init-on-first-use pattern, adapted to a per-instance flag
-    // since these are member vectors, not process-wide statics). Unset envs parse to empty
-    // vectors, so every check below is a no-op -- zero behaviour change for the interactive editor.
-    if (!scriptParsed_) {
-        scriptParsed_ = true;
-        if (const char* scriptEnv = std::getenv("VIXEN_EDITOR_SCRIPT")) {
-            scriptedActions_ = ParseEditorScript(scriptEnv, logger_.get());
-        }
+    // Capture-fixture controls (VIXEN_EDITOR_CAPTURE_FRAMES / VIXEN_EDITOR_CAPTURE_DIR), parsed once.
+    // Unset envs leave them empty, so the interactive editor is unchanged. Edits are never injected
+    // here: an agent or test drives them through the AppFlow channel (R468.4).
+    if (!captureEnvParsed_) {
+        captureEnvParsed_ = true;
         if (const char* captureEnv = std::getenv("VIXEN_EDITOR_CAPTURE_FRAMES")) {
             captureFrames_ = ParseCaptureFrames(captureEnv, logger_.get());
         }
         if (const char* dirEnv = std::getenv("VIXEN_EDITOR_CAPTURE_DIR")) {
             captureDir_ = dirEnv;
         }
-    }
-
-    // Inject any scripted action due this tick through the SAME dispatch path the interactive
-    // input drives (design §4.3: the editor is a pure consumer, it names zero actions in code
-    // beyond a selector/key) -- exercising the real click-equivalent/key-equivalent ->
-    // registry -> handler -> ActionStack -> re-flatten dispatch, not a shortcut.
-    for (const auto& action : scriptedActions_) {
-        if (action.frame != updateTick_) continue;
-        TraceEditorLatency("dispatch", "begin", updateTick_, static_cast<int>(action.kind));
-        switch (action.kind) {
-            // The three edit kinds emit one canonical, parseable "[EDITOR/state] <op> ..." line
-            // each (mask + undo/redo depths + dispatch result). This state-dump is the R6 gate's
-            // real proof that undo/redo work: it asserts the mask trail (7->3->7->3) and depth
-            // movement come out of the RUNNING editor through the registry-dispatch path. It is NOT
-            // debug noise -- it is the observable contract the windowed gate parses (a windowed
-            // PIXEL round-trip is unreachable here: the editor body renders the mask-INVARIANT
-            // mip-fallback path at an orbit camera, so the layer mask has ~0 visible effect --
-            // proven via GPU-memory checksums + a shader-output tap; see the R6 finding note in
-            // Vixen-Docs/01-Architecture and test_editor_toggle_undo_capture.cpp's header). Keep the
-            // key=value shape stable: ReadEditStates() in that gate parses it positionally by key.
-            case ScriptedAction::Kind::Toggle: {
-                const auto r = rt_.DispatchBySelector("layer-" + std::to_string(action.index) + "-toggle");
-                logger_->Info("[EDITOR/state] toggle mask=" + std::to_string(rt_.Layers().Mask()) +
-                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
-                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
-                               " result=" + std::to_string(static_cast<int>(r)));
-                break;
-            }
-            case ScriptedAction::Kind::CreateLayer: {
-                const auto r = rt_.DispatchBySelector("add-layer");
-                logger_->Info("[EDITOR/state] create layerCount=" + std::to_string(doc_.LayerCount()) +
-                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
-                               " result=" + std::to_string(static_cast<int>(r)));
-                break;
-            }
-            case ScriptedAction::Kind::DeleteLayer:
-            case ScriptedAction::Kind::MoveLayerUp:
-            case ScriptedAction::Kind::MoveLayerDown:
-            case ScriptedAction::Kind::ProgramFieldUp:
-            case ScriptedAction::Kind::ProgramFieldDown: {
-                const std::string index = std::to_string(action.index);
-                const char* suffix = "";
-                const char* label = "";
-                switch (action.kind) {
-                    case ScriptedAction::Kind::DeleteLayer: suffix = "-delete"; label = "delete"; break;
-                    case ScriptedAction::Kind::MoveLayerUp: suffix = "-up"; label = "move_up"; break;
-                    case ScriptedAction::Kind::MoveLayerDown: suffix = "-down"; label = "move_down"; break;
-                    case ScriptedAction::Kind::ProgramFieldUp: suffix = "-program-up"; label = "program_up"; break;
-                    case ScriptedAction::Kind::ProgramFieldDown: suffix = "-program-down"; label = "program_down"; break;
-                    default: break;
-                }
-                const auto r = rt_.DispatchBySelector("layer-" + index + suffix);
-                logger_->Info("[EDITOR/state] " + std::string(label) + " layerCount=" +
-                               std::to_string(doc_.LayerCount()) + " revision=" +
-                               std::to_string(doc_.Revision()) + " undoDepth=" +
-                               std::to_string(rt_.Stack().UndoDepth()) + " result=" +
-                               std::to_string(static_cast<int>(r)));
-                break;
-            }
-            case ScriptedAction::Kind::ParameterUp:
-            case ScriptedAction::Kind::ParameterDown: {
-                const char* suffix = action.kind == ScriptedAction::Kind::ParameterUp ? "-up" : "-down";
-                const char* label = action.kind == ScriptedAction::Kind::ParameterUp ? "parameter_up" : "parameter_down";
-                const auto r = rt_.DispatchBySelector("parameter-" + std::to_string(action.index) + suffix);
-                const float value = doc_.ParameterValue(action.index);
-                logger_->Info("[EDITOR/state] " + std::string(label) + " parameterIndex=" +
-                               std::to_string(action.index) + " value=" + std::to_string(value) +
-                               " revision=" + std::to_string(doc_.Revision()) + " result=" +
-                               std::to_string(static_cast<int>(r)));
-                break;
-            }
-            case ScriptedAction::Kind::Undo: {
-                const auto r = rt_.DispatchBySelector("undo-button");
-                logger_->Info("[EDITOR/state] undo mask=" + std::to_string(rt_.Layers().Mask()) +
-                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
-                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
-                               " result=" + std::to_string(static_cast<int>(r)));
-                break;
-            }
-            case ScriptedAction::Kind::Redo: {
-                const auto r = rt_.DispatchBySelector("redo-button");
-                logger_->Info("[EDITOR/state] redo mask=" + std::to_string(rt_.Layers().Mask()) +
-                               " undoDepth=" + std::to_string(rt_.Stack().UndoDepth()) +
-                               " redoDepth=" + std::to_string(rt_.Stack().RedoDepth()) +
-                               " result=" + std::to_string(static_cast<int>(r)));
-                break;
-            }
-            case ScriptedAction::Kind::Save: {
-                const auto r = rt_.DispatchBySelector("save-button");
-                logger_->Info("[EDITOR/state] save dispatch=" +
-                               std::to_string(static_cast<int>(r)) + " path=" + lastSavedPath_);
-                break;
-            }
-            case ScriptedAction::Kind::Reopen:
-                if (!ReopenSavedDocument()) {
-                    logger_->Error("[EditorApplication] scripted reopen failed: " + lastEditorError_);
-                }
-                break;
-            case ScriptedAction::Kind::Settings:
-                // This scripted system request names the generated declaration and its cause.
-                rt_.NavTo(Vixen::AppFlow::Generated::FlowEdgeId::ToSettings,
-                          {Vixen::AppFlow::FlowTriggerKind::System, "EditorApplication"});
-                break;
-            case ScriptedAction::Kind::Back: {
-                // The real dispatch path a back-button UI click takes: DispatchBySelector, exactly
-                // like Update()'s click-drain call site -- not a shortcut to NavPop(). Emits a
-                // parseable state-dump line so run_editor_script.bat's log can be asserted against
-                // by the windowed gtest (a windowed capture can't cheaply show a state pop; this is
-                // the state-dump-hook option the plan calls out, R6 Step 3).
-                rt_.DispatchBySelector("back-button");
-                logger_->Info("[EDITOR/state] afterBack=" +
-                               std::to_string(static_cast<int>(rt_.Current())));
-                break;
-            }
-        }
-        TraceEditorLatency("dispatch", "end", updateTick_, static_cast<int>(action.kind));
-    }
-    } catch (const std::exception& e) {
-        lastEditorError_ = std::string("PreTick: ") + e.what();
-        logger_->Error("[EditorApplication] PreTick exception: " + lastEditorError_);
-    } catch (...) {
-        lastEditorError_ = "PreTick: unknown exception";
-        logger_->Error("[EditorApplication] PreTick unknown exception");
     }
 }
 
@@ -1606,12 +1427,13 @@ void EditorApplication::Update() {
     ++updateTick_;
     if (channelPaused_ && channelStepBudget_ > 0) --channelStepBudget_;
     } catch (const std::exception& e) {
-        lastEditorError_ = std::string("Update failed: ") + e.what();
+        ReportEditorError(std::string("Update failed: ") + e.what());
         logger_->Error("[EditorApplication] Update: " + lastEditorError_);
     } catch (...) {
-        lastEditorError_ = "Update failed: unknown (non-std) exception";
+        ReportEditorError("Update failed: unknown (non-std) exception");
         logger_->Error("[EditorApplication] Update: " + lastEditorError_);
     }
+    ++channelUpdateSerial_;  // E6b: this Update ran to its end; the next presented frame reflects it
 }
 
 void EditorApplication::PostTick() {
@@ -1629,6 +1451,14 @@ void EditorApplication::PostTick() {
     }
     VulkanGraphApplication::PostTick();
     ++channelPresentedFrame_;
+    for (auto pending = channelActionPending_.begin(); pending != channelActionPending_.end();) {
+        if (channelUpdateSerial_ >= pending->second) {
+            channelActionFrames_[pending->first] = channelPresentedFrame_;
+            pending = channelActionPending_.erase(pending);
+        } else {
+            ++pending;
+        }
+    }
     if (appFlowChannel_) {
         appFlowChannel_->SetPresentedFrame(channelPresentedFrame_);
         StartPendingReadbacks();
@@ -1671,8 +1501,15 @@ void EditorApplication::StartPendingReadbacks() {
     }
 
     auto* target = static_cast<IRenderTarget*>(nullptr);
+    // The swapchain's IRenderTarget::GetCurrentIndex() is never advanced after an acquire (it stays 0),
+    // so the image just presented comes from the swapchain node itself (E6b).
+    uint32_t imageIndex = 0;
+    bool haveImageIndex = false;
     if (auto* swapInstance = graph->GetInstanceByName("main_swapchain")) {
-        target = static_cast<SwapChainNode*>(swapInstance)->GetSwapchainPublic();
+        auto* swapNode = static_cast<SwapChainNode*>(swapInstance);
+        target = swapNode->GetSwapchainPublic();
+        imageIndex = swapNode->GetCurrentImageIndex();
+        haveImageIndex = true;
     }
     if (!target) {
         auto* renderTargetInstance = graph->GetInstanceByName("compute_render_target");
@@ -1681,6 +1518,7 @@ void EditorApplication::StartPendingReadbacks() {
             if (output) target = output->GetHandle<IRenderTarget*>();
         }
     }
+    if (target && !haveImageIndex) imageIndex = target->GetCurrentIndex();
     if (!target) {
         for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
             channelReadbackResults_[it->first] = nlohmann::json{{"error", "native render target is unavailable"}}.dump();
@@ -1713,10 +1551,17 @@ void EditorApplication::StartPendingReadbacks() {
 
     for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
         PendingReadback& pending = it->second;
-        if (pending.enqueued || pending.frame > channelPresentedFrame_) { ++it; continue; }
+        // E6b: a dispatch-attached readback waits for the first frame presented after an Update that
+        // reflected its action (View reconcile + scene re-apply), then reads that frame.
+        const bool actionBound = pending.requiredSerial != 0;
+        if (pending.enqueued) { ++it; continue; }
+        if (actionBound) {
+            if (channelUpdateSerial_ < pending.requiredSerial) { ++it; continue; }
+            pending.frame = channelPresentedFrame_;
+        } else if (pending.frame > channelPresentedFrame_) { ++it; continue; }
         const std::string key = it->first;
         try {
-            if (pending.frame < channelPresentedFrame_) {
+            if (!actionBound && pending.frame < channelPresentedFrame_) {
                 throw std::runtime_error("selected frame passed before its readback was staged");
             }
             const nlohmann::json spec = nlohmann::json::parse(pending.spec);
@@ -1804,7 +1649,7 @@ void EditorApplication::StartPendingReadbacks() {
             if (!appFlowReadback_) appFlowReadback_ = std::make_unique<AppFlowReadbackRing>();
             std::string error;
             if (!appFlowReadback_->Enqueue(key, pending.frame, device, device->queue,
-                    device->graphicsQueueIndex, target, x, y, width, height, error)) {
+                    device->graphicsQueueIndex, target, imageIndex, x, y, width, height, error)) {
                 throw std::runtime_error(error);
             }
             pending.enqueued = true;
@@ -1889,7 +1734,56 @@ void EditorApplication::StartPendingReadbacks() {
     }
 }
 
+void EditorApplication::ReportEditorDiagnostic(const Vixen::Editor::DocumentDiagnostic& diagnostic) {
+    ReportEditorError(diagnostic.message, std::string(magic_enum::enum_name(diagnostic.code)));
+}
+
+void EditorApplication::ReportEditorError(std::string message, std::string code) {
+    lastEditorError_ = std::move(message);
+    lastEditorDiagnosticCode_ = std::move(code);
+    logger_->Warning("[EditorApplication] diagnostic " + lastEditorDiagnosticCode_ + ": " + lastEditorError_);
+    RecordAppFlowEvent("diagnostic", {{"code", lastEditorDiagnosticCode_}, {"message", lastEditorError_}});
+}
+
+void EditorApplication::ClearEditorError() {
+    lastEditorError_.clear();
+    lastEditorDiagnosticCode_.clear();
+}
+
+void EditorApplication::AttachAppFlowEventBus() {
+    using namespace Vixen::AppFlow;
+    auto* graph = GetRenderGraph();
+    auto* bus = graph ? graph->GetMessageBus() : nullptr;
+    if (!bus || bus == appFlowBus_) return;
+    appFlowBus_ = bus;
+    rt_.SetEventBus(bus, /*sender*/ 1);
+    // The runtime publishes with PublishImmediate on this thread; the channel log mirrors what it says.
+    bus->Subscribe(AppFlowEdgeEvent::TYPE, [this](const Vixen::EventBus::BaseEventMessage& message) {
+        const auto& edge = static_cast<const AppFlowEdgeEvent&>(message);
+        RecordAppFlowEvent("flow.edge", {{"edge", edge.edgeId}, {"cause", edge.cause.identity},
+                                         {"from", std::string(magic_enum::enum_name(edge.from))},
+                                         {"to", std::string(magic_enum::enum_name(edge.to))}});
+        return false;
+    });
+    bus->Subscribe(AppFlowDiagnosticEvent::TYPE, [this](const Vixen::EventBus::BaseEventMessage& message) {
+        const auto& diagnostic = static_cast<const AppFlowDiagnosticEvent&>(message);
+        RecordAppFlowEvent("flow.diagnostic", {{"message", diagnostic.message}});
+        return false;
+    });
+    bus->Subscribe(AppFlowChangedEvent::TYPE, [this](const Vixen::EventBus::BaseEventMessage& message) {
+        const auto& changed = static_cast<const AppFlowChangedEvent&>(message);
+        static constexpr const char* kKind[] = {"flow.state", "flow.action", "flow.undone", "flow.redone"};
+        RecordAppFlowEvent(kKind[static_cast<int>(changed.kind)],
+                           {{"actionId", static_cast<uint16_t>(changed.action)}, {"group", changed.group}});
+        return false;
+    });
+}
+
 void EditorApplication::RecordAppFlowEvent(const std::string& type) {
+    RecordAppFlowEvent(type, nlohmann::json::object());
+}
+
+void EditorApplication::RecordAppFlowEvent(const std::string& type, nlohmann::json detail) {
     if (!appFlowChannel_) return;
     using namespace Vixen::AppFlow;
     using namespace Vixen::AppFlow::Generated;
@@ -1902,6 +1796,7 @@ void EditorApplication::RecordAppFlowEvent(const std::string& type) {
         {"redoDepth", rt_.Stack().RedoDepth()},
         {"layerMask", doc_.EnabledMask()}
     };
+    if (!detail.empty()) event["detail"] = std::move(detail);
     channelEvents_.push_back(event.dump());
     if (channelEvents_.size() > 256) channelEvents_.erase(channelEvents_.begin());
 }
@@ -1940,7 +1835,7 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         for (const auto& key : kKeyDefaults) {
             keys.push_back({{"id", key.id}, {"actionId", static_cast<uint16_t>(key.action)},
                             {"key", std::string(magic_enum::enum_name(key.chord.key))},
-                            {"mods", static_cast<uint8_t>(key.chord.mods)},
+                            {"mods", Vixen::Editor::ChordModNames(key.chord.mods)},
                             {"scope", EnumRecord(key.scope)}, {"state", EnumRecord(key.state)}});
         }
         nlohmann::json transitions = nlohmann::json::array();
@@ -2035,16 +1930,20 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             KeyMod mods = KeyMod::None;
             if (chord.contains("mods")) {
                 if (!chord.at("mods").is_array()) throw std::runtime_error("chord mods must be an array");
+                std::vector<std::string> names;
                 for (const auto& modValue : chord.at("mods")) {
                     if (!modValue.is_string()) throw std::runtime_error("each chord mod must be a string");
-                    const auto mod = magic_enum::enum_cast<KeyMod>(modValue.get<std::string>());
-                    if (!mod) throw std::runtime_error("unknown generated chord modifier");
-                    mods = static_cast<KeyMod>(static_cast<uint8_t>(mods) | static_cast<uint8_t>(*mod));
+                    names.push_back(modValue.get<std::string>());
+                }
+                if (!Vixen::Editor::ParseChordMods(names, mods)) {
+                    throw std::runtime_error("unknown generated chord modifier");
                 }
             }
             result = rt_.DispatchByKey({*key, mods});
         }
-        channelActionFrames_[actionKey] = channelPresentedFrame_ + 1;
+        const uint64_t requiredSerial = channelUpdateSerial_ + 1;
+        channelActionFrames_.erase(actionKey);
+        channelActionPending_[actionKey] = requiredSerial;
         RecordAppFlowEvent("dispatch");
         const nlohmann::json response{
             {"dispatchResult", {{"code", static_cast<int>(result)},
@@ -2058,7 +1957,8 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         if (params.contains("readback")) {
             const auto& visual = params.at("readback");
             channelReadbacks_[actionKey] = PendingReadback{
-                visual.dump(), channelPresentedFrame_ + 1, std::chrono::steady_clock::now(), false};
+                visual.dump(), channelPresentedFrame_ + 1, requiredSerial,
+                std::chrono::steady_clock::now(), false};
             channelDeferredDispatchResults_[actionKey] = response.dump();
             return std::nullopt;
         }
@@ -2125,6 +2025,8 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             {"pack", {{"root", pack_.PackRoot()}, {"id", pack_.PackId()}, {"recipes", std::move(recipes)},
                       {"open", openRecipeId_}, {"lastSaved", lastSavedPath_}}},
             {"panelLayout", nlohmann::json::parse(Panels().LayoutJson())},
+            {"diagnostic", {{"code", lastEditorDiagnosticCode_}, {"message", lastEditorError_}}},
+            {"group", {{"open", channelGroupOpen_}, {"label", channelGroupLabel_}}},
             {"frame", channelPresentedFrame_}
         }.dump();
     }
@@ -2143,6 +2045,7 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         uint64_t frame = 0;
         if (params.contains("actionId")) {
             const std::string actionKey = RequestKey(params.at("actionId"));
+            if (channelActionPending_.contains(actionKey)) return std::nullopt;  // not reflected yet
             const auto found = channelActionFrames_.find(actionKey);
             if (found == channelActionFrames_.end()) throw std::runtime_error("unknown actionId; dispatch it first");
             frame = found->second;
@@ -2153,6 +2056,58 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         }
         if (channelPresentedFrame_ < frame) return std::nullopt;
         return nlohmann::json{{"presented", true}, {"frame", channelPresentedFrame_}, {"targetFrame", frame}}.dump();
+    }
+
+    if (method == "appflow.begin_group" || method == "appflow.end_group") {
+        const bool begin = method == "appflow.begin_group";
+        std::string outcome = "Ok";
+        if (begin) {
+            const std::string label = params.value("label", std::string{});
+            if (label.empty()) throw std::runtime_error("begin_group requires a non-empty label");
+            if (channelGroupOpen_) {
+                outcome = "NestedGroupRefused";
+            } else {
+                channelGroupOpen_ = true;
+                channelGroupLabel_ = label;
+                rt_.Stack().BeginGroup(++channelGroupSerial_);
+                RecordAppFlowEvent("group.begin", {{"label", label}, {"group", channelGroupSerial_}});
+            }
+        } else if (!channelGroupOpen_) {
+            outcome = "NoOpenGroupRefused";
+        } else {
+            rt_.Stack().EndGroup();
+            channelGroupOpen_ = false;
+            RecordAppFlowEvent("group.end", {{"label", channelGroupLabel_}, {"group", channelGroupSerial_}});
+        }
+        return nlohmann::json{{"group", {{"result", outcome}, {"open", channelGroupOpen_},
+                                          {"label", channelGroupLabel_}}},
+                              {"undoDepth", rt_.Stack().UndoDepth()},
+                              {"redoDepth", rt_.Stack().RedoDepth()}}.dump();
+    }
+
+    if (method == "appflow.navigate") {
+        // A flow transition named by its generated edge id (the ids appflow.list reports under
+        // "transitions"); the runtime applies the edge's guard and records the cause.
+        if (!params.contains("edge") || !params.at("edge").is_string()) {
+            throw std::runtime_error("navigate requires a generated transition edge id");
+        }
+        const std::string edge = params.at("edge").get<std::string>();
+        bool declared = false;
+        for (const auto& candidate : kTransitions) if (edge == candidate.id) declared = true;
+        if (!declared) throw std::runtime_error("edge is not in the generated transition catalog");
+        const DispatchResult result = rt_.NavTo(edge, {FlowTriggerKind::System, "AppFlowChannel"});
+        RecordAppFlowEvent("navigate", {{"edge", edge}, {"result", std::string(magic_enum::enum_name(result))}});
+        return nlohmann::json{{"dispatchResult", {{"code", static_cast<int>(result)},
+                                                   {"name", std::string(magic_enum::enum_name(result))}}},
+                              {"flowState", EnumRecord(rt_.Current())}}.dump();
+    }
+
+    if (method == "appflow.quit") {
+        // Orderly shutdown through the same path a closed window takes (system acknowledgements, log and
+        // cache extraction), so a finished agent or test session does not end as a killed process.
+        RecordAppFlowEvent("quit");
+        HandleShutdownRequest();
+        return nlohmann::json{{"quitting", true}, {"frame", channelPresentedFrame_}}.dump();
     }
 
     if (method == "appflow.pause") {
@@ -2191,6 +2146,12 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         if (params.contains("actionId")) {
             const std::string actionKey = RequestKey(params.at("actionId"));
             const auto actionFrame = channelActionFrames_.find(actionKey);
+            if (const auto reflecting = channelActionPending_.find(actionKey);
+                reflecting != channelActionPending_.end()) {
+                channelReadbacks_[requestKey] = PendingReadback{
+                    params.dump(), 0, reflecting->second, std::chrono::steady_clock::now(), false};
+                return std::nullopt;
+            }
             if (actionFrame == channelActionFrames_.end()) throw std::runtime_error("unknown actionId for readback");
             targetFrame = actionFrame->second;
         } else if (params.contains("frame")) {
@@ -2201,7 +2162,7 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             throw std::runtime_error("requested frame has already passed; attach readback to dispatch or request the next frame");
         }
         channelReadbacks_[requestKey] = PendingReadback{
-            params.dump(), targetFrame, std::chrono::steady_clock::now(), false};
+            params.dump(), targetFrame, 0, std::chrono::steady_clock::now(), false};
         return std::nullopt;
     }
 
