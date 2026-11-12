@@ -4,6 +4,7 @@
 #include "EditorDocumentFraming.h"
 #include "EditorDocumentModel.h"
 #include "Recipe/generated/RecipeContainer.g.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "Recipe/RecipeServices.h"
 
 #include <chrono>
