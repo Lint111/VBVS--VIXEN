@@ -64,6 +64,7 @@ per-session buffer and returns them to `subscribe(after)`; it does not stream un
 | `appflow.dispatch` | exactly one generated action ID plus typed `params`, selector, or key chord; optional selected `readback` | typed `DispatchResult`, request correlation ID, target frame and undo/redo depths; with readback, the first presented frame's pixels |
 | `appflow.read` | optional generated noun ID/name | current readable view values, flow state, undo/redo depth, the last diagnostic (`code`, `message`), the open undo group and frame |
 | `appflow.begin_group` / `appflow.end_group` | `label` for `begin_group` | typed `group.result` (`Ok`, `NestedGroupRefused`, `NoOpenGroupRefused`) and undo/redo depths; every dispatch between them is one undo step (one agent task, one `undo`) |
+| `appflow.quit` | none | orderly shutdown through the window-close path (system acknowledgements, log and cache extraction); a session ends cleanly instead of as a killed process |
 | `appflow.navigate` | generated transition edge id (from `appflow.list` `transitions`) | typed `DispatchResult` and the new flow state |
 | `appflow.subscribe` | last event sequence | buffered events after that sequence: `dispatch`, `view.reconcile`, `diagnostic` (`detail.code`, `detail.message`), `group.begin`/`group.end`, `navigate`, and the runtime's own bus events (`flow.edge`, `flow.action`, `flow.undone`, `flow.redone`, `flow.diagnostic`), plus latest sequence |
 | `appflow.await_frame` | dispatch request ID or frame number | first completed/presented frame at or after the target |

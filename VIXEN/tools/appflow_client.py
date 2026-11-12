@@ -98,6 +98,9 @@ class AppFlowClient:
             params["frame"] = frame
         return self.call("appflow.readback", params)
 
+    def quit(self) -> dict[str, Any]:
+        return self.call("appflow.quit")
+
     def navigate(self, edge: str) -> dict[str, Any]:
         return self.call("appflow.navigate", {"edge": edge})
 

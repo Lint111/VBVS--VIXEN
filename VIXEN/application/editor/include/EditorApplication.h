@@ -55,6 +55,7 @@ public:
     ~EditorApplication() override;
 
     void BuildRenderGraph() override;
+    void DeInitialize() override;  // frees the channel's readback ring before the device goes
     void PreTick() override;   // attaches the event bus; parses the capture-fixture env once
     void Update() override;
     void PostTick() override;  // captures scripted frames after this tick's Render()

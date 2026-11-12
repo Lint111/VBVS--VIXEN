@@ -257,6 +257,13 @@ EditorApplication::~EditorApplication() {
     Vixen::App::DestroyEditorLayersView(layersView_);
 }
 
+void EditorApplication::DeInitialize() {
+    // The readback ring owns Vulkan objects of the device that the base teardown destroys; freeing
+    // them afterwards (member destruction) hit an invalid device on every clean channel session.
+    appFlowReadback_.reset();
+    VulkanGraphApplication::DeInitialize();
+}
+
 void EditorApplication::RefreshLayersView() {
     std::vector<Vixen::App::EditorLayerData> layers;
     layers.reserve(doc_.LayerCount());
@@ -1964,6 +1971,14 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         return nlohmann::json{{"dispatchResult", {{"code", static_cast<int>(result)},
                                                    {"name", std::string(magic_enum::enum_name(result))}}},
                               {"flowState", EnumRecord(rt_.Current())}}.dump();
+    }
+
+    if (method == "appflow.quit") {
+        // Orderly shutdown through the same path a closed window takes (system acknowledgements, log and
+        // cache extraction), so a finished agent or test session does not end as a killed process.
+        RecordAppFlowEvent("quit");
+        HandleShutdownRequest();
+        return nlohmann::json{{"quitting", true}, {"frame", channelPresentedFrame_}}.dump();
     }
 
     if (method == "appflow.pause") {

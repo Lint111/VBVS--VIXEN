@@ -78,6 +78,11 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "appflow.quit",
+        "description": "Shut the editor down in order, the way closing its window does.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "appflow.navigate",
         "description": "Take a flow transition by its generated edge id (the ids appflow.list reports under transitions).",
         "inputSchema": {"type": "object", "properties": {"edge": {"type": "string", "minLength": 1}}, "required": ["edge"], "additionalProperties": False},
@@ -128,6 +133,8 @@ def tool_content(name: str, arguments: dict[str, Any], client: AppFlowClient) ->
             action_id=arguments.get("actionId"),
             frame=arguments.get("frame"),
         )
+    elif name == "appflow.quit":
+        result = client.quit()
     elif name == "appflow.navigate":
         result = client.navigate(arguments["edge"])
     elif name == "appflow.begin_group":

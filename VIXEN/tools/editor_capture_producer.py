@@ -29,6 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from appflow_client import AppFlowClient  # noqa: E402
 
 SETTLE_FRAMES = 15  # presented frames between an edit and its capture (scene residency catches up)
+CHANGE_POLL_FRAMES = 5  # presented frames between re-reads while waiting for an edit to reach the pixels
+CHANGE_TIMEOUT_SECONDS = 180  # an edit that never changes the image is captured as it is; the test then reports it
 
 
 class Producer:
@@ -66,26 +68,34 @@ class Producer:
     def action(self, op: str, name: str, **params) -> None:
         self.dispatch(op, actionId=self.actions[name]["id"], params=params)
 
-    def capture(self, label: int) -> None:
-        shot = self.client.readback({"type": "fullFrame"}, format="png")
+    def capture(self, label: int, differs_from: int | None = None) -> int:
+        """Reads the scene target; with differs_from, keeps reading (bounded) until the image changed,
+        because a structural edit reaches the pixels only after the recipe pipeline has caught up."""
+        deadline = time.monotonic() + CHANGE_TIMEOUT_SECONDS
+        while True:
+            shot = self.client.readback({"type": "fullFrame"}, format="png")
+            if differs_from is None or shot["hash"] != differs_from or time.monotonic() > deadline:
+                break
+            self.client.await_frame(after_frame=shot["frame"] + CHANGE_POLL_FRAMES)
         (self.capture_dir / f"editor_capture_{label}.png").write_bytes(base64.b64decode(shot["pixelsBase64"]))
+        return int(shot["hash"])
 
     def run(self) -> None:
         self.client.await_frame(after_frame=5)
-        self.capture(5)
+        baseline = self.capture(5)
         for _ in range(4):
             self.action("parameter_up", "AdjustParameterUp", parameterIndex=0)
         self.settle()
-        self.capture(25)
+        edited = self.capture(25, differs_from=baseline)
         self.action("toggle", "ToggleLayer", layerIndex=2)
         self.settle()
-        self.capture(45)
+        cut = self.capture(45, differs_from=edited)
         self.action("undo", "Undo")
         self.settle()
-        self.capture(75)
+        self.capture(75, differs_from=cut)
         self.action("redo", "Redo")
         self.settle()
-        self.capture(105)
+        self.capture(105, differs_from=edited)
         self.action("save", "Save")
         reply = self.client.navigate("ToSettings")
         self.trail.write(f"[CHANNEL/state] settings flowState={reply['flowState']['name']}\n")
@@ -93,6 +103,7 @@ class Producer:
         after = self.client.read()
         self.trail.write(f"[CHANNEL/state] afterBack={after['flowState']['id']}\n")
         self.trail.flush()
+        self.client.quit()
 
 
 def main() -> int:
@@ -114,6 +125,7 @@ def main() -> int:
         with (args.capture_dir / "run_editor_script.log").open("w", encoding="utf-8") as log:
             editor = subprocess.Popen([str(args.editor), str(args.document)], stdout=log,
                                       stderr=subprocess.STDOUT, env=environment)
+            finished = False
             try:
                 deadline = time.monotonic() + 120
                 while not descriptor.exists():
@@ -123,7 +135,13 @@ def main() -> int:
                         raise RuntimeError("editor did not publish its channel descriptor within 120 s")
                     time.sleep(0.05)
                 Producer(AppFlowClient(descriptor, timeout=240), args.capture_dir).run()
+                finished = True
             finally:
+                if finished:
+                    try:
+                        editor.wait(timeout=120)  # appflow.quit asked for an orderly shutdown
+                    except subprocess.TimeoutExpired:
+                        pass
                 if editor.poll() is None:
                     editor.terminate()
                     try:

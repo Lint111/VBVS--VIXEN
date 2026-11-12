@@ -241,6 +241,44 @@ def main() -> int:
 
                 events = mcp.tool("appflow.subscribe", {"after": 0})
                 assert any(event["type"] == "view.reconcile" for event in events["events"]), events
+
+                # E18: one labelled undo group is one undo step; nested and unbalanced calls are refused.
+                depth_before_group = state_after_redo["undoDepth"]
+                opened = mcp.tool("appflow.begin_group", {"label": "gate: three parameter steps"})
+                assert opened["group"]["result"] == "Ok", opened
+                nested = mcp.tool("appflow.begin_group", {"label": "nested"})
+                assert nested["group"]["result"] == "NestedGroupRefused", nested
+                for _ in range(3):
+                    grouped_edit = mcp.tool("appflow.dispatch", {
+                        "actionId": parameter_up["id"], "params": {parameter_up_param: 0}})
+                    assert grouped_edit["dispatchResult"]["name"] == "Ok", grouped_edit
+                closed = mcp.tool("appflow.end_group")
+                assert closed["group"]["result"] == "Ok", closed
+                assert closed["undoDepth"] == depth_before_group + 1, closed
+                unbalanced = mcp.tool("appflow.end_group")
+                assert unbalanced["group"]["result"] == "NoOpenGroupRefused", unbalanced
+                grouped_undo = mcp.tool("appflow.dispatch", {"actionId": undo_id, "params": {}})
+                assert (grouped_undo["undoDepth"], grouped_undo["redoDepth"]) == (depth_before_group, 1), grouped_undo
+                group_events = [event["type"] for event in mcp.tool("appflow.subscribe", {"after": 0})["events"]]
+                assert "group.begin" in group_events and "group.end" in group_events, group_events
+
+                # E15: an invalid edit is visible as a typed diagnostic (status line text, read, event).
+                bad = mcp.tool("appflow.dispatch", {"actionId": toggle_id, "params": {toggle_param: 99}})
+                assert bad["dispatchResult"]["name"] == "Ok", bad
+                diagnosed = mcp.tool("appflow.read")
+                assert diagnosed["diagnostic"]["code"] == "InvalidLayerIndex", diagnosed["diagnostic"]
+                diagnostic_events = [event for event in mcp.tool("appflow.subscribe", {"after": 0})["events"]
+                                     if event["type"] == "diagnostic"]
+                assert diagnostic_events and diagnostic_events[-1]["detail"]["code"] == "InvalidLayerIndex", diagnostic_events
+
+                # Chord grammar: a chord listed by appflow.list dispatches exactly as listed.
+                undo_chord = next(chord for chord in listed["chords"] if chord["actionId"] == undo_id)
+                assert undo_chord["mods"] == ["Ctrl"] and isinstance(undo_chord["mods"], list), undo_chord
+                depth_before_chord = diagnosed["undoDepth"]
+                chorded = mcp.tool("appflow.dispatch", {
+                    "chord": {"key": undo_chord["key"], "mods": undo_chord["mods"]}})
+                assert chorded["dispatchResult"]["name"] == "Ok", chorded
+                assert chorded["undoDepth"] == depth_before_chord - 1, chorded
                 region = mcp.tool("appflow.readback", {
                     "selection": {"type": "sceneInstance", "reference": {"type": "bodyInstance", "index": 0}},
                     "format": "raw",
