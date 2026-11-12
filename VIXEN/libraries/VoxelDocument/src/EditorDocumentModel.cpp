@@ -618,8 +618,9 @@ bool EditorDocumentModel::GetLayerTransform(uint32_t index, LayerTransform& out,
     out.position = {xform.data[0], xform.data[1], xform.data[2]};
     const auto euler = EulerFromQuaternion(
         {-xform.data[4], -xform.data[5], -xform.data[6], xform.data[7]});
-    out.rotationDegrees = {euler[0] * kRadiansToDegrees, euler[1] * kRadiansToDegrees,
-                           euler[2] * kRadiansToDegrees};
+    // + 0.0f turns a decoded -0 into +0, so an untouched axis reads 0 and not -0.
+    out.rotationDegrees = {euler[0] * kRadiansToDegrees + 0.0f, euler[1] * kRadiansToDegrees + 0.0f,
+                           euler[2] * kRadiansToDegrees + 0.0f};
     out.scale = {1.0f / xform.data[8], 1.0f / xform.data[9], 1.0f / xform.data[10]};
     return true;
 }

@@ -8,6 +8,7 @@
 #include "Recipe/RecipeBounds.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -459,6 +460,16 @@ TEST(EditorDocumentModelShape, TransformInsertsUpdatesAndRemovesTheWrapperAndFla
         EXPECT_NEAR(read.position[i], placed.position[i], 1e-5f);
         EXPECT_NEAR(read.rotationDegrees[i], placed.rotationDegrees[i], 1e-3f);
         EXPECT_NEAR(read.scale[i], placed.scale[i], 1e-5f);
+    }
+
+    // An untouched axis never reads back as -0 (the inspector would print it).
+    Vixen::Editor::LayerTransform moved;
+    moved.position = {1.0f, 0.0f, 0.0f};
+    ASSERT_TRUE(model.SetLayerTransform(0u, moved, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.GetLayerTransform(0u, read, diagnostic)) << diagnostic.message;
+    for (const float degrees : read.rotationDegrees) {
+        EXPECT_EQ(degrees, 0.0f);
+        EXPECT_FALSE(std::signbit(degrees));
     }
 
     // A quarter turn about z: inverse rotation quaternion is (0, 0, -sin45, cos45).
