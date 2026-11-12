@@ -625,8 +625,8 @@ private:
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
 #endif
 
-    // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's
-    // VIXEN_EDITOR_SCRIPT/_CAPTURE_FRAMES/_CAPTURE_DIR harness — this app has no subclass, so it
+    // Task 5: scripted HUD-inject + byte-exact capture harness (modelled on the capture harness the editor used before its
+    // AppFlow channel replaced its env script (R468.4) — this app has no subclass, so it
     // attaches directly here). All zero-cost/inert when VIXEN_HUD_* env vars are unset.
     long hudUpdateTick_ = 0;               // local tick counter, independent of other counters in Update()
     bool hudScriptParsed_ = false;         // guards the one-time env parse in PreTick()

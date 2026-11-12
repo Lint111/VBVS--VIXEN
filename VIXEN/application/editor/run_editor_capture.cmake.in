@@ -1,8 +1,10 @@
-# Native fixture producer for the editor file-assertion tests.
+# Native fixture producer for the editor file-assertion tests: drives the editor through its AppFlow
+# channel (tools/editor_capture_producer.py).
 # execute_process provides the stdout/stderr capture that the Linux producer gets from
 # its shell redirection, while remaining valid for a Windows CTest COMMAND (where a bare
 # `>` would otherwise be parsed as a separate cmd.exe command).
 set(_editor_exe "@VIXEN_EDITOR_TARGET_FILE@")
+set(_editor_producer "@VIXEN_ROOT@/tools/editor_capture_producer.py")
 set(_editor_document "@VIXEN_EDITOR_TEST_DOCUMENT@")
 set(_editor_capture_dir "@VIXEN_EDITOR_CAPTURE_DIR@")
 if(DEFINED ENV{VIXEN_EDITOR_CAPTURE_DIR} AND NOT "$ENV{VIXEN_EDITOR_CAPTURE_DIR}" STREQUAL "")
@@ -10,11 +12,10 @@ if(DEFINED ENV{VIXEN_EDITOR_CAPTURE_DIR} AND NOT "$ENV{VIXEN_EDITOR_CAPTURE_DIR}
 endif()
 file(MAKE_DIRECTORY "${_editor_capture_dir}")
 execute_process(
-    COMMAND "${_editor_exe}" "${_editor_document}"
+    COMMAND "@Python3_EXECUTABLE@" "${_editor_producer}" --editor "${_editor_exe}"
+        --document "${_editor_document}" --capture-dir "${_editor_capture_dir}"
     WORKING_DIRECTORY "@VIXEN_BINARIES_DIR@"
-    OUTPUT_FILE "${_editor_capture_dir}/run_editor_script.log"
-    ERROR_FILE "${_editor_capture_dir}/run_editor_script.log"
     RESULT_VARIABLE _editor_result)
 if(NOT _editor_result EQUAL 0)
-    message(FATAL_ERROR "vixen_editor exited with code ${_editor_result}")
+    message(FATAL_ERROR "the editor capture producer exited with code ${_editor_result} (editor log: ${_editor_capture_dir}/run_editor_script.log)")
 endif()
