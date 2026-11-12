@@ -163,6 +163,11 @@ TEST_F(PanelDockDocumentsTest, EditorPanelsShareOneModelAndLandInTheirRegions) {
     EXPECT_GE(layerToggle.y, (720.0f - 28.0f) / 2.0f);  // second split of the left region
     const auto parameterUp = Offset(panelDocs_.at("inspector"), "parameter-0-up");
     EXPECT_GE(parameterUp.x, frame.viewport.x + frame.viewport.width);
+    // R765 typed parameters: each row's value label (the ScrubParameter selector) and reset button resolve to
+    // elements, with the row index spliced into the id by the data expression.
+    EXPECT_TRUE(panelDocs_.at("inspector")->GetElementById("parameter-0-value") != nullptr);
+    EXPECT_TRUE(panelDocs_.at("inspector")->GetElementById("parameter-0-reset") != nullptr);
+    EXPECT_FALSE(panelDocs_.at("inspector")->GetElementById("parameter-0-value")->GetAttribute("hit-mask", Rml::String("x")) == Rml::String("x"));
     EXPECT_NE(panelDocs_.at("status")->GetInnerRML().find("witness:boulder"), std::string::npos);
 
     // Chrome: a tab per headed panel at the computed position, closable panels get a close button,

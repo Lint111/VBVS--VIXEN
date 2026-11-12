@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0xCE7796BCu;
+inline constexpr uint32_t kAppFlowShapeHash = 0xEC5F7C10u;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -16,12 +16,12 @@ inline constexpr std::array<FlowStateId, 0> kTerminalStateIds = {  };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, OrbitCamera=24, PanCamera=25, ZoomCamera=26, FrameAsset=27, SetViewAngle=28, SelectViewAngle0=29, SelectViewAngle1=30, SelectViewAngle2=31, SelectViewAngle3=32, SetParameter=33, ResetParameter=34, ScrubParameter=35 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
 
-enum class KeyId : uint16_t { None=0, A=1, B=2, C=3, D=4, E=5, F=6, G=7, H=8, I=9, J=10, K=11, L=12, M=13, N=14, O=15, P=16, Q=17, R=18, S=19, T=20, U=21, V=22, W=23, X=24, Y=25, Z=26, Escape=27 };
+enum class KeyId : uint16_t { None=0, A=1, B=2, C=3, D=4, E=5, F=6, G=7, H=8, I=9, J=10, K=11, L=12, M=13, N=14, O=15, P=16, Q=17, R=18, S=19, T=20, U=21, V=22, W=23, X=24, Y=25, Z=26, Escape=27, Digit0=28, Digit1=29, Digit2=30, Digit3=31, Digit4=32, Digit5=33, Digit6=34, Digit7=35, Digit8=36, Digit9=37, F1=38, F2=39, F3=40, F4=41, F5=42, F6=43, F7=44, F8=45, F9=46, F10=47, F11=48, F12=49, Left=50, Right=51, Up=52, Down=53, Delete=54, Backspace=55, Tab=56, Space=57, Enter=58, Home=59, End=60, PageUp=61, PageDown=62 };
 
 enum class KeyMod : uint8_t { None=0, Ctrl=1, Shift=2, Alt=4, Super=8 };
 
@@ -60,6 +60,8 @@ namespace FlowElementTriggerId {
     inline constexpr const char* EditProgramFieldDownTrigger = "EditProgramFieldDownTrigger";
     inline constexpr const char* AdjustParameterUpTrigger = "AdjustParameterUpTrigger";
     inline constexpr const char* AdjustParameterDownTrigger = "AdjustParameterDownTrigger";
+    inline constexpr const char* ScrubParameterTrigger = "ScrubParameterTrigger";
+    inline constexpr const char* ResetParameterTrigger = "ResetParameterTrigger";
     inline constexpr const char* OpenRecipeTrigger = "OpenRecipeTrigger";
     inline constexpr const char* UndoButtonTrigger = "UndoButtonTrigger";
     inline constexpr const char* RedoButtonTrigger = "RedoButtonTrigger";
@@ -74,6 +76,11 @@ namespace FlowKeyDefaultId {
     inline constexpr const char* UndoKey = "UndoKey";
     inline constexpr const char* RedoKey = "RedoKey";
     inline constexpr const char* SaveKey = "SaveKey";
+    inline constexpr const char* FrameAssetKey = "FrameAssetKey";
+    inline constexpr const char* ViewAngle0Key = "ViewAngle0Key";
+    inline constexpr const char* ViewAngle1Key = "ViewAngle1Key";
+    inline constexpr const char* ViewAngle2Key = "ViewAngle2Key";
+    inline constexpr const char* ViewAngle3Key = "ViewAngle3Key";
     inline constexpr const char* SettingsUndoOverride = "SettingsUndoOverride";
 }
 namespace FlowReturnEdgeId {
@@ -107,6 +114,13 @@ inline constexpr FlowParamSchema kMovePanelParams[] = { {"panelId", FlowParamTyp
 inline constexpr FlowParamSchema kSplitPanelParams[] = { {"panelId", FlowParamType::String}, {"region", FlowParamType::String} };
 inline constexpr FlowParamSchema kFloatPanelParams[] = { {"panelId", FlowParamType::String}, {"x", FlowParamType::Int}, {"y", FlowParamType::Int}, {"width", FlowParamType::Int}, {"height", FlowParamType::Int} };
 inline constexpr FlowParamSchema kResizeRegionParams[] = { {"region", FlowParamType::String}, {"size", FlowParamType::Int} };
+inline constexpr FlowParamSchema kOrbitCameraParams[] = { {"dYaw", FlowParamType::Float}, {"dPitch", FlowParamType::Float} };
+inline constexpr FlowParamSchema kPanCameraParams[] = { {"dx", FlowParamType::Float}, {"dy", FlowParamType::Float} };
+inline constexpr FlowParamSchema kZoomCameraParams[] = { {"delta", FlowParamType::Float} };
+inline constexpr FlowParamSchema kSetViewAngleParams[] = { {"index", FlowParamType::Int} };
+inline constexpr FlowParamSchema kSetParameterParams[] = { {"parameterIndex", FlowParamType::Int}, {"value", FlowParamType::Float} };
+inline constexpr FlowParamSchema kResetParameterParams[] = { {"parameterIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kScrubParameterParams[] = { {"parameterIndex", FlowParamType::Int} };
 
 inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::ToggleLayer, sizeof(LayerState), true, kToggleLayerParams, 1 },
@@ -132,7 +146,19 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::SplitPanel, sizeof(LayerState), true, kSplitPanelParams, 2 },
     { FlowActionId::FloatPanel, sizeof(LayerState), true, kFloatPanelParams, 5 },
     { FlowActionId::ResizeRegion, sizeof(LayerState), true, kResizeRegionParams, 2 },
-    { FlowActionId::ResetLayout, sizeof(LayerState), true, nullptr, 0 }
+    { FlowActionId::ResetLayout, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::OrbitCamera, sizeof(LayerState), true, kOrbitCameraParams, 2 },
+    { FlowActionId::PanCamera, sizeof(LayerState), true, kPanCameraParams, 2 },
+    { FlowActionId::ZoomCamera, sizeof(LayerState), true, kZoomCameraParams, 1 },
+    { FlowActionId::FrameAsset, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::SetViewAngle, sizeof(LayerState), true, kSetViewAngleParams, 1 },
+    { FlowActionId::SelectViewAngle0, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::SelectViewAngle1, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::SelectViewAngle2, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::SelectViewAngle3, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::SetParameter, sizeof(LayerState), true, kSetParameterParams, 2 },
+    { FlowActionId::ResetParameter, sizeof(LayerState), true, kResetParameterParams, 1 },
+    { FlowActionId::ScrubParameter, sizeof(LayerState), true, kScrubParameterParams, 1 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -151,6 +177,8 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::EditProgramFieldDownTrigger, "layer-{index}-program-down", FlowActionId::EditProgramFieldDown, "layerIndex", "click" },
     { FlowElementTriggerId::AdjustParameterUpTrigger, "parameter-{index}-up", FlowActionId::AdjustParameterUp, "parameterIndex", "click" },
     { FlowElementTriggerId::AdjustParameterDownTrigger, "parameter-{index}-down", FlowActionId::AdjustParameterDown, "parameterIndex", "click" },
+    { FlowElementTriggerId::ScrubParameterTrigger, "parameter-{index}-value", FlowActionId::ScrubParameter, "parameterIndex", "click" },
+    { FlowElementTriggerId::ResetParameterTrigger, "parameter-{index}-reset", FlowActionId::ResetParameter, "parameterIndex", "click" },
     { FlowElementTriggerId::OpenRecipeTrigger, "recipe-{recipeId}-open", FlowActionId::OpenRecipe, "recipeId", "click" },
     { FlowElementTriggerId::UndoButtonTrigger, "undo-button", FlowActionId::Undo, "", "click" },
     { FlowElementTriggerId::RedoButtonTrigger, "redo-button", FlowActionId::Redo, "", "click" },
@@ -165,7 +193,12 @@ inline constexpr AppFlowKeyDefault kKeyDefaults[] = {
     { FlowKeyDefaultId::ResetLayoutKey, FlowActionId::ResetLayout, { KeyId::R, KeyMod::Ctrl }, FlowScope::Global, FlowStateId{} },
     { FlowKeyDefaultId::UndoKey, FlowActionId::Undo, { KeyId::Z, KeyMod::Ctrl }, FlowScope::Global, FlowStateId{} },
     { FlowKeyDefaultId::RedoKey, FlowActionId::Redo, { KeyId::Y, KeyMod::Ctrl }, FlowScope::Global, FlowStateId{} },
-    { FlowKeyDefaultId::SaveKey, FlowActionId::Save, { KeyId::S, KeyMod::None }, FlowScope::Global, FlowStateId{} },
+    { FlowKeyDefaultId::SaveKey, FlowActionId::Save, { KeyId::S, KeyMod::Ctrl }, FlowScope::Global, FlowStateId{} },
+    { FlowKeyDefaultId::FrameAssetKey, FlowActionId::FrameAsset, { KeyId::F, KeyMod::None }, FlowScope::Global, FlowStateId{} },
+    { FlowKeyDefaultId::ViewAngle0Key, FlowActionId::SelectViewAngle0, { KeyId::Digit1, KeyMod::None }, FlowScope::Global, FlowStateId{} },
+    { FlowKeyDefaultId::ViewAngle1Key, FlowActionId::SelectViewAngle1, { KeyId::Digit2, KeyMod::None }, FlowScope::Global, FlowStateId{} },
+    { FlowKeyDefaultId::ViewAngle2Key, FlowActionId::SelectViewAngle2, { KeyId::Digit3, KeyMod::None }, FlowScope::Global, FlowStateId{} },
+    { FlowKeyDefaultId::ViewAngle3Key, FlowActionId::SelectViewAngle3, { KeyId::Digit4, KeyMod::None }, FlowScope::Global, FlowStateId{} },
     { FlowKeyDefaultId::SettingsUndoOverride, FlowActionId::UndoSettingChange, { KeyId::Z, KeyMod::Ctrl }, FlowScope::State, FlowStateId::Settings }
 };
 

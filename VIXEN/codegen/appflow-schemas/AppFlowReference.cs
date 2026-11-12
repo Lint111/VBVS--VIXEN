@@ -27,6 +27,10 @@ namespace Vixen.AppFlow.Reference
         // R766: panel layout verbs on the app's channel (PanelDock). Not undoable document edits.
         OpenPanel = 16, ClosePanel = 17, FocusPanel = 18, MovePanel = 19, SplitPanel = 20,
         FloatPanel = 21, ResizeRegion = 22, ResetLayout = 23,
+        // sn-editorinput1 block (R765 camera/input/typed-parameter actions). Camera actions are not document edits.
+        OrbitCamera = 24, PanCamera = 25, ZoomCamera = 26, FrameAsset = 27, SetViewAngle = 28,
+        SelectViewAngle0 = 29, SelectViewAngle1 = 30, SelectViewAngle2 = 31, SelectViewAngle3 = 32,
+        SetParameter = 33, ResetParameter = 34, ScrubParameter = 35,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -34,7 +38,11 @@ namespace Vixen.AppFlow.Reference
     [FlowKeyEnum]
     public enum KeyId : ushort
     {
-        None = 0, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Escape
+        None = 0, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Escape,
+        // sn-editorinput1 block (append-only): every key the host maps from GLFW (KeyMap.h).
+        Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9,
+        F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+        Left, Right, Up, Down, Delete, Backspace, Tab, Space, Enter, Home, End, PageUp, PageDown
     }
 
     [FlowModEnum]
@@ -182,6 +190,65 @@ namespace Vixen.AppFlow.Reference
         public const int Param1Type = (int)FlowParamType.Int;
     }
 
+    // sn-editorinput1 block: camera actions (radians / world units) and typed parameter entry.
+    [FlowActionParams(nameof(FlowAction.OrbitCamera))]
+    public static class OrbitCameraParams
+    {
+        public const string Param0Name = "dYaw";
+        public const int Param0Type = (int)FlowParamType.Float;
+        public const string Param1Name = "dPitch";
+        public const int Param1Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.PanCamera))]
+    public static class PanCameraParams
+    {
+        public const string Param0Name = "dx";
+        public const int Param0Type = (int)FlowParamType.Float;
+        public const string Param1Name = "dy";
+        public const int Param1Type = (int)FlowParamType.Float;
+    }
+
+    // Positive delta moves the camera toward the orbit centre.
+    [FlowActionParams(nameof(FlowAction.ZoomCamera))]
+    public static class ZoomCameraParams
+    {
+        public const string Param0Name = "delta";
+        public const int Param0Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetViewAngle))]
+    public static class SetViewAngleParams
+    {
+        public const string Param0Name = "index";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    // Clamped to the declared parameter range; one undo step.
+    [FlowActionParams(nameof(FlowAction.SetParameter))]
+    public static class SetParameterParams
+    {
+        public const string Param0Name = "parameterIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "value";
+        public const int Param1Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.ResetParameter))]
+    public static class ResetParameterParams
+    {
+        public const string Param0Name = "parameterIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    // Pressing the value label starts a horizontal drag-scrub of that parameter (one undo step per gesture).
+    [FlowActionParams(nameof(FlowAction.ScrubParameter))]
+    public static class ScrubParameterParams
+    {
+        public const string Param0Name = "parameterIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
     // Footprint struct for ToggleLayer — a GpuStruct-style serializable blob so the
     // runtime can snapshot it generically (Inc 2 uses this; Inc 1 emits it only).
     [FlowStateStruct]
@@ -270,6 +337,22 @@ namespace Vixen.AppFlow.Reference
         public const string On = "click";
     }
 
+    [FlowElementTrigger(nameof(FlowAction.ScrubParameter))]
+    public static class ScrubParameterTrigger
+    {
+        public const string Element = "parameter-{index}-value";
+        public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.ResetParameter))]
+    public static class ResetParameterTrigger
+    {
+        public const string Element = "parameter-{index}-reset";
+        public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
     // A listed recipe row's button carries its content id in the element id ("recipe-core:asteroid-open").
     [FlowElementTrigger(nameof(FlowAction.OpenRecipe))]
     public static class OpenRecipeTrigger
@@ -340,7 +423,25 @@ namespace Vixen.AppFlow.Reference
     public static class RedoKey { public const KeyId Key = KeyId.Y; public const KeyMod Mods = KeyMod.Ctrl; }
 
     [FlowKeyDefault(nameof(FlowAction.Save), FlowScope.Global)]
-    public static class SaveKey { public const KeyId Key = KeyId.S; public const KeyMod Mods = KeyMod.None; }
+    public static class SaveKey { public const KeyId Key = KeyId.S; public const KeyMod Mods = KeyMod.Ctrl; }
+
+    // sn-editorinput1 block: camera key defaults (plain keys; the host skips them while a text field has focus).
+    [FlowKeyDefault(nameof(FlowAction.FrameAsset), FlowScope.Global)]
+    public static class FrameAssetKey { public const KeyId Key = KeyId.F; public const KeyMod Mods = KeyMod.None; }
+
+    // A key default carries no action params, so the four look-dev angles bind through one param-less action each
+    // (AppFlow gap: key defaults cannot carry constant params; see the sn-editorinput1 report).
+    [FlowKeyDefault(nameof(FlowAction.SelectViewAngle0), FlowScope.Global)]
+    public static class ViewAngle0Key { public const KeyId Key = KeyId.Digit1; public const KeyMod Mods = KeyMod.None; }
+
+    [FlowKeyDefault(nameof(FlowAction.SelectViewAngle1), FlowScope.Global)]
+    public static class ViewAngle1Key { public const KeyId Key = KeyId.Digit2; public const KeyMod Mods = KeyMod.None; }
+
+    [FlowKeyDefault(nameof(FlowAction.SelectViewAngle2), FlowScope.Global)]
+    public static class ViewAngle2Key { public const KeyId Key = KeyId.Digit3; public const KeyMod Mods = KeyMod.None; }
+
+    [FlowKeyDefault(nameof(FlowAction.SelectViewAngle3), FlowScope.Global)]
+    public static class ViewAngle3Key { public const KeyId Key = KeyId.Digit4; public const KeyMod Mods = KeyMod.None; }
 
     // Settings sub-state — the scoped-override + return-edge live demonstration's home (design §6.3).
     // Reachable via transition index 1 (Editing -> Settings).

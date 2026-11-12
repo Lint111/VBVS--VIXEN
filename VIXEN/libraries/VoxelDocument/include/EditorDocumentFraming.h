@@ -1,10 +1,15 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <glm/glm.hpp>
 
 namespace Vixen::Editor {
+
+// The four look-dev review angles as orbit yaws (radians), the quarter turns the look-dev captures use
+// (application/main/tests/test_lookdev_capture.cpp `yaws`); SetViewAngle(index) selects one.
+inline constexpr std::array<float, 4> kEditorViewAngleYaws{{0.0f, 1.57079632679f, 3.14159265359f, 4.71238898038f}};
 
 struct EditorCameraFrame {
     glm::vec3 center{0.0f};

@@ -21,6 +21,8 @@
 #include "EditorDocumentModel.h"
 #include "PackRecipeSource.h"
 #include "AppFlowChannel.h"
+#include "KeyMap.h"
+#include <glm/vec3.hpp>
 #include "AppFlowReadback.h"
 #include "AppFlowRuntime.h"
 #include "RuntimeCachePaths.h"
@@ -41,6 +43,7 @@
 // Forward-declared only -- see EditorLayersViewBridge.h's file header for why this TU (which
 // transitively sees gaia.h via Recipe/RecipeBaker.h below) never includes EditorLayersView.h itself.
 namespace Vixen::App { class EditorLayersView; }
+namespace Vixen::RenderGraph { class CameraNode; }
 namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 
 class EditorApplication : public VulkanGraphApplication {
@@ -214,11 +217,29 @@ private:
     std::array<float, 6> lastPreviewParameterValues_{};
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastProceduralProgram_;
     bool proceduralPreviewRegistered_ = false;
-    bool sKeyWasDown_ = false;  // edge-detect for the Save keybinding
-    bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
-    bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
-    bool escWasDown_ = false;  // edge-detect for the Return (Esc) keybinding
-    bool ctrlRWasDown_ = false;  // edge-detect for the ResetLayout keybinding (R766)
+    // Rising-edge detector over every mapped key; each press resolves its chord through the runtime's
+    // InputProfile, so the declared [FlowKeyDefault] table (not host code) decides what a key does.
+    Vixen::Editor::KeyEdgeTracker keyEdges_;
+    // Camera control: host translation of raw mouse/axis input into AppFlow camera dispatches (the AppFlow
+    // gap: InputProfile binds chords, not axes/drags), and the framing FrameAsset restores.
+    void TranslateCameraInput();
+    Vixen::RenderGraph::CameraNode* EditorCamera();   // live lookup, never cached across recompiles
+    void SetViewAngle(uint32_t index);
+    // The one parameter-edit path: clamp to the declared range, one ActionStack entry (nothing when unchanged).
+    void CommitParameter(Vixen::AppFlow::Generated::FlowActionId actionId, uint32_t index, float value);
+    void ApplyCameraFrame();           // FrameAsset: restore the orbit centre/distance fit
+    void StepParameterScrub();         // ScrubParameter drag: SetParameter per frame inside one undo group
+    glm::vec3 framedCenter_{0.0f};
+    float framedDistance_ = 0.0f;
+    bool hasFrame_ = false;
+    struct ParameterScrub {
+        bool active = false;
+        uint32_t index = 0;
+        float startValue = 0.0f;
+        float startCursorX = 0.0f;
+        bool grouped = false;  // an undo group is open for this gesture
+    } scrub_;
+    uint32_t nextUndoGroup_ = 1;
     std::string appFlowPath_;
     std::filesystem::file_time_type appFlowMtime_{};
     bool appFlowMtimeInitialized_ = false;

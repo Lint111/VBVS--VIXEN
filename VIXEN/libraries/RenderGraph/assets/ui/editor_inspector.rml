@@ -5,14 +5,16 @@
 </head>
 <body>
     <!-- R766 "inspector" panel (right region): the open document's recipe parameters. Each row's +/- ids
-         are the AdjustParameterUp/Down selectors ("parameter-<index>-up"). -->
+         are the AdjustParameterUp/Down selectors ("parameter-<index>-up"); pressing the value label starts a
+         horizontal drag-scrub (ScrubParameter, "parameter-<index>-value") and "reset" is ResetParameter. -->
     <div data-model="editor_layers" class="panel">
         <div class="subtitle">Recipe parameters</div>
         <div class="parameter-row" data-for="param : parameters">
             <span class="parameter-name">{{param.name}}</span>
-            <span class="parameter-value">{{param.value}} {{param.unit}}</span>
+            <span class="parameter-value scrub" data-attr-id="'parameter-' + it_index + '-value'" hit-mask="none">{{param.value}} {{param.unit}}</span>
             <div class="button" data-attr-id="param.downId" hit-mask="none">−</div>
             <div class="button" data-attr-id="param.upId" hit-mask="none">+</div>
+            <div class="button" data-attr-id="'parameter-' + it_index + '-reset'" hit-mask="none">reset</div>
             <div class="parameter-range">range {{param.minimum}}–{{param.maximum}}</div>
         </div>
         <div class="hint" data-if="parameters.size == 0">This document declares no parameters.</div>

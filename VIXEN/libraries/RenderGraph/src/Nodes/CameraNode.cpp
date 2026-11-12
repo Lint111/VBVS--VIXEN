@@ -100,10 +100,9 @@ void CameraNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Orbit target: defaults match the main app's Cornell-box demo scene. A consumer whose
     // geometry sits elsewhere (e.g. vixen_editor's object-centered documents) sets these params
     // so the orbit camera actually frames its content instead of empty space.
-    orbitCenter.x = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 5.0f);
-    orbitCenter.y = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 5.0f);
-    orbitCenter.z = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 5.0f);
-    orbitDistance = GetParameterValue<float>(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 30.0f);
+    // (The four orbit params are applied once above via applyIfChanged; re-reading them here on every
+    // Setup re-run would snap a live, host- or input-driven orbit back to its t0 pose on each recompile.)
+    inputDriven_ = GetParameterValue<bool>(CameraNodeConfig::PARAM_INPUT_DRIVEN, true);
 
     // Bodies-0 root-cause fix: a consumer that explicitly configures ANY orbit param (e.g.
     // EditorApplication::BuildRenderGraph, which sets all four to frame its own document) is
@@ -223,7 +222,7 @@ void CameraNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // Modern polling-based input: Read InputState once per frame
     InputStatePtr inputState = ctx.In(CameraNodeConfig::INPUT_STATE);
-    if (inputState) {
+    if (inputState && inputDriven_) {
         // Orbit gate (critique V2, M4): mouseDelta only drives rotation while the configured
         // orbit control is engaged, per InputConfig::OrbitButton (mirrored via InputState —
         // CameraNode has no InputNode reference, see InputState.h). Buttons: [0]=left,[1]=right.
@@ -415,6 +414,43 @@ void CameraNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
 
     // No resources to cleanup since we're outputting a struct now
     // Camera state is maintained internally for next setup
+}
+
+void CameraNode::OrbitBy(float dYawRadians, float dPitchRadians) {
+    if (!std::isfinite(dYawRadians) || !std::isfinite(dPitchRadians)) return;
+    EngageOrbit();
+    yaw += dYawRadians;
+    const float maxPitch = glm::radians(89.0f);
+    pitch = glm::clamp(pitch + dPitchRadians, -maxPitch, maxPitch);
+}
+
+void CameraNode::PanBy(float dx, float dy) {
+    if (!std::isfinite(dx) || !std::isfinite(dy)) return;
+    EngageOrbit();
+    orbitCenter.x += dx;
+    orbitCenter.y += dy;
+}
+
+void CameraNode::ZoomBy(float delta) {
+    if (!std::isfinite(delta)) return;
+    EngageOrbit();
+    orbitDistance = glm::clamp(orbitDistance - delta, kOrbitDistanceMin, kOrbitDistanceMax);
+}
+
+void CameraNode::SetOrbit(const glm::vec3& center, float distance) {
+    if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z) ||
+        !std::isfinite(distance)) return;
+    EngageOrbit();
+    orbitCenter = center;
+    orbitDistance = glm::clamp(distance, kOrbitDistanceMin, kOrbitDistanceMax);
+    NotifyCameraCut();
+}
+
+void CameraNode::SetOrbitYaw(float yawRadians) {
+    if (!std::isfinite(yawRadians)) return;
+    EngageOrbit();
+    yaw = yawRadians;
+    NotifyCameraCut();
 }
 
 void CameraNode::EngageOrbit() {

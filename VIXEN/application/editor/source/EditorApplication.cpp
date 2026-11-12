@@ -15,6 +15,7 @@
 #include "Nodes/DeviceNode.h"                 // CaptureFrameToPng's live device lookup
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Nodes/CameraNode.h"
+#include "Nodes/InputNode.h"                  // camera input translation reads the live InputState
 #include "Nodes/SwapChainNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
@@ -179,6 +180,25 @@ uint32_t ParseParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const 
         }
     }
     return 0;
+}
+
+// Float twin of ParseParam; a missing, malformed or non-finite value is rejected (nullopt), never defaulted.
+std::optional<float> ParseFloatParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const char* name) {
+    for (const auto& [n, v] : params) {
+        if (n != name || v.empty()) continue;
+        char* end = nullptr;
+        const float parsed = std::strtof(v.c_str(), &end);
+        if (end != v.c_str() + v.size() || !std::isfinite(parsed)) return std::nullopt;
+        return parsed;
+    }
+    return std::nullopt;
+}
+
+// Formats a float for an AppFlow param string with round-trip precision.
+std::string FloatParamText(float value) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%.9g", static_cast<double>(value));
+    return buffer;
 }
 
 constexpr uint32_t kEditorProceduralRecipeId = 0xE0D17001u;
@@ -575,25 +595,63 @@ void EditorApplication::RegisterAppFlowHandlers() {
         rt_.RegisterHandler(actionId, [this, actionId, increase](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
             const uint32_t index = ParseParam(p, "parameterIndex");
             if (index >= doc_.ParameterCount()) return;
-            const float before = doc_.ParameterValue(index);
             const float span = doc_.ParameterMax(index) - doc_.ParameterMin(index);
             const float step = span > 0.0f ? span / 8.0f : 0.1f;
-            const float after = std::clamp(before + (increase ? step : -step),
-                                           doc_.ParameterMin(index), doc_.ParameterMax(index));
-            if (after == before) return;
-            rt_.Stack().Dispatch(actionId, [this, index, before, after](bool forward) {
-                Vixen::Editor::DocumentDiagnostic diagnostic;
-                if (!doc_.SetParameterValue(index, forward ? after : before, diagnostic)) {
-                    lastEditorError_ = diagnostic.message;
-                    logger_->Error("[EditorApplication] AdjustParameter operation failed: " + diagnostic.message);
-                    return;
-                }
-                SyncAfterDocumentMutation();
-            });
+            CommitParameter(actionId, index, doc_.ParameterValue(index) + (increase ? step : -step));
         });
     };
     registerParameterEdit(FlowActionId::AdjustParameterUp, true);
     registerParameterEdit(FlowActionId::AdjustParameterDown, false);
+
+    // Typed entry: the value lands on the same CommitParameter path the +/- buttons use (clamped to the
+    // declared range, one ActionStack entry, nothing recorded when the value does not change).
+    rt_.RegisterHandler(FlowActionId::SetParameter, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        const uint32_t index = ParseParam(p, "parameterIndex");
+        const auto value = ParseFloatParam(p, "value");
+        if (index >= doc_.ParameterCount() || !value) {
+            logger_->Warning("[EditorApplication] SetParameter ignored: parameterIndex out of range or value not a finite number");
+            return;
+        }
+        CommitParameter(FlowActionId::SetParameter, index, *value);
+    });
+    rt_.RegisterHandler(FlowActionId::ResetParameter, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        const uint32_t index = ParseParam(p, "parameterIndex");
+        if (index >= doc_.ParameterCount()) return;
+        CommitParameter(FlowActionId::ResetParameter, index, doc_.ParameterDefault(index));
+    });
+    // Pressing a parameter's value label starts a drag-scrub; StepParameterScrub (Update) turns the held
+    // drag into SetParameter dispatches inside one undo group.
+    rt_.RegisterHandler(FlowActionId::ScrubParameter, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        const uint32_t index = ParseParam(p, "parameterIndex");
+        if (index >= doc_.ParameterCount() || scrub_.active) return;
+        scrub_ = ParameterScrub{true, index, doc_.ParameterValue(index), -1.0f, false};
+    });
+
+    // Camera actions are not document edits: no ActionStack entry, the node's live orbit state changes.
+    rt_.RegisterHandler(FlowActionId::OrbitCamera, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        const auto dYaw = ParseFloatParam(p, "dYaw");
+        const auto dPitch = ParseFloatParam(p, "dPitch");
+        if (auto* camera = EditorCamera(); camera && dYaw && dPitch) camera->OrbitBy(*dYaw, *dPitch);
+    });
+    rt_.RegisterHandler(FlowActionId::PanCamera, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        const auto dx = ParseFloatParam(p, "dx");
+        const auto dy = ParseFloatParam(p, "dy");
+        if (auto* camera = EditorCamera(); camera && dx && dy) camera->PanBy(*dx, *dy);
+    });
+    rt_.RegisterHandler(FlowActionId::ZoomCamera, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        const auto delta = ParseFloatParam(p, "delta");
+        if (auto* camera = EditorCamera(); camera && delta) camera->ZoomBy(*delta);
+    });
+    rt_.RegisterHandler(FlowActionId::FrameAsset, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        ApplyCameraFrame();
+    });
+    rt_.RegisterHandler(FlowActionId::SetViewAngle, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        SetViewAngle(ParseParam(p, "index"));
+    });
+    rt_.RegisterHandler(FlowActionId::SelectViewAngle0, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) { SetViewAngle(0); });
+    rt_.RegisterHandler(FlowActionId::SelectViewAngle1, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) { SetViewAngle(1); });
+    rt_.RegisterHandler(FlowActionId::SelectViewAngle2, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) { SetViewAngle(2); });
+    rt_.RegisterHandler(FlowActionId::SelectViewAngle3, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) { SetViewAngle(3); });
 
     // R765: open a pack recipe by content id. Opening replaces the document and reloads the AppFlow
     // runtime (fresh undo history), which must not happen inside the runtime's own dispatch, so the
@@ -779,6 +837,8 @@ void EditorApplication::BuildRenderGraph() {
 
     if (auto* cameraInst = GetRenderGraph() ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
         using CC = Vixen::RenderGraph::CameraNodeConfig;
+        // Camera control goes through the AppFlow camera actions (TranslateCameraInput), not InputState.
+        cameraInst->SetParameter(CC::PARAM_INPUT_DRIVEN, false);
         // The capture test asks for a top-down view so the layer toggle changes visible pixels.
         // Leave the editor's default side view untouched for interactive sessions.
         if (const char* captureCamera = std::getenv("VIXEN_EDITOR_TEST_CAMERA");
@@ -792,6 +852,122 @@ void EditorApplication::BuildRenderGraph() {
         logger_->Error("[EditorApplication] BuildRenderGraph: ApplyDocumentToScene failed: " +
                        lastEditorError_);
     }
+}
+
+Vixen::RenderGraph::CameraNode* EditorApplication::EditorCamera() {
+    auto* graph = GetRenderGraph();
+    return graph ? static_cast<Vixen::RenderGraph::CameraNode*>(graph->GetInstanceByName("raymarch_camera"))
+                 : nullptr;
+}
+
+void EditorApplication::CommitParameter(Vixen::AppFlow::Generated::FlowActionId actionId, uint32_t index,
+                                        float requested) {
+    if (index >= doc_.ParameterCount() || !std::isfinite(requested)) return;
+    const float before = doc_.ParameterValue(index);
+    const float after = std::clamp(requested, doc_.ParameterMin(index), doc_.ParameterMax(index));
+    if (after == before) return;
+    rt_.Stack().Dispatch(actionId, [this, index, before, after](bool forward) {
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (!doc_.SetParameterValue(index, forward ? after : before, diagnostic)) {
+            lastEditorError_ = diagnostic.message;
+            logger_->Error("[EditorApplication] SetParameter operation failed: " + diagnostic.message);
+            return;
+        }
+        SyncAfterDocumentMutation();
+    });
+}
+
+void EditorApplication::ApplyCameraFrame() {
+    if (!hasFrame_) return;
+    if (auto* camera = EditorCamera()) camera->SetOrbit(framedCenter_, framedDistance_);
+}
+
+void EditorApplication::SetViewAngle(uint32_t index) {
+    if (index >= Vixen::Editor::kEditorViewAngleYaws.size()) {
+        logger_->Warning("[EditorApplication] SetViewAngle ignored: index " + std::to_string(index) +
+                         " is outside the " + std::to_string(Vixen::Editor::kEditorViewAngleYaws.size()) +
+                         " look-dev angles");
+        return;
+    }
+    if (auto* camera = EditorCamera()) camera->SetOrbitYaw(Vixen::Editor::kEditorViewAngleYaws[index]);
+}
+
+void EditorApplication::TranslateCameraInput() {
+    auto* graph = GetRenderGraph();
+    auto* input = graph ? static_cast<Vixen::RenderGraph::InputNode*>(graph->GetInstanceByName("input_handler"))
+                        : nullptr;
+    auto* camera = EditorCamera();
+    if (!input || !camera) return;
+    using Vixen::AppFlow::Generated::FlowActionId;
+    using Vixen::RenderGraph::InputAxis;
+    const Vixen::RenderGraph::InputState& state = input->GetInputState();
+    const float dt = std::min(state.deltaTime, 0.1f);
+    const float sensitivity = camera->GetMouseSensitivity();
+    const auto dispatchOrbit = [this](float dYaw, float dPitch) {
+        rt_.DispatchById(FlowActionId::OrbitCamera,
+                         {{"dYaw", FloatParamText(dYaw)}, {"dPitch", FloatParamText(dPitch)}});
+    };
+
+    // R765: right-mouse orbit. Pixels become radians here; the action carries radians.
+    if (state.mouseButtons[1] && (state.mouseDelta.x != 0.0f || state.mouseDelta.y != 0.0f)) {
+        dispatchOrbit(state.mouseDelta.x * sensitivity, -state.mouseDelta.y * sensitivity);
+    }
+    if (state.wheelZoom && state.wheelDelta.y != 0.0f) {
+        rt_.DispatchById(FlowActionId::ZoomCamera, {{"delta", FloatParamText(state.wheelDelta.y * state.wheelZoomSpeed)}});
+    }
+
+    // Held-key axes (WASD/QE pan+zoom, arrows look). Ctrl chords (Ctrl+S/Z/Y/R) must not also move the camera.
+    GLFWwindow* window = GetWindowHandle();
+    const bool ctrl = window && (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                                 glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS);
+    if (ctrl) return;
+    const auto axis = [&state](InputAxis a) { return state.axes[static_cast<std::size_t>(a)]; };
+    constexpr float kZoomSpeed = 100.0f;       // world units per second per full forward axis (as W/S always did)
+    constexpr float kArrowLookSpeed = 120.0f;  // pixel-equivalents per second (as the arrow keys always did)
+    if (const float forward = axis(InputAxis::MoveForward); forward != 0.0f) {
+        rt_.DispatchById(FlowActionId::ZoomCamera, {{"delta", FloatParamText(forward * kZoomSpeed * dt)}});
+    }
+    const float horizontal = axis(InputAxis::MoveHorizontal);
+    const float vertical = axis(InputAxis::MoveUp);
+    if (horizontal != 0.0f || vertical != 0.0f) {
+        const float step = camera->GetMoveSpeed() * dt;
+        rt_.DispatchById(FlowActionId::PanCamera,
+                         {{"dx", FloatParamText(horizontal * step)}, {"dy", FloatParamText(vertical * step)}});
+    }
+    const float lookH = axis(InputAxis::LookHorizontal);
+    const float lookV = axis(InputAxis::LookVertical);
+    if (lookH != 0.0f || lookV != 0.0f) {
+        dispatchOrbit(lookH * kArrowLookSpeed * dt * sensitivity, lookV * kArrowLookSpeed * dt * sensitivity);
+    }
+}
+
+void EditorApplication::StepParameterScrub() {
+    if (!scrub_.active) return;
+    auto* graph = GetRenderGraph();
+    auto* input = graph ? static_cast<Vixen::RenderGraph::InputNode*>(graph->GetInstanceByName("input_handler"))
+                        : nullptr;
+    const Vixen::RenderGraph::InputState* state = input ? &input->GetInputState() : nullptr;
+    const bool held = state && state->mouseButtons[0];
+    if (held && scrub_.index < doc_.ParameterCount()) {
+        if (scrub_.startCursorX < 0.0f) scrub_.startCursorX = state->mousePosition.x;
+        // One full declared range per kScrubPixelsPerRange pixels of horizontal drag.
+        constexpr float kScrubPixelsPerRange = 200.0f;
+        const float span = doc_.ParameterMax(scrub_.index) - doc_.ParameterMin(scrub_.index);
+        const float target = scrub_.startValue +
+                             (state->mousePosition.x - scrub_.startCursorX) * (span / kScrubPixelsPerRange);
+        const float clamped = std::clamp(target, doc_.ParameterMin(scrub_.index), doc_.ParameterMax(scrub_.index));
+        if (clamped != doc_.ParameterValue(scrub_.index)) {
+            if (!scrub_.grouped) {  // the group opens on the first real change so a plain click leaves no empty undo step
+                rt_.Stack().BeginGroup(nextUndoGroup_++);
+                scrub_.grouped = true;
+            }
+            rt_.DispatchById(Vixen::AppFlow::Generated::FlowActionId::SetParameter,
+                             {{"parameterIndex", std::to_string(scrub_.index)}, {"value", FloatParamText(clamped)}});
+        }
+        return;
+    }
+    if (scrub_.grouped) rt_.Stack().EndGroup();
+    scrub_ = ParameterScrub{};
 }
 
 bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
@@ -912,6 +1088,9 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
             cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Y, frame.center.y);
             cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Z, frame.center.z);
             cameraInst->SetParameter(CC::PARAM_ORBIT_DISTANCE, frame.distance);
+            framedCenter_ = frame.center;
+            framedDistance_ = frame.distance;
+            hasFrame_ = true;
         }
     }
 
@@ -1381,42 +1560,14 @@ void EditorApplication::Update() {
     // it through the same registered-handler path a UI click uses. An unbound chord (or Esc
     // outside Settings) resolves to RejectedByState and is ignored, never a crash.
     if (GLFWwindow* window = GetWindowHandle()) {
-        using Vixen::Editor::GlfwToKeyId;
-        using Vixen::Editor::ReadMods;
-        using Vixen::AppFlow::Generated::KeyId;
-        using Vixen::AppFlow::Generated::KeyMod;
-
-        const bool ctrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS
-                       || glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-        const KeyMod ctrlMods = ReadMods(ctrl, /*shift*/false, /*alt*/false, /*super*/false);
-
-        // Save is bound plain (kKeyDefaults: {S, KeyMod::None}) -- dispatch with a fixed
-        // KeyMod::None chord (not the live ctrl state) so Ctrl+S still resolves (matches the
-        // pre-Inc-4 behavior, which fired Save on 'S' regardless of ctrl).
-        const bool sKeyDown = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
-        if (sKeyDown && !sKeyWasDown_) rt_.DispatchByKey({GlfwToKeyId(GLFW_KEY_S), KeyMod::None});
-        sKeyWasDown_ = sKeyDown;
-
-        const bool zDown = ctrl && glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS;
-        if (zDown && !ctrlZWasDown_) rt_.DispatchByKey({GlfwToKeyId(GLFW_KEY_Z), ctrlMods});
-        ctrlZWasDown_ = zDown;
-
-        const bool yDown = ctrl && glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS;
-        if (yDown && !ctrlYWasDown_) rt_.DispatchByKey({GlfwToKeyId(GLFW_KEY_Y), ctrlMods});
-        ctrlYWasDown_ = yDown;
-
-        // Escape: NEW this increment (design §4.3 -- a back-button selector reaches Return
-        // identically to Esc). Resolves to Return via R2's seeded return-edge in Settings;
-        // outside Settings it resolves to nothing (RejectedByState, ignored).
-        const bool escDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-        if (escDown && !escWasDown_) rt_.DispatchByKey({KeyId::Escape, KeyMod::None});
-        escWasDown_ = escDown;
-
-        // R766: Ctrl+R resolves to ResetLayout through the generated key default.
-        const bool rDown = ctrl && glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
-        if (rDown && !ctrlRWasDown_) rt_.DispatchByKey({GlfwToKeyId(GLFW_KEY_R), ctrlMods});
-        ctrlRWasDown_ = rDown;
+        // Every mapped key is edge-detected; each press resolves its chord (key + live modifiers) through
+        // the runtime's InputProfile, so a [FlowKeyDefault] on any declared key binds with no change here.
+        // An unbound chord (or Esc outside Settings) resolves to RejectedByState and is ignored.
+        keyEdges_.Poll([window](int key) { return glfwGetKey(window, key) == GLFW_PRESS; },
+                       [this](Vixen::AppFlow::Generated::KeyChord chord) { (void)rt_.DispatchByKey(chord); });
     }
+    TranslateCameraInput();
+    StepParameterScrub();
 
     // Inc-B (design §4a): the per-frame .changed<LayerMask>() reconcile, placed AFTER all input
     // dispatch above (UI click + keybindings) so an EXTERNAL write picked up this frame lands in
