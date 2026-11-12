@@ -23,7 +23,7 @@ file(GENERATE OUTPUT "${VIXEN_GPU_LEDGER_LAYER_DIR}/VkLayer_vixen_gpu_ledger.jso
     "name": "VK_LAYER_VIXEN_gpu_ledger",
     "type": "GLOBAL",
     "library_path": ".\\VkLayer_vixen_gpu_ledger.dll",
-    "api_version": "1.3.0",
+    "api_version": "1.4.0",
     "implementation_version": "1",
     "description": "VIXEN GPU ledger: resident allocations and per-frame uploads (benchmark tooling)",
     "functions": {
