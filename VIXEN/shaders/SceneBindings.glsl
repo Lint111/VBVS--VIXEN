@@ -360,6 +360,13 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
     // from farFieldCandidates above (which counts candidates reaching the
     // far-field GATE specifically, several continues later). Never reset.
     uint rtLoopEntries;
+    // cx-leafinstr2: capture-only log2 histograms and path census. Keep this
+    // field order identical to DebugRaySample.h::TraceBufferHeader.
+    uint leafInstrStepsLog2[16];
+    uint leafInstrBodiesLog2[16];
+    uint leafInstrCandidatesLog2[16];
+    uint leafInstrPathClass[4];
+    uint leafInstrBrickStepsLog2[16];
     // Round-7 blocker-1 probe: does descendToNodeOrdinal+shadeFromMipSample
     // actually resolve a shaded mip sample, or fall through to the
     // vec3(0.5)/-farDirN placeholder? Bumped immediately after that check in
@@ -714,6 +721,50 @@ void recordCompositionRelaxedRay() {
 const uint g_dispatchTag = 0u;
 #else
 const uint g_dispatchTag = 1u;
+#endif
+
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+// cx-leafinstr2: per-invocation accumulators are reset by TraceWorld and
+// reduced into the boot-lifetime binding-4 histograms at its return. The
+// histogram itself is capture-only; the default shader has no atomic writes.
+uint g_leafInstrRaySteps = 0u;
+uint g_leafInstrBodies = 0u;
+uint g_leafInstrCandidates = 0u;
+
+uint leafInstrLog2Bucket(uint value) {
+    if (value == 0u) return 0u;
+    return min(uint(findMSB(value)) + 1u, 15u);
+}
+
+void addLeafInstrSteps(uint value) { g_leafInstrRaySteps += value; }
+void incrLeafInstrBody() { ++g_leafInstrBodies; }
+void incrLeafInstrCandidate() { ++g_leafInstrCandidates; }
+
+void recordLeafInstrBrickSteps(uint value) {
+    atomicAdd(leafInstrBrickStepsLog2[leafInstrLog2Bucket(value)], 1u);
+}
+
+void recordLeafInstrRay(uint steps, uint bodies, uint candidates, uint pathClass) {
+    atomicAdd(leafInstrStepsLog2[leafInstrLog2Bucket(steps)], 1u);
+    atomicAdd(leafInstrBodiesLog2[leafInstrLog2Bucket(bodies)], 1u);
+    atomicAdd(leafInstrCandidatesLog2[leafInstrLog2Bucket(candidates)], 1u);
+    atomicAdd(leafInstrPathClass[min(pathClass, 3u)], 1u);
+}
+#else
+#define addLeafInstrSteps(value)
+#define incrLeafInstrBody()
+#define incrLeafInstrCandidate()
+#define recordLeafInstrBrickSteps(value)
+#define recordLeafInstrRay(steps, bodies, candidates, pathClass)
+#endif
+
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+void recordLeafShaderClockWave(uint startTick, uint endTick) {
+    // The low 32 bits are sufficient for a single dispatch span; the host
+    // subtracts with unsigned wrap semantics when it drains the capture.
+    atomicMin(farFieldTerminalPixels[28], startTick);
+    atomicMax(farFieldTerminalPixels[29], endTick);
+}
 #endif
 
 #ifdef VIXEN_COMPOSITION_COUNTERS
@@ -3272,6 +3323,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
     int enterAxis = -1;
     int maxIters = 3 * bpa;
     for (int iter = 0; iter < maxIters; ++iter) {
+        incrLeafInstrCandidate();
         if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(bpa)))) break;
 
         uint flatIdx = uint(cell.z * bpa * bpa + cell.y * bpa + cell.x);

@@ -44,6 +44,7 @@ public:
 #include <string>
 #include <vector>
 
+#include "FrameTrace.h"
 #include "PerThreadLog.h"
 
 // VIXEN_PHASE_TIMING=1: host wall-time census for compile phases, per-node Execute cost and
@@ -103,6 +104,7 @@ inline void PrintSeries(const char* tag, const std::map<std::string, Series>& al
 }
 
 inline void PrintSummary() {
+    FrameTrace::Write();  // no-op unless VIXEN_FRAME_TRACE is set
     if (!Enabled()) return;
     std::map<std::string, Series> execute;
     std::map<std::string, Series> waits;
@@ -118,13 +120,15 @@ inline void PrintSummary() {
 
 class ScopedWait {
 public:
-    explicit ScopedWait(const char* site) : site_(site), start_(Enabled() ? Clock::now() : Clock::time_point{}) {}
+    explicit ScopedWait(const char* site)
+        : site_(site), start_(Enabled() ? Clock::now() : Clock::time_point{}), trace_("wait", site) {}
     ~ScopedWait() { if (Enabled()) AddWait(site_, MsSince(start_)); }
     ScopedWait(const ScopedWait&) = delete;
     ScopedWait& operator=(const ScopedWait&) = delete;
 private:
     const char* site_;
     Clock::time_point start_;
+    FrameTrace::Scope trace_;  // category "wait": the same interval on the frame timeline
 };
 
 }  // namespace Vixen::RenderGraph::PhaseTiming

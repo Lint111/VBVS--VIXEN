@@ -17,7 +17,8 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
                                 uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
                                 double wholeFrameGpuSpanMs,
                                 WindowMetrics windowMetrics,
-                                WholesaleMetrics wholesale) {
+                                WholesaleMetrics wholesale,
+                                const FrameCounters& counters) {
     if (!IsEnabled()) return;
 
     recentFrameTimesMs_[frameCounter_ % kFpsWindow] = cpuFrameTimeMs;
@@ -31,6 +32,7 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
     row.wholeFrameGpuSpanMs = wholeFrameGpuSpanMs;
     row.windowMetrics = windowMetrics;
     row.wholesale = wholesale;
+    row.counters = counters;
     ++runSummary_.frames;
     runSummary_.windows += windowMetrics.windowCount;
     runSummary_.violations += windowMetrics.windowViolationCount;
@@ -119,6 +121,10 @@ void PerfCsvWriter::Flush() {
             out << "," << name << "_ms";
         }
     }
+    // Frame-pipeline counters sit after the variable pass columns so positional readers of the
+    // fixed columns above keep working.
+    out << ",mapped_buffer_accesses,mapped_buffer_bytes,descriptor_updates,command_recordings,"
+           "queue_submits,gpu_retire_waits,frame_pace_waits";
     out << "\n";
 
     for (const auto& row : rows_) {
@@ -147,6 +153,10 @@ void PerfCsvWriter::Flush() {
         for (const auto& [_, ms] : row.passMs) {
             out << "," << ms;
         }
+        out << "," << row.counters.mappedBufferAccesses << "," << row.counters.mappedBufferBytes
+            << "," << row.counters.descriptorUpdates << "," << row.counters.commandRecordings
+            << "," << row.counters.queueSubmits << "," << row.counters.gpuRetireWaits
+            << "," << row.counters.framePaceWaits;
         out << "\n";
     }
 }

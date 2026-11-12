@@ -341,6 +341,10 @@ constexpr uint32_t MAX_TRACE_STEPS = 64;
 constexpr uint32_t TRACE_RAY_SIZE = sizeof(RayTraceHeader) + (MAX_TRACE_STEPS * sizeof(TraceStep));
 constexpr uint32_t MAX_MIP_COUNTER_BODIES = 192;
 constexpr uint32_t MAX_MIP_COUNTER_LEVELS = 16;
+// cx-leafinstr2: fixed log2 bins for the capture-only leaf traversal census.
+// Bin 0 is zero; bins 1..15 are saturated log2 buckets.
+constexpr uint32_t LEAF_INSTR_LOG2_BINS = 16;
+constexpr uint32_t LEAF_INSTR_PATH_CLASSES = 4;
 
 // E6-T2: fixed-capacity per-serialized-body/per-mip read ledger.  Body identity
 // is the active serialized octree index (g_octreeIdx); repeated render
@@ -419,6 +423,14 @@ struct alignas(16) TraceBufferHeader {
     // traverseRayQueryWorld -- see rtLoopEntries in SceneBindings.glsl's
     // RayTraceBuffer struct. Never reset.
     uint32_t rtLoopEntries;
+    // cx-leafinstr2: capture-only log2 histograms. These remain adjacent to
+    // rtLoopEntries in the binding-4 ABI and accumulate over the boot so a
+    // VIXEN_DEBUG_CAPTURE run can drain them once at cleanup.
+    uint32_t leafInstrStepsLog2[LEAF_INSTR_LOG2_BINS];
+    uint32_t leafInstrBodiesLog2[LEAF_INSTR_LOG2_BINS];
+    uint32_t leafInstrCandidatesLog2[LEAF_INSTR_LOG2_BINS];
+    uint32_t leafInstrPathClass[LEAF_INSTR_PATH_CLASSES];
+    uint32_t leafInstrBrickStepsLog2[LEAF_INSTR_LOG2_BINS];
     // Round-7 blocker-1 probe: does the far-field's descendToNodeOrdinal +
     // shadeFromMipSample actually resolve a shaded mip sample, or fall through
     // to the vec3(0.5)/-farDirN placeholder? Bumped immediately after the
@@ -666,8 +678,8 @@ struct alignas(16) TraceBufferHeader {
     uint32_t _recipeChunkMetricsPadding[3];
 };
 
-static_assert(sizeof(TraceBufferHeader) == 25136, "TraceBufferHeader must include the recipe chunk metrics ledger");
-static_assert(offsetof(TraceBufferHeader, mipReadByteCounters) == 516,
+static_assert(sizeof(TraceBufferHeader) == 25408, "TraceBufferHeader must include the leaf instrumentation census, the E6-T2 mip ledger and the recipe chunk metrics ledger");
+static_assert(offsetof(TraceBufferHeader, mipReadByteCounters) == 788,
               "TraceBufferHeader mip ledger offset must match SceneBindings.glsl");
 
 } // namespace Vixen::RenderGraph::Debug

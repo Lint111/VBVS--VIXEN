@@ -257,12 +257,10 @@ endif()
 set(_schema_sim_framework "${_undertow_core_src}/Undertow.Sim.Framework")
 set(_out_gpu_schema_json "${_schema_gpu_generated}/frame-targets.schemas.json")
 set(_out_gpu_kind_cs "${_schema_gpu_generated}/FrameTargets.g.cs")
-# The frame-target GPU composition emits one runner manifest, schedule, node
-# configuration, and one GLSL file per declared system.
+# The frame-target GPU composition emits one runner manifest and one GLSL file per
+# declared system. The runner reads the manifest; no C++ schedule header is generated.
 set(_out_gpu_systems_manifest "${VIXEN_ROOT}/shaders/Generated/GpuSystems.manifest.json")
 set(_out_gpu_systems_glsl_dir "${VIXEN_ROOT}/shaders/Generated")
-set(_out_gpu_systems_schedule "${_schema_gpu_generated}/GpuSchedule.g.h")
-set(_out_gpu_systems_node_config "${_schema_gpu_generated}/GpuNodes.g.inc")
 
 # FrameTargets is a renderer-owned schema projection. Its source closure is
 # intentionally independent of Undertow's full core/src tree; keep the paired
@@ -431,8 +429,6 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_out_gpu_kind_cs}" _out_gpu_kind_cs_run)
         _codegen_to_wsl_path("${_out_gpu_systems_manifest}" _out_gpu_systems_manifest_run)
         _codegen_to_wsl_path("${_out_gpu_systems_glsl_dir}" _out_gpu_systems_glsl_dir_run)
-        _codegen_to_wsl_path("${_out_gpu_systems_schedule}" _out_gpu_systems_schedule_run)
-        _codegen_to_wsl_path("${_out_gpu_systems_node_config}" _out_gpu_systems_node_config_run)
         # Undertow's schema catalogue exists only in the superproject layout. Engine-standalone
         # builds consume the committed AppFlow/ViewNounId headers when this tool is absent.
         set(_schema_catalog_run "")
@@ -544,8 +540,6 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_gpu_kind_cs_run "${_out_gpu_kind_cs}")
         set(_out_gpu_systems_manifest_run "${_out_gpu_systems_manifest}")
         set(_out_gpu_systems_glsl_dir_run "${_out_gpu_systems_glsl_dir}")
-        set(_out_gpu_systems_schedule_run "${_out_gpu_systems_schedule}")
-        set(_out_gpu_systems_node_config_run "${_out_gpu_systems_node_config}")
         # See the WSL-bridge block's engine-standalone caveat above.
         set(_schema_catalog_run "${_schema_catalog_source}")
         set(_out_octreeconfig_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h")
@@ -1139,8 +1133,6 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             --schema "${_schema_config_run}"
             --schema-json "${_out_gpu_schema_json_run}"
             --gaia-gpu-schedule --stack-hash "${_gpu_systems_stack_hash}"
-            --out-header "${_out_gpu_systems_schedule_run}"
-            --out-node-config "${_out_gpu_systems_node_config_run}"
             --out-manifest "${_out_gpu_systems_manifest_run}"
             --out-glsl-dir "${_out_gpu_systems_glsl_dir_run}")
         vixen_add_codegen_check(gpu_systems_check ALL

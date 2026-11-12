@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include "Nodes/VoxelGridNode.h"
 #include "Core/NodeRegistration.h"
 #include "SceneGenerator.h"
@@ -372,9 +373,16 @@ void VoxelGridNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Re-output debug capture buffer (wrapper with conversion_type = VkBuffer). See CompileImpl's
     // comment above: OutWithInterface is required (not plain ctx.Out()) so the resource keeps
     // being detected as debug-capturable by DescriptorResourceGathererNode every frame.
+    // R851.7: the per-frame resets only serve an active debug capture (VIXEN_DEBUG_CAPTURE); with
+    // capture off nothing reads the sample region or the shader counters, so the two buffer
+    // writes (about 0.2 ms per frame) are skipped.
+    const bool debugCaptureActive = debugCaptureResource_ && debugCaptureResource_->IsCaptureEnabled();
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         // Reset buffer before each frame to allow fresh capture
-        debugCaptureResource_->Reset(vulkanDevice->device);
+        if (debugCaptureActive) {
+            VIXEN_FRAME_TRACE_SCOPE("debug", "debug-capture-reset");
+            debugCaptureResource_->Reset(vulkanDevice->device);
+        }
         ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get(),
                              static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
     }
@@ -382,7 +390,10 @@ void VoxelGridNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Re-output shader counters buffer (wrapper with conversion_type = VkBuffer)
     if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
         // Reset counters before each frame
-        shaderCountersResource_->Reset(vulkanDevice->device);
+        if (debugCaptureActive) {
+            VIXEN_FRAME_TRACE_SCOPE("debug", "shader-counters-reset");
+            shaderCountersResource_->Reset(vulkanDevice->device);
+        }
         ctx.Out(VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER, shaderCountersResource_.get());
     }
 
@@ -825,6 +836,40 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         std::cout << "[FarFieldColorFallbackByTag] primary=" << tagStats.colorFallback[0]
                    << " (" << perFrame(tagStats.colorFallback[0]) << "/frame) not-primary=" << tagStats.colorFallback[1]
                    << " (" << perFrame(tagStats.colorFallback[1]) << "/frame) over " << exitAfterFrames << " frames" << std::endl;
+
+        // cx-leafinstr2: the leaf histogram is intentionally drained only on
+        // the capture path. Timing runs leave VIXEN_LEAF_COUNTERS unset, so
+        // this readback cannot perturb their measurements or their logs.
+        if (std::getenv("VIXEN_LEAF_COUNTERS") != nullptr) {
+            if (debugCaptureResource_) {
+                const auto leaf = debugCaptureResource_->ReadLeafInstrumentationStats(vulkanDevice->device);
+                auto printHistogram = [](const char* metric, const auto& values) {
+                    std::cout << "[LeafInstrHistogram] metric=" << metric;
+                    for (size_t i = 0; i < values.size(); ++i) {
+                        std::cout << " b" << i << "=" << values[i];
+                    }
+                    std::cout << std::endl;
+                };
+                printHistogram("steps", leaf.steps);
+                printHistogram("bodies", leaf.bodies);
+                printHistogram("candidates", leaf.candidates);
+                printHistogram("path_class", leaf.pathClass);
+                printHistogram("brick_steps", leaf.brickSteps);
+            }
+        }
+        if (std::getenv("VIXEN_SHADER_CLOCK") != nullptr) {
+            if (debugCaptureResource_) {
+                const auto clock = debugCaptureResource_->ReadLeafShaderClockStats(vulkanDevice->device);
+                const uint32_t waveTicks = clock.waveEndMax - clock.waveStartMin;
+                const uint32_t shadeTicks = clock.shadeEndMax - clock.shadeStartMin;
+                std::cout << "[LeafShaderClock] wave_start_min=" << clock.waveStartMin
+                          << " wave_end_max=" << clock.waveEndMax
+                          << " wave_ticks=" << waveTicks
+                          << " shade_start_min=" << clock.shadeStartMin
+                          << " shade_end_max=" << clock.shadeEndMax
+                          << " shade_ticks=" << shadeTicks << std::endl;
+            }
+        }
 
         // Round 12 instrument fix (b): the 32-slot pixel decode ring is
         // REMOVED. It decodes the TAIL of atomicAdd dispatch order (last-32

@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include "Nodes/DescriptorResourceGathererNode.h"
 #include "Core/NodeRegistration.h"
 #include "ShaderDataBundle.h"
@@ -187,6 +188,7 @@ void DescriptorResourceGathererNode::VariadicExecuteImpl(VariadicExecuteContext&
     // - Execute phase refreshes transient resources (like current frame image view)
     // This separation avoids redundant work while supporting frame-varying data
 
+    VIXEN_FRAME_TRACE_SCOPE("variadic", "gather-execute");
     size_t variadicCount = ctx.InVariadicCount();
     bool hasTransients = false;
 
@@ -261,6 +263,7 @@ void DescriptorResourceGathererNode::VariadicExecuteImpl(VariadicExecuteContext&
         DescriptorHandleVariant handle;
         if (originalResource) {
             // Use original Resource's extractor (preserves wrapper type extraction)
+            VIXEN_FRAME_TRACE_SCOPE("variadic", "gather-handle");
             handle = originalResource->GetDescriptorHandle();
         } else {
             // Execute-only slot: no Compile-phase resource, use freshResource directly
@@ -275,6 +278,7 @@ void DescriptorResourceGathererNode::VariadicExecuteImpl(VariadicExecuteContext&
 
     if (hasTransients) {
         // Re-output updated resource array
+        VIXEN_FRAME_TRACE_SCOPE("variadic", "gather-output");
         ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
 
         // Log what we're outputting

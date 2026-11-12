@@ -19,25 +19,27 @@ void VulkanGraphApplication::ConfigureRenderGraphDiagnostics(
     bool debugCaptureEnabled) {
     using namespace Vixen::RenderGraph;
 
-    auto* voxelGrid = static_cast<VoxelGridNode*>(renderGraph->GetInstance(voxelGridNode));
-    // Enable logging for VoxelGridNode to see octree generation.
-    if (auto* voxelLogger = voxelGrid->GetLogger()) {
-        voxelLogger->SetEnabled(true);
-        voxelLogger->SetTerminalOutput(true);
-    }
+    // R851.7 (design D10): the node loggers' terminal output is a debugging aid, and a capture's
+    // length is a bug in itself; they are enabled only for a debug-capture session
+    // (VIXEN_DEBUG_CAPTURE=1), never unconditionally.
+    if (debugCaptureEnabled) {
+        auto* voxelGrid = static_cast<VoxelGridNode*>(renderGraph->GetInstance(voxelGridNode));
+        if (auto* voxelLogger = voxelGrid->GetLogger()) {
+            voxelLogger->SetEnabled(true);
+            voxelLogger->SetTerminalOutput(true);
+        }
 
-    // Enable logging for descriptor gatherer to debug bindings.
-    auto* descGatherer = static_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
-    if (auto* gathererLogger = descGatherer->GetLogger()) {
-        gathererLogger->SetEnabled(true);  // TEMP DEBUG: KI-009 follow-up
-        gathererLogger->SetTerminalOutput(true);
-    }
+        auto* descGatherer = static_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
+        if (auto* gathererLogger = descGatherer->GetLogger()) {
+            gathererLogger->SetEnabled(true);
+            gathererLogger->SetTerminalOutput(true);
+        }
 
-    // Enable logging for compute dispatch to see execution.
-    auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
-    if (auto* dispatchLogger = dispatch->GetLogger()) {
-        dispatchLogger->SetEnabled(true);
-        dispatchLogger->SetTerminalOutput(true);
+        auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
+        if (auto* dispatchLogger = dispatch->GetLogger()) {
+            dispatchLogger->SetEnabled(true);
+            dispatchLogger->SetTerminalOutput(true);
+        }
     }
 
     // Enable logging for push constant gatherer to see packing.
@@ -58,7 +60,7 @@ void VulkanGraphApplication::ConfigureRenderGraphDiagnostics(
                                std::string("binaries/compute_debug_output"));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_FRAMES_PER_EXPORT, 10u);
     if (auto* debugLogger = debugCapture->GetLogger()) {
-        debugLogger->SetEnabled(true);
-        debugLogger->SetTerminalOutput(true);
+        debugLogger->SetEnabled(debugCaptureEnabled);
+        debugLogger->SetTerminalOutput(debugCaptureEnabled);
     }
 }

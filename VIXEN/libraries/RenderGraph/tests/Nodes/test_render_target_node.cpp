@@ -293,6 +293,17 @@ TEST(RenderTargetNodeFollowExtent, MinimumExtentIsOneByOne) {
  */
 
 
+// A stage that records through SetExternalCommandRecorder has no shader chain; the
+// shader-bound inputs must stay optional so such a stage can be wired without a placeholder.
+TEST(ComputeStageExternalDispatch, ShaderBoundInputsAreOptional) {
+    EXPECT_TRUE(ComputeStageNodeConfig::COMPUTE_PIPELINE.nullable);
+    EXPECT_TRUE(ComputeStageNodeConfig::PIPELINE_LAYOUT.nullable);
+    EXPECT_TRUE(ComputeStageNodeConfig::DESCRIPTOR_SETS.nullable);
+    EXPECT_TRUE(ComputeStageNodeConfig::SHADER_DATA_BUNDLE.nullable);
+    EXPECT_FALSE(ComputeStageNodeConfig::COMMAND_POOL.nullable);
+    EXPECT_FALSE(ComputeStageNodeConfig::VULKAN_DEVICE_IN.nullable);
+}
+
 TEST(RenderTargetUsage, UnionsStorageBlitAndAttachmentConsumers) {
     RenderTargetNodeType targetType;
     ComputeStageNodeType computeType;
