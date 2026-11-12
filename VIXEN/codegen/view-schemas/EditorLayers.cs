@@ -23,6 +23,20 @@ namespace Vixen.ViewSchemas
         public string programUpId;
         public string programDownId;
         public float programFieldValue;
+        // E3: blend radius with its stepper ids, and the row's selection click target.
+        public float blendRadius;
+        public string blendUpId;
+        public string blendDownId;
+        public string selectId;
+        public bool isSelected;
+    }
+
+    // E3: one placement field (position/rotation/scale axis) of the selected layer, with its stepper ids.
+    public struct EditorTransformRow {
+        public string label;
+        public float value;
+        public string upId;
+        public string downId;
     }
 
     public struct EditorParameterRow {
@@ -57,6 +71,10 @@ namespace Vixen.ViewSchemas
     public struct EditorLayers {
         [ViewSection(Layout = ViewLayout.Aos)] public EditorLayerRow[] layers;
         [ViewSection(Layout = ViewLayout.Aos)] public EditorParameterRow[] parameters;
+        // E3: the selected layer's placement (nine fields) and which layer that is.
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorTransformRow[] transform;
+        public string selectedLayerName;
+        public int selectedLayer;
 
         // Inc-Ovr (design §5b Override proof): the framework generates NO read/write/reconcile
         // logic for this field -- only a forward-declared hook,

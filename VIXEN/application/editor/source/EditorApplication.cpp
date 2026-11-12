@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -180,6 +181,42 @@ uint32_t ParseParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const 
     }
     return 0;
 }
+
+// Typed-param readers for the E3 layer edits. Unlike ParseParam they report absence/garbage, so a
+// malformed dispatch is refused instead of becoming "layer 0" or "0.0".
+bool ParseIndexParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const char* name, uint32_t& out) {
+    for (const auto& [n, v] : params) {
+        if (n != name) continue;
+        const auto parsed = std::from_chars(v.data(), v.data() + v.size(), out);
+        return !v.empty() && parsed.ec == std::errc{} && parsed.ptr == v.data() + v.size();
+    }
+    return false;
+}
+
+bool ParseFloatParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const char* name, float& out) {
+    for (const auto& [n, v] : params) {
+        if (n != name) continue;
+        const auto parsed = std::from_chars(v.data(), v.data() + v.size(), out);
+        return !v.empty() && parsed.ec == std::errc{} && parsed.ptr == v.data() + v.size();
+    }
+    return false;
+}
+
+bool ParseTextParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const char* name, std::string& out) {
+    for (const auto& [n, v] : params) {
+        if (n != name) continue;
+        out = v;
+        return true;
+    }
+    return false;
+}
+
+// One stepper click of the E3 layer fields (the same fixed-step shape as the program-field buttons).
+constexpr float kBlendStep = 0.25f;
+constexpr float kPositionStep = 0.25f;
+constexpr float kRotationStepDegrees = 15.0f;
+constexpr float kScaleStep = 0.25f;
+constexpr float kMinimumScale = 0.25f;
 
 constexpr uint32_t kEditorProceduralRecipeId = 0xE0D17001u;
 
@@ -346,6 +383,7 @@ void EditorApplication::RefreshLayersView() {
         row.enabled = ((doc_.EnabledMask() >> i) & 1u) != 0u;
         Vixen::Editor::DocumentDiagnostic diagnostic;
         doc_.GetLayerProgramField(i, 0u, 3u, row.programFieldValue, diagnostic);
+        row.blendRadius = doc_.View().layers[i].header->blendRadius;
         layers.push_back(std::move(row));
     }
     std::vector<Vixen::App::EditorParameterData> parameters;
@@ -355,7 +393,21 @@ void EditorApplication::RefreshLayersView() {
             doc_.ParameterName(i), doc_.ParameterUnit(i), doc_.ParameterValue(i),
             doc_.ParameterMin(i), doc_.ParameterMax(i)});
     }
-    Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), layers, parameters);
+    Vixen::App::EditorPlacementData placement;
+    if (doc_.LayerCount() != 0u) {
+        selectedLayer_ = std::min(selectedLayer_, doc_.LayerCount() - 1u);
+        placement.selectedLayer = static_cast<int>(selectedLayer_);
+        placement.selectedName = doc_.LayerName(selectedLayer_);
+        Vixen::Editor::LayerTransform transform;
+        Vixen::Editor::DocumentDiagnostic placementDiagnostic;
+        doc_.GetLayerTransform(selectedLayer_, transform, placementDiagnostic);
+        for (size_t axis = 0; axis < 3; ++axis) {
+            placement.values[axis] = transform.position[axis];
+            placement.values[3 + axis] = transform.rotationDegrees[axis];
+            placement.values[6 + axis] = transform.scale[axis];
+        }
+    }
+    Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), layers, parameters, placement);
 }
 
 void EditorApplication::SyncAfterDocumentMutation() {
@@ -594,6 +646,150 @@ void EditorApplication::RegisterAppFlowHandlers() {
     };
     registerParameterEdit(FlowActionId::AdjustParameterUp, true);
     registerParameterEdit(FlowActionId::AdjustParameterDown, false);
+
+    // E3: typed layer edits. Each accepted edit is one ActionStack entry whose inverse restores the exact
+    // prior value (the prior program for a placement, so even a hand-authored Transform comes back
+    // byte-for-byte). A refused value records nothing.
+    using EditFn = std::function<bool(Vixen::Editor::DocumentDiagnostic&)>;
+    const auto recordEdit = [this](FlowActionId actionId, const char* label, EditFn forward, EditFn inverse) {
+        rt_.Stack().Dispatch(actionId, [this, label, forward, inverse](bool isForward) {
+            Vixen::Editor::DocumentDiagnostic opDiagnostic;
+            if (!(isForward ? forward : inverse)(opDiagnostic)) {
+                lastEditorError_ = opDiagnostic.message;
+                logger_->Error(std::string("[EditorApplication] ") + label + " operation failed: " + opDiagnostic.message);
+                return;
+            }
+            SyncAfterDocumentMutation();
+        });
+    };
+    const auto refuse = [this](const char* label, const std::string& why) {
+        lastEditorError_ = std::string(label) + ": " + why;
+        logger_->Warning("[EditorApplication] " + lastEditorError_);
+    };
+    const auto setBlend = [this, recordEdit, refuse](FlowActionId actionId, uint32_t index, float radius) {
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (index >= doc_.LayerCount()) { refuse("SetLayerBlend", "layer index " + std::to_string(index) + " is outside the document"); return; }
+        if (!Vixen::Editor::EditorDocumentModel::ValidateBlendRadius(radius, diagnostic)) { refuse("SetLayerBlend", diagnostic.message); return; }
+        const float before = doc_.View().layers[index].header->blendRadius;
+        if (before == radius) return;
+        recordEdit(actionId, "SetLayerBlend",
+                   [this, index, radius](Vixen::Editor::DocumentDiagnostic& d) { return doc_.SetLayerBlendRadius(index, radius, d); },
+                   [this, index, before](Vixen::Editor::DocumentDiagnostic& d) { return doc_.SetLayerBlendRadius(index, before, d); });
+        lastEditorError_.clear();
+    };
+    const auto setTransform = [this, recordEdit, refuse](FlowActionId actionId, uint32_t index,
+                                                         const Vixen::Editor::LayerTransform& next) {
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        Vixen::Editor::EditableDocumentLayer layerBefore;
+        if (!doc_.GetLayer(index, layerBefore, diagnostic)) { refuse("SetLayerTransform", diagnostic.message); return; }
+        if (!Vixen::Editor::EditorDocumentModel::ValidateLayerTransform(next, diagnostic)) { refuse("SetLayerTransform", diagnostic.message); return; }
+        Vixen::Editor::LayerTransform current;
+        doc_.GetLayerTransform(index, current, diagnostic);
+        if (current.position == next.position && current.rotationDegrees == next.rotationDegrees &&
+            current.scale == next.scale) return;
+        recordEdit(actionId, "SetLayerTransform",
+                   [this, index, next](Vixen::Editor::DocumentDiagnostic& d) { return doc_.SetLayerTransform(index, next, d); },
+                   [this, index, program = std::move(layerBefore.program)](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerProgram(index, program, d); });
+        lastEditorError_.clear();
+    };
+
+    rt_.RegisterHandler(FlowActionId::SetLayerBlend, [this, setBlend, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t index = 0;
+        float radius = 0.0f;
+        if (!ParseIndexParam(p, "layerIndex", index) || !ParseFloatParam(p, "radius", radius)) {
+            refuse("SetLayerBlend", "needs an integer layerIndex and a numeric radius");
+            return;
+        }
+        setBlend(FlowActionId::SetLayerBlend, index, radius);
+    });
+
+    rt_.RegisterHandler(FlowActionId::RenameLayer, [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t index = 0;
+        std::string name;
+        if (!ParseIndexParam(p, "layerIndex", index) || !ParseTextParam(p, "name", name)) {
+            refuse("RenameLayer", "needs an integer layerIndex and a name");
+            return;
+        }
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (index >= doc_.LayerCount()) { refuse("RenameLayer", "layer index " + std::to_string(index) + " is outside the document"); return; }
+        if (!Vixen::Editor::EditorDocumentModel::ValidateLayerName(name, diagnostic)) { refuse("RenameLayer", diagnostic.message); return; }
+        const std::string before = doc_.LayerName(index);
+        if (before == name) return;
+        recordEdit(FlowActionId::RenameLayer, "RenameLayer",
+                   [this, index, name](Vixen::Editor::DocumentDiagnostic& d) { return doc_.SetLayerName(index, name, d); },
+                   [this, index, before](Vixen::Editor::DocumentDiagnostic& d) { return doc_.SetLayerName(index, before, d); });
+        lastEditorError_.clear();
+    });
+
+    rt_.RegisterHandler(FlowActionId::SetLayerTransform, [setTransform, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        static constexpr const char* kFields[9] = {"px", "py", "pz", "rx", "ry", "rz", "sx", "sy", "sz"};
+        uint32_t index = 0;
+        std::array<float, 9> values{};
+        bool complete = ParseIndexParam(p, "layerIndex", index);
+        for (size_t f = 0; f < values.size() && complete; ++f) complete = ParseFloatParam(p, kFields[f], values[f]);
+        if (!complete) {
+            refuse("SetLayerTransform", "needs an integer layerIndex and numeric px py pz rx ry rz sx sy sz");
+            return;
+        }
+        Vixen::Editor::LayerTransform next;
+        next.position = {values[0], values[1], values[2]};
+        next.rotationDegrees = {values[3], values[4], values[5]};
+        next.scale = {values[6], values[7], values[8]};
+        setTransform(FlowActionId::SetLayerTransform, index, next);
+    });
+
+    rt_.RegisterHandler(FlowActionId::NudgeLayerField, [this, setBlend, setTransform, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t index = 0;
+        std::string field;
+        if (!ParseIndexParam(p, "layerIndex", index) || !ParseTextParam(p, "field", field)) {
+            refuse("NudgeLayerField", "needs an integer layerIndex and a field");
+            return;
+        }
+        const size_t dash = field.rfind('-');
+        const std::string key = dash == std::string::npos ? field : field.substr(0, dash);
+        const std::string direction = dash == std::string::npos ? std::string{} : field.substr(dash + 1);
+        if (direction != "up" && direction != "down") {
+            refuse("NudgeLayerField", "field '" + field + "' must end in -up or -down");
+            return;
+        }
+        const float sign = direction == "up" ? 1.0f : -1.0f;
+        if (key == "blend") {
+            if (index >= doc_.LayerCount()) { refuse("NudgeLayerField", "layer index " + std::to_string(index) + " is outside the document"); return; }
+            const float before = doc_.View().layers[index].header->blendRadius;
+            setBlend(FlowActionId::NudgeLayerField, index, std::max(0.0f, before + sign * kBlendStep));
+            return;
+        }
+        static constexpr const char* kKeys[9] = {"px", "py", "pz", "rx", "ry", "rz", "sx", "sy", "sz"};
+        size_t slot = 9;
+        for (size_t f = 0; f < 9; ++f) if (key == kKeys[f]) slot = f;
+        if (slot == 9) { refuse("NudgeLayerField", "unknown field '" + key + "'"); return; }
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        Vixen::Editor::LayerTransform next;
+        if (!doc_.GetLayerTransform(index, next, diagnostic)) { refuse("NudgeLayerField", diagnostic.message); return; }
+        const size_t axis = slot % 3u;
+        if (slot < 3u) next.position[axis] += sign * kPositionStep;
+        else if (slot < 6u) next.rotationDegrees[axis] += sign * kRotationStepDegrees;
+        else next.scale[axis] = std::max(kMinimumScale, next.scale[axis] + sign * kScaleStep);
+        setTransform(FlowActionId::NudgeLayerField, index, next);
+    });
+
+    rt_.RegisterHandler(FlowActionId::SelectLayer, [this, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t index = 0;
+        if (!ParseIndexParam(p, "layerIndex", index) || index >= doc_.LayerCount()) {
+            refuse("SelectLayer", "needs a layerIndex inside the document");
+            return;
+        }
+        selectedLayer_ = index;
+        RefreshLayersView();
+    });
+
+    // The runtime reload (fresh undo history) must not happen inside the runtime's own dispatch, so the
+    // request is applied by Update(), as OpenRecipe's is.
+    rt_.RegisterHandler(FlowActionId::ReopenSaved, [this, refuse](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        if (lastSavedPath_.empty()) { refuse("ReopenSaved", "requires a successful save first"); return; }
+        pendingReopenSaved_ = true;
+    });
 
     // R765: open a pack recipe by content id. Opening replaces the document and reloads the AppFlow
     // runtime (fresh undo history), which must not happen inside the runtime's own dispatch, so the
@@ -1423,6 +1619,12 @@ void EditorApplication::Update() {
     // the same dirty_ re-flatten tail below as an input-driven toggle would. The input path's own
     // same-frame echo (inside the ToggleLayer handler) already covers the self case; this call is
     // what makes a non-input Gaia write reach the view at all.
+    if (pendingReopenSaved_) {
+        pendingReopenSaved_ = false;
+        if (!ReopenSavedDocument()) {
+            logger_->Error("[EditorApplication] ReopenSaved failed: " + lastEditorError_);
+        }
+    }
     if (pendingOpenRecipe_.has_value()) {
         const std::string recipeId = std::move(*pendingOpenRecipe_);
         pendingOpenRecipe_.reset();

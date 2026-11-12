@@ -96,6 +96,11 @@ body {
     color: #e0d0b0;
 }
 
+.col-name.selected {
+    color: #ffffff;
+    text-decoration: underline;
+}
+
 .col-op {
     display: inline-block;
     color: #90c0ff;

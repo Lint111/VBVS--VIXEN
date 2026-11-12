@@ -166,6 +166,8 @@ private:
     Vixen::Editor::PackRecipeSource pack_;
     std::string openRecipeId_;
     std::optional<std::string> pendingOpenRecipe_;  // OpenRecipe request, applied in Update()
+    bool pendingReopenSaved_ = false;               // ReopenSaved request, applied in Update() (reloads the runtime)
+    uint32_t selectedLayer_ = 0;                    // SelectLayer: whose placement the inspector shows (view state)
     bool reframePending_ = false;                    // next re-apply reframes the camera (new document)
     // Inc-2b: the editor owns an AppFlowRuntime (bus=nullptr — Publish no-ops; the editor
     // doesn't consume the events yet) so toggle/undo/redo route through the ActionStack. The

@@ -50,7 +50,8 @@ public:
     const char* DocumentPath() const override { return "assets/ui/editor_layers.rml"; }
     void Register(Rml::DataModelConstructor& c) override {
         Vixen::Views::BindEditorLayersModel(c,
-            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &activeLayerCountRaw_, &recipes_,
+            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
+                                            &selectedLayer_, &activeLayerCountRaw_, &recipes_,
                                             &statusDocument_, &statusMessage_, &flowState_,
                                             &undoDepth_, &redoDepth_ });
         model_ = c.GetModelHandle();
@@ -69,7 +70,8 @@ public:
     // there; a later re-population, e.g. after the optional same-frame echo, needs it).
     void PopulateFromDocument(uint32_t mask,
                               const std::vector<EditorLayerData>& layerData,
-                              const std::vector<EditorParameterData>& parameterData) {
+                              const std::vector<EditorParameterData>& parameterData,
+                              const EditorPlacementData& placement = {}) {
         layers_.clear();
         layers_.reserve(layerData.size());
         for (uint32_t i = 0; i < layerData.size(); ++i) {
@@ -84,6 +86,11 @@ public:
             row.programUpId = "layer-" + std::to_string(i) + "-program-up";
             row.programDownId = "layer-" + std::to_string(i) + "-program-down";
             row.programFieldValue = layerData[i].programFieldValue;
+            row.blendRadius = layerData[i].blendRadius;
+            row.blendUpId = "layer-" + std::to_string(i) + "-nudge-blend-up";
+            row.blendDownId = "layer-" + std::to_string(i) + "-nudge-blend-down";
+            row.selectId = "layer-" + std::to_string(i) + "-select";
+            row.isSelected = static_cast<int>(i) == placement.selectedLayer;
             layers_.push_back(std::move(row));
         }
         parameters_.clear();
@@ -99,6 +106,29 @@ public:
             row.maximum = parameterData[i].maximum;
             parameters_.push_back(std::move(row));
         }
+        // E3: the selected layer's placement. Field keys are the SetLayerTransform param names, so a
+        // nudge id reads "layer-<selected>-nudge-<key>-<up|down>".
+        static constexpr const char* kPlacementLabels[9] = {
+            "position x", "position y", "position z", "rotation x", "rotation y", "rotation z",
+            "scale x", "scale y", "scale z"};
+        static constexpr const char* kPlacementKeys[9] = {
+            "px", "py", "pz", "rx", "ry", "rz", "sx", "sy", "sz"};
+        selectedLayer_ = placement.selectedLayer;
+        selectedLayerName_ = Rml::String(placement.selectedName);
+        transform_.clear();
+        if (!layerData.empty()) {
+            transform_.reserve(9);
+            for (size_t f = 0; f < 9; ++f) {
+                Vixen::Views::EditorTransformRow row;
+                const std::string stem = "layer-" + std::to_string(placement.selectedLayer) +
+                                         "-nudge-" + kPlacementKeys[f];
+                row.label = kPlacementLabels[f];
+                row.value = placement.values[f];
+                row.upId = stem + "-up";
+                row.downId = stem + "-down";
+                transform_.push_back(std::move(row));
+            }
+        }
         // activeLayerCount (Inc-Ovr Override proof): storage holds the raw mask reinterpreted as
         // int; BindEditorLayersModel_activeLayerCountOverride (this file, above) popcounts it at
         // bind time. Only needs a dirty when the mask itself changes, same as "layers".
@@ -106,6 +136,9 @@ public:
         if (model_) {
             model_.DirtyVariable("layers");
             model_.DirtyVariable("parameters");
+            model_.DirtyVariable("transform");
+            model_.DirtyVariable("selectedLayerName");
+            model_.DirtyVariable("selectedLayer");
             model_.DirtyVariable("activeLayerCount");
         }
     }
@@ -152,6 +185,9 @@ public:
 private:
     std::vector<Vixen::Views::EditorLayerRow> layers_;
     std::vector<Vixen::Views::EditorParameterRow> parameters_;
+    std::vector<Vixen::Views::EditorTransformRow> transform_;
+    Rml::String selectedLayerName_;
+    int selectedLayer_ = 0;
     int activeLayerCountRaw_ = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes_;
     Rml::String statusDocument_;

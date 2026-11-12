@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0xCE7796BC
+shape 0xEF0FCC11
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -31,6 +31,12 @@ action SplitPanel 20
 action FloatPanel 21
 action ResizeRegion 22
 action ResetLayout 23
+action SetLayerBlend 24
+action RenameLayer 25
+action SetLayerTransform 26
+action ReopenSaved 27
+action SelectLayer 28
+action NudgeLayerField 29
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -92,6 +98,12 @@ decl 20 sizeof(LayerState) 1
 decl 21 sizeof(LayerState) 1
 decl 22 sizeof(LayerState) 1
 decl 23 sizeof(LayerState) 1
+decl 24 sizeof(LayerState) 1
+decl 25 sizeof(LayerState) 1
+decl 26 sizeof(LayerState) 1
+decl 27 sizeof(LayerState) 1
+decl 28 sizeof(LayerState) 1
+decl 29 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -101,6 +113,23 @@ param 12 layerIndex 1
 param 13 parameterIndex 1
 param 14 parameterIndex 1
 param 15 recipeId 0
+param 24 layerIndex 1
+param 24 radius 2
+param 25 layerIndex 1
+param 25 name 0
+param 26 layerIndex 1
+param 26 px 2
+param 26 py 2
+param 26 pz 2
+param 26 rx 2
+param 26 ry 2
+param 26 rz 2
+param 26 sx 2
+param 26 sy 2
+param 26 sz 2
+param 28 layerIndex 1
+param 29 layerIndex 1
+param 29 field 0
 param 16 panelId 0
 param 17 panelId 0
 param 18 panelId 0
@@ -128,6 +157,9 @@ trigger EditProgramFieldDownTrigger layer-{index}-program-down 12 layerIndex cli
 trigger AdjustParameterUpTrigger parameter-{index}-up 13 parameterIndex click
 trigger AdjustParameterDownTrigger parameter-{index}-down 14 parameterIndex click
 trigger OpenRecipeTrigger recipe-{recipeId}-open 15 recipeId click
+trigger SelectLayerTrigger layer-{index}-select 28 layerIndex click
+trigger NudgeLayerFieldTrigger layer-{index}-nudge-{field} 29 layerIndex click
+trigger ReopenSavedButtonTrigger reopen-button 27 - click
 trigger UndoButtonTrigger undo-button 1 - click
 trigger RedoButtonTrigger redo-button 2 - click
 trigger SaveButtonTrigger save-button 3 - click

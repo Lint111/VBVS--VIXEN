@@ -14,6 +14,7 @@
 // EditorLayersViewBridge.cpp (gaia-free) is where EditorLayersView.h / Ui/IView.h /
 // Nodes/UIRenderNode.h actually get included and EditorLayersView's inline methods actually
 // instantiate. EditorApplication.cpp reaches EditorLayersView ONLY through this bridge.
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -28,6 +29,15 @@ struct EditorLayerData {
     std::string op;
     bool enabled = true;
     float programFieldValue = 0.0f;
+    float blendRadius = 0.0f;
+};
+
+// E3: the placement of the selected layer, in the order px py pz rx ry rz sx sy sz (rotation in
+// degrees). The inspector shows it and its steppers; the field keys live with the view.
+struct EditorPlacementData {
+    int selectedLayer = 0;
+    std::string selectedName;
+    std::array<float, 9> values{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct EditorParameterData {
@@ -70,7 +80,8 @@ Vixen::RenderGraph::IView& EditorLayersAsView(EditorLayersView& view);
 // Forwards the headless document's layer and parameter projection into the generated view model.
 void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
                              const std::vector<EditorLayerData>& layers,
-                             const std::vector<EditorParameterData>& parameters);
+                             const std::vector<EditorParameterData>& parameters,
+                             const EditorPlacementData& placement = {});
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
 

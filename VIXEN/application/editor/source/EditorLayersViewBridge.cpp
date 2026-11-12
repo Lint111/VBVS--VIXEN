@@ -23,8 +23,9 @@ Vixen::RenderGraph::IView& EditorLayersAsView(EditorLayersView& view) {
 
 void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
                              const std::vector<EditorLayerData>& layers,
-                             const std::vector<EditorParameterData>& parameters) {
-    view.PopulateFromDocument(mask, layers, parameters);
+                             const std::vector<EditorParameterData>& parameters,
+                             const EditorPlacementData& placement) {
+    view.PopulateFromDocument(mask, layers, parameters, placement);
 }
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes) {

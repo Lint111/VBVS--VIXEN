@@ -8,12 +8,16 @@
 
 namespace Vixen::Views {
 
-struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; Rml::String programUpId; Rml::String programDownId; float programFieldValue; };
+struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; Rml::String programUpId; Rml::String programDownId; float programFieldValue; float blendRadius; Rml::String blendUpId; Rml::String blendDownId; Rml::String selectId; bool isSelected; };
 struct EditorParameterRow { Rml::String name; Rml::String unit; Rml::String upId; Rml::String downId; float value; float minimum; float maximum; };
+struct EditorTransformRow { Rml::String label; float value; Rml::String upId; Rml::String downId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorLayersBind {
     std::vector<EditorLayerRow>* layers;
     std::vector<EditorParameterRow>* parameters;
+    std::vector<EditorTransformRow>* transform;
+    Rml::String* selectedLayerName;
+    int* selectedLayer;
     int* activeLayerCount;
     std::vector<EditorRecipeRow>* recipes;
     Rml::String* statusDocument;
@@ -37,6 +41,11 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("programUpId", &EditorLayerRow::programUpId);
         sh.RegisterMember("programDownId", &EditorLayerRow::programDownId);
         sh.RegisterMember("programFieldValue", &EditorLayerRow::programFieldValue);
+        sh.RegisterMember("blendRadius", &EditorLayerRow::blendRadius);
+        sh.RegisterMember("blendUpId", &EditorLayerRow::blendUpId);
+        sh.RegisterMember("blendDownId", &EditorLayerRow::blendDownId);
+        sh.RegisterMember("selectId", &EditorLayerRow::selectId);
+        sh.RegisterMember("isSelected", &EditorLayerRow::isSelected);
     }
     if (auto sh = c.RegisterStruct<EditorParameterRow>()) {
         sh.RegisterMember("name", &EditorParameterRow::name);
@@ -47,6 +56,12 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("minimum", &EditorParameterRow::minimum);
         sh.RegisterMember("maximum", &EditorParameterRow::maximum);
     }
+    if (auto sh = c.RegisterStruct<EditorTransformRow>()) {
+        sh.RegisterMember("label", &EditorTransformRow::label);
+        sh.RegisterMember("value", &EditorTransformRow::value);
+        sh.RegisterMember("upId", &EditorTransformRow::upId);
+        sh.RegisterMember("downId", &EditorTransformRow::downId);
+    }
     if (auto sh = c.RegisterStruct<EditorRecipeRow>()) {
         sh.RegisterMember("id", &EditorRecipeRow::id);
         sh.RegisterMember("elementId", &EditorRecipeRow::elementId);
@@ -54,9 +69,13 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     }
     c.RegisterArray<std::vector<EditorLayerRow>>();
     c.RegisterArray<std::vector<EditorParameterRow>>();
+    c.RegisterArray<std::vector<EditorTransformRow>>();
     c.RegisterArray<std::vector<EditorRecipeRow>>();
     c.Bind("layers", b.layers);
     c.Bind("parameters", b.parameters);
+    c.Bind("transform", b.transform);
+    c.Bind("selectedLayerName", b.selectedLayerName);
+    c.Bind("selectedLayer", b.selectedLayer);
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
     c.Bind("recipes", b.recipes);
     c.Bind("statusDocument", b.statusDocument);
