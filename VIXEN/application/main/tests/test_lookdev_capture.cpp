@@ -28,6 +28,11 @@
 #include "Text/GlyphOutline.h"
 #include "SdfBake.h"
 #include "ShellOctreeGpu.h"
+#include "EditorDocumentModel.h"
+#include "PackRecipeSource.h"
+#include "Recipe/generated/RecipeContainer.g.h"
+#include "Recipe/RecipeBounds.h"
+#include "Recipe/RecipeIngest.h"
 
 #include <gtest/gtest.h>
 #include <stb_image.h>
@@ -39,6 +44,7 @@
 #include <array>
 #include <algorithm>
 #include <bit>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
@@ -469,6 +475,329 @@ struct GlyphSdfSceneBundle {
     glm::vec3 frameMin{std::numeric_limits<float>::max()};
     glm::vec3 frameMax{std::numeric_limits<float>::lowest()};
 };
+
+struct RecipePreviewSceneBundle {
+    std::string recipeId;
+    std::string sourcePath;
+    uint32_t numericRecipeId = 0;
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    std::array<float, 6> params{};
+    glm::vec3 frameCenter{5.0f, 2.4f, 5.0f};
+    float scale = 0.08f;
+    float boundRadius = 0.0f;
+    bool boundsDerived = false;
+    uint32_t nestingDepth = 0;
+    std::vector<std::pair<uint32_t, Vixen::SVO::RecipeRegistry::RecipeEntry>> dependencies;
+};
+
+// The pack recipe being captured: the id the enumerating test selected from the pack's own listing,
+// else the explicit VIXEN_LOOKDEV_RECIPE_ID. Empty when neither is set.
+std::string& SelectedPackRecipeId() {
+    static std::string selected;
+    return selected;
+}
+
+std::string RequestedPackRecipeId() {
+    if (!SelectedPackRecipeId().empty()) return SelectedPackRecipeId();
+    const char* env = std::getenv("VIXEN_LOOKDEV_RECIPE_ID");
+    return env ? env : "";
+}
+
+bool RecipePreviewRequested() {
+    return std::getenv("VIXEN_LOOKDEV_RECIPE_PATH") != nullptr ||
+           (std::getenv("VIXEN_LOOKDEV_PACK_ROOT") != nullptr && !RequestedPackRecipeId().empty());
+}
+
+// Label text for a recipe's GlyphOutline rows, derived from the recipe's own id (the part after the
+// pack prefix, separators as spaces, upper-cased) so no content id is named in engine code.
+std::string RecipeGlyphLabel(const std::string& recipeId) {
+    std::string label = recipeId.substr(recipeId.find(':') == std::string::npos ? 0 : recipeId.find(':') + 1);
+    for (char& c : label)
+        c = (c == '-' || c == '_') ? ' ' : static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return label;
+}
+
+std::string RecipePreviewFailure(const std::string& path, const std::string& op,
+                                 const std::string& fix) {
+    return "R796 recipe preview failed: '" + path + "' contains " + op + "; fix: " + fix;
+}
+
+bool ReadBinaryFile(const std::filesystem::path& path, std::vector<uint8_t>& bytes,
+                    std::string& error) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        error = "R796 recipe preview failed: cannot open '" + path.string() +
+            "'; fix: provide a readable .vrc/.vxd file";
+        return false;
+    }
+    const auto size = file.tellg();
+    if (size <= 0) {
+        error = "R796 recipe preview failed: '" + path.string() +
+            "' is empty; fix: export a VRC1 recipe or a VDC1 document";
+        return false;
+    }
+    bytes.resize(static_cast<size_t>(size));
+    file.seekg(0);
+    if (!file.read(reinterpret_cast<char*>(bytes.data()), size)) {
+        error = "R796 recipe preview failed: read error in '" + path.string() +
+            "'; fix: replace the truncated recipe asset";
+        return false;
+    }
+    return true;
+}
+
+bool ParseRecipeParams(std::array<float, 6>& params, std::string& error) {
+    const char* raw = std::getenv("VIXEN_LOOKDEV_RECIPE_PARAMS");
+    if (!raw || *raw == '\0') return true;
+    std::istringstream values(raw);
+    std::string token;
+    size_t index = 0;
+    while (std::getline(values, token, ',')) {
+        if (index >= params.size()) {
+            error = "R796 recipe preview failed: VIXEN_LOOKDEV_RECIPE_PARAMS has more than six values; "
+                    "fix: pass exactly six comma-separated floats";
+            return false;
+        }
+        char* end = nullptr;
+        const float value = std::strtof(token.c_str(), &end);
+        if (end == token.c_str() || *end != '\0' || !std::isfinite(value)) {
+            error = "R796 recipe preview failed: invalid recipeParams value '" + token +
+                    "'; fix: pass finite comma-separated floats in VIXEN_LOOKDEV_RECIPE_PARAMS";
+            return false;
+        }
+        params[index++] = value;
+    }
+    return true;
+}
+
+bool ParseRecipeScale(float& scale, std::string& error) {
+    const char* raw = std::getenv("VIXEN_LOOKDEV_RECIPE_SCALE");
+    if (!raw || *raw == '\0') return true;
+    char* end = nullptr;
+    const float value = std::strtof(raw, &end);
+    if (end == raw || *end != '\0' || !std::isfinite(value) || value <= 0.0f) {
+        error = "R796 recipe preview failed: invalid VIXEN_LOOKDEV_RECIPE_SCALE; "
+                "fix: pass one positive finite scale value";
+        return false;
+    }
+    scale = value;
+    return true;
+}
+
+bool LoadRecipeGlyphRows(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
+                         const std::string& recipeId, const std::string& sourcePath,
+                         std::string& error) {
+    using Vixen::SVO::Recipe::SdfOpCode;
+    size_t glyphCount = 0;
+    for (const auto& instruction : entry.bytecode) {
+        if (static_cast<SdfOpCode>(instruction.opCode) != SdfOpCode::GlyphOutline) continue;
+        const auto localIndex = std::bit_cast<uint32_t>(instruction.data[0]);
+        glyphCount = std::max(glyphCount, static_cast<size_t>(localIndex) + 1u);
+    }
+    if (glyphCount == 0) return true;
+
+    std::string text = RecipeGlyphLabel(recipeId);
+    if (const char* requested = std::getenv("VIXEN_LOOKDEV_RECIPE_TEXT"); requested && *requested)
+        text = requested;
+
+    FT_Library library = nullptr;
+    FT_Face face = nullptr;
+    if (FT_Init_FreeType(&library) != 0 || FT_New_Face(library, TEXT_LATO_FONT_PATH, 0, &face) != 0 ||
+        FT_Set_Char_Size(face, 0, 24 * 64, 0, 0) != 0) {
+        if (face) FT_Done_Face(face);
+        if (library) FT_Done_FreeType(library);
+        error = "R796 recipe preview failed for '" + sourcePath +
+            "': GlyphOutline needs the bundled Lato face; fix: restore TEXT_LATO_FONT_PATH";
+        return false;
+    }
+    Vixen::Text::GlyphAtlas atlas;
+    for (const unsigned char character : text) {
+        const FT_UInt glyphIndex = FT_Get_Char_Index(face, character);
+        if (!glyphIndex) continue;
+        // Only the atlas side effect is wanted: the rows are read back through OutlineBlob() below.
+        static_cast<void>(atlas.GetOrAddOutlineIndex(face, glyphIndex));
+    }
+    const auto rows = atlas.OutlineBlob();
+    if (rows.size() < glyphCount) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        error = RecipePreviewFailure(sourcePath, "GlyphOutline row " + std::to_string(glyphCount - 1),
+                                     "set VIXEN_LOOKDEV_RECIPE_TEXT to text with enough glyph rows for the VRC1 program");
+        return false;
+    }
+    entry.glyphInstances.assign(rows.begin(), rows.begin() + glyphCount);
+    FT_Done_Face(face);
+    FT_Done_FreeType(library);
+    return true;
+}
+
+uint32_t RecipePreviewNumericId(std::string_view name) {
+    uint32_t hash = 2166136261u;
+    for (const unsigned char c : name) {
+        hash ^= c;
+        hash *= 16777619u;
+    }
+    return 0xA0000000u | (hash & 0x0FFFFFFFu);
+}
+
+bool LoadRecipeFile(const std::string& sourcePath, Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
+                    std::array<float, 6>& params, std::string& error) {
+    const std::string extension = std::filesystem::path(sourcePath).extension().string();
+    if (extension == ".vrc") {
+        std::vector<uint8_t> blob;
+        if (!ReadBinaryFile(sourcePath, blob, error)) return false;
+        Yeroket::Sdf::Generated::RecipeContainerView view{};
+        if (!Yeroket::Sdf::Generated::ReadRecipeContainer(blob.data(), blob.size(), view)) {
+            error = "R796 recipe preview failed: '" + sourcePath +
+                "' is not a valid VRC1 container; fix: export the flattened recipe with the pack baker";
+            return false;
+        }
+        entry.bytecode.assign(view.instructions, view.instructions + view.header.instructionCount);
+        entry.bakeResolution = view.header.bakeResolution;
+        entry.bandVoxels = view.header.bandVoxels;
+        entry.brickDepth = view.header.brickDepth;
+    } else if (extension == ".vxd") {
+        Vixen::Editor::EditorDocumentModel document;
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (!document.Load(sourcePath, diagnostic) ||
+            !document.FlattenToRecipeEntry(entry, diagnostic)) {
+            error = "R796 recipe preview failed for '" + sourcePath + "': " + diagnostic.message +
+                "; fix: repair the VDC1 layers or export a valid VRC1 blob";
+            return false;
+        }
+        params = document.EffectiveParameterValues();
+    } else {
+        error = "R796 recipe preview failed: unsupported recipe file '" + sourcePath +
+            "'; fix: provide a .vrc or .vxd render_recipe asset";
+        return false;
+    }
+    return true;
+}
+
+bool LoadNamedRecipePreview(RecipePreviewSceneBundle& scene, std::string& error) {
+    if (!RecipePreviewRequested()) return true;
+
+    std::string sourcePath;
+    Vixen::Editor::PackRecipeSource packSource;
+    std::vector<Vixen::Editor::PackRecipe> packRecipes;
+    const char* packRoot = std::getenv("VIXEN_LOOKDEV_PACK_ROOT");
+    const std::string requestedIdText = RequestedPackRecipeId();
+    const char* requestedId = requestedIdText.empty() ? nullptr : requestedIdText.c_str();
+    if (packRoot && requestedId) {
+        const std::filesystem::path root(packRoot);
+        const char* schemaEnv = std::getenv("VIXEN_LOOKDEV_PACK_SCHEMA");
+        const std::filesystem::path schema = schemaEnv && *schemaEnv
+            ? std::filesystem::path(schemaEnv) : root / "schemas.json";
+        if (!packSource.Configure(root.string(), schema.string(), error)) {
+            error = "R796 recipe preview failed for pack '" + root.string() + "': " + error +
+                    "; fix: provide manifest.utdl and schemas.json with render_recipe.assetFiles";
+            return false;
+        }
+        if (!packSource.TryResolve(requestedId, sourcePath)) {
+            error = "R796 recipe preview failed: unknown recipe id '" + std::string(requestedId) +
+                    "' in pack '" + root.string() + "'; fix: choose one of the ids listed by PackRecipeSource";
+            return false;
+        }
+        scene.recipeId = requestedId;
+        packRecipes = packSource.Recipes();
+    } else if (const char* path = std::getenv("VIXEN_LOOKDEV_RECIPE_PATH")) {
+        sourcePath = path;
+        scene.recipeId = std::filesystem::path(path).stem().string();
+    } else {
+        error = "R796 recipe preview failed: recipe path and pack/id must be supplied; "
+                "fix: set VIXEN_LOOKDEV_RECIPE_PATH or VIXEN_LOOKDEV_PACK_ROOT plus VIXEN_LOOKDEV_RECIPE_ID";
+        return false;
+    }
+
+    scene.sourcePath = sourcePath;
+    scene.numericRecipeId = RecipePreviewNumericId(scene.recipeId);
+    if (!LoadRecipeFile(sourcePath, scene.entry, scene.params, error)) return false;
+
+    if (!ParseRecipeParams(scene.params, error) || !ParseRecipeScale(scene.scale, error)) return false;
+    if (!LoadRecipeGlyphRows(scene.entry, scene.recipeId, sourcePath, error)) return false;
+    std::vector<uint32_t> pending;
+    for (const auto& instruction : scene.entry.bytecode)
+        if (static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode) ==
+            Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe)
+            pending.push_back(static_cast<uint32_t>(instruction.data[0]));
+    for (uint32_t depth = 1; !pending.empty(); ++depth) {
+        scene.nestingDepth = depth;
+        if (depth > Vixen::SVO::RecipeRegistry::kMaxRecipeNestingDepth) {
+            error = RecipePreviewFailure(sourcePath, "InvokeRecipe nesting beyond four hops",
+                                         "flatten the recipe or keep the callee chain at four hops or fewer");
+            return false;
+        }
+        std::vector<uint32_t> next;
+        for (const uint32_t dependencyId : pending) {
+            const auto alreadyLoaded = std::find_if(scene.dependencies.begin(), scene.dependencies.end(),
+                [dependencyId](const auto& item) { return item.first == dependencyId; });
+            if (alreadyLoaded != scene.dependencies.end()) continue;
+            auto recipe = std::find_if(packRecipes.begin(), packRecipes.end(),
+                [dependencyId](const auto& item) { return RecipePreviewNumericId(item.id) == dependencyId; });
+            if (recipe == packRecipes.end()) {
+                error = RecipePreviewFailure(sourcePath, "InvokeRecipe callee id " + std::to_string(dependencyId),
+                                             "add that recipe to the configured pack and regenerate its recipe ids");
+                return false;
+            }
+            Vixen::SVO::RecipeRegistry::RecipeEntry dependencyEntry;
+            std::array<float, 6> dependencyParams{};
+            if (!LoadRecipeFile(recipe->path, dependencyEntry, dependencyParams, error) ||
+                !LoadRecipeGlyphRows(dependencyEntry, recipe->id, recipe->path, error)) return false;
+            for (const auto& instruction : dependencyEntry.bytecode)
+                if (static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode) ==
+                    Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe)
+                    next.push_back(static_cast<uint32_t>(instruction.data[0]));
+            scene.dependencies.emplace_back(dependencyId, std::move(dependencyEntry));
+        }
+        pending = std::move(next);
+    }
+    auto validateProgram = [&](const std::string& path,
+                               const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
+        for (const auto& instruction : entry.bytecode) {
+            if (!Vixen::SVO::Recipe::IsValidSdfOpCode(instruction.opCode)) {
+                error = RecipePreviewFailure(path,
+                    "unknown opcode " + std::to_string(instruction.opCode),
+                    "use an opcode in the generated SDF opcode catalogue");
+                return false;
+            }
+            const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
+            if (op == Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe && packRecipes.empty()) {
+                error = RecipePreviewFailure(path, "InvokeRecipe without a pack-resolved callee",
+                    "include the callee recipe in the pack and register it before the subject");
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!validateProgram(sourcePath, scene.entry)) return false;
+    for (const auto& dependency : scene.dependencies) {
+        const auto recipe = std::find_if(packRecipes.begin(), packRecipes.end(),
+            [&dependency](const auto& item) {
+                return RecipePreviewNumericId(item.id) == dependency.first;
+            });
+        if (recipe != packRecipes.end() && !validateProgram(recipe->path, dependency.second)) return false;
+    }
+
+    const auto bounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
+        scene.entry.bytecode.data(), static_cast<uint32_t>(scene.entry.bytecode.size()),
+        std::span<const float>(scene.params.data(), scene.params.size()));
+    if (bounds.ok) {
+        scene.entry.boundCenter = bounds.center;
+        scene.entry.boundRadius = bounds.radius;
+        scene.boundRadius = bounds.radius;
+        scene.boundsDerived = true;
+    } else {
+        scene.entry.boundCenter = glm::vec3(0.0f);
+        scene.entry.boundRadius = 24.0f;
+        scene.boundRadius = 24.0f;
+    }
+    std::printf("[RECIPE_PREVIEW] id=%s source=%s ops=%zu nesting=%u bounds=%s radius=%.3f bucket=single\n",
+                scene.recipeId.c_str(), scene.sourcePath.c_str(), scene.entry.bytecode.size(),
+                scene.nestingDepth, scene.boundsDerived ? "derived-interval" : "sampling-fallback",
+                scene.boundRadius);
+    std::fflush(stdout);
+    return true;
+}
 
 void IncludeInFrame(GlyphSdfSceneBundle& scene, const glm::vec3& worldCenter,
                     const glm::vec3& worldHalfExtent) {
@@ -1318,6 +1647,31 @@ public:
             }
         }
 
+        const bool recipePreview = RecipePreviewRequested();
+        RecipePreviewSceneBundle recipeScene;
+        if (recipePreview) {
+            if (!LoadNamedRecipePreview(recipeScene, captureError_)) return;
+            for (auto dependency = recipeScene.dependencies.rbegin();
+                 dependency != recipeScene.dependencies.rend(); ++dependency) {
+                const auto result = RegisterProceduralRecipe(dependency->first, dependency->second);
+                if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    captureError_ = "R796 recipe preview failed for '" + recipeScene.sourcePath +
+                        "': dependency recipe " + std::to_string(dependency->first) +
+                        " was rejected (code " + std::to_string(static_cast<int>(result)) +
+                        "); fix: correct the dependency before the subject is captured";
+                    return;
+                }
+            }
+            const auto result = RegisterProceduralRecipe(recipeScene.numericRecipeId, recipeScene.entry);
+            if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                captureError_ = "R796 recipe preview failed for '" + recipeScene.sourcePath +
+                    "': RegisterProceduralRecipe rejected the program (code " +
+                    std::to_string(static_cast<int>(result)) +
+                    "); fix: correct the recipe opcode stack shape or its nested recipe dependencies";
+                return;
+            }
+        }
+
         const bool glyphSdfScene = std::getenv("VIXEN_GLYPHSDF_SCENE") != nullptr;
         const bool glyphSdfCompare = std::getenv("VIXEN_GLYPHSDF_COMPARE") != nullptr;
         const bool sdfFilterNonText = std::getenv("VIXEN_SDF_FILTER_NON_TEXT") != nullptr;
@@ -1383,15 +1737,19 @@ public:
             camera_->SetPositionForTest(glm::vec3(64.0f, 64.0f, 88.0f));
             camera_->SetLookTargetNoOrbitForTest(glm::vec3(64.0f, 64.0f, 64.0f));
         } else {
-            const bool framedScene = glyphSdfScene || sdfFilterNonText;
+            const bool framedScene = glyphSdfScene || sdfFilterNonText || recipePreview;
             const glm::vec3 orbitCenter = framedScene
-                ? (glyphScene.frameMin + glyphScene.frameMax) * 0.5f
+                ? (recipePreview
+                    ? recipeScene.frameCenter + recipeScene.entry.boundCenter * recipeScene.scale
+                    : (glyphScene.frameMin + glyphScene.frameMax) * 0.5f)
                 : glm::vec3(5.0f);
             const float orbitCenterX = orbitCenter.x;
             const float orbitCenterY = orbitCenter.y;
             const float orbitCenterZ = orbitCenter.z;
             const float orbitDistance = framedScene
-                ? FitOrbitDistance(glyphScene, GetWindowAspect())
+                ? (recipePreview
+                    ? std::max(recipeScene.boundRadius * recipeScene.scale * 2.3f, 4.0f)
+                    : FitOrbitDistance(glyphScene, GetWindowAspect()))
                 : 14.0f;
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
@@ -1423,7 +1781,20 @@ public:
             *lighting_,
             graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
             sceneLook_);
-        if (glyphSdfScene || sdfFilterNonText) {
+        if (recipePreview) {
+            Vixen::SVO::BodyInstanceGpu instance{};
+            const glm::mat4 model = glm::translate(glm::mat4(1.0f), recipeScene.frameCenter) *
+                glm::scale(glm::mat4(1.0f), glm::vec3(recipeScene.scale));
+            Vixen::SVO::SetInstanceTransform(instance, model);
+            instance.material.color[0] = Vixen::App::Lookdev::SrgbChannelToLinear(0xB8 / 255.0f);
+            instance.material.color[1] = Vixen::App::Lookdev::SrgbChannelToLinear(0x78 / 255.0f);
+            instance.material.color[2] = Vixen::App::Lookdev::SrgbChannelToLinear(0x3F / 255.0f);
+            instance.material.providerKind = 1u;
+            instance.material.recipeId = recipeScene.numericRecipeId;
+            std::copy(recipeScene.params.begin(), recipeScene.params.end(),
+                      std::begin(instance.material.recipeParams));
+            SetBodyInstances({instance});
+        } else if (glyphSdfScene || sdfFilterNonText) {
             if (glyphSdfCompare || sdfFilterNonText)
                 SetRecipePool(std::move(glyphScene.pool));
             SetBodyInstances(std::move(glyphScene.instances));
@@ -2253,6 +2624,14 @@ bool CaptureSequence(const std::filesystem::path& outputDir,
     // R851.7 (design D10): the capture executable defaults to INFO like the player; per-frame DEBUG
     // logging cost about 31 ms of every capture frame. VIXEN_LOG_LEVEL=DEBUG still overrides.
     Vixen::Log::Logger::ApplyLevelFromEnvironment(Vixen::Log::LogLevel::LOG_INFO);
+    // R796: resolve and validate authored recipe inputs before constructing the Vulkan
+    // application. Unknown ids, malformed VRC1/VDC1, unsupported opcodes and invalid
+    // nested calls therefore fail before the GPU run starts, with the source and repair.
+    if (RecipePreviewRequested()) {
+        RecipePreviewSceneBundle preflight;
+        if (!LoadNamedRecipePreview(preflight, error)) return false;
+    }
+
     LookdevCaptureApplication app(outputDir, scenarios, framesPerScenario);
 #if UNDERSET_NATIVE_BENCHMARK
     const auto processStart = CaptureClock::now();
@@ -2320,6 +2699,59 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+}
+
+// With VIXEN_LOOKDEV_RECIPE_PATH or VIXEN_LOOKDEV_PACK_ROOT + VIXEN_LOOKDEV_RECIPE_ID: capture that one
+// recipe into VIXEN_LOOKDEV_CAPTURE_DIR. With only VIXEN_LOOKDEV_PACK_ROOT: capture every recipe the pack
+// lists (PackRecipeSource), each into VIXEN_LOOKDEV_CAPTURE_DIR/<recipe stem>.
+TEST(LookdevCapture, RendersNamedRecipe) {
+    const bool packOnly = std::getenv("VIXEN_LOOKDEV_PACK_ROOT") != nullptr &&
+                          std::getenv("VIXEN_LOOKDEV_RECIPE_PATH") == nullptr &&
+                          RequestedPackRecipeId().empty();
+    ASSERT_TRUE(RecipePreviewRequested() || packOnly)
+        << "set VIXEN_LOOKDEV_RECIPE_PATH, or VIXEN_LOOKDEV_PACK_ROOT (optionally with VIXEN_LOOKDEV_RECIPE_ID)";
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the look-dev capture directory";
+    const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    ASSERT_FALSE(scenarios.empty());
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    if (!packOnly) {
+        ASSERT_TRUE(CaptureSequence(std::filesystem::path(outputEnv), scenarios, framesPerScenario, error)) << error;
+        return;
+    }
+    const std::filesystem::path root(std::getenv("VIXEN_LOOKDEV_PACK_ROOT"));
+    const char* schemaEnv = std::getenv("VIXEN_LOOKDEV_PACK_SCHEMA");
+    const std::filesystem::path schema = schemaEnv && *schemaEnv ? std::filesystem::path(schemaEnv)
+                                                                  : root / "schemas.json";
+    Vixen::Editor::PackRecipeSource packSource;
+    ASSERT_TRUE(packSource.Configure(root.string(), schema.string(), error))
+        << "R796 recipe preview failed for pack '" << root.string() << "': " << error;
+    const std::vector<Vixen::Editor::PackRecipe> recipes = packSource.Recipes();
+    ASSERT_FALSE(recipes.empty()) << "R796 recipe preview failed: pack '" << root.string()
+        << "' lists no render_recipe documents; fix: author recipes under its render_recipe asset directory";
+    for (const auto& recipe : recipes) {
+        SelectedPackRecipeId() = recipe.id;
+        const std::string stem = std::filesystem::path(recipe.path).stem().string();
+        const bool ok = CaptureSequence(std::filesystem::path(outputEnv) / stem, scenarios, framesPerScenario, error);
+        SelectedPackRecipeId().clear();
+        ASSERT_TRUE(ok) << recipe.id << ": " << error;
+    }
+}
+
+TEST(LookdevCapture, UnknownRecipeIdFailsWithR796) {
+    if (!std::getenv("VIXEN_LOOKDEV_EXPECT_UNKNOWN_RECIPE")) GTEST_SKIP();
+    ASSERT_NE(std::getenv("VIXEN_LOOKDEV_PACK_ROOT"), nullptr)
+        << "set VIXEN_LOOKDEV_PACK_ROOT for the PackRecipeSource negative witness";
+    ASSERT_NE(std::getenv("VIXEN_LOOKDEV_RECIPE_ID"), nullptr)
+        << "set VIXEN_LOOKDEV_RECIPE_ID for the PackRecipeSource negative witness";
+    RecipePreviewSceneBundle scene;
+    std::string error;
+    ASSERT_FALSE(LoadNamedRecipePreview(scene, error));
+    EXPECT_NE(error.find("R796"), std::string::npos) << error;
+    EXPECT_NE(error.find(std::getenv("VIXEN_LOOKDEV_RECIPE_ID")), std::string::npos) << error;
+    std::printf("[R796] %s\n", error.c_str());
 }
 
 namespace {
