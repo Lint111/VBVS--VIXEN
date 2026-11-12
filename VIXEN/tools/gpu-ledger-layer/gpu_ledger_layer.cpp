@@ -16,7 +16,8 @@
 //   ledger-resources.csv  one row per buffer/image: scope, usage / format / extent, required bytes, the allocation it is bound in
 //   ledger-frames.csv     one row per frame: live bytes (device-local / host-visible / mapped) and the frame's upload totals
 //   ledger-upload.csv     one row per (frame, scope, kind) with the bytes and calls
-//   ledger-mapped.csv     one row per (frame, mapped allocation) that the engine touched or that changed: touched bytes vs bytes that
+//   ledger-mapped.csv     one row per (frame, mapped allocation) that the engine touched or that changed: touched (slot capacity), written
+//                         (copied in, where the site reports it) vs bytes that
 //                         actually differ from the same slot's previous snapshot, and the 64-byte rows that differ (a dirty-row delta's size)
 #if defined(_WIN32) && !defined(_CRT_SECURE_NO_WARNINGS)
 #define _CRT_SECURE_NO_WARNINGS 1   // getenv/fopen: tooling, not shipped code
@@ -96,7 +97,8 @@ struct Memory {
     uint64_t mappedSize = 0;
     std::vector<uint8_t> shadow;  // the previous frame-end content of the mapped range
     bool shadowSkipped = false;
-    uint64_t touchedThisFrame = 0;
+    uint64_t touchedThisFrame = 0;   // capacity of the slot a node asked the mapped pointer of
+    uint64_t writtenThisFrame = 0;   // bytes a node reported it copied in (only the sites that report it)
 };
 
 struct Resource {
@@ -206,7 +208,7 @@ void diffMappedLocked(Memory& m, uint64_t frame) {
         if (m.mappedSize > kMaxShadowAllocation || gShadowTotal + m.mappedSize > kMaxShadowTotal) { m.shadowSkipped = true; return; }
         m.shadow.assign(m.mapped, m.mapped + m.mappedSize);
         gShadowTotal += m.mappedSize;
-        if (m.touchedThisFrame == 0) return;   // the baseline itself is not a change
+        if (m.touchedThisFrame == 0 && m.writtenThisFrame == 0) return;   // the baseline itself is not a change
     }
     uint64_t changedBytes = 0, dirtyRows = 0;
     if (!first) {
@@ -218,12 +220,14 @@ void diffMappedLocked(Memory& m, uint64_t frame) {
             std::memcpy(m.shadow.data() + off, m.mapped + off, n);
         }
     }
-    if (gMappedFile && (m.touchedThisFrame > 0 || changedBytes > 0)) {
-        std::fprintf(gMappedFile, "%llu,%llu,%s,%llu,%llu,%llu,%llu,%llu\n", static_cast<unsigned long long>(frame), static_cast<unsigned long long>(m.id),
+    if (gMappedFile && (m.touchedThisFrame > 0 || m.writtenThisFrame > 0 || changedBytes > 0)) {
+        std::fprintf(gMappedFile, "%llu,%llu,%s,%llu,%llu,%llu,%llu,%llu,%llu\n", static_cast<unsigned long long>(frame), static_cast<unsigned long long>(m.id),
                      clean(m.scope).c_str(), static_cast<unsigned long long>(m.mappedSize), static_cast<unsigned long long>(m.touchedThisFrame),
-                     static_cast<unsigned long long>(changedBytes), static_cast<unsigned long long>(dirtyRows), first ? 1ull : 0ull);
+                     static_cast<unsigned long long>(changedBytes), static_cast<unsigned long long>(dirtyRows), first ? 1ull : 0ull,
+                     static_cast<unsigned long long>(m.writtenThisFrame));
     }
     m.touchedThisFrame = 0;
+    m.writtenThisFrame = 0;
 }
 
 void openFilesLocked() {
@@ -235,7 +239,7 @@ void openFilesLocked() {
     };
     gFramesFile = open("ledger-frames.csv", "frame,live_allocs,live_device_local_bytes,live_host_visible_bytes,live_mapped_bytes,live_resource_bytes\n");
     gUploadFile = open("ledger-upload.csv", "frame,scope,kind,bytes,calls\n");
-    gMappedFile = open("ledger-mapped.csv", "frame,alloc_id,scope,alloc_bytes,touched_bytes,changed_bytes,dirty_rows64,baseline\n");
+    gMappedFile = open("ledger-mapped.csv", "frame,alloc_id,scope,alloc_bytes,touched_bytes,changed_bytes,dirty_rows64,baseline,written_bytes\n");
 }
 
 void finishFrameLocked(uint64_t frame) {
@@ -702,6 +706,16 @@ LEDGER_EXPORT void VixenLedgerTouch(const void* mapped, uint64_t bytes) {
     const uint8_t* p = static_cast<const uint8_t*>(mapped);
     for (auto& [h, m] : gMemory) {
         if (m.mapped && p >= m.mapped && p < m.mapped + m.mappedSize) { m.touchedThisFrame += bytes; return; }
+    }
+}
+
+// A node copied `bytes` into the mapped slot at `mapped` (the real write volume, where the site reports it).
+LEDGER_EXPORT void VixenLedgerWritten(const void* mapped, uint64_t bytes) {
+    if (!gEnabled || !mapped) return;
+    std::lock_guard<std::mutex> lock(gMutex);
+    const uint8_t* p = static_cast<const uint8_t*>(mapped);
+    for (auto& [h, m] : gMemory) {
+        if (m.mapped && p >= m.mapped && p < m.mapped + m.mappedSize) { m.writtenThisFrame += bytes; return; }
     }
 }
 

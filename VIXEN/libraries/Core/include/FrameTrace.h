@@ -72,6 +72,8 @@ void CountAdd(Counter counter, uint64_t amount);
 void LedgerPushScope(const char* name);
 void LedgerPopScope();
 void LedgerTouch(const void* mapped, uint64_t bytes);
+/// The bytes a node actually copied into a mapped slot (reported by the sites that copy a variable amount).
+void LedgerWritten(const void* mapped, uint64_t bytes);
 void LedgerFlush();
 
 class LedgerScope {
@@ -116,6 +118,7 @@ private:
 #define VIXEN_LEDGER_SCOPE(name) \
     ::Vixen::FrameTrace::LedgerScope VIXEN_FRAME_TRACE_CONCAT(vixenLedgerScope, __LINE__)((name))
 #define VIXEN_LEDGER_TOUCH(mapped, bytes) ::Vixen::FrameTrace::LedgerTouch((mapped), static_cast<uint64_t>(bytes))
+#define VIXEN_LEDGER_WRITTEN(mapped, bytes) ::Vixen::FrameTrace::LedgerWritten((mapped), static_cast<uint64_t>(bytes))
 #define VIXEN_FRAME_COUNT(counter, amount) \
     ::Vixen::FrameTrace::CountAdd(::Vixen::FrameTrace::Counter::counter, static_cast<uint64_t>(amount))
 
@@ -127,6 +130,7 @@ private:
 #define VIXEN_FRAME_COUNT(counter, amount) static_cast<void>(0)
 #define VIXEN_LEDGER_SCOPE(name) static_cast<void>(0)
 #define VIXEN_LEDGER_TOUCH(mapped, bytes) static_cast<void>(0)
+#define VIXEN_LEDGER_WRITTEN(mapped, bytes) static_cast<void>(0)
 
 namespace Vixen::FrameTrace {
 inline constexpr bool Enabled() noexcept { return false; }

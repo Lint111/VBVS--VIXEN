@@ -93,6 +93,7 @@ struct LedgerApi {
     void (*popScope)() = nullptr;
     void (*setFrame)(uint64_t) = nullptr;
     void (*touch)(const void*, uint64_t) = nullptr;
+    void (*written)(const void*, uint64_t) = nullptr;
     void (*flush)() = nullptr;
 };
 LedgerApi gLedger;
@@ -109,6 +110,7 @@ const LedgerApi* Ledger() {
         gLedger.popScope = reinterpret_cast<void (*)()>(GetProcAddress(module, "VixenLedgerPopScope"));
         gLedger.setFrame = reinterpret_cast<void (*)(uint64_t)>(GetProcAddress(module, "VixenLedgerSetFrame"));
         gLedger.touch = reinterpret_cast<void (*)(const void*, uint64_t)>(GetProcAddress(module, "VixenLedgerTouch"));
+        gLedger.written = reinterpret_cast<void (*)(const void*, uint64_t)>(GetProcAddress(module, "VixenLedgerWritten"));
         gLedger.flush = reinterpret_cast<void (*)()>(GetProcAddress(module, "VixenLedgerFlush"));
         gLedgerResolved.store(true, std::memory_order_release);
     }
@@ -132,6 +134,9 @@ void LedgerPopScope() {
 }
 void LedgerTouch(const void* mapped, uint64_t bytes) {
     if (const LedgerApi* api = Ledger(); api && api->touch) api->touch(mapped, bytes);
+}
+void LedgerWritten(const void* mapped, uint64_t bytes) {
+    if (const LedgerApi* api = Ledger(); api && api->written) api->written(mapped, bytes);
 }
 void LedgerFlush() {
     if (const LedgerApi* api = Ledger(); api && api->flush) api->flush();

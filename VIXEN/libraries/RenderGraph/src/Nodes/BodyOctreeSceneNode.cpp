@@ -907,6 +907,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     if (transformMapped && transformSourceBytes != 0) {
         std::memcpy(transformMapped, transformSource,
                     std::min(static_cast<size_t>(transformRingCapacity_), transformSourceBytes));
+        VIXEN_LEDGER_WRITTEN(transformMapped, std::min(static_cast<size_t>(transformRingCapacity_), transformSourceBytes));
     }
 
     if (motionGuidesEnabled_) {
@@ -916,6 +917,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         if (auto* mappedMotion = motionPerFrame_.GetUniformBufferMapped(frameIndex)) {
             const auto copied = std::min(size_t(motionRingCapacity_), bytes);
             std::memcpy(mappedMotion, motions, copied);
+            VIXEN_LEDGER_WRITTEN(mappedMotion, copied);
             if (octreeRepublished) {
                 auto* records = static_cast<Vixen::Gpu::BodyInstanceMotion*>(mappedMotion);
                 for (size_t i = 0; i < copied / sizeof(emptyMotion); ++i) records[i].valid = 0u;
@@ -936,6 +938,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         if (materialMapped && materialSourceBytes != 0) {
             std::memcpy(materialMapped, materialSource,
                         std::min(static_cast<size_t>(materialRingCapacity_), materialSourceBytes));
+            VIXEN_LEDGER_WRITTEN(materialMapped, std::min(static_cast<size_t>(materialRingCapacity_), materialSourceBytes));
             materialDirty_[frameIndex] = false;
         }
     }
