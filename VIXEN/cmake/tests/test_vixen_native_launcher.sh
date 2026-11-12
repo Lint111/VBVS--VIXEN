@@ -9,6 +9,9 @@ scratch="${2:?scratch dir}"
 rm -rf "$scratch"
 mkdir -p "$scratch"
 scratch="$(cd "$scratch" && pwd)"
+# Sizing inputs come from this test's fixtures only: a test that runs inside a queue job inherits the live job's
+# UT_QUEUE_* variables (holder pid, grant file, other holders' reserved MB, ...) and must not read them.
+while IFS= read -r _v; do unset "$_v"; done < <(compgen -e | grep -E '^(UT_QUEUE_|NW_|VIXEN_MAX_BUILD_JOBS$|VIXEN_BUILD_MB_PER_JOB$|VIXEN_NATIVE_AVAILABLE_MB$)' || true)
 failures=0
 
 check() {

@@ -105,6 +105,9 @@ if(UNIX)
     add_test(NAME Native.NodeWidth
         COMMAND bash "${VIXEN_ROOT}/cmake/tests/test_node_width.sh" "${VIXEN_ROOT}/..")
     set_tests_properties(Native.NodeWidth PROPERTIES LABELS "cpu")
+    add_test(NAME Native.JobCount
+        COMMAND bash "${VIXEN_ROOT}/../tools/tests/test-vixen-native-jobs.sh")
+    set_tests_properties(Native.JobCount PROPERTIES LABELS "cpu")
 endif()
 
 # Common test compile options
