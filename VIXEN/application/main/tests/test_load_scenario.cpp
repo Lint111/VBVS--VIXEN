@@ -78,9 +78,9 @@ constexpr std::array<Leg, 11> kLegs{{
     {"fastpan-t1",           60, 1, Path::FastPan,    0,  0,  0, false, true },
     {"view-switches-t1",     60, 1, Path::Orbit,      0,  0, 15, false, true },
     {"closeup-t2",          120, 2, Path::CloseUp,    0,  0,  0, false, true },
-    // Tier-3 flythrough and pan end looking away from the field; capture them early so the frame
-    // shows instances (GB0: the tier-3 captures were a single flat colour).
-    {"flythrough-t3",       120, 3, Path::Flythrough, 0,  1,  0, false, true, 20 },
+    // Tier-3 flythrough and pan are captured mid-leg: their last frames look away from the field
+    // (GB0: the tier-3 captures were a single flat colour).
+    {"flythrough-t3",       120, 3, Path::Flythrough, 0,  1,  0, false, true, 60 },
     {"fastpan-t3",           60, 3, Path::FastPan,    0,  0,  0, false, true, 30 },
     // GB0 (R857.2): the whole 13x13 field in frame at tier 3, slowly orbiting.
     {"overview-orbit-t3",    90, 3, Path::Overview,   0,  0,  0, false, true },
@@ -140,7 +140,10 @@ Pose PoseFor(Path path, int tier, uint32_t frameInLeg, uint32_t legFrames) {
         return {at(t), at(t + 0.06f) + glm::vec3(0.0f, -0.4f, 0.0f)};
     }
     case Path::FastPan: {
-        const glm::vec3 eye{kSceneCenter.x, 3.5f, kSceneCenter.z + std::max(8.0f, half * 0.5f)};
+        // Eye in the gap between four copies (copies are 10 wide on a 12 pitch), so no tier puts the
+        // camera inside an instance: from tier 1 up the old eye sat inside a copy and the pan saw one
+        // flat colour (GB0).
+        const glm::vec3 eye{kSceneCenter.x + 6.0f, 3.5f, kSceneCenter.z + 6.0f};
         const float angle = 6.28318530718f * t;   // one full turn over the leg
         return {eye, eye + glm::vec3{std::cos(angle), -0.12f, std::sin(angle)} * 10.0f};
     }
