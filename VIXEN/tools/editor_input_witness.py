@@ -25,6 +25,28 @@ from appflow_client import AppFlowClient  # noqa: E402
 
 FULL = {"type": "fullFrame"}
 
+# The scene image's background and shading drift with auto-exposure, so identical states hash differently over time
+# (measured: see the report). States are compared by their object silhouette plus luminance normalised over the
+# object pixels both images share. Same-state pairs land well under SAME_TOLERANCE, different states well over it.
+SAME_TOLERANCE = 0.02
+OBJECT_LUMA = 100
+
+
+def compare(path_a: str, path_b: str) -> dict:
+    from PIL import Image
+    import numpy as np
+    a = np.asarray(Image.open(path_a).convert("L")).astype(float)
+    b = np.asarray(Image.open(path_b).convert("L")).astype(float)
+    mask_a, mask_b = a > OBJECT_LUMA, b > OBJECT_LUMA
+    common = mask_a & mask_b
+    union = mask_a | mask_b
+    silhouette_xor = int((mask_a ^ mask_b).sum())
+    if not common.any():
+        return {"silhouetteXor": silhouette_xor, "normalisedDiff": 1.0, "same": False}
+    norm = float(np.abs(a / a[common].mean() - b / b[common].mean())[union].mean())
+    return {"silhouetteXor": silhouette_xor, "normalisedDiff": round(norm, 4),
+            "same": silhouette_xor == 0 and norm < SAME_TOLERANCE}
+
 
 class Witness:
     def __init__(self, client: AppFlowClient, out: Path, editor_log: Path):
@@ -46,7 +68,7 @@ class Witness:
 
     def shot(self, label: str) -> dict:
         """Scene-image readback after letting two frames present, saved as PNG; returns the raw-format hash."""
-        time.sleep(0.4)
+        time.sleep(1.0)
         raw = self.client.readback(FULL, format="raw")
         png = self.client.readback(FULL, format="png")
         data = png.get("pixelsBase64")
@@ -93,7 +115,7 @@ def main() -> int:
                 w = Witness(client, args.out, editor_log)
                 catalog = client.list()
                 keys = [{"id": k["id"], "action": next(a["name"] for a in catalog["actions"] if a["id"] == k["actionId"]),
-                         "key": k["key"], "mods": k["mods"]} for k in catalog["keys"]]
+                         "key": k["key"], "mods": k["mods"]} for k in catalog["chords"]]
                 report["keyTable"] = keys
                 report["actionCatalog"] = {name: [f'{p["name"]}:{p["type"]}' for p in a["params"]]
                                            for name, a in w.actions.items()
@@ -106,6 +128,7 @@ def main() -> int:
                 report["keys"] = {"S": plain_s["dispatchResult"]["name"], "Ctrl+S": ctrl_s["dispatchResult"]["name"]}
 
                 base = w.shot("00-baseline")
+                w.shot("00b-baseline-again")
                 # --- camera as actions ---------------------------------------------------------------------
                 depth0 = client.read()["undoDepth"]
                 w.dispatch("OrbitCamera", dYaw=0.6, dPitch=-0.2)
@@ -163,19 +186,27 @@ def main() -> int:
                                                     "undoDepth": undone["undoDepth"], "redoDepth": undone["redoDepth"]}
 
                 hashes = {r["label"]: r["hash"] for r in w.rows}
-                report["hashes"] = hashes
-                report["checks"] = {
-                    "orbit changes viewport": hashes["01-orbit"] != hashes["00-baseline"],
-                    "zoom changes viewport": hashes["02-orbit-zoom"] != hashes["01-orbit"],
-                    "pan changes viewport": hashes["03-orbit-zoom-pan"] != hashes["02-orbit-zoom"],
-                    "undo depth unchanged by camera": depth0 == depth1,
-                    "moved differs from orbit-only": hashes["05-moved"] != hashes["01-orbit"],
-                    "FrameAsset (key F) restores the orbit-only fit": hashes["06-frame-asset-via-key-F"] == hashes["01-orbit"],
-                    "key 2 changes the view": hashes["07-key-2-view-angle-1"] != hashes["06-frame-asset-via-key-F"],
-                    "key 2 equals SetViewAngle(1)": hashes["07-key-2-view-angle-1"] == hashes["08-action-SetViewAngle-1"],
-                    "SetParameter changes viewport": hashes["11-after-SetParameter-0-1.2"] != hashes["10-before-SetParameter"],
-                    "ResetParameter restores viewport": hashes["12-after-ResetParameter-0"] == hashes["10-before-SetParameter"],
+                pngs = {r["label"]: r["png"] for r in w.rows}
+                same = lambda x, y: compare(pngs[x], pngs[y])
+                pairs = {
+                    "control: two shots of one state (00 vs 00b)": ("00-baseline", "00b-baseline-again", True),
+                    "orbit changes viewport": ("00-baseline", "01-orbit", False),
+                    "zoom changes viewport": ("01-orbit", "02-orbit-zoom", False),
+                    "pan changes viewport": ("02-orbit-zoom", "03-orbit-zoom-pan", False),
+                    "moved differs from orbit-only": ("01-orbit", "05-moved", False),
+                    "FrameAsset (key F) restores the orbit-only fit": ("01-orbit", "06-frame-asset-via-key-F", True),
+                    "key 2 changes the view": ("06-frame-asset-via-key-F", "07-key-2-view-angle-1", False),
+                    "key 2 equals SetViewAngle(1)": ("07-key-2-view-angle-1", "08-action-SetViewAngle-1", True),
+                    "key 1 differs from key 2": ("07-key-2-view-angle-1", "09-key-1-view-angle-0", False),
+                    "SetParameter changes viewport": ("10-before-SetParameter", "11-after-SetParameter-0-1.2", False),
+                    "ResetParameter restores viewport": ("10-before-SetParameter", "12-after-ResetParameter-0", True),
                 }
+                report["hashes"] = hashes
+                report["comparisons"] = {name: {**same(x, y), "expectSame": expect, "pair": [x, y]}
+                                         for name, (x, y, expect) in pairs.items()}
+                report["checks"] = {name: report["comparisons"][name]["same"] == expect
+                                    for name, (x, y, expect) in pairs.items()}
+                report["checks"]["undo depth unchanged by camera"] = depth0 == depth1
                 (args.out / "witness.json").write_text(json.dumps({"report": report, "rows": w.rows}, indent=2) + "\n")
                 print(json.dumps(report, indent=2))
                 return 0 if all(report["checks"].values()) else 1
