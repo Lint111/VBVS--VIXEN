@@ -2,7 +2,7 @@
 
 ## STATUS
 
-**CHECKPOINT: code complete and building (native Release, zero warnings); bench runs queued, measurements not yet in this file.**
+**CHECKPOINT: code complete and building (native Release, zero warnings); bench runs queued but had not started when this report was written (the queue head `sn-genccache1:native-boot-build` held full width for 28+ min), so there are no measurements in this file.**
 Base: `lane-recipevix4` 01b708be + `lane-recipeedit1` + `lane-vxjobs1` ce27b7f4 (clean merges). Velocity base: velocity-2 (already contained in the vxjobs1 merge). Native build `sn-recipeedit3:native-build-release` exit 0 (first attempt failed on a missing forward declaration in the app header, fixed in the second commit).
 
 ## CHANGE
@@ -25,6 +25,8 @@ Overlap with op-recipeedit2 (RE2/RE4): none in the splice or pipeline code. I to
 ## MEASUREMENTS
 
 Pending: queued as `sn-recipeedit3:bench-e-new-t3-1080` (delta path, 2,197 instances), `...e-old-t3-1080` (same binary, `RECIPE_EDIT_FULL_RESTAGE=1`), `...r-new-t0-x50-1080` (63 registered recipes, `mutate`). Native Windows, 1080p, `--resource gpu --gpu-benchmark` (a `--resource bench` quiet window did not open in this session; numbers will be labelled contended/INVALID-FOR-COMPARISON). Before numbers for RE8 come from op-recipeedit1 (quiet window Q: `mutate` 6.5-7.6 ms).
+
+To collect: the chain `sn-recipeedit3-evidence/chain1.sh` runs detached (one queue job per run, sequential; progress in `sn-recipeedit3-evidence/logs/chain1.status`). Outputs land in `C:\vixen-native\recipeedit3-evidence\<run>\` (`edits.csv`, `frames.csv`). Read from edits.csv: `t_mutated - t_call` is the frame-thread `mutate`/delta cost (RE5 per edited row = that / `edited_rows`; RE8 target <= 0.5 ms for literal/structural/newrecipe rows), `tlas_epoch_delta` must be 0 for param/material rows and 1 for transform rows, and `frames.csv` max work time during an edit against the steady p50. The old-path row set is `e-old-t3-1080` (same binary, `RECIPE_EDIT_FULL_RESTAGE=1`).
 
 ## WITNESS
 
