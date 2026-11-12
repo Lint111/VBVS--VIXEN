@@ -81,13 +81,13 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
     std::vector<Vixen::Views::EditorPrimitiveRow> primitives;
     std::vector<Vixen::Views::EditorLayerOpRow> opChoices;
     std::vector<Vixen::Views::EditorShapeFieldRow> shape;
-    Rml::String selectedShape, shapeNote;
+    Rml::String selectedShape, shapeNote, pickerFilter;
     int activeLayerCount = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes;
     Rml::String statusDocument, statusMessage, flowState;
     int undoDepth = 0, redoDepth = 0;
     Vixen::Views::EditorLayersBind bind{ &layers, &parameters, &transform, &selectedLayerName, &selectedLayer,
-                                         &primitives, &opChoices, &shape, &selectedShape, &shapeNote,
+                                         &primitives, &opChoices, &shape, &selectedShape, &shapeNote, &pickerFilter,
                                          &activeLayerCount, &recipes,
                                          &statusDocument, &statusMessage, &flowState, &undoDepth, &redoDepth };
 

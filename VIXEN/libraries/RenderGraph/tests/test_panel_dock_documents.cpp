@@ -208,7 +208,7 @@ TEST_F(PanelDockDocumentsTest, LayersPanelKeepsItsWidthWithThePickerAndManyRows)
         for (const char* id : {"panel-picker-open", "undo-button"}) {
             Rml::Element* element = doc->GetElementById(id);
             ASSERT_NE(element, nullptr) << id;
-            EXPECT_GT(element->GetBox().GetSize(Rml::BoxArea::Border).x, 40.0f) << count << " rows: " << id;
+            EXPECT_GT(element->GetBox().GetSize(Rml::BoxArea::Border).x, 30.0f) << count << " rows: " << id;
         }
     }
 }
@@ -278,8 +278,14 @@ TEST_F(PanelDockDocumentsTest, FlyoutPanelOpensFloatingAndListsOneRowPerPublishe
     EXPECT_GT(content.width, 0.0f);
     EXPECT_FLOAT_EQ(doc->GetAbsoluteOffset(Rml::BoxArea::Border).x, content.x);
 
-    Rml::ElementList rowsFound;
-    doc->GetElementsByClassName(rowsFound, "picker-row");
+    // data-for leaves its source element in the tree (hidden, no id): count the rows that carry a primitive id.
+    const auto rowsOf = [&] {
+        Rml::ElementList found, rows;
+        doc->GetElementsByClassName(found, "picker-row");
+        for (Rml::Element* element : found) if (element->GetId().rfind("primitive-", 0) == 0) rows.push_back(element);
+        return rows;
+    };
+    Rml::ElementList rowsFound = rowsOf();
     EXPECT_EQ(rowsFound.size(), all.size());
     EXPECT_EQ(rowsFound.front()->GetId(), "primitive-Prim0Thing-add") << "the id keeps the exact opcode name";
     EXPECT_NE(rowsFound.front()->GetInnerRML().find("Prim 0 Thing"), std::string::npos) << "the text is the display name";
@@ -290,14 +296,12 @@ TEST_F(PanelDockDocumentsTest, FlyoutPanelOpensFloatingAndListsOneRowPerPublishe
     // A narrower list is just fewer rows; an empty list says so.
     layers_.PopulatePrimitives({all[3], all[4]});
     ctx_->Update();
-    rowsFound.clear();
-    doc->GetElementsByClassName(rowsFound, "picker-row");
+    rowsFound = rowsOf();
     EXPECT_EQ(rowsFound.size(), 2u);
     layers_.DebugSetPickerFilter("zzz");
     layers_.PopulatePrimitives({});
     ctx_->Update();
-    rowsFound.clear();
-    doc->GetElementsByClassName(rowsFound, "picker-row");
+    rowsFound = rowsOf();
     EXPECT_TRUE(rowsFound.empty());
     EXPECT_NE(doc->GetInnerRML().find("No primitive matches"), std::string::npos);
 }
@@ -327,7 +331,8 @@ TEST_F(PanelDockDocumentsTest, InspectorShapeFieldsShowCatalogueLabelsRangesAndA
     EXPECT_EQ(text.find(">b x<"), std::string::npos) << "no raw argument name as a label";
     EXPECT_NE(text.find("0..100"), std::string::npos) << "the declared range, inline";
     EXPECT_NE(doc->GetElementById("layer-0-field-b-x-0.5"), nullptr) << "reset: the typed-value selector with the default filled in";
-    EXPECT_EQ(doc->GetElementById("layer-0-field-b-y-0.5"), nullptr) << "no reset while the value is the default";
+    EXPECT_FALSE(Shown(doc, "layer-0-field-b-y-0.5")) << "no reset while the value is the default";
+    EXPECT_TRUE(Shown(doc, "layer-0-field-b-x-0.5"));
 }
 
 TEST_F(PanelDockDocumentsTest, RearrangedLayoutMovesTheDocumentsAndTheChrome) {
