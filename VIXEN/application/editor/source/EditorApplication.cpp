@@ -2552,19 +2552,29 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             const auto id = magic_enum::enum_cast<Vixen::AppFlow::Generated::KeyId>(params.value("key", std::string{}));
             const int glfwKey = id ? Vixen::Editor::KeyIdToGlfw(*id) : -1;
             if (glfwKey < 0) throw std::runtime_error("input key must be a generated KeyId name (see appflow.list chords)");
+            // A chord's modifiers arrive the way a keyboard sends them: their own key events (left Shift /
+            // Control / Alt / Super) around the key, plus the mods bitmask on the key's event.
             int mods = 0;
+            std::vector<int> modifierKeys;
             for (const auto& name : params.value("mods", std::vector<std::string>{})) {
-                if (name == "Shift") mods |= GLFW_MOD_SHIFT;
-                else if (name == "Ctrl") mods |= GLFW_MOD_CONTROL;
-                else if (name == "Alt") mods |= GLFW_MOD_ALT;
-                else if (name == "Super") mods |= GLFW_MOD_SUPER;
+                if (name == "Shift") { mods |= GLFW_MOD_SHIFT; modifierKeys.push_back(GLFW_KEY_LEFT_SHIFT); }
+                else if (name == "Ctrl") { mods |= GLFW_MOD_CONTROL; modifierKeys.push_back(GLFW_KEY_LEFT_CONTROL); }
+                else if (name == "Alt") { mods |= GLFW_MOD_ALT; modifierKeys.push_back(GLFW_KEY_LEFT_ALT); }
+                else if (name == "Super") { mods |= GLFW_MOD_SUPER; modifierKeys.push_back(GLFW_KEY_LEFT_SUPER); }
                 else throw std::runtime_error("input mods are Shift, Ctrl, Alt, Super");
             }
             const std::string action = params.value("action", std::string("tap"));
-            if (action == "press" || action == "tap") { input->InjectRawKey(glfwKey, GLFW_PRESS, mods); ++queued; }
+            if (action != "press" && action != "release" && action != "repeat" && action != "tap") {
+                throw std::runtime_error("input key action is press, release, repeat or tap");
+            }
+            const auto modifiers = [&](int glfwAction) {
+                for (const int modifierKey : modifierKeys) { input->InjectRawKey(modifierKey, glfwAction, mods); ++queued; }
+            };
+            // Held-key consumers (the chord poll) sample once per frame: a tap's press and release land in one
+            // frame, which they can miss. Use press, a few frames, release for a chord; text controls get every event.
+            if (action == "press" || action == "tap") { modifiers(GLFW_PRESS); input->InjectRawKey(glfwKey, GLFW_PRESS, mods); ++queued; }
             if (action == "repeat") { input->InjectRawKey(glfwKey, GLFW_REPEAT, mods); ++queued; }
-            if (action == "release" || action == "tap") { input->InjectRawKey(glfwKey, GLFW_RELEASE, mods); ++queued; }
-            if (queued == 0) throw std::runtime_error("input key action is press, release, repeat or tap");
+            if (action == "release" || action == "tap") { input->InjectRawKey(glfwKey, GLFW_RELEASE, mods); ++queued; modifiers(GLFW_RELEASE); }
         } else if (kind == "pointer") {
             if (!params.contains("x") || !params.contains("y") || !params.at("x").is_number() || !params.at("y").is_number()) {
                 throw std::runtime_error("input pointer requires numeric x and y (window pixels)");
