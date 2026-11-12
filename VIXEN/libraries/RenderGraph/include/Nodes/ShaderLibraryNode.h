@@ -7,6 +7,8 @@
 #include <ShaderBundleBuilder.h>
 #include <memory>
 #include <functional>
+#include <future>
+#include <vector>
 
 // Forward declarations
 namespace CashSystem {
@@ -97,6 +99,26 @@ public:
         std::function<::ShaderManagement::ShaderBundleBuilder(int vulkanVersion, int spirvVersion)> builderFunc
     );
 
+    // ===== Off-thread precompile (swap-at-boundary shader recompile) =====
+
+    /**
+     * @brief Start compiling the first registered shader program on a worker thread.
+     *
+     * The builder callback runs HERE (the caller's thread: it reads application state such as the
+     * live recipe table), and only the resulting ShaderBundleBuilder::Build() moves to the worker.
+     * Build() fills the on-disk SPIR-V cache and its finished bundle is handed to the next Compile of
+     * this node (the frame boundary swap), which then skips the rebuild. A second call supersedes the first: the older job
+     * is retired (it cannot be cancelled, it is waited for at node destruction). No-op without a
+     * registered builder.
+     */
+    void BeginPrecompile();
+
+    /// True when no precompile is running (none started, or the latest one finished).
+    [[nodiscard]] bool IsPrecompileReady() const;
+
+    /// Block until the latest precompile has finished (used by deterministic capture).
+    void WaitPrecompile();
+
 protected:
     // Template method pattern - override *Impl() methods
     void TypedSetupImpl(TypedSetupContext& ctx) override;
@@ -132,6 +154,16 @@ private:
 
     // Shader builder functions (registered via RegisterShaderBuilder)
     std::vector<std::function<::ShaderManagement::ShaderBundleBuilder(int, int)>> shaderBuilderFuncs;
+
+    // Latest off-thread precompile and the superseded ones still running.
+    // A precompile yields the built bundle (null when the build failed). The next Compile of this node
+    // consumes a FINISHED latest bundle instead of rebuilding it (preprocess, cache lookup, reflection and
+    // SDI generation cost ~65 ms per library on the frame thread); an unfinished one is retired unused.
+    using PrecompileResult = std::shared_ptr<::ShaderManagement::ShaderDataBundle>;
+    std::future<PrecompileResult> precompile_;
+    std::vector<std::future<PrecompileResult>> retiredPrecompiles_;
+    int precompileVulkan_ = 0;
+    int precompileSpirv_ = 0;
 
     // Task profile for compile-time cost estimation (Sprint 6.5)
     ITaskProfile* compileProfile_ = nullptr;

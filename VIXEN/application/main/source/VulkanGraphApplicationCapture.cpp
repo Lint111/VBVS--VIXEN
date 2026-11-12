@@ -274,6 +274,7 @@ void VulkanGraphApplication::RunHdrMeterDebugReadback() {
 }
 
 bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
+    FlushProceduralShaderSwap();  // a capture shows the settled (swapped) pipeline, deterministically
     // M4b: headless GPU-frame snapshot. Reuses Vixen::Profiler::FrameCapture (already ships the
     // barrier -> vkCmdCopyImageToBuffer -> map -> BGRA->RGBA swizzle -> stbi_write_png sequence,
     // proven in the BenchmarkRunner path) instead of re-deriving that readback here.
@@ -359,6 +360,7 @@ bool VulkanGraphApplication::SwapchainImageIsValid() const {
 }
 
 bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::string& err) {
+    FlushProceduralShaderSwap();
     if (pendingHudCapture_) {
         if (pendingHudCapturePath_ != path) {
             err = "CaptureHudFrameToPng: another capture is pending";
@@ -419,6 +421,7 @@ bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::
 }
 
 bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path, std::string& err) {
+    FlushProceduralShaderSwap();
     for (const auto& pending : pendingOffscreenCaptures_) {
         if (pending.path == path) {
             err.clear();
