@@ -7,8 +7,10 @@
 #include "error/VulkanError.h"
 #include "MainCacher.h"
 #include "ShaderModuleCacher.h"
+#include "FrameTrace.h"
 #include <ShaderBundleBuilder.h>
 #include <ShaderCompiler.h>
+#include <chrono>
 #include "Message.h"
 #include "MessageBus.h"
 
@@ -126,6 +128,45 @@ void ShaderLibraryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode complete");
 }
 
+void ShaderLibraryNode::BeginPrecompile() {
+    if (shaderBuilderFuncs.empty()) {
+        return;
+    }
+    if (precompile_.valid()) {
+        retiredPrecompiles_.push_back(std::move(precompile_));
+    }
+    std::erase_if(retiredPrecompiles_, [](std::future<PrecompileResult>& job) {
+        return job.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    });
+
+    std::shared_ptr<::ShaderManagement::ShaderBundleBuilder> builder;
+    {
+        // Benchmark-only span: the builder callback splices the live recipe table into the source.
+        VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "emit:" + GetInstanceName());
+        builder = std::make_shared<::ShaderManagement::ShaderBundleBuilder>(
+            shaderBuilderFuncs[0](deviceVulkanVersion, deviceSpirvVersion));
+    }
+    precompileVulkan_ = deviceVulkanVersion;
+    precompileSpirv_ = deviceSpirvVersion;
+    precompile_ = std::async(std::launch::async, [builder, name = GetInstanceName()]() -> PrecompileResult {
+        static_cast<void>(name);  // read only by the benchmark-build span below
+        VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "spirv:" + name);
+        // A failed build yields null: the swap-time Compile builds again and reports the message.
+        auto result = builder->Build();
+        return result.success ? std::move(result.bundle) : nullptr;
+    });
+}
+
+bool ShaderLibraryNode::IsPrecompileReady() const {
+    return !precompile_.valid() || precompile_.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+}
+
+void ShaderLibraryNode::WaitPrecompile() {
+    if (precompile_.valid()) {
+        precompile_.wait();
+    }
+}
+
 void ShaderLibraryNode::OnDeviceMetadata(const Vixen::EventBus::BaseEventMessage& message) {
     auto* metadataEvent = static_cast<const Vixen::EventBus::DeviceMetadataEvent*>(&message);
     if (!metadataEvent) {
@@ -189,6 +230,19 @@ void ShaderLibraryNode::CompileShaderBundle(int targetVulkan, int targetSpirv) {
     // MVP: Compile only first registered shader program
     NODE_LOG_DEBUG("ShaderLibraryNode: Compiling shader bundle (first of " +
                    std::to_string(shaderBuilderFuncs.size()) + " registered)");
+
+    if (precompile_.valid()) {
+        if (precompile_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            retiredPrecompiles_.push_back(std::move(precompile_));  // not finished: never used, waited for at destruction
+        } else {
+            PrecompileResult prepared = precompile_.get();  // consume once
+            if (prepared && precompileVulkan_ == targetVulkan && precompileSpirv_ == targetSpirv) {
+                NODE_LOG_INFO("ShaderLibraryNode: using the precompiled shader bundle (no frame-thread rebuild)");
+                shaderBundle_ = std::move(prepared);
+                return;
+            }
+        }
+    }
 
     ShaderManagement::ShaderBundleBuilder builder = shaderBuilderFuncs[0](targetVulkan, targetSpirv);
     auto result = builder.Build();
