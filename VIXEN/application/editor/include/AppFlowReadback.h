@@ -37,7 +37,7 @@ public:
     bool Enqueue(std::string key, uint64_t frame,
                  Vixen::Vulkan::Resources::VulkanDevice* device, VkQueue queue,
                  uint32_t queueFamily, Vixen::Vulkan::Resources::IRenderTarget* target,
-                 uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                 uint32_t imageIndex, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                  std::string& error);
     std::vector<Result> Poll();
 

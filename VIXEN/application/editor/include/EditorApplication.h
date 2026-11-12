@@ -28,6 +28,7 @@
 #include "ViewReconcileNode.h"         // Inc-B: per-frame .changed<LayerMask>() reconcile
 #include "EditorLayersViewBridge.h"  // Inc-A2: gaia/robin_hood ODR isolation seam -- see its file header
 #include <Logger.h>
+#include <nlohmann/json_fwd.hpp>
 
 #include <memory>
 #include <array>
@@ -53,21 +54,8 @@ public:
     // EditorApplication.cpp, not implicitly generated here where the type is incomplete.
     ~EditorApplication() override;
 
-    // One parsed VIXEN_EDITOR_SCRIPT entry (e.g. "parameter_up:0@30" or "undo@60").
-    // Public (plain data, no invariants) so the free-function parser in EditorApplication.cpp's
-    // anonymous namespace can build a std::vector<ScriptedAction> without befriending it.
-    struct ScriptedAction {
-        long frame = 0;
-        enum class Kind {
-            Toggle, CreateLayer, DeleteLayer, MoveLayerUp, MoveLayerDown,
-            ProgramFieldUp, ProgramFieldDown, ParameterUp, ParameterDown,
-            Undo, Redo, Save, Reopen, Settings, Back
-        } kind = Kind::Undo;
-        uint32_t index = 0;  // layer or parameter index, depending on Kind
-    };
-
     void BuildRenderGraph() override;
-    void PreTick() override;   // graph.Run(): scripted-action injector runs here, before Update()
+    void PreTick() override;   // attaches the event bus; parses the capture-fixture env once
     void Update() override;
     void PostTick() override;  // captures scripted frames after this tick's Render()
 
@@ -126,6 +114,14 @@ private:
     std::optional<std::string> HandleAppFlowRequest(const std::string& request);
     void PumpAppFlowChannel();
     void RecordAppFlowEvent(const std::string& type);
+    void RecordAppFlowEvent(const std::string& type, nlohmann::json detail);
+    // E15: one place records a diagnostic -- lastEditorError_ (status line), the diagnostic code, a
+    // log line and a channel event. Plain-string failures use the "EditorError" code.
+    void ReportEditorDiagnostic(const Vixen::Editor::DocumentDiagnostic& diagnostic);
+    void ReportEditorError(std::string message, std::string code = "EditorError");
+    void ClearEditorError();
+    // E15: gives the AppFlow runtime the engine's event bus and mirrors its events into the channel log.
+    void AttachAppFlowEventBus();
     void StartPendingReadbacks();
 
     // Replays the consumer-owned handler wiring after AppFlowRuntime replaces its primitives.
@@ -206,6 +202,8 @@ private:
     Vixen::App::EditorLayersView* layersView_ = Vixen::App::MakeEditorLayersView();
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
     std::string lastEditorError_;
+    std::string lastEditorDiagnosticCode_;
+    Vixen::EventBus::MessageBus* appFlowBus_ = nullptr;
     std::string lastSavedPath_;
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastSavedProgram_;
     std::array<float, 6> lastSavedParameters_{};
@@ -223,17 +221,16 @@ private:
     std::filesystem::file_time_type appFlowMtime_{};
     bool appFlowMtimeInitialized_ = false;
 
-    // Inc-2b Task 3/4: capture + script harness state, inert when the two VIXEN_EDITOR_* env
+    // Inc-2b Task 3/4: capture harness state, inert when the two VIXEN_EDITOR_* env
     // knobs are unset (see BuildRenderGraph + Update). CaptureFrameToPng reads the existing
     // compute_render_target so UI overlays cannot satisfy a scene-render assertion.
     std::string pendingCapturePath_;  // one capture is scheduled by Update() for PostTick()
     std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> pendingCapture_;
     long updateTick_ = 0;  // editor-local Update tick counter, independent of the base app's own counters
 
-    std::vector<ScriptedAction> scriptedActions_;   // parsed once from VIXEN_EDITOR_SCRIPT
     std::vector<long> captureFrames_;               // parsed once from VIXEN_EDITOR_CAPTURE_FRAMES
     std::string captureDir_ = Vixen::ProcessTemporaryDirectory("editor").string();
-    bool scriptParsed_ = false;                     // guards the one-time env parse in Update()
+    bool captureEnvParsed_ = false;                 // guards the one-time capture env parse in PreTick()
 
     std::unique_ptr<AppFlowChannel> appFlowChannel_;
     bool channelPaused_ = false;
@@ -243,9 +240,19 @@ private:
     std::unordered_map<std::string, uint64_t> channelActionFrames_;
     uint32_t channelObservedMask_ = 0;
     uint64_t channelPresentedFrame_ = 0;
+    // E6b: Update() calls that ran to their end (View reconcile, status refresh and scene re-apply
+    // included). A dispatched action is reflected once a later Update has finished; the first frame
+    // presented after that is the frame that shows it.
+    uint64_t channelUpdateSerial_ = 0;
+    std::unordered_map<std::string, uint64_t> channelActionPending_;  // action key -> required serial
+    // E18: one open undo group at a time, opened and closed through the channel.
+    bool channelGroupOpen_ = false;
+    uint32_t channelGroupSerial_ = 0;
+    std::string channelGroupLabel_;
     struct PendingReadback {
         std::string spec;
         uint64_t frame = 0;
+        uint64_t requiredSerial = 0;  // dispatch-attached: the Update serial that reflects the action
         std::chrono::steady_clock::time_point requestedAt{};
         bool enqueued = false;
     };

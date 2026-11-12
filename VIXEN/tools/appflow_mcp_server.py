@@ -78,6 +78,21 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "appflow.navigate",
+        "description": "Take a flow transition by its generated edge id (the ids appflow.list reports under transitions).",
+        "inputSchema": {"type": "object", "properties": {"edge": {"type": "string", "minLength": 1}}, "required": ["edge"], "additionalProperties": False},
+    },
+    {
+        "name": "appflow.begin_group",
+        "description": "Open a labelled undo group: every dispatch until appflow.end_group is one undo step. Nested calls are refused with a typed result.",
+        "inputSchema": {"type": "object", "properties": {"label": {"type": "string", "minLength": 1}}, "required": ["label"], "additionalProperties": False},
+    },
+    {
+        "name": "appflow.end_group",
+        "description": "Close the open undo group. Refused with a typed result when no group is open.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "appflow.pause",
         "description": "Pause editor update ticks while the render loop continues to service control requests.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -113,6 +128,12 @@ def tool_content(name: str, arguments: dict[str, Any], client: AppFlowClient) ->
             action_id=arguments.get("actionId"),
             frame=arguments.get("frame"),
         )
+    elif name == "appflow.navigate":
+        result = client.navigate(arguments["edge"])
+    elif name == "appflow.begin_group":
+        result = client.begin_group(arguments["label"])
+    elif name == "appflow.end_group":
+        result = client.end_group()
     elif name == "appflow.pause":
         result = client.pause()
     elif name == "appflow.run":

@@ -98,6 +98,15 @@ class AppFlowClient:
             params["frame"] = frame
         return self.call("appflow.readback", params)
 
+    def navigate(self, edge: str) -> dict[str, Any]:
+        return self.call("appflow.navigate", {"edge": edge})
+
+    def begin_group(self, label: str) -> dict[str, Any]:
+        return self.call("appflow.begin_group", {"label": label})
+
+    def end_group(self) -> dict[str, Any]:
+        return self.call("appflow.end_group")
+
     def pause(self) -> dict[str, Any]:
         return self.call("appflow.pause")
 
