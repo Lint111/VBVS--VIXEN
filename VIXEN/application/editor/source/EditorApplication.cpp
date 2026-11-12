@@ -35,7 +35,9 @@
 #include <charconv>
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
+#include <string_view>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -155,6 +157,7 @@ bool ParseTextParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const 
 
 // One stepper click of the E3 layer fields (the same fixed-step shape as the program-field buttons).
 constexpr float kBlendStep = 0.25f;
+constexpr float kPrimitiveStep = 0.25f;
 constexpr float kPositionStep = 0.25f;
 constexpr float kRotationStepDegrees = 15.0f;
 constexpr float kScaleStep = 0.25f;
@@ -330,8 +333,6 @@ void EditorApplication::RefreshLayersView() {
         row.name = doc_.LayerName(i);
         row.op = Vixen::Editor::EditorDocumentModel::OpName(doc_.View().layers[i].header->op);
         row.enabled = ((doc_.EnabledMask() >> i) & 1u) != 0u;
-        Vixen::Editor::DocumentDiagnostic diagnostic;
-        doc_.GetLayerProgramField(i, 0u, 3u, row.programFieldValue, diagnostic);
         row.blendRadius = doc_.View().layers[i].header->blendRadius;
         layers.push_back(std::move(row));
     }
@@ -356,7 +357,49 @@ void EditorApplication::RefreshLayersView() {
             placement.values[6 + axis] = transform.scale[axis];
         }
     }
-    Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), layers, parameters, placement);
+    // R872.1: the selected layer's combine-op choices and typed primitive fields, read from the generated
+    // recipe-op catalogue through the document model.
+    Vixen::App::EditorShapeData shape;
+    if (doc_.LayerCount() != 0u) {
+        const uint8_t currentOp = doc_.View().layers[selectedLayer_].header->op;
+        for (const auto& choice : Vixen::SVO::Recipe::SdfLayerOpTable) {
+            shape.opChoices.push_back({choice.name, choice.layerOp == currentOp});
+        }
+        std::vector<Vixen::Editor::PrimitiveFieldInfo> fields;
+        Vixen::Editor::DocumentDiagnostic shapeDiagnostic;
+        Vixen::SVO::Recipe::SdfOpCode primitive{};
+        if (doc_.GetLayerPrimitive(selectedLayer_, primitive, shapeDiagnostic) &&
+            doc_.GetLayerPrimitiveFields(selectedLayer_, fields, shapeDiagnostic)) {
+            shape.primitive = Vixen::SVO::Recipe::SdfOpCodeName(primitive);
+            static constexpr const char* kComponents[4] = {"x", "y", "z", "w"};
+            for (const auto& field : fields) {
+                for (uint32_t c = 0; c < field.width && c < 4u; ++c) {
+                    shape.fields.push_back({std::string(field.name) + "." + kComponents[c],
+                                            field.width > 1u ? std::string(field.name) + " " + kComponents[c]
+                                                             : std::string(field.name),
+                                            field.value[c], field.hasRange, field.minimum, field.maximum});
+                }
+            }
+        } else {
+            shape.note = shapeDiagnostic.message;
+        }
+    }
+    Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), layers, parameters, placement, shape);
+    if (!primitivesPublished_) {
+        // The picker rows are the catalogue's Primitive rows, sorted by name; the table never changes at run time.
+        std::vector<Vixen::App::EditorPrimitiveData> primitives;
+        static constexpr const char* kCategories[] = {"Control", "Domain", "Vector", "Primitive",
+                                                      "Combine", "Modifier", "Input", "Expression"};
+        for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+            if (info.category != Vixen::SVO::Recipe::SdfOpCategory::Primitive ||
+                !Vixen::Editor::EditorDocumentModel::CanMakePrimitive(static_cast<Vixen::SVO::Recipe::SdfOpCode>(info.opcode))) continue;
+            primitives.push_back({info.name, kCategories[static_cast<size_t>(info.category)]});
+        }
+        std::sort(primitives.begin(), primitives.end(),
+                  [](const auto& a, const auto& b) { return a.name < b.name; });
+        Vixen::App::RefreshEditorPrimitivesView(*layersView_, primitives);
+        primitivesPublished_ = true;
+    }
 }
 
 void EditorApplication::SyncAfterDocumentMutation() {
@@ -473,22 +516,25 @@ void EditorApplication::RegisterAppFlowHandlers() {
             });
     });
 
-    rt_.RegisterHandler(FlowActionId::CreateLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+    // CreateLayer and CreatePrimitiveLayer append one catalogue primitive at its declared defaults
+    // (CreateLayer is the fixed Sphere shortcut; there is no hand-built layer body any more).
+    const auto createPrimitiveLayer = [this](FlowActionId actionId, Vixen::SVO::Recipe::SdfOpCode primitive) {
         if (doc_.LayerCount() >= Vixen::Editor::EditorDocumentModel::kMaximumLayerCount) {
             ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::TooManyLayers,
-                "CreateLayer: the document already holds the maximum of " +
+                std::string(magic_enum::enum_name(actionId)) + ": the document already holds the maximum of " +
                 std::to_string(Vixen::Editor::EditorDocumentModel::kMaximumLayerCount) + " layers"});
             return;
         }
         Vixen::Editor::EditableDocumentLayer layer;
-        layer.name = "Rule layer " + std::to_string(doc_.LayerCount() + 1u);
-        layer.op = 0u;
-        Yeroket::Sdf::Generated::SdfInstruction sphere{};
-        sphere.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
-        sphere.data[3] = 1.0f;
-        layer.program.push_back(sphere);
+        Vixen::Editor::DocumentDiagnostic makeDiagnostic;
+        if (!Vixen::Editor::EditorDocumentModel::MakePrimitiveLayer(
+                primitive, std::string(Vixen::SVO::Recipe::SdfOpCodeName(primitive)) + " " +
+                               std::to_string(doc_.LayerCount() + 1u), layer, makeDiagnostic)) {
+            ReportEditorDiagnostic(makeDiagnostic);
+            return;
+        }
         const uint32_t index = doc_.LayerCount();
-        rt_.Stack().Dispatch(FlowActionId::CreateLayer, [this, layer, index](bool forward) {
+        rt_.Stack().Dispatch(actionId, [this, layer, index](bool forward) {
             Vixen::Editor::DocumentDiagnostic diagnostic;
             const bool ok = forward
                 ? doc_.InsertLayer(index, layer, diagnostic)
@@ -500,6 +546,19 @@ void EditorApplication::RegisterAppFlowHandlers() {
             }
             SyncAfterDocumentMutation();
         });
+    };
+    rt_.RegisterHandler(FlowActionId::CreateLayer, [createPrimitiveLayer](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        createPrimitiveLayer(FlowActionId::CreateLayer, Vixen::SVO::Recipe::SdfOpCode::Sphere);
+    });
+    rt_.RegisterHandler(FlowActionId::CreatePrimitiveLayer, [this, createPrimitiveLayer](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        std::string name;
+        Vixen::SVO::Recipe::SdfOpCode primitive{};
+        if (!ParseTextParam(p, "primitive", name) || !Vixen::SVO::Recipe::FindSdfOpCode(name, primitive)) {
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::InvalidPrimitive,
+                "CreatePrimitiveLayer: '" + name + "' is not an opcode name in the recipe op catalogue"});
+            return;
+        }
+        createPrimitiveLayer(FlowActionId::CreatePrimitiveLayer, primitive);
     });
 
     rt_.RegisterHandler(FlowActionId::DeleteLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
@@ -696,6 +755,32 @@ void EditorApplication::RegisterAppFlowHandlers() {
         lastEditorError_.clear();
     };
 
+    // R872.1: one catalogue argument of the layer's primitive. The inverse is the exact program snapshot.
+    const auto setPrimitiveField = [this, recordEdit, refuse](FlowActionId actionId, uint32_t index,
+                                                              const std::string& field,
+                                                              const std::array<float, 4>& value) {
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        Vixen::Editor::EditableDocumentLayer layerBefore;
+        if (!doc_.GetLayer(index, layerBefore, diagnostic)) { refuse("SetLayerPrimitiveField", diagnostic.message); return; }
+        std::array<float, 4> current{};
+        if (!doc_.GetLayerPrimitiveField(index, field, current, diagnostic)) { refuse("SetLayerPrimitiveField", diagnostic.message); return; }
+        // Apply the model's own value rules first so a refused value records nothing.
+        std::vector<Vixen::Editor::PrimitiveFieldInfo> fields;
+        doc_.GetLayerPrimitiveFields(index, fields, diagnostic);
+        for (const auto& candidate : fields) {
+            if (field == candidate.name &&
+                !Vixen::Editor::EditorDocumentModel::ValidatePrimitiveField(candidate, value, diagnostic)) {
+                refuse("SetLayerPrimitiveField", diagnostic.message);
+                return;
+            }
+        }
+        if (current == value) return;
+        recordEdit(actionId, "SetLayerPrimitiveField",
+                   [this, index, field, value](Vixen::Editor::DocumentDiagnostic& d) { return doc_.SetLayerPrimitiveField(index, field, value, d); },
+                   [this, index, program = std::move(layerBefore.program)](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerProgram(index, program, d); });
+        lastEditorError_.clear();
+    };
     rt_.RegisterHandler(FlowActionId::SetLayerBlend, [this, setBlend, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         uint32_t index = 0;
         float radius = 0.0f;
@@ -741,7 +826,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
         setTransform(FlowActionId::SetLayerTransform, index, next);
     });
 
-    rt_.RegisterHandler(FlowActionId::NudgeLayerField, [this, setBlend, setTransform, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+    rt_.RegisterHandler(FlowActionId::NudgeLayerField, [this, setBlend, setTransform, setPrimitiveField, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         uint32_t index = 0;
         std::string field;
         if (!ParseIndexParam(p, "layerIndex", index) || !ParseTextParam(p, "field", field)) {
@@ -762,6 +847,30 @@ void EditorApplication::RegisterAppFlowHandlers() {
             setBlend(FlowActionId::NudgeLayerField, index, std::max(0.0f, before + sign * kBlendStep));
             return;
         }
+        // "<argument>.<component>": one component of the layer's catalogue primitive argument.
+        if (const size_t dot = key.find('.'); dot != std::string::npos) {
+            const std::string argument = key.substr(0, dot);
+            const std::string component = key.substr(dot + 1);
+            static constexpr const char* kComponentKeys[4] = {"x", "y", "z", "w"};
+            size_t slotComponent = 4;
+            for (size_t c = 0; c < 4; ++c) if (component == kComponentKeys[c]) slotComponent = c;
+            Vixen::Editor::DocumentDiagnostic diagnostic;
+            std::vector<Vixen::Editor::PrimitiveFieldInfo> fields;
+            if (!doc_.GetLayerPrimitiveFields(index, fields, diagnostic)) { refuse("NudgeLayerField", diagnostic.message); return; }
+            for (const auto& candidate : fields) {
+                if (argument != candidate.name) continue;
+                if (slotComponent >= candidate.width) { refuse("NudgeLayerField", "field '" + key + "' has no such component"); return; }
+                std::array<float, 4> next = candidate.value;
+                float stepped = next[slotComponent] + sign * kPrimitiveStep;
+                if (candidate.hasRange) stepped = std::clamp(stepped, candidate.minimum, candidate.maximum);
+                if (stepped == next[slotComponent]) return;
+                next[slotComponent] = stepped;
+                setPrimitiveField(FlowActionId::NudgeLayerField, index, argument, next);
+                return;
+            }
+            refuse("NudgeLayerField", "the layer's primitive has no field '" + argument + "'");
+            return;
+        }
         static constexpr const char* kKeys[9] = {"px", "py", "pz", "rx", "ry", "rz", "sx", "sy", "sz"};
         size_t slot = 9;
         for (size_t f = 0; f < 9; ++f) if (key == kKeys[f]) slot = f;
@@ -774,6 +883,72 @@ void EditorApplication::RegisterAppFlowHandlers() {
         else if (slot < 6u) next.rotationDegrees[axis] += sign * kRotationStepDegrees;
         else next.scale[axis] = std::max(kMinimumScale, next.scale[axis] + sign * kScaleStep);
         setTransform(FlowActionId::NudgeLayerField, index, next);
+    });
+
+    // R872.1: the layer's combine op by its generated layer-op table name. The inverse restores the whole
+    // program and op through the exact snapshot of the layer.
+    rt_.RegisterHandler(FlowActionId::SetLayerOp, [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t index = 0;
+        std::string name;
+        if (!ParseIndexParam(p, "layerIndex", index) || !ParseTextParam(p, "op", name)) {
+            refuse("SetLayerOp", "needs an integer layerIndex and an op name");
+            return;
+        }
+        if (index >= doc_.LayerCount()) { refuse("SetLayerOp", "layer index " + std::to_string(index) + " is outside the document"); return; }
+        const Vixen::SVO::Recipe::SdfLayerOp* entry = nullptr;
+        for (const auto& candidate : Vixen::SVO::Recipe::SdfLayerOpTable) {
+            // The table names are canonical ("Subtract"); input is matched ignoring case.
+            const std::string_view known = candidate.name;
+            if (known.size() == name.size() &&
+                std::equal(known.begin(), known.end(), name.begin(), [](char a, char b) {
+                    return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })) {
+                entry = &candidate;
+            }
+        }
+        if (entry == nullptr) { refuse("SetLayerOp", "'" + name + "' is not in the layer-op table"); return; }
+        const uint8_t before = doc_.View().layers[index].header->op;
+        const uint8_t after = entry->layerOp;
+        if (before == after) return;
+        recordEdit(FlowActionId::SetLayerOp, "SetLayerOp",
+                   [this, index, after](Vixen::Editor::DocumentDiagnostic& d) { return doc_.SetLayerOp(index, after, d); },
+                   [this, index, before](Vixen::Editor::DocumentDiagnostic& d) { return doc_.SetLayerOp(index, before, d); });
+        lastEditorError_.clear();
+    });
+
+    rt_.RegisterHandler(FlowActionId::SetLayerPrimitiveField, [this, setPrimitiveField, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t index = 0;
+        std::string field;
+        if (!ParseIndexParam(p, "layerIndex", index) || !ParseTextParam(p, "field", field)) {
+            refuse("SetLayerPrimitiveField", "needs an integer layerIndex and a field");
+            return;
+        }
+        std::array<float, 4> value{};
+        std::array<bool, 4> present{};
+        static constexpr const char* kComponents[4] = {"x", "y", "z", "w"};
+        for (size_t c = 0; c < 4; ++c) {
+            bool hasParam = false;
+            for (const auto& [n, v] : p) if (n == kComponents[c]) hasParam = true;
+            if (!hasParam) continue;
+            if (!ParseFloatParam(p, kComponents[c], value[c])) {
+                refuse("SetLayerPrimitiveField", std::string("component ") + kComponents[c] + " is not a number");
+                return;
+            }
+            present[c] = true;
+        }
+        std::vector<Vixen::Editor::PrimitiveFieldInfo> fields;
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (!doc_.GetLayerPrimitiveFields(index, fields, diagnostic)) { refuse("SetLayerPrimitiveField", diagnostic.message); return; }
+        for (const auto& candidate : fields) {
+            if (field != candidate.name) continue;
+            for (uint32_t c = 0; c < candidate.width && c < 4u; ++c) {
+                if (!present[c]) {
+                    refuse("SetLayerPrimitiveField", "field '" + field + "' has " + std::to_string(candidate.width) +
+                                                     " components; component " + kComponents[c] + " is missing");
+                    return;
+                }
+            }
+        }
+        setPrimitiveField(FlowActionId::SetLayerPrimitiveField, index, field, value);
     });
 
     rt_.RegisterHandler(FlowActionId::SelectLayer, [this, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {

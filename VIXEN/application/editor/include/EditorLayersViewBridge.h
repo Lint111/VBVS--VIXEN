@@ -28,12 +28,39 @@ struct EditorLayerData {
     std::string name;
     std::string op;
     bool enabled = true;
-    float programFieldValue = 0.0f;
     float blendRadius = 0.0f;
 };
 
 // E3: the placement of the selected layer, in the order px py pz rx ry rz sx sy sz (rotation in
 // degrees). The inspector shows it and its steppers; the field keys live with the view.
+// R872.1: the catalogue-driven shape block of the selected layer. Everything here comes from the
+// generated recipe-op catalogue through EditorDocumentModel; the view holds no op knowledge.
+struct EditorPrimitiveData {
+    std::string name;
+    std::string category;
+};
+
+struct EditorLayerOpData {
+    std::string name;
+    bool isCurrent = false;
+};
+
+struct EditorShapeFieldData {
+    std::string key;     // "<argument>.<component>", the nudge selector's field key
+    std::string label;
+    float value = 0.0f;
+    bool hasRange = false;
+    float minimum = 0.0f;
+    float maximum = 0.0f;
+};
+
+struct EditorShapeData {
+    std::vector<EditorLayerOpData> opChoices;
+    std::vector<EditorShapeFieldData> fields;
+    std::string primitive;   // empty when the selected layer is not shape-editable
+    std::string note;
+};
+
 struct EditorPlacementData {
     int selectedLayer = 0;
     std::string selectedName;
@@ -81,7 +108,11 @@ Vixen::RenderGraph::IView& EditorLayersAsView(EditorLayersView& view);
 void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
                              const std::vector<EditorLayerData>& layers,
                              const std::vector<EditorParameterData>& parameters,
-                             const EditorPlacementData& placement = {});
+                             const EditorPlacementData& placement = {},
+                             const EditorShapeData& shape = {});
+
+// R872.1: the picker rows (static for a build of the catalogue).
+void RefreshEditorPrimitivesView(EditorLayersView& view, const std::vector<EditorPrimitiveData>& primitives);
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
 

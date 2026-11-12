@@ -151,6 +151,8 @@ private:
     void ReconcileLayersView();
     void SyncAfterDocumentMutation();
     void RefreshRecipesView();
+    // R872.1: the picker rows are published once (the catalogue never changes at run time).
+    bool primitivesPublished_ = false;
     // R766: the status-line panel (document, flow state, undo depth, last message).
     void RefreshStatusView();
     // R766: applies one panel verb's result: persists the layout and records a channel event.

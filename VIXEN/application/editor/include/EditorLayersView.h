@@ -51,7 +51,8 @@ public:
     void Register(Rml::DataModelConstructor& c) override {
         Vixen::Views::BindEditorLayersModel(c,
             Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
-                                            &selectedLayer_, &activeLayerCountRaw_, &recipes_,
+                                            &selectedLayer_, &primitives_, &opChoices_, &shape_,
+                                            &selectedShape_, &shapeNote_, &activeLayerCountRaw_, &recipes_,
                                             &statusDocument_, &statusMessage_, &flowState_,
                                             &undoDepth_, &redoDepth_ });
         model_ = c.GetModelHandle();
@@ -71,7 +72,8 @@ public:
     void PopulateFromDocument(uint32_t mask,
                               const std::vector<EditorLayerData>& layerData,
                               const std::vector<EditorParameterData>& parameterData,
-                              const EditorPlacementData& placement = {}) {
+                              const EditorPlacementData& placement = {},
+                              const EditorShapeData& shape = {}) {
         layers_.clear();
         layers_.reserve(layerData.size());
         for (uint32_t i = 0; i < layerData.size(); ++i) {
@@ -83,9 +85,6 @@ public:
             row.moveUpId = "layer-" + std::to_string(i) + "-up";
             row.moveDownId = "layer-" + std::to_string(i) + "-down";
             row.deleteId = "layer-" + std::to_string(i) + "-delete";
-            row.programUpId = "layer-" + std::to_string(i) + "-program-up";
-            row.programDownId = "layer-" + std::to_string(i) + "-program-down";
-            row.programFieldValue = layerData[i].programFieldValue;
             row.blendRadius = layerData[i].blendRadius;
             row.blendUpId = "layer-" + std::to_string(i) + "-nudge-blend-up";
             row.blendDownId = "layer-" + std::to_string(i) + "-nudge-blend-down";
@@ -129,6 +128,32 @@ public:
                 transform_.push_back(std::move(row));
             }
         }
+        // R872.1: the selected layer's combine-op choices and typed primitive fields.
+        opChoices_.clear();
+        shape_.clear();
+        if (!layerData.empty()) {
+            const std::string layerStem = "layer-" + std::to_string(placement.selectedLayer);
+            for (const auto& choice : shape.opChoices) {
+                Vixen::Views::EditorLayerOpRow row;
+                row.name = Rml::String(choice.name);
+                row.elementId = layerStem + "-op-" + choice.name;
+                row.isCurrent = choice.isCurrent;
+                opChoices_.push_back(std::move(row));
+            }
+            for (const auto& field : shape.fields) {
+                Vixen::Views::EditorShapeFieldRow row;
+                row.label = Rml::String(field.label);
+                row.value = field.value;
+                row.hasRange = field.hasRange;
+                row.minimum = field.minimum;
+                row.maximum = field.maximum;
+                row.upId = layerStem + "-nudge-" + field.key + "-up";
+                row.downId = layerStem + "-nudge-" + field.key + "-down";
+                shape_.push_back(std::move(row));
+            }
+        }
+        selectedShape_ = Rml::String(shape.primitive);
+        shapeNote_ = Rml::String(shape.note);
         // activeLayerCount (Inc-Ovr Override proof): storage holds the raw mask reinterpreted as
         // int; BindEditorLayersModel_activeLayerCountOverride (this file, above) popcounts it at
         // bind time. Only needs a dirty when the mask itself changes, same as "layers".
@@ -139,8 +164,26 @@ public:
             model_.DirtyVariable("transform");
             model_.DirtyVariable("selectedLayerName");
             model_.DirtyVariable("selectedLayer");
+            model_.DirtyVariable("opChoices");
+            model_.DirtyVariable("shape");
+            model_.DirtyVariable("selectedShape");
+            model_.DirtyVariable("shapeNote");
             model_.DirtyVariable("activeLayerCount");
         }
+    }
+
+    // R872.1: the primitive picker; each row carries its CreatePrimitiveLayer selector.
+    void PopulatePrimitives(const std::vector<EditorPrimitiveData>& primitiveData) {
+        primitives_.clear();
+        primitives_.reserve(primitiveData.size());
+        for (const auto& primitive : primitiveData) {
+            Vixen::Views::EditorPrimitiveRow row;
+            row.name = Rml::String(primitive.name);
+            row.category = Rml::String(primitive.category);
+            row.elementId = "primitive-" + primitive.name + "-add";
+            primitives_.push_back(std::move(row));
+        }
+        if (model_) model_.DirtyVariable("primitives");
     }
 
     // R765: the open pack's render-recipe documents; each row carries its OpenRecipe selector.
@@ -177,6 +220,12 @@ public:
     size_t DebugLayerCount() const { return layers_.size(); }
     const Vixen::Views::EditorLayerRow& DebugLayer(size_t i) const { return layers_.at(i); }
     size_t DebugParameterCount() const { return parameters_.size(); }
+    size_t DebugPrimitiveCount() const { return primitives_.size(); }
+    const Vixen::Views::EditorPrimitiveRow& DebugPrimitive(size_t i) const { return primitives_.at(i); }
+    size_t DebugOpChoiceCount() const { return opChoices_.size(); }
+    const Vixen::Views::EditorLayerOpRow& DebugOpChoice(size_t i) const { return opChoices_.at(i); }
+    size_t DebugShapeFieldCount() const { return shape_.size(); }
+    const Vixen::Views::EditorShapeFieldRow& DebugShapeField(size_t i) const { return shape_.at(i); }
     int DebugActiveLayerCount() const {
         return Vixen::Views::BindEditorLayersModel_activeLayerCountOverride(
             const_cast<int*>(&activeLayerCountRaw_));
@@ -188,6 +237,11 @@ private:
     std::vector<Vixen::Views::EditorTransformRow> transform_;
     Rml::String selectedLayerName_;
     int selectedLayer_ = 0;
+    std::vector<Vixen::Views::EditorPrimitiveRow> primitives_;
+    std::vector<Vixen::Views::EditorLayerOpRow> opChoices_;
+    std::vector<Vixen::Views::EditorShapeFieldRow> shape_;
+    Rml::String selectedShape_;
+    Rml::String shapeNote_;
     int activeLayerCountRaw_ = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes_;
     Rml::String statusDocument_;

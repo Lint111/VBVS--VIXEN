@@ -120,6 +120,25 @@ body {
     pointer-events: auto;
 }
 
+.button.selected {
+    color: #ffffff;
+    background-color: #50609a;
+    border-color: #a0c0ff;
+}
+
+.op-choices {
+    display: block;
+    margin-top: 3px;
+}
+
+/* R872.1: the primitive picker is a compact scrolling list; each row is one catalogue primitive. */
+.primitive-list {
+    display: block;
+    height: 76px;
+    margin-top: 3px;
+    overflow-y: auto;
+}
+
 .program-controls {
     display: block;
     margin-left: 24px;

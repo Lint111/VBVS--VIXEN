@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0xB00CFF5A
+shape 0x4F349EF3
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -49,6 +49,9 @@ action SelectViewAngle3 38
 action SetParameter 39
 action ResetParameter 40
 action ScrubParameter 41
+action CreatePrimitiveLayer 42
+action SetLayerOp 43
+action SetLayerPrimitiveField 44
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -163,6 +166,9 @@ decl 38 sizeof(LayerState) 1
 decl 39 sizeof(LayerState) 1
 decl 40 sizeof(LayerState) 1
 decl 41 sizeof(LayerState) 1
+decl 42 sizeof(LayerState) 1
+decl 43 sizeof(LayerState) 1
+decl 44 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -189,6 +195,15 @@ param 26 sz 2
 param 28 layerIndex 1
 param 29 layerIndex 1
 param 29 field 0
+param 42 primitive 0
+param 43 layerIndex 1
+param 43 op 0
+param 44 layerIndex 1
+param 44 field 0
+param 44 x 2
+param 44 y 2
+param 44 z 2
+param 44 w 2
 param 16 panelId 0
 param 17 panelId 0
 param 18 panelId 0
@@ -230,6 +245,8 @@ trigger ResetParameterTrigger parameter-{index}-reset 40 parameterIndex click
 trigger OpenRecipeTrigger recipe-{recipeId}-open 15 recipeId click
 trigger SelectLayerTrigger layer-{index}-select 28 layerIndex click
 trigger NudgeLayerFieldTrigger layer-{index}-nudge-{field} 29 layerIndex click
+trigger CreatePrimitiveLayerTrigger primitive-{primitive}-add 42 primitive click
+trigger SetLayerOpTrigger layer-{index}-op-{op} 43 layerIndex click
 trigger ReopenSavedButtonTrigger reopen-button 27 - click
 trigger UndoButtonTrigger undo-button 1 - click
 trigger RedoButtonTrigger redo-button 2 - click

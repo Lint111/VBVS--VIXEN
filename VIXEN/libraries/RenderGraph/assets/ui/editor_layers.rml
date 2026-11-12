@@ -21,14 +21,18 @@
                 <div class="button" data-attr-id="row.blendDownId" hit-mask="none">−</div>
                 <div class="button" data-attr-id="row.blendUpId" hit-mask="none">+</div>
             </div>
-            <div class="program-controls">
-                <span class="value">instruction 0 · data 0: {{row.programFieldValue}}</span>
-                <div class="button" data-attr-id="row.programDownId" hit-mask="none">−</div>
-                <div class="button" data-attr-id="row.programUpId" hit-mask="none">+</div>
-            </div>
+        </div>
+        <!-- R872.1: the op of the selected layer (rows come from the generated layer-op table) and the
+             primitive picker (rows come from the generated recipe-op catalogue; one click appends a layer). -->
+        <div class="subtitle">Combine op of {{selectedLayerName}}</div>
+        <div class="op-choices">
+            <div class="button" data-for="choice : opChoices" data-attr-id="choice.elementId" data-class-selected="choice.isCurrent" hit-mask="none">{{choice.name}}</div>
+        </div>
+        <div class="subtitle">Add primitive</div>
+        <div class="primitive-list">
+            <div class="button" data-for="item : primitives" data-attr-id="item.elementId" hit-mask="none">{{item.name}}</div>
         </div>
         <div class="toolbar">
-            <div class="button" id="add-layer" hit-mask="none">Add rule layer</div>
             <div class="button" id="undo-button" hit-mask="none">Undo</div>
             <div class="button" id="redo-button" hit-mask="none">Redo</div>
             <div class="button" id="save-button" hit-mask="none">Save</div>

@@ -20,9 +20,6 @@ namespace Vixen.ViewSchemas
         public string moveUpId;
         public string moveDownId;
         public string deleteId;
-        public string programUpId;
-        public string programDownId;
-        public float programFieldValue;
         // E3: blend radius with its stepper ids, and the row's selection click target.
         public float blendRadius;
         public string blendUpId;
@@ -35,6 +32,33 @@ namespace Vixen.ViewSchemas
     public struct EditorTransformRow {
         public string label;
         public float value;
+        public string upId;
+        public string downId;
+    }
+
+    // R872.1: one catalogue primitive of the picker ("primitive-<name>-add" is its AppFlow selector).
+    // Rows come from the generated recipe-op catalogue (category Primitive), never from a hand list.
+    public struct EditorPrimitiveRow {
+        public string name;
+        public string category;
+        public string elementId;
+    }
+
+    // R872.1: one combine-op choice of the selected layer ("layer-<i>-op-<name>"), from the generated layer-op table.
+    public struct EditorLayerOpRow {
+        public string name;
+        public string elementId;
+        public bool isCurrent;
+    }
+
+    // R872.1: one component of the selected layer's primitive argument, with its declared range and
+    // the ids of its nudge buttons ("layer-<i>-nudge-<argument>.<component>-<up|down>").
+    public struct EditorShapeFieldRow {
+        public string label;
+        public float value;
+        public bool hasRange;
+        public float minimum;
+        public float maximum;
         public string upId;
         public string downId;
     }
@@ -75,6 +99,14 @@ namespace Vixen.ViewSchemas
         [ViewSection(Layout = ViewLayout.Aos)] public EditorTransformRow[] transform;
         public string selectedLayerName;
         public int selectedLayer;
+        // R872.1 (catalogue consumer): the primitive picker, the selected layer's combine-op choices
+        // and its typed primitive fields. selectedShape is the primitive's name, or empty with
+        // shapeNote saying why the fields are not editable.
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorPrimitiveRow[] primitives;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorLayerOpRow[] opChoices;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorShapeFieldRow[] shape;
+        public string selectedShape;
+        public string shapeNote;
 
         // Inc-Ovr (design §5b Override proof): the framework generates NO read/write/reconcile
         // logic for this field -- only a forward-declared hook,

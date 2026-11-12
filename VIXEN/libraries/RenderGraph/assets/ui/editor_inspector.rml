@@ -18,6 +18,15 @@
             <div class="parameter-range">range {{param.minimum}}–{{param.maximum}}</div>
         </div>
         <div class="hint" data-if="parameters.size == 0">This document declares no parameters.</div>
+        <div class="subtitle">Shape of {{selectedLayerName}}<span data-if="selectedShape != ''"> ({{selectedShape}})</span></div>
+        <div class="hint" data-if="selectedShape == ''">{{shapeNote}}</div>
+        <div class="parameter-row" data-for="field : shape">
+            <span class="parameter-name">{{field.label}}</span>
+            <span class="parameter-value">{{field.value}}</span>
+            <div class="button" data-attr-id="field.downId" hit-mask="none">−</div>
+            <div class="button" data-attr-id="field.upId" hit-mask="none">+</div>
+            <div class="parameter-range" data-if="field.hasRange">range {{field.minimum}}–{{field.maximum}}</div>
+        </div>
         <div class="subtitle">Placement of {{selectedLayerName}} (layer {{selectedLayer}})</div>
         <div class="parameter-row" data-for="field : transform">
             <span class="parameter-name">{{field.label}}</span>

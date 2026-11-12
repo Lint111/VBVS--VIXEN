@@ -34,6 +34,8 @@ namespace Vixen.AppFlow.Reference
         OrbitCamera = 30, PanCamera = 31, ZoomCamera = 32, FrameAsset = 33, SetViewAngle = 34,
         SelectViewAngle0 = 35, SelectViewAngle1 = 36, SelectViewAngle2 = 37, SelectViewAngle3 = 38,
         SetParameter = 39, ResetParameter = 40, ScrubParameter = 41,
+        // sn-editorshape2 block (R872.1 catalogue consumer): names are validated against the generated recipe-op catalogue.
+        CreatePrimitiveLayer = 42, SetLayerOp = 43, SetLayerPrimitiveField = 44,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -180,7 +182,9 @@ namespace Vixen.AppFlow.Reference
     }
 
     // A stepper button: field is "<blend|px|py|pz|rx|ry|rz|sx|sy|sz>-<up|down>"; the step is one fixed
-    // increment of that field (the same step-button shape as EditProgramFieldUp/Down).
+    // increment of that field. sn-editorshape2: "<argument>.<component>-<up|down>" (for example
+    // "halfExtents.x-up") steps one component of the layer's primitive argument named in the
+    // generated recipe-op catalogue.
     [FlowActionParams(nameof(FlowAction.NudgeLayerField))]
     public static class NudgeLayerFieldParams
     {
@@ -188,6 +192,43 @@ namespace Vixen.AppFlow.Reference
         public const int Param0Type = (int)FlowParamType.Int;
         public const string Param1Name = "field";
         public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    // R872.1: append a layer holding one catalogue primitive at its declared defaults.
+    [FlowActionParams(nameof(FlowAction.CreatePrimitiveLayer))]
+    public static class CreatePrimitiveLayerParams
+    {
+        public const string Param0Name = "primitive";
+        public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    // R872.1: the layer's combine op, by its name in the generated layer-op table.
+    [FlowActionParams(nameof(FlowAction.SetLayerOp))]
+    public static class SetLayerOpParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "op";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    // R872.1: one InstructionData argument of the layer's primitive, by its catalogue name; the
+    // components beyond the argument's width are ignored.
+    [FlowActionParams(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "field";
+        public const int Param1Type = (int)FlowParamType.String;
+        public const string Param2Name = "x";
+        public const int Param2Type = (int)FlowParamType.Float;
+        public const string Param3Name = "y";
+        public const int Param3Type = (int)FlowParamType.Float;
+        public const string Param4Name = "z";
+        public const int Param4Type = (int)FlowParamType.Float;
+        public const string Param5Name = "w";
+        public const int Param5Type = (int)FlowParamType.Float;
     }
 
     // R766: panel ids are the declared PanelDecl ids; regions are left | right | bottom | overlay | floating.
@@ -442,6 +483,24 @@ namespace Vixen.AppFlow.Reference
     public static class NudgeLayerFieldTrigger
     {
         public const string Element = "layer-{index}-nudge-{field}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // "primitive-Sphere-add": the picker row's id carries the catalogue primitive name.
+    [FlowElementTrigger(nameof(FlowAction.CreatePrimitiveLayer))]
+    public static class CreatePrimitiveLayerTrigger
+    {
+        public const string Element = "primitive-{primitive}-add";
+        public const string ParamName = "primitive";
+        public const string On = "click";
+    }
+
+    // "layer-2-op-subtract": the second placeholder binds the `op` param.
+    [FlowElementTrigger(nameof(FlowAction.SetLayerOp))]
+    public static class SetLayerOpTrigger
+    {
+        public const string Element = "layer-{index}-op-{op}";
         public const string ParamName = "layerIndex";
         public const string On = "click";
     }
