@@ -138,9 +138,10 @@ void TraceRaysNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Sprint 6.3 Phase 0: All nodes share the same query manager to prevent slot conflicts
     auto* queryMgrPtr = static_cast<GPUQueryManager*>(vulkanDevice_->GetQueryManager());
     if (queryMgrPtr) {
-        // Wrap raw pointer in shared_ptr with no-op deleter (VulkanDevice owns the manager)
-        auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+        // Share ownership with the device so the logger's slot release in its destructor never outlives the manager
+        auto queryManager = std::shared_ptr<GPUQueryManager>(vulkanDevice_->GetQueryManagerShared(), queryMgrPtr);
 
+        ReleaseGPUPerfLogger(GetLogger(), gpuPerfLogger_);  // free the old slot (recompile)
         gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, queryManager);
         gpuPerfLogger_->SetEnabled(true);
         gpuPerfLogger_->SetLogFrequency(120);

@@ -44,6 +44,7 @@ add_executable(test_rendergraph_coresystems_a
     Core/test_timer.cpp
     Core/test_resource_dependency_tracker.cpp
     Core/test_recompile_dedup.cpp
+    Core/test_cleanup_stack_dependents.cpp
 )
 
 target_include_directories(test_rendergraph_coresystems_a PRIVATE

@@ -1,4 +1,5 @@
 #include "VulkanGraphApplication.h"
+#include "FrameTrace.h"
 #include "MainCacher.h"
 #include "Recipe/RecipeBounds.h"
 #include "Recipe/RecipeOccupancy.h"
@@ -899,27 +900,70 @@ void VulkanGraphApplication::RecompileProceduralShader() {
         // current contents when the shader builder lambda runs (BuildRenderGraph.cpp).
         return;
     }
-    if (computeShaderLibNode_.IsValid()) {
-        // Replacing editor rule layers rebuilds the shader library and every dependent pipeline.
-        // Drain prior frame submissions first: those pipelines may still be referenced by GPU work
-        // even though the graph's ordinary recompile path does not wait device-wide.
-        if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
-            if (auto* device = deviceInst->GetVulkanDevice()) {
-                const VkResult waitResult = vkDeviceWaitIdle(device->device);
-                if (waitResult == VK_ERROR_DEVICE_LOST) {
-                    renderGraph->NotifyDeviceLost(
-                        "VulkanGraphApplication::RecompileProceduralShader vkDeviceWaitIdle");
-                    return;
-                }
+    if (!computeShaderLibNode_.IsValid()) {
+        if (mainLogger) mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");
+        return;
+    }
+    VIXEN_FRAME_TRACE_SCOPE("update", "procedural-precompile-begin");
+    // Compile off the frame thread: the builders run here (they read the live recipe table), their
+    // Build() runs on workers and fills the shader cache; the swap happens in PollProceduralShaderSwap.
+    for (const auto handle : proceduralShaderLibNodes_) {
+        if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->BeginPrecompile();
+    }
+    proceduralSwapPending_ = true;
+    if (lockstepProceduralRecompile_) {
+        for (const auto handle : proceduralShaderLibNodes_) {
+            if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->WaitPrecompile();
+        }
+        proceduralSwapPending_ = false;
+        MarkProceduralShaderLibsDirty();  // recompiles at the next update tick, like the synchronous path did
+        return;
+    }
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] compiling " +
+            std::to_string(proceduralShaderLibNodes_.size()) + " recipe source families off the frame thread");
+    }
+}
+
+void VulkanGraphApplication::PollProceduralShaderSwap() {
+    if (!proceduralSwapPending_ || !renderGraph) return;
+    for (const auto handle : proceduralShaderLibNodes_) {
+        auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle));
+        if (lib && !lib->IsPrecompileReady()) return;
+    }
+    proceduralSwapPending_ = false;
+    MarkProceduralShaderLibsDirty();
+}
+
+void VulkanGraphApplication::FlushProceduralShaderSwap() {
+    if (!proceduralSwapPending_ || !renderGraph) return;
+    for (const auto handle : proceduralShaderLibNodes_) {
+        if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->WaitPrecompile();
+    }
+    proceduralSwapPending_ = false;
+    MarkProceduralShaderLibsDirty();
+    renderGraph->RecompileDirtyNodes();
+}
+
+void VulkanGraphApplication::MarkProceduralShaderLibsDirty() {
+    VIXEN_FRAME_TRACE_SCOPE("update", "procedural-swap-mark");
+    // Replacing editor rule layers rebuilds the shader library and every dependent pipeline.
+    // Drain prior frame submissions first: those pipelines may still be referenced by GPU work
+    // even though the graph's ordinary recompile path does not wait device-wide.
+    if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
+        if (auto* device = deviceInst->GetVulkanDevice()) {
+            const VkResult waitResult = vkDeviceWaitIdle(device->device);
+            if (waitResult == VK_ERROR_DEVICE_LOST) {
+                renderGraph->NotifyDeviceLost(
+                    "VulkanGraphApplication::MarkProceduralShaderLibsDirty vkDeviceWaitIdle");
+                return;
             }
         }
-        for (const auto handle : proceduralShaderLibNodes_)
-            renderGraph->MarkNodeNeedsRecompile(handle);
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] marked " +
-                std::to_string(proceduralShaderLibNodes_.size()) + " recipe source families dirty");
-        }
-    } else if (mainLogger) {
-        mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");
+    }
+    for (const auto handle : proceduralShaderLibNodes_)
+        renderGraph->MarkNodeNeedsRecompile(handle);
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[VulkanGraphApplication::MarkProceduralShaderLibsDirty] marked " +
+            std::to_string(proceduralShaderLibNodes_.size()) + " recipe source families dirty");
     }
 }
