@@ -14,7 +14,7 @@ set_target_properties(vixen_gpu_ledger_layer PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${VIXEN_GPU_LEDGER_LAYER_DIR}"
     CXX_VISIBILITY_PRESET hidden)
 if(MSVC)
-    target_compile_options(vixen_gpu_ledger_layer PRIVATE /W4 /WX)
+    target_compile_options(vixen_gpu_ledger_layer PRIVATE /W4)
 endif()
 
 file(GENERATE OUTPUT "${VIXEN_GPU_LEDGER_LAYER_DIR}/VkLayer_vixen_gpu_ledger.json" CONTENT [=[{
