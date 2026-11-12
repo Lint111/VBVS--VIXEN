@@ -23,6 +23,47 @@
 
 namespace Vixen::RenderGraph {
 
+namespace {
+
+// The ComputePipelineCacher identity of a bundle's pipeline. Shared by the node's Compile and the
+// off-thread warmer (R864.4) so the swap Compile hits what the worker created.
+//
+// The shader key MUST identify the shader's CODE. The bundle's `uuid` is the descriptor-INTERFACE
+// hash (deliberately code-agnostic so shaders with identical descriptor layouts share an SDI header
+// — see ShaderDataBundle descriptorInterfaceHash). Two functionally different compute shaders with
+// the same descriptor interface (e.g. the auto-sync demo's fill vs post — both expose one std430
+// SSBO at set0/binding0 + a uvec2 push constant) carry the SAME uuid, so keying on it would bind
+// the first pass's pipeline for the second. The key is program name + SPIR-V content hash; the
+// interface uuid keeps its descriptor-sharing role in the layout key.
+std::string PipelineCodeKey(const ShaderManagement::ShaderDataBundle& bundle) {
+    return bundle.GetProgramName() + ":" +
+           ShaderManagement::ComputeSHA256HexFromUint32Vec(bundle.GetSpirv(ShaderManagement::ShaderStage::Compute));
+}
+
+std::string PipelineLayoutKey(const ShaderManagement::ShaderDataBundle& bundle) {
+    return bundle.uuid + "_pipeline_layout";
+}
+
+CashSystem::PipelineLayoutCreateParams PipelineLayoutParams(
+    const ShaderManagement::ShaderDataBundle& bundle, VkDescriptorSetLayout descriptorSetLayout) {
+    CashSystem::PipelineLayoutCreateParams layoutParams;
+    layoutParams.layoutKey = PipelineLayoutKey(bundle);
+    if (descriptorSetLayout != VK_NULL_HANDLE) layoutParams.descriptorSetLayout = descriptorSetLayout;
+    // Push constants from shader reflection
+    if (bundle.reflectionData) {
+        for (const auto& pc : bundle.reflectionData->pushConstants) {
+            VkPushConstantRange range{};
+            range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            range.offset = pc.offset;
+            range.size = pc.size;
+            layoutParams.pushConstantRanges.push_back(range);
+        }
+    }
+    return layoutParams;
+}
+
+} // namespace
+
 // ===== NodeType Factory =====
 
 std::unique_ptr<NodeInstance> ComputePipelineNodeType::CreateInstance(
@@ -105,11 +146,16 @@ void ComputePipelineNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     // Create pipeline layout
     auto layoutWrapper = CreatePipelineLayout(devicePtr, shaderBundle, descriptorSetLayout);
-    std::string layoutKey = shaderBundle->uuid + "_pipeline_layout";
+    std::string layoutKey = PipelineLayoutKey(*shaderBundle);
 
     // Create compute pipeline
     CreateComputePipeline(devicePtr, shaderModule, shaderBundle, layoutWrapper, layoutKey,
                           workgroupX, workgroupY, workgroupZ);
+    compiledInterfaceUuid_ = shaderBundle->uuid;
+    compiledDescriptorSetLayout_ = descriptorSetLayout;
+    compiledWorkgroup_[0] = workgroupX;
+    compiledWorkgroup_[1] = workgroupY;
+    compiledWorkgroup_[2] = workgroupZ;
 
     // Set outputs
     ctx.Out(ComputePipelineNodeConfig::PIPELINE, pipeline_);
@@ -200,27 +246,10 @@ std::shared_ptr<CashSystem::PipelineLayoutWrapper> ComputePipelineNode::CreatePi
         layoutCacher->Initialize(device);
     }
 
-    // Build pipeline layout params
-    CashSystem::PipelineLayoutCreateParams layoutParams;
-    layoutParams.layoutKey = shaderBundle->uuid + "_pipeline_layout";
-
-    if (descriptorSetLayout != VK_NULL_HANDLE) {
-        layoutParams.descriptorSetLayout = descriptorSetLayout;
-        NODE_LOG_INFO("[ComputePipelineNode] Using provided descriptor set layout");
-    }
-
-    // Extract push constants from shader reflection
-    if (shaderBundle->reflectionData && !shaderBundle->reflectionData->pushConstants.empty()) {
-        for (const auto& pc : shaderBundle->reflectionData->pushConstants) {
-            VkPushConstantRange range{};
-            range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-            range.offset = pc.offset;
-            range.size = pc.size;
-            layoutParams.pushConstantRanges.push_back(range);
-        }
-        NODE_LOG_INFO("[ComputePipelineNode] Added " +
-                      std::to_string(layoutParams.pushConstantRanges.size()) + " push constant ranges");
-    }
+    const CashSystem::PipelineLayoutCreateParams layoutParams = PipelineLayoutParams(*shaderBundle, descriptorSetLayout);
+    NODE_LOG_INFO("[ComputePipelineNode] Descriptor set layout " +
+                  std::string(descriptorSetLayout != VK_NULL_HANDLE ? "provided" : "absent") + ", " +
+                  std::to_string(layoutParams.pushConstantRanges.size()) + " push constant ranges");
 
     auto wrapper = layoutCacher->GetOrCreate(layoutParams);
     NODE_LOG_INFO("[ComputePipelineNode] Pipeline layout created: " + layoutParams.layoutKey);
@@ -260,22 +289,8 @@ void ComputePipelineNode::CreateComputePipeline(
         throw std::runtime_error("[ComputePipelineNode] Failed to get ComputePipelineCacher");
     }
 
-    // Build pipeline params.
-    //
-    // Pipeline cache key MUST uniquely identify the shader's CODE. The bundle's
-    // `uuid` is the descriptor-INTERFACE hash (deliberately code-agnostic so shaders
-    // with identical descriptor layouts share an SDI header — see ShaderDataBundle
-    // descriptorInterfaceHash). Two functionally different compute shaders with the
-    // same descriptor interface (e.g. the auto-sync demo's fill vs post — both expose
-    // one std430 SSBO at set0/binding0 + a uvec2 push constant) therefore carry the
-    // SAME uuid. Using it as the ComputePipelineCacher key collides them, so the second
-    // pass silently binds the first pass's pipeline. Key on a hash of the actual SPIR-V
-    // (program name + SPIR-V content) so distinct code yields distinct pipelines, while
-    // the interface uuid keeps its legitimate SDI/descriptor-sharing role.
-    const auto& computeSpirv = shaderBundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
-    const std::string codeKey =
-        shaderBundle->GetProgramName() + ":" +
-        ShaderManagement::ComputeSHA256HexFromUint32Vec(computeSpirv);
+    // Code identity (program + SPIR-V hash), not the interface uuid: see PipelineCodeKey.
+    const std::string codeKey = PipelineCodeKey(*shaderBundle);
 
     CashSystem::ComputePipelineCreateParams pipelineParams;
     pipelineParams.shaderModule = shaderModule;
@@ -306,6 +321,52 @@ void ComputePipelineNode::CreateComputePipeline(
 
     NODE_LOG_INFO("[ComputePipelineNode] Pipeline: " + std::to_string(reinterpret_cast<uint64_t>(pipeline_)));
     NODE_LOG_INFO("[ComputePipelineNode] Layout: " + std::to_string(reinterpret_cast<uint64_t>(pipelineLayout_)));
+}
+
+std::function<void(const std::shared_ptr<ShaderManagement::ShaderDataBundle>&)>
+ComputePipelineNode::MakePipelineWarmer() {
+    VulkanDevice* device = GetDevice();
+    if (device == nullptr || compiledInterfaceUuid_.empty() || GetOwningGraph() == nullptr) return {};
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    // Resolved here (frame thread): MainCacher's registry is not built for concurrent lookup. The
+    // cachers themselves are lock-free per key (TypedCacher), so the worker may call them.
+    auto* moduleCacher = mainCacher.GetCacher<CashSystem::ShaderModuleCacher, CashSystem::ShaderModuleWrapper,
+                                              CashSystem::ShaderModuleCreateParams>(
+        typeid(CashSystem::ShaderModuleWrapper), device);
+    auto* layoutCacher = mainCacher.GetCacher<CashSystem::PipelineLayoutCacher, CashSystem::PipelineLayoutWrapper,
+                                              CashSystem::PipelineLayoutCreateParams>(
+        typeid(CashSystem::PipelineLayoutWrapper), device);
+    auto* computeCacher = mainCacher.GetCacher<CashSystem::ComputePipelineCacher, CashSystem::ComputePipelineWrapper,
+                                               CashSystem::ComputePipelineCreateParams>(
+        typeid(CashSystem::ComputePipelineWrapper), device);
+    if (moduleCacher == nullptr || layoutCacher == nullptr || computeCacher == nullptr) return {};
+
+    return [moduleCacher, layoutCacher, computeCacher, interfaceUuid = compiledInterfaceUuid_,
+            descriptorSetLayout = compiledDescriptorSetLayout_, workgroupX = compiledWorkgroup_[0],
+            workgroupY = compiledWorkgroup_[1], workgroupZ = compiledWorkgroup_[2]](
+               const std::shared_ptr<ShaderManagement::ShaderDataBundle>& bundle) {
+        // A changed descriptor interface means a changed layout: leave it to the swap Compile.
+        if (!bundle || bundle->uuid != interfaceUuid) return;
+        const auto& spirv = bundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
+        if (spirv.empty()) return;
+        const std::string entryPoint = bundle->GetEntryPoint(ShaderManagement::ShaderStage::Compute);
+        auto module = moduleCacher->GetOrCreateFromSpirv(
+            spirv, entryPoint, {}, VK_SHADER_STAGE_COMPUTE_BIT, bundle->GetProgramName());
+        if (!module || module->shaderModule == VK_NULL_HANDLE) return;
+        auto layout = layoutCacher->GetOrCreate(PipelineLayoutParams(*bundle, descriptorSetLayout));
+        if (!layout) return;
+
+        CashSystem::ComputePipelineCreateParams params;
+        params.shaderModule = module->shaderModule;
+        params.entryPoint = entryPoint.c_str();
+        params.pipelineLayoutWrapper = std::move(layout);
+        params.shaderKey = PipelineCodeKey(*bundle);
+        params.layoutKey = PipelineLayoutKey(*bundle);
+        params.workgroupSizeX = workgroupX;
+        params.workgroupSizeY = workgroupY;
+        params.workgroupSizeZ = workgroupZ;
+        static_cast<void>(computeCacher->GetOrCreate(params));
+    };
 }
 
 } // namespace Vixen::RenderGraph

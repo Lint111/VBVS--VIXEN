@@ -20,6 +20,7 @@
 #include "Nodes/MultiDispatchNode.h"
 #include "Nodes/ConstantNode.h"
 #include "Nodes/ShaderLibraryNode.h"
+#include "Nodes/ComputePipelineNode.h"
 #include "Nodes/CommandPoolNode.h"
 #include "Recipe/SpecializedRecipeShaderGlsl.h"
 #include "ShaderCompiler.h"
@@ -859,8 +860,20 @@ void VulkanGraphApplication::RecompileProceduralShader() {
     VIXEN_FRAME_TRACE_SCOPE("update", "procedural-precompile-begin");
     // Compile off the frame thread: the builders run here (they read the live recipe table), their
     // Build() runs on workers and fills the shader cache; the swap happens in PollProceduralShaderSwap.
+    // R864.4: the precompile workers also create every downstream compute pipeline through its
+    // cacher key, so the swap's RecompileDirtyNodes finds them instead of compiling on the frame thread.
+    const auto pipelineNodes = renderGraph->GetInstancesOfType<Vixen::RenderGraph::ComputePipelineNodeType>();
     for (const auto handle : proceduralShaderLibNodes_) {
-        if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->BeginPrecompile();
+        auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle));
+        if (!lib) continue;
+        std::vector<ShaderLibraryNode::PipelineWarmer> warmers;
+        for (auto* node : pipelineNodes) {
+            if (!node->DependsOn(lib)) continue;
+            if (auto* pipelineNode = dynamic_cast<Vixen::RenderGraph::ComputePipelineNode*>(node)) {
+                if (auto warm = pipelineNode->MakePipelineWarmer()) warmers.push_back(std::move(warm));
+            }
+        }
+        lib->BeginPrecompile(std::move(warmers));
     }
     proceduralSwapPending_ = true;
     if (lockstepProceduralRecompile_) {
