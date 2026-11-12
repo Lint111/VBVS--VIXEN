@@ -38,6 +38,13 @@ for /f "tokens=1,* delims=:" %%A in ("%~1") do set "%%A=%%B"
 shift
 goto args
 :run
+REM sn-gpumem1: tell the queue which Windows tree this run is, so its per-job CPU and VRAM are attributed (no-op when run by hand).
+if defined UT_QUEUE_WINROOT_FILE powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\VIXEN\scripts\build\Register-NativeRunRoot.ps1" >nul 2>&1
+REM sn-gpumem1: VIXEN_GPU_LEDGER:1 loads the GPU ledger layer (benchmark builds) and writes its CSVs next to perf.csv.
+if defined VIXEN_GPU_LEDGER (
+    set "VIXEN_GPU_LEDGER_DIR=%OUT%"
+    set "VK_LAYER_PATH=%ROOT%\build\ninja-release\gpu-ledger-layer"
+)
 cd /d "%ROOT%\build\ninja-release\application\main"
 "%EXE%" --out "%OUT%" > "%OUT%\run.log" 2>&1
 echo exit %errorlevel%
