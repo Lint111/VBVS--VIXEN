@@ -102,6 +102,7 @@ struct EditRecord {
     EditClass cls{};
     uint32_t frameCall = 0;
     uint64_t tCall = 0, tMutated = 0, tCallEnd = 0;
+    uint64_t editedRows = 0, epochDelta = 0;
     uint32_t frameSwap = 0;
     uint64_t tSwapBegin = 0, tSwapEnd = 0, tSubmit = 0;
 };
@@ -118,7 +119,7 @@ public:
             for (EditClass c : kCycle) schedule_.push_back(c);
         edits_.open(out_ / "edits.csv");
         edits_ << "edit,class,frame_call,t_call,t_mutated,t_call_end,frame_swap,t_swap_begin,t_swap_end,t_submit,"
-                  "tier,instances,registered_recipes\n";
+                  "tier,instances,registered_recipes,edited_rows,tlas_epoch_delta\n";
         frames_.open(out_ / "frames.csv");
         frames_ << "frame,update_ms,render_ms,swap_pending,edit_in_flight\n";
     }
@@ -223,34 +224,54 @@ public:
     size_t EditsScheduled() const { return schedule_.size(); }
 
 private:
+    Instance BuildInstance(int i, int j, size_t baseIndex) const {
+        const int side = kTierSide[static_cast<size_t>(tier_)];
+        const glm::vec3 offset{(static_cast<float>(i) - 0.5f * static_cast<float>(side - 1)) * kCopySpacing, 0.0f,
+                               (static_cast<float>(j) - 0.5f * static_cast<float>(side - 1)) * kCopySpacing};
+        Instance instance = baseInstances_[baseIndex];
+        const bool hull = instance.material.recipeId == Lookdev::RecipeId(Lookdev::Material::Hull);
+        const bool lamp = instance.material.recipeId == Lookdev::RecipeId(Lookdev::Material::Lamp);
+        glm::vec3 move = offset;
+        if (hull) {
+            move.y += hullLift_;
+            instance.material.color[1] *= hullTint_;
+            instance.material.recipeId = hullId_;
+        }
+        if (lamp) instance.material.recipeParams[3] *= lampGain_;
+        for (int row = 0; row < 3; ++row) {
+            instance.transform.localToWorld.rows[row][3] += move[row];
+            instance.transform.worldToLocal.rows[row][3] -= move[row];
+        }
+        return instance;
+    }
+
+    // Full restage of the whole list (boot, and the old edit path with RECIPE_EDIT_FULL_RESTAGE=1).
     void PushInstances() {
         const int side = kTierSide[static_cast<size_t>(tier_)];
         std::vector<Instance> instances;
         instances.reserve(baseInstances_.size() * static_cast<size_t>(side * side));
-        for (int i = 0; i < side; ++i) {
-            for (int j = 0; j < side; ++j) {
-                const glm::vec3 offset{(static_cast<float>(i) - 0.5f * static_cast<float>(side - 1)) * kCopySpacing, 0.0f,
-                                       (static_cast<float>(j) - 0.5f * static_cast<float>(side - 1)) * kCopySpacing};
-                for (Instance instance : baseInstances_) {
-                    const bool hull = instance.material.recipeId == Lookdev::RecipeId(Lookdev::Material::Hull);
-                    const bool lamp = instance.material.recipeId == Lookdev::RecipeId(Lookdev::Material::Lamp);
-                    glm::vec3 move = offset;
-                    if (hull) {
-                        move.y += hullLift_;
-                        instance.material.color[1] *= hullTint_;
-                        instance.material.recipeId = hullId_;
-                    }
-                    if (lamp) instance.material.recipeParams[3] *= lampGain_;
-                    for (int row = 0; row < 3; ++row) {
-                        instance.transform.localToWorld.rows[row][3] += move[row];
-                        instance.transform.worldToLocal.rows[row][3] -= move[row];
-                    }
-                    instances.push_back(instance);
-                }
-            }
-        }
+        for (int i = 0; i < side; ++i)
+            for (int j = 0; j < side; ++j)
+                for (size_t b = 0; b < baseInstances_.size(); ++b) instances.push_back(BuildInstance(i, j, b));
         instanceCount_ = instances.size();
         SetBodyInstances(std::move(instances));
+    }
+
+    // RE5 row delta: only the rows the edit touches (Hull rows for transform/material, Lamp rows
+    // for params) go through UpdateBodyInstanceRows. Falls back to the full restage if rejected.
+    void PushEditedRows(EditClass cls) {
+        if (fullRestage_) { PushInstances(); return; }
+        const int side = kTierSide[static_cast<size_t>(tier_)];
+        const Lookdev::Material target = cls == EditClass::Param ? Lookdev::Material::Lamp : Lookdev::Material::Hull;
+        std::vector<Vixen::SVO::BodyInstanceRowDelta> rows;
+        uint32_t row = 0;
+        for (int i = 0; i < side; ++i)
+            for (int j = 0; j < side; ++j)
+                for (size_t b = 0; b < baseInstances_.size(); ++b, ++row)
+                    if (baseInstances_[b].material.recipeId == Lookdev::RecipeId(target))
+                        rows.push_back({row, BuildInstance(i, j, b)});
+        editedRows_ = rows.size();
+        if (!UpdateBodyInstanceRows(rows)) PushInstances();
     }
 
     bool FireEdit(EditClass cls) {
@@ -258,14 +279,16 @@ private:
         rec.index = next_++;
         rec.cls = cls;
         rec.frameCall = frame_;
+        const uint64_t epochBefore = BodyInstanceEpoch();
+        editedRows_ = 0;
         rec.tCall = Now();
         const float k = static_cast<float>(rec.index + 1);
         bool recompile = false;
         RecipeRegistry::RegisterResult result = RecipeRegistry::RegisterResult::Ok;
         switch (cls) {
-            case EditClass::Param:     lampGain_ = 1.0f + 0.05f * std::fmod(k, 7.0f); PushInstances(); break;
-            case EditClass::Transform: hullLift_ = 0.05f * std::fmod(k, 5.0f);       PushInstances(); break;
-            case EditClass::Material:  hullTint_ = 0.8f + 0.03f * std::fmod(k, 6.0f); PushInstances(); break;
+            case EditClass::Param:     lampGain_ = 1.0f + 0.05f * std::fmod(k, 7.0f); PushEditedRows(EditClass::Param); break;
+            case EditClass::Transform: hullLift_ = 0.05f * std::fmod(k, 5.0f);       PushEditedRows(EditClass::Transform); break;
+            case EditClass::Material:  hullTint_ = 0.8f + 0.03f * std::fmod(k, 6.0f); PushEditedRows(EditClass::Material); break;
             case EditClass::Literal: {
                 // A never-seen value each time, so the source is new (no shader-cache hit).
                 auto entry = hullBase_;
@@ -307,6 +330,8 @@ private:
             }
         }
         rec.tMutated = Now();
+        rec.editedRows = editedRows_;
+        rec.epochDelta = BodyInstanceEpoch() - epochBefore;
         if (result != RecipeRegistry::RegisterResult::Ok) {
             error_ = std::string("edit ") + Name(cls) + " was rejected by the registry";
             return false;
@@ -320,7 +345,7 @@ private:
     void WriteEdit(const EditRecord& r) {
         edits_ << r.index << ',' << Name(r.cls) << ',' << r.frameCall << ',' << r.tCall << ',' << r.tMutated << ','
                << r.tCallEnd << ',' << r.frameSwap << ',' << r.tSwapBegin << ',' << r.tSwapEnd << ',' << r.tSubmit << ','
-               << tier_ << ',' << instanceCount_ << ',' << registered_ << '\n';
+               << tier_ << ',' << instanceCount_ << ',' << registered_ << ',' << r.editedRows << ',' << r.epochDelta << '\n';
         edits_.flush();
         ++written_;
     }
@@ -339,6 +364,8 @@ private:
     uint32_t pendingNewId_ = 0;
     uint32_t registered_ = 0;
     size_t instanceCount_ = 0;
+    size_t editedRows_ = 0;
+    bool fullRestage_ = std::getenv("RECIPE_EDIT_FULL_RESTAGE") != nullptr;
     float hullLift_ = 0.0f;
     float hullTint_ = 1.0f;
     float lampGain_ = 1.0f;
