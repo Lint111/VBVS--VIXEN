@@ -406,6 +406,15 @@ void main() {
     // rayOrigin + rayDir*t (TraceWorld returns t, not a world position — see
     // WorldHit's field list).
     // -----------------------------------------------------------------------
+#if defined(VIXEN_LEAF_VARIANT_SEARCH) || defined(VIXEN_LEAF_VARIANT_MARCH)
+    // fl-leafinstr1 time-split variants (env VIXEN_LEAF_INSTR=search|march, default off,
+    // NOT pixel-valid): stop before the HitRecord pack/write and the shadow/shade
+    // consumers' inputs. The id-image store is the sink that keeps the search/march
+    // from being dead-code-eliminated; it is also the stage's only output here.
+    imageStore(idOutputImage, pixelCoords,
+               uvec4(anyHit ? floatBitsToUint(worldHit.t) : 0xFFFFFFFFu, worldHit.instIdx, 0u, 0u));
+    return;
+#endif
     HitRecord rec;
     rec.albedo      = worldHit.color;
     rec.roughness   = worldHit.roughness;

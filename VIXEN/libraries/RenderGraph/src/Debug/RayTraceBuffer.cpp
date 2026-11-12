@@ -406,6 +406,24 @@ LeafInstrumentationStats RayTraceBuffer::ReadLeafInstrumentationStats(VkDevice d
     return stats;
 }
 
+LeafShaderClockStats RayTraceBuffer::ReadLeafShaderClockStats(VkDevice device) const {
+    LeafShaderClockStats stats{};
+    if (!IsValid() || !isHostVisible_) {
+        return stats;
+    }
+    void* data = nullptr;
+    if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
+        return stats;
+    }
+    const auto* header = static_cast<const TraceBufferHeader*>(data);
+    stats.waveStartMin = header->farFieldTerminalPixels[28];
+    stats.waveEndMax = header->farFieldTerminalPixels[29];
+    stats.shadeStartMin = header->farFieldTerminalPixels[30];
+    stats.shadeEndMax = header->farFieldTerminalPixels[31];
+    vkUnmapMemory(device, memory_);
+    return stats;
+}
+
 uint32_t RayTraceBuffer::Read(VkDevice device) {
     if (!IsValid() || !isHostVisible_) {
         return 0;

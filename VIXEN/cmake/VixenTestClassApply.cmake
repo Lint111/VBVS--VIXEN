@@ -5,8 +5,10 @@
 # registration declared GPU: VIXEN_CLASS_DECLARED_GPU (all) / VIXEN_CLASS_DECLARED_GPU_PATTERNS (regexes).
 #
 # Each case takes the manifest class when the manifest has an entry for it written against the same
-# target sources; otherwise it keeps the link-closure class. CTest property commands add to
-# LABELS, ENVIRONMENT_MODIFICATION and RESOURCE_GROUPS (once per GPU case), and ignore names that do not exist.
+# target sources; otherwise it keeps the link-closure class. The discovery include supplies only
+# suite/executable metadata. This hook writes the complete label and environment values in one
+# operation because CTest's load context cannot read TEST or DIRECTORY TESTS properties and LABELS
+# writes append there. RESOURCE_GROUPS appends too, so a GPU case gets its one request exactly once.
 #
 # Manifest columns: test, class, target, source-fingerprint, evidence.
 
@@ -24,6 +26,11 @@ if(VIXEN_CLASS_TESTS)
     endif()
 
     foreach(_vixen_test IN LISTS VIXEN_CLASS_TESTS)
+        if(_vixen_test MATCHES "_NOT_BUILT$")
+            # The configure-time registered-tests.tsv entry owns target selection for this
+            # placeholder. There is no real case to label until the selected target is built.
+            continue()
+        endif()
         set(_vixen_class "${_vixen_link_class}")
         set(_vixen_source classified-by-link)
         string(FIND "${_vixen_manifest}" "\n${_vixen_test}\t" _vixen_position)
@@ -53,10 +60,13 @@ if(VIXEN_CLASS_TESTS)
         if(_vixen_test IN_LIST _vixen_policy_gpu_smoke_tests)
             list(APPEND _vixen_extra_modification "VIXEN_GPU_TEST_SMOKE=set:1")
         endif()
-        set(_vixen_labels "${_vixen_class};${_vixen_source};${_vixen_extra_labels}")
-        set(_vixen_environment_modification
-            "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test};${_vixen_extra_modification}")
 
+        set(_vixen_labels
+            "${VIXEN_CLASS_SUITE}" "${_vixen_class}" "${_vixen_source}" "exe:${VIXEN_CLASS_TARGET}"
+            ${_vixen_extra_labels})
+        set(_vixen_environment_modification
+            "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test}"
+            ${_vixen_extra_modification})
         set_tests_properties("${_vixen_test}" PROPERTIES
             LABELS "${_vixen_labels}"
             ENVIRONMENT_MODIFICATION "${_vixen_environment_modification}")

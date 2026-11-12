@@ -121,26 +121,18 @@ inline void WireSdiQuintetChain(ConnectionBatch& batch, const SdiStageCommon& co
 
 }
 
-/// A stage node's engine-common inputs.
-inline void WireSdiStageCommons(ConnectionBatch& batch, const SdiStageCommon& common,
-                                NodeHandle shaderLib, NodeHandle descriptorSet,
-                                NodeHandle pipeline, NodeHandle stage) {
+/// A stage node's engine inputs that do not depend on a shader: device, command pool, frame
+/// sync, image index and (WSI targets) acquire/present semaphores.
+inline void WireSdiStageEngineInputs(ConnectionBatch& batch, const SdiStageCommon& common,
+                                     NodeHandle stage) {
     batch.Connect(common.device, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   stage, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
          .Connect(common.commandPool, CommandPoolNodeConfig::COMMAND_POOL,
                   stage, ComputeStageNodeConfig::COMMAND_POOL)
-         .Connect(pipeline, ComputePipelineNodeConfig::PIPELINE,
-                  stage, ComputeStageNodeConfig::COMPUTE_PIPELINE)
-         .Connect(pipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
-                  stage, ComputeStageNodeConfig::PIPELINE_LAYOUT)
-         .Connect(descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
-                  stage, ComputeStageNodeConfig::DESCRIPTOR_SETS)
          .Connect(common.frameSync, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   stage, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(common.frameSync, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   stage, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  stage, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(common.frameSync, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
                   stage, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(common.frameSync, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
@@ -158,6 +150,21 @@ inline void WireSdiStageCommons(ConnectionBatch& batch, const SdiStageCommon& co
     }
 }
 
+/// A shader-driven stage node's engine-common inputs.
+inline void WireSdiStageCommons(ConnectionBatch& batch, const SdiStageCommon& common,
+                                NodeHandle shaderLib, NodeHandle descriptorSet,
+                                NodeHandle pipeline, NodeHandle stage) {
+    WireSdiStageEngineInputs(batch, common, stage);
+    batch.Connect(pipeline, ComputePipelineNodeConfig::PIPELINE,
+                  stage, ComputeStageNodeConfig::COMPUTE_PIPELINE)
+         .Connect(pipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                  stage, ComputeStageNodeConfig::PIPELINE_LAYOUT)
+         .Connect(descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  stage, ComputeStageNodeConfig::DESCRIPTOR_SETS)
+         .Connect(shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  stage, ComputeStageNodeConfig::SHADER_DATA_BUNDLE);
+}
+
 /// Push-constant plumbing (bundle -> gatherer; data/ranges -> stage).
 inline void WireSdiPushPlumbing(ConnectionBatch& batch, NodeHandle shaderLib,
                                 NodeHandle pushGatherer, NodeHandle stage) {
@@ -170,6 +177,17 @@ inline void WireSdiPushPlumbing(ConnectionBatch& batch, NodeHandle shaderLib,
 }
 
 } // namespace Detail
+
+/**
+ * @brief Wire a ComputeStageNode that runs an external command recorder
+ *        (ComputeStageNode::SetExternalCommandRecorder): engine inputs only, no shader
+ *        library, descriptor chain or pipeline. The stage keeps the standard
+ *        image/resource, ordering and GPU-timing contracts.
+ */
+inline void WireExternalComputeStage(ConnectionBatch& batch, const SdiStageCommon& common,
+                                     NodeHandle stage) {
+    Detail::WireSdiStageEngineInputs(batch, common, stage);
+}
 
 /**
  * @brief Create and wire a compute stage's plumbing from its merged SDI.

@@ -1,5 +1,8 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+#extension GL_EXT_shader_realtime_clock : require
+#endif
 
 // ============================================================================
 // ShadowVisibilityWave.comp - the DERIVED-REQUEST shadow wave (wavefront W1b)
@@ -162,6 +165,9 @@ void main() {
     if (NdotL <= 0.0 || W <= 0.0) return;
 
     bool visible = true;
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+    uint leafClockStart = uint(clockRealtimeEXT());
+#endif
     if (shadowConfig.enabled != 0u) {
         float originBias = storedSdfShadowOriginBias(
             hitRecords[slot]._pad0[0], shadowConfig.biasEpsilon, worldNormal, lightDir,
@@ -173,6 +179,9 @@ void main() {
             1u, g_lastShadowCompositionRegime, g_lastShadowCompositionSourceMask);
         visible = !occluded;
     }
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+    recordLeafShaderClockWave(leafClockStart, uint(clockRealtimeEXT()));
+#endif
 
     if (visible) {
         // RMW: preserve every non-owned bit (including the policy stencil in
@@ -250,6 +259,9 @@ void main() {
     // is never consumed — the shade pass gates on NdotL first, exactly as the
     // merged shader gated before tracing).
     uint visBits = 0xFFFFFFFFu;
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+    uint leafClockStart = uint(clockRealtimeEXT());
+#endif
 
     uint flags = hitRecords[slot].flags;
 
@@ -308,6 +320,9 @@ void main() {
     // bit 4 belongs to the reservoir phase and bits 8..15 belong to the
     // primary policy stencil. The march re-baselines the full word each frame;
     // this phase updates only its analytic-light field.
+    #ifdef VIXEN_LEAF_SHADER_CLOCK
+    recordLeafShaderClockWave(leafClockStart, uint(clockRealtimeEXT()));
+    #endif
     uint beforeWord = hitRecords[slot]._pad0[2];
     uint afterWord = (beforeWord & ~0xFu) | (visBits & 0xFu);
     hitRecords[slot]._pad0[2] = afterWord;

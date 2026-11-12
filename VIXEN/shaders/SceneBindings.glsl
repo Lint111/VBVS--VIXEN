@@ -758,6 +758,15 @@ void recordLeafInstrRay(uint steps, uint bodies, uint candidates, uint pathClass
 #define recordLeafInstrRay(steps, bodies, candidates, pathClass)
 #endif
 
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+void recordLeafShaderClockWave(uint startTick, uint endTick) {
+    // The low 32 bits are sufficient for a single dispatch span; the host
+    // subtracts with unsigned wrap semantics when it drains the capture.
+    atomicMin(farFieldTerminalPixels[28], startTick);
+    atomicMax(farFieldTerminalPixels[29], endTick);
+}
+#endif
+
 #ifdef VIXEN_COMPOSITION_COUNTERS
 // incrFarFieldCount: single atomic call site for both far-field twins (DDA in
 // SceneBindings.glsl, RT in RayQueryTraversal.glsl) -- see the struct comment

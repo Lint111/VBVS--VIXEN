@@ -678,7 +678,7 @@ struct alignas(16) TraceBufferHeader {
     uint32_t _recipeChunkMetricsPadding[3];
 };
 
-static_assert(sizeof(TraceBufferHeader) == 25408, "TraceBufferHeader must include the leaf instrumentation census and the recipe chunk metrics ledger");
+static_assert(sizeof(TraceBufferHeader) == 25408, "TraceBufferHeader must include the leaf instrumentation census, the E6-T2 mip ledger and the recipe chunk metrics ledger");
 static_assert(offsetof(TraceBufferHeader, mipReadByteCounters) == 788,
               "TraceBufferHeader mip ledger offset must match SceneBindings.glsl");
 

@@ -857,6 +857,19 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
                 printHistogram("brick_steps", leaf.brickSteps);
             }
         }
+        if (std::getenv("VIXEN_SHADER_CLOCK") != nullptr) {
+            if (debugCaptureResource_) {
+                const auto clock = debugCaptureResource_->ReadLeafShaderClockStats(vulkanDevice->device);
+                const uint32_t waveTicks = clock.waveEndMax - clock.waveStartMin;
+                const uint32_t shadeTicks = clock.shadeEndMax - clock.shadeStartMin;
+                std::cout << "[LeafShaderClock] wave_start_min=" << clock.waveStartMin
+                          << " wave_end_max=" << clock.waveEndMax
+                          << " wave_ticks=" << waveTicks
+                          << " shade_start_min=" << clock.shadeStartMin
+                          << " shade_end_max=" << clock.shadeEndMax
+                          << " shade_ticks=" << shadeTicks << std::endl;
+            }
+        }
 
         // Round 12 instrument fix (b): the 32-slot pixel decode ring is
         // REMOVED. It decodes the TAIL of atomicAdd dispatch order (last-32

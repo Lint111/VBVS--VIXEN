@@ -231,6 +231,14 @@ struct LeafInstrumentationStats {
     std::array<uint32_t, LEAF_INSTR_LOG2_BINS> brickSteps{};
 };
 
+/** Raw low-32-bit shader realtime-clock spans for the item-4 A/B. */
+struct LeafShaderClockStats {
+    uint32_t waveStartMin = 0xFFFFFFFFu;
+    uint32_t waveEndMax = 0u;
+    uint32_t shadeStartMin = 0xFFFFFFFFu;
+    uint32_t shadeEndMax = 0u;
+};
+
 /** E1-T1 stencil slice 0 composition census. Indices are
  * [regime: surface,mip,cosmic][source: virtual,materialized,mixed]. */
 struct CompositionCounterStats {
@@ -537,6 +545,9 @@ public:
 
     /** Read the capture-only leaf traversal histograms. */
     LeafInstrumentationStats ReadLeafInstrumentationStats(VkDevice device) const;
+
+    /** Read the opt-in shadow-wave and shade shader-clock spans. */
+    LeafShaderClockStats ReadLeafShaderClockStats(VkDevice device) const;
 
     std::any GetData() const override;
 

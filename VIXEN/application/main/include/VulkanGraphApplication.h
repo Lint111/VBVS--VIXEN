@@ -660,6 +660,8 @@ public:
     // shader's loop cap (BodyOctreeSceneNode::kMarchLoopInstanceCap).
     int32_t RequestedBodyInstanceCount() const;
     int32_t MarchedBodyInstanceCount() const;
+    // R802.1 external scene seam: drive the existing ray-march camera from a facade camera row.
+    void SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up, float verticalFov);
     // Spec B I3/Task 6 (= main's I4.1 passthrough — both lines converged on this API): push a
     // boot-baked recipe pool (RecipeBootIngest -> BakeRegistryToPool) into BodyOctreeSceneNode,
     // which then serves octree slots 0..N-1 for the render_recipe blob ids the bridge resolves in

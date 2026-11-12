@@ -213,23 +213,29 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    /** @brief Compute pipeline to bind (from ComputePipelineNode). */
+    /** @brief Compute pipeline to bind (from ComputePipelineNode).
+     *  Optional only for an external-recorder stage (SetExternalCommandRecorder), which
+     *  records its own dispatch; a stage without a recorder fails with a clear error if unwired. */
     INPUT_SLOT(COMPUTE_PIPELINE, VkPipeline, 2,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    /** @brief Pipeline layout for descriptor sets + push constants. */
+    /** @brief Pipeline layout for descriptor sets + push constants.
+     *  Optional only for an external-recorder stage (SetExternalCommandRecorder), which
+     *  records its own dispatch; a stage without a recorder fails with a clear error if unwired. */
     INPUT_SLOT(PIPELINE_LAYOUT, VkPipelineLayout, 3,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    /** @brief Per-image descriptor sets (from DescriptorSetNode). */
+    /** @brief Per-image descriptor sets (from DescriptorSetNode).
+     *  Optional only for an external-recorder stage (SetExternalCommandRecorder), which
+     *  records its own dispatch; a stage without a recorder fails with a clear error if unwired. */
     INPUT_SLOT(DESCRIPTOR_SETS, const std::vector<VkDescriptorSet>&, 4,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -282,9 +288,10 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    /** @brief Shader bundle with reflection metadata (push-constant detection). */
+    /** @brief Shader bundle with reflection metadata (push-constant detection).
+     *  Optional: an external-recorder stage has no shader. */
     INPUT_SLOT(SHADER_DATA_BUNDLE, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 11,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
