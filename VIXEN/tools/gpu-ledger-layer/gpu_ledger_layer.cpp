@@ -42,6 +42,11 @@
 #define LEDGER_EXPORT extern "C" __attribute__((visibility("default")))
 #endif
 
+#if defined(_WIN32)
+// vk_layer.h declares this entry point without dllexport; export it by name so the declaration and the definition agree.
+#pragma comment(linker, "/EXPORT:vkNegotiateLoaderLayerInterfaceVersion")
+#endif
+
 namespace {
 
 constexpr uint64_t kRowBytes = 64;                    // the diff granularity: one cache line
@@ -747,7 +752,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vixenGpuLedgerGetInstanceProcAddr(VkIns
     return next ? next(instance, pName) : nullptr;
 }
 
-LEDGER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface* pVersionStruct) {
+VKAPI_ATTR VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface* pVersionStruct) {
     if (!pVersionStruct || pVersionStruct->sType != LAYER_NEGOTIATE_INTERFACE_STRUCT) return VK_ERROR_INITIALIZATION_FAILED;
     if (pVersionStruct->loaderLayerInterfaceVersion > 2) pVersionStruct->loaderLayerInterfaceVersion = 2;
     pVersionStruct->pfnGetInstanceProcAddr = vixenGpuLedgerGetInstanceProcAddr;
