@@ -1234,9 +1234,7 @@ void EditorApplication::TranslateCameraInput() {
     auto* camera = EditorCamera();
     if (!input || !camera) return;
     using Vixen::AppFlow::Generated::FlowActionId;
-    GLFWwindow* window = GetWindowHandle();
-    const bool ctrl = window && (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                                 glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS);
+    const bool ctrl = input->IsRawKeyHeld(GLFW_KEY_LEFT_CONTROL) || input->IsRawKeyHeld(GLFW_KEY_RIGHT_CONTROL);
     const auto* ui = GetUiRenderNode();
     const Vixen::Editor::UiInputCapture capture{ui && ui->WantsKeyboard(), ui && ui->WantsPointer()};
     for (const auto& dispatch : Vixen::Editor::CameraDispatchesFromInput(
@@ -1761,7 +1759,14 @@ void EditorApplication::Update() {
     // through the InputProfile to whichever action is bound (Save/Undo/Redo/Return), then routes
     // it through the same registered-handler path a UI click uses. An unbound chord (or Esc
     // outside Settings) resolves to RejectedByState and is ignored, never a crash.
-    if (GLFWwindow* window = GetWindowHandle()) {
+    auto* keyboard = [&]() -> Vixen::RenderGraph::InputNode* {
+        auto* graph = GetRenderGraph();
+        return graph ? static_cast<Vixen::RenderGraph::InputNode*>(graph->GetInstanceByName("input_handler")) : nullptr;
+    }();
+    if (keyboard) {
+        // Key state comes from InputNode's event-derived held set (the callback queue every input takes,
+        // ProcessPendingInput having already folded this frame's events), not from polling the window: a
+        // scripted appflow.input key and a person's key are the same thing here.
         // Every mapped key is edge-detected; each press resolves its chord (key + live modifiers) through
         // the runtime's InputProfile, so a [FlowKeyDefault] on any declared key binds with no change here.
         // An unbound chord (or Esc outside Settings) resolves to RejectedByState and is ignored.
@@ -1769,7 +1774,7 @@ void EditorApplication::Update() {
         // "s" into a field never saves and a key held across a blur does not fire late.
         const auto* ui = GetUiRenderNode();
         const bool typing = ui && ui->WantsKeyboard();
-        keyEdges_.Poll([window](int key) { return glfwGetKey(window, key) == GLFW_PRESS; },
+        keyEdges_.Poll([keyboard](int key) { return keyboard->IsRawKeyHeld(key); },
                        [this](Vixen::AppFlow::Generated::KeyChord chord) { (void)rt_.DispatchByKey(chord); },
                        typing);
     }

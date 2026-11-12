@@ -462,6 +462,8 @@ void InputNode::FoldEvent(const InputEvent& event) {
             // Every key transition (repeat included) is recorded for the UI text path before the
             // tracked-key filter below: a text field needs Backspace/Delete/Home/End/Enter too.
             pendingKeyEvents_.push_back({event.buttonOrKey, event.action, event.mods});
+            if (event.action == GLFW_PRESS) heldRawKeys_.insert(event.buttonOrKey);
+            else if (event.action == GLFW_RELEASE) heldRawKeys_.erase(event.buttonOrKey);
             // GLFW_REPEAT is a held-key auto-repeat notification, not a state transition — folding
             // it into keyStates would falsely re-trigger the press edge every OS repeat interval.
             if (event.action == GLFW_REPEAT) break;
@@ -632,6 +634,7 @@ void InputNode::ClearInputOnFocusLoss() {
         inputState_.keyDown[key] = false;
     }
     buttonDown_[0] = buttonDown_[1] = buttonDown_[2] = false;
+    heldRawKeys_.clear();
     {
         // Drop queued key/cursor events, keep the rest (drain, then re-publish what stays; order among
         // the kept events is preserved).

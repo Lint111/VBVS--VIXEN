@@ -5,6 +5,7 @@
 #include "Data/Nodes/InputNodeConfig.h"
 #include "InputEvents.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include "OverwriteRing.h"
 #include <chrono>
@@ -85,6 +86,12 @@ public:
     /// through InputState::keyEventsThisFrame / textThisFrame.
     void SetKeyboardCapturedByUi(bool captured) { keyboardCapturedByUi_ = captured; }
     [[nodiscard]] bool KeyboardCapturedByUi() const { return keyboardCapturedByUi_; }
+
+    /// Canonical held state of ANY key (GLFW key code), folded from the callback queue like everything else
+    /// (cleared on focus loss). Consumers that need "is this key down" for keys InputNode does not track by
+    /// name (the editor's chord poll) read it here instead of polling the window, so a scripted key takes
+    /// the same path a person's key does.
+    [[nodiscard]] bool IsRawKeyHeld(int glfwKey) const { return heldRawKeys_.contains(glfwKey); }
 
     // Injection seam (always compiled): enqueue a synthetic event exactly where the GLFW callbacks do, so
     // scripted input (the fail-scenario runner, whose window is hidden so no real click arrives, and the
@@ -208,6 +215,7 @@ private:
     glm::vec2 pendingScroll_{0.0f};
     std::vector<ClickEvent> pendingClicks_;
     std::vector<RawKeyEvent> pendingKeyEvents_;
+    std::unordered_set<int> heldRawKeys_;  // GLFW key codes currently down (event-derived)
     std::u32string pendingText_;
     bool keyboardCapturedByUi_ = false;
 
