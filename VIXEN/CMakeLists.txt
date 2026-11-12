@@ -113,10 +113,14 @@ option(USE_CCACHE "Use ccache/sccache for compilation caching" ON)
 set(_vixen_legacy_compiler_cache_dir "${CMAKE_BINARY_DIR}/_cache/compiler")
 set(VIXEN_COMPILER_CACHE_DIR "${_vixen_legacy_compiler_cache_dir}" CACHE PATH
     "Directory for VIXEN compiler cache data (Windows: the default means the shared C:/ccache)")
-# pch_defines,time_macros: without them ccache refuses every /Yu compile ("could not use precompiled
-# header", measured 11-12: a third of the calls of a cold tree) and runs cl.exe uncached. The source
-# uses no __DATE__/__TIME__/__TIMESTAMP__ (git grep, 11-12).
-set(VIXEN_CCACHE_SLOPPINESS "pch_defines,time_macros" CACHE STRING "ccache sloppiness for the Windows launcher (comma list; empty = ccache default)")
+# ccache sloppiness for the Windows launcher. Empty on purpose: pch_defines,time_macros makes ccache
+# "use" MSVC /Yu compiles, but ccache 4.13.6 then compiles the preprocessed text and cl.exe fails with
+# C1010 (measured 11-12: 271 targets failed). Its manual documents PCH for GCC/Clang only.
+set(VIXEN_CCACHE_SLOPPINESS "" CACHE STRING "ccache sloppiness for the Windows launcher (comma list; empty = ccache default)")
+# A /Yu compile is uncacheable under ccache ("could not use precompiled header": 331 of 1027 calls of a
+# cold tree, 32%, each runs cl.exe uncached on every tree). With the compiler cache on, Windows builds
+# compile without precompiled headers so those units are cached and shared like the rest.
+option(VIXEN_CCACHE_DISABLE_PCH "Windows: build without precompiled headers when a compiler cache is active (PCH compiles are uncacheable)" ON)
 if(USE_CCACHE)
     # Self-provisioning (Windows only — see ProvisionCcache.cmake): auto-downloads ccache into a
     # project-local cache if not already on PATH, same contract as Vulkan/gdb/windowing-deps
@@ -157,6 +161,10 @@ if(USE_CCACHE)
                 "${VIXEN_CCACHE_SLOPPINESS}")
             set(_vixen_compiler_launcher
                 "${CMAKE_COMMAND};-E;env;${_vixen_compiler_cache_env_list};${_vixen_compiler_cache_program}")
+            if(VIXEN_CCACHE_DISABLE_PCH)
+                set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON)
+                message(STATUS "VIXEN compiler cache: precompiled headers off (VIXEN_CCACHE_DISABLE_PCH; /Yu compiles are uncacheable)")
+            endif()
         else()
             set(_vixen_compiler_cache_path "${VIXEN_COMPILER_CACHE_DIR}/${_vixen_compiler_cache_kind}")
             set(_vixen_compiler_launcher "${_vixen_compiler_cache_program}")
