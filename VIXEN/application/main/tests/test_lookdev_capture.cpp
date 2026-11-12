@@ -28,6 +28,7 @@
 #include "Text/GlyphOutline.h"
 #include "SdfBake.h"
 #include "ShellOctreeGpu.h"
+#include "EditorDocumentFraming.h"
 #include "EditorDocumentModel.h"
 #include "PackRecipeSource.h"
 #include "Recipe/generated/RecipeContainer.g.h"
@@ -778,22 +779,28 @@ bool LoadNamedRecipePreview(RecipePreviewSceneBundle& scene, std::string& error)
         if (recipe != packRecipes.end() && !validateProgram(recipe->path, dependency.second)) return false;
     }
 
-    const auto bounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
-        scene.entry.bytecode.data(), static_cast<uint32_t>(scene.entry.bytecode.size()),
-        std::span<const float>(scene.params.data(), scene.params.size()));
-    if (bounds.ok) {
-        scene.entry.boundCenter = bounds.center;
-        scene.entry.boundRadius = bounds.radius;
-        scene.boundRadius = bounds.radius;
-        scene.boundsDerived = true;
-    } else {
-        scene.entry.boundCenter = glm::vec3(0.0f);
-        scene.entry.boundRadius = 24.0f;
-        scene.boundRadius = 24.0f;
+    // Recipe space is the document's own bake domain, not the origin: a pack document is authored
+    // about the grid centre, so a fixed origin-centred fallback sphere would cull the whole body.
+    const std::span<const float> boundParams(scene.params.data(), scene.params.size());
+    auto bounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
+        scene.entry.bytecode.data(), static_cast<uint32_t>(scene.entry.bytecode.size()), boundParams);
+    scene.boundsDerived = bounds.ok;
+    if (!bounds.ok)
+        bounds = Vixen::SVO::Recipe::DeriveSampledBounds(
+            scene.entry.bytecode.data(), static_cast<uint32_t>(scene.entry.bytecode.size()),
+            boundParams, scene.entry.bakeResolution);
+    if (!bounds.ok) {
+        error = RecipePreviewFailure(sourcePath, "a program whose bounds cannot be derived (no surface in the bake domain, or InvokeRecipe)",
+                                     "author geometry inside the document's bake grid; bounds for callee programs need an authored bound");
+        return false;
     }
-    std::printf("[RECIPE_PREVIEW] id=%s source=%s ops=%zu nesting=%u bounds=%s radius=%.3f bucket=single\n",
+    scene.entry.boundCenter = bounds.center;
+    scene.entry.boundRadius = bounds.radius;
+    scene.boundRadius = bounds.radius;
+    std::printf("[RECIPE_PREVIEW] id=%s source=%s ops=%zu nesting=%u bounds=%s center=%.2f,%.2f,%.2f radius=%.3f bucket=single\n",
                 scene.recipeId.c_str(), scene.sourcePath.c_str(), scene.entry.bytecode.size(),
-                scene.nestingDepth, scene.boundsDerived ? "derived-interval" : "sampling-fallback",
+                scene.nestingDepth, scene.boundsDerived ? "derived-interval" : "sampled",
+                scene.entry.boundCenter.x, scene.entry.boundCenter.y, scene.entry.boundCenter.z,
                 scene.boundRadius);
     std::fflush(stdout);
     return true;
@@ -1738,9 +1745,18 @@ public:
             camera_->SetLookTargetNoOrbitForTest(glm::vec3(64.0f, 64.0f, 64.0f));
         } else {
             const bool framedScene = glyphSdfScene || sdfFilterNonText || recipePreview;
+            // Recipe-space bounds to world: the editor's own bounds framing, with one recipe unit
+            // spanning `scale` world units (worldGridSize == bakeResolution makes the grid factor 1).
+            Vixen::Editor::EditorCameraFrame recipeFrame{};
+            if (recipePreview)
+                recipeFrame = Vixen::Editor::FitEditorCameraToBounds(
+                    recipeScene.entry.boundCenter, recipeScene.boundRadius, glm::vec3(0.0f),
+                    static_cast<int>(recipeScene.entry.bakeResolution),
+                    static_cast<float>(recipeScene.entry.bakeResolution), recipeScene.scale,
+                    kCaptureFovDegrees);
             const glm::vec3 orbitCenter = framedScene
                 ? (recipePreview
-                    ? recipeScene.frameCenter + recipeScene.entry.boundCenter * recipeScene.scale
+                    ? recipeScene.frameCenter + recipeFrame.center
                     : (glyphScene.frameMin + glyphScene.frameMax) * 0.5f)
                 : glm::vec3(5.0f);
             const float orbitCenterX = orbitCenter.x;
@@ -1748,7 +1764,7 @@ public:
             const float orbitCenterZ = orbitCenter.z;
             const float orbitDistance = framedScene
                 ? (recipePreview
-                    ? std::max(recipeScene.boundRadius * recipeScene.scale * 2.3f, 4.0f)
+                    ? recipeFrame.distance
                     : FitOrbitDistance(glyphScene, GetWindowAspect()))
                 : 14.0f;
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
