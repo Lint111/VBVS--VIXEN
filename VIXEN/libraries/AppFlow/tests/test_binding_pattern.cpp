@@ -81,3 +81,43 @@ TEST(BindingPattern, TwoPlaceholdersBindBothParams) {
     EXPECT_FALSE(store.TryGetForSelector("panel--to-left", none));      // empty panel id
     EXPECT_FALSE(store.TryGetForSelector("panel-inspector-to-", none)); // empty region
 }
+
+// E3: the layer stepper and selection selectors resolve to their own actions, and the older
+// "layer-<i>-up" / "-program-up" patterns keep resolving to theirs (the nudge ids end in -up too).
+TEST(BindingPattern, LayerNudgeAndSelectSelectorsBindTheirParamsWithoutStealingOlderIds) {
+    BindingStore store;
+    store.RegisterActions(AppFlowContainerView::actions());
+    for (const auto& trigger : kElementTriggers) store.AddElementTrigger(trigger);
+
+    for (const auto* selector : {"layer-1-nudge-blend-up", "layer-1-nudge-px-down", "layer-12-nudge-sz-up"}) {
+        BoundAction nudge;
+        ASSERT_TRUE(store.TryGetForSelector(selector, nudge)) << selector;
+        EXPECT_EQ(nudge.action, FlowActionId::NudgeLayerField);
+        EXPECT_EQ(nudge.cause.identity, FlowElementTriggerId::NudgeLayerFieldTrigger);
+        ASSERT_EQ(nudge.params.size(), 2u);
+        EXPECT_EQ(nudge.params[0].first, "layerIndex");
+        EXPECT_EQ(nudge.params[1].first, "field");
+    }
+    BoundAction nudge;
+    ASSERT_TRUE(store.TryGetForSelector("layer-12-nudge-sz-up", nudge));
+    EXPECT_EQ(nudge.params[0].second, "12");
+    EXPECT_EQ(nudge.params[1].second, "sz-up");
+
+    BoundAction select;
+    ASSERT_TRUE(store.TryGetForSelector("layer-3-select", select));
+    EXPECT_EQ(select.action, FlowActionId::SelectLayer);
+    ASSERT_EQ(select.params.size(), 1u);
+    EXPECT_EQ(select.params[0].second, "3");
+
+    BoundAction reopen;
+    ASSERT_TRUE(store.TryGetForSelector("reopen-button", reopen));
+    EXPECT_EQ(reopen.action, FlowActionId::ReopenSaved);
+    EXPECT_TRUE(reopen.params.empty());
+
+    BoundAction move;
+    ASSERT_TRUE(store.TryGetForSelector("layer-3-up", move));
+    EXPECT_EQ(move.action, FlowActionId::MoveLayerUp);
+    BoundAction program;
+    ASSERT_TRUE(store.TryGetForSelector("layer-3-program-up", program));
+    EXPECT_EQ(program.action, FlowActionId::EditProgramFieldUp);
+}

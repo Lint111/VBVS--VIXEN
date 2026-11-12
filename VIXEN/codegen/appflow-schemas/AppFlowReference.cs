@@ -27,10 +27,13 @@ namespace Vixen.AppFlow.Reference
         // R766: panel layout verbs on the app's channel (PanelDock). Not undoable document edits.
         OpenPanel = 16, ClosePanel = 17, FocusPanel = 18, MovePanel = 19, SplitPanel = 20,
         FloatPanel = 21, ResizeRegion = 22, ResetLayout = 23,
+        // E3 (catalogue-free half): layer blend / name / placement, selection, and reopening the saved file.
+        SetLayerBlend = 24, RenameLayer = 25, SetLayerTransform = 26, ReopenSaved = 27,
+        SelectLayer = 28, NudgeLayerField = 29,
         // sn-editorinput1 block (R765 camera/input/typed-parameter actions). Camera actions are not document edits.
-        OrbitCamera = 24, PanCamera = 25, ZoomCamera = 26, FrameAsset = 27, SetViewAngle = 28,
-        SelectViewAngle0 = 29, SelectViewAngle1 = 30, SelectViewAngle2 = 31, SelectViewAngle3 = 32,
-        SetParameter = 33, ResetParameter = 34, ScrubParameter = 35,
+        OrbitCamera = 30, PanCamera = 31, ZoomCamera = 32, FrameAsset = 33, SetViewAngle = 34,
+        SelectViewAngle0 = 35, SelectViewAngle1 = 36, SelectViewAngle2 = 37, SelectViewAngle3 = 38,
+        SetParameter = 39, ResetParameter = 40, ScrubParameter = 41,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -121,6 +124,70 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Param0Name = "recipeId";
         public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    // E3: typed layer edits. Blend radius and placement are document edits (one undo entry each);
+    // the placement is position, Euler rotation in degrees and per-axis scale.
+    [FlowActionParams(nameof(FlowAction.SetLayerBlend))]
+    public static class SetLayerBlendParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "radius";
+        public const int Param1Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.RenameLayer))]
+    public static class RenameLayerParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "name";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "px";
+        public const int Param1Type = (int)FlowParamType.Float;
+        public const string Param2Name = "py";
+        public const int Param2Type = (int)FlowParamType.Float;
+        public const string Param3Name = "pz";
+        public const int Param3Type = (int)FlowParamType.Float;
+        public const string Param4Name = "rx";
+        public const int Param4Type = (int)FlowParamType.Float;
+        public const string Param5Name = "ry";
+        public const int Param5Type = (int)FlowParamType.Float;
+        public const string Param6Name = "rz";
+        public const int Param6Type = (int)FlowParamType.Float;
+        public const string Param7Name = "sx";
+        public const int Param7Type = (int)FlowParamType.Float;
+        public const string Param8Name = "sy";
+        public const int Param8Type = (int)FlowParamType.Float;
+        public const string Param9Name = "sz";
+        public const int Param9Type = (int)FlowParamType.Float;
+    }
+
+    // The layer whose placement the inspector shows. Selection is view state, not a document edit.
+    [FlowActionParams(nameof(FlowAction.SelectLayer))]
+    public static class SelectLayerParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    // A stepper button: field is "<blend|px|py|pz|rx|ry|rz|sx|sy|sz>-<up|down>"; the step is one fixed
+    // increment of that field (the same step-button shape as EditProgramFieldUp/Down).
+    [FlowActionParams(nameof(FlowAction.NudgeLayerField))]
+    public static class NudgeLayerFieldParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "field";
+        public const int Param1Type = (int)FlowParamType.String;
     }
 
     // R766: panel ids are the declared PanelDecl ids; regions are left | right | bottom | overlay | floating.
@@ -359,6 +426,31 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Element = "recipe-{recipeId}-open";
         public const string ParamName = "recipeId";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SelectLayer))]
+    public static class SelectLayerTrigger
+    {
+        public const string Element = "layer-{index}-select";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // "layer-2-nudge-blend-up", "layer-2-nudge-px-down": the second placeholder binds the `field` param.
+    [FlowElementTrigger(nameof(FlowAction.NudgeLayerField))]
+    public static class NudgeLayerFieldTrigger
+    {
+        public const string Element = "layer-{index}-nudge-{field}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.ReopenSaved))]
+    public static class ReopenSavedButtonTrigger
+    {
+        public const string Element = "reopen-button";
+        public const string ParamName = "";
         public const string On = "click";
     }
 

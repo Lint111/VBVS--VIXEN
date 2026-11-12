@@ -3,6 +3,7 @@
 // flatten/save seam. The application owns input history, while each mutation is applied here so
 // the headless module remains the single authority for accepted document state.
 
+#include <cstddef>
 #include <cstdint>
 #include <array>
 #include <string>
@@ -23,6 +24,9 @@ enum class DocumentDiagnosticCode : uint8_t {
     InvalidLayerMask,
     InvalidProgramField,
     InvalidParameterValue,
+    InvalidBlendRadius,
+    InvalidLayerName,
+    InvalidTransform,
     StaleBakeSnapshot,
     FlattenError,
     WriteError,
@@ -47,6 +51,22 @@ struct EditableDocumentLayer {
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> program;
 };
 
+// A layer's placement as the editor shows it: position, Euler rotation (degrees, R = Rz * Ry * Rx)
+// and per-axis scale. It is stored as the layer program's leading Transform instruction wrapped
+// with a closing RestorePos (translation data[0..2], inverse rotation xyzw data[4..7], inverse
+// scale data[8..10], distance scale data[11]); the identity placement stores no wrapper at all.
+struct LayerTransform {
+    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
+    std::array<float, 3> rotationDegrees{0.0f, 0.0f, 0.0f};
+    std::array<float, 3> scale{1.0f, 1.0f, 1.0f};
+
+    bool IsIdentity() const {
+        return position == std::array<float, 3>{0.0f, 0.0f, 0.0f} &&
+               rotationDegrees == std::array<float, 3>{0.0f, 0.0f, 0.0f} &&
+               scale == std::array<float, 3>{1.0f, 1.0f, 1.0f};
+    }
+};
+
 struct DocumentBakeSnapshot {
     uint64_t revision = 0;
     std::array<float, 6> parameterValues{};
@@ -58,6 +78,7 @@ struct DocumentBakeSnapshot {
 class EditorDocumentModel {
 public:
     static constexpr uint32_t kMaximumLayerCount = 32;
+    static constexpr size_t kMaximumLayerNameBytes = 31;
 
     bool Load(const std::string& path, DocumentDiagnostic& diagnostic);
 
@@ -97,6 +118,26 @@ public:
                               DocumentDiagnostic& diagnostic);
     bool SetParameterValue(uint32_t index, float value,
                            DocumentDiagnostic& diagnostic);
+
+    // Layer blend radius (finite, >= 0), name (1..31 bytes: the VDC1 header keeps nameBytes[32]
+    // NUL-terminated) and placement. Every setter validates before it rebuilds, so a rejected
+    // call leaves the accepted document and its revision untouched.
+    // The value rules are public so a caller can refuse an invalid edit before it records one.
+    static bool ValidateBlendRadius(float radius, DocumentDiagnostic& diagnostic);
+    static bool ValidateLayerName(const std::string& name, DocumentDiagnostic& diagnostic);
+    static bool ValidateLayerTransform(const LayerTransform& transform,
+                                       DocumentDiagnostic& diagnostic);
+    bool SetLayerBlendRadius(uint32_t index, float radius, DocumentDiagnostic& diagnostic);
+    bool SetLayerName(uint32_t index, const std::string& name, DocumentDiagnostic& diagnostic);
+    bool GetLayerTransform(uint32_t index, LayerTransform& out,
+                           DocumentDiagnostic& diagnostic) const;
+    bool SetLayerTransform(uint32_t index, const LayerTransform& transform,
+                           DocumentDiagnostic& diagnostic);
+    // Replaces one layer's whole program (finite fields, masks whole bytes). It is the exact
+    // inverse of any program edit: undo of a placement edit restores the snapshot taken before it.
+    bool SetLayerProgram(uint32_t index,
+                         const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& program,
+                         DocumentDiagnostic& diagnostic);
 
     std::string LayerName(uint32_t i) const;
     static const char* OpName(uint8_t op);
