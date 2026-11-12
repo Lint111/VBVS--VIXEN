@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0xEC5F7C10u;
+inline constexpr uint32_t kAppFlowShapeHash = 0xB00CFF5Au;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -16,7 +16,7 @@ inline constexpr std::array<FlowStateId, 0> kTerminalStateIds = {  };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, OrbitCamera=24, PanCamera=25, ZoomCamera=26, FrameAsset=27, SetViewAngle=28, SelectViewAngle0=29, SelectViewAngle1=30, SelectViewAngle2=31, SelectViewAngle3=32, SetParameter=33, ResetParameter=34, ScrubParameter=35 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -63,6 +63,9 @@ namespace FlowElementTriggerId {
     inline constexpr const char* ScrubParameterTrigger = "ScrubParameterTrigger";
     inline constexpr const char* ResetParameterTrigger = "ResetParameterTrigger";
     inline constexpr const char* OpenRecipeTrigger = "OpenRecipeTrigger";
+    inline constexpr const char* SelectLayerTrigger = "SelectLayerTrigger";
+    inline constexpr const char* NudgeLayerFieldTrigger = "NudgeLayerFieldTrigger";
+    inline constexpr const char* ReopenSavedButtonTrigger = "ReopenSavedButtonTrigger";
     inline constexpr const char* UndoButtonTrigger = "UndoButtonTrigger";
     inline constexpr const char* RedoButtonTrigger = "RedoButtonTrigger";
     inline constexpr const char* SaveButtonTrigger = "SaveButtonTrigger";
@@ -107,6 +110,11 @@ inline constexpr FlowParamSchema kEditProgramFieldDownParams[] = { {"layerIndex"
 inline constexpr FlowParamSchema kAdjustParameterUpParams[] = { {"parameterIndex", FlowParamType::Int} };
 inline constexpr FlowParamSchema kAdjustParameterDownParams[] = { {"parameterIndex", FlowParamType::Int} };
 inline constexpr FlowParamSchema kOpenRecipeParams[] = { {"recipeId", FlowParamType::String} };
+inline constexpr FlowParamSchema kSetLayerBlendParams[] = { {"layerIndex", FlowParamType::Int}, {"radius", FlowParamType::Float} };
+inline constexpr FlowParamSchema kRenameLayerParams[] = { {"layerIndex", FlowParamType::Int}, {"name", FlowParamType::String} };
+inline constexpr FlowParamSchema kSetLayerTransformParams[] = { {"layerIndex", FlowParamType::Int}, {"px", FlowParamType::Float}, {"py", FlowParamType::Float}, {"pz", FlowParamType::Float}, {"rx", FlowParamType::Float}, {"ry", FlowParamType::Float}, {"rz", FlowParamType::Float}, {"sx", FlowParamType::Float}, {"sy", FlowParamType::Float}, {"sz", FlowParamType::Float} };
+inline constexpr FlowParamSchema kSelectLayerParams[] = { {"layerIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kNudgeLayerFieldParams[] = { {"layerIndex", FlowParamType::Int}, {"field", FlowParamType::String} };
 inline constexpr FlowParamSchema kOpenPanelParams[] = { {"panelId", FlowParamType::String} };
 inline constexpr FlowParamSchema kClosePanelParams[] = { {"panelId", FlowParamType::String} };
 inline constexpr FlowParamSchema kFocusPanelParams[] = { {"panelId", FlowParamType::String} };
@@ -147,6 +155,12 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::FloatPanel, sizeof(LayerState), true, kFloatPanelParams, 5 },
     { FlowActionId::ResizeRegion, sizeof(LayerState), true, kResizeRegionParams, 2 },
     { FlowActionId::ResetLayout, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::SetLayerBlend, sizeof(LayerState), true, kSetLayerBlendParams, 2 },
+    { FlowActionId::RenameLayer, sizeof(LayerState), true, kRenameLayerParams, 2 },
+    { FlowActionId::SetLayerTransform, sizeof(LayerState), true, kSetLayerTransformParams, 10 },
+    { FlowActionId::ReopenSaved, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::SelectLayer, sizeof(LayerState), true, kSelectLayerParams, 1 },
+    { FlowActionId::NudgeLayerField, sizeof(LayerState), true, kNudgeLayerFieldParams, 2 },
     { FlowActionId::OrbitCamera, sizeof(LayerState), true, kOrbitCameraParams, 2 },
     { FlowActionId::PanCamera, sizeof(LayerState), true, kPanCameraParams, 2 },
     { FlowActionId::ZoomCamera, sizeof(LayerState), true, kZoomCameraParams, 1 },
@@ -180,6 +194,9 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::ScrubParameterTrigger, "parameter-{index}-value", FlowActionId::ScrubParameter, "parameterIndex", "click" },
     { FlowElementTriggerId::ResetParameterTrigger, "parameter-{index}-reset", FlowActionId::ResetParameter, "parameterIndex", "click" },
     { FlowElementTriggerId::OpenRecipeTrigger, "recipe-{recipeId}-open", FlowActionId::OpenRecipe, "recipeId", "click" },
+    { FlowElementTriggerId::SelectLayerTrigger, "layer-{index}-select", FlowActionId::SelectLayer, "layerIndex", "click" },
+    { FlowElementTriggerId::NudgeLayerFieldTrigger, "layer-{index}-nudge-{field}", FlowActionId::NudgeLayerField, "layerIndex", "click" },
+    { FlowElementTriggerId::ReopenSavedButtonTrigger, "reopen-button", FlowActionId::ReopenSaved, "", "click" },
     { FlowElementTriggerId::UndoButtonTrigger, "undo-button", FlowActionId::Undo, "", "click" },
     { FlowElementTriggerId::RedoButtonTrigger, "redo-button", FlowActionId::Redo, "", "click" },
     { FlowElementTriggerId::SaveButtonTrigger, "save-button", FlowActionId::Save, "", "click" },
