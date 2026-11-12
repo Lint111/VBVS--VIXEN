@@ -182,6 +182,31 @@ TEST_F(PanelDockDocumentsTest, EditorPanelsShareOneModelAndLandInTheirRegions) {
     EXPECT_FALSE(Shown(chromeDoc_, "panel-status-close"));
 }
 
+// R872.1: the layers panel keeps its content width when the primitive picker is populated and the rows outgrow
+// the panel. RmlUi gives an unstyled vertical scrollbar the whole width, which collapsed the first Dozen run's
+// panel to 20 px once a fourth layer was added (editor.rcss now sizes the scrollbar).
+TEST_F(PanelDockDocumentsTest, LayersPanelKeepsItsWidthWithThePickerAndManyRows) {
+    std::vector<Vixen::App::EditorPrimitiveData> primitives;
+    for (const char* name : {"Box", "BoxRounded", "CappedTorus", "Capsule", "Cone", "Cylinder", "Sphere", "Torus"}) {
+        primitives.push_back({name, "Primitive"});
+    }
+    layers_.PopulatePrimitives(primitives);
+    Rml::ElementDocument* doc = panelDocs_.at("layers");
+    for (const int count : {2, 3, 4, 6, 12}) {
+        std::vector<Vixen::App::EditorLayerData> rows;
+        for (int i = 0; i < count; ++i) rows.push_back({"layer" + std::to_string(i), "Union", true, 0.0f});
+        layers_.PopulateFromDocument((1u << count) - 1u, rows, {});
+        Layout();
+        EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
+        EXPECT_GT(doc->GetClientWidth(), 300.0f) << count << " rows: the layers document's content width collapsed";
+        for (const char* id : {"primitive-Torus-add", "undo-button"}) {
+            Rml::Element* element = doc->GetElementById(id);
+            ASSERT_NE(element, nullptr) << id;
+            EXPECT_GT(element->GetBox().GetSize(Rml::BoxArea::Border).x, 40.0f) << count << " rows: " << id;
+        }
+    }
+}
+
 TEST_F(PanelDockDocumentsTest, RearrangedLayoutMovesTheDocumentsAndTheChrome) {
     Layout();
     ASSERT_EQ(dock_.Move("inspector", DockRegion::Left), DockResult::Ok);

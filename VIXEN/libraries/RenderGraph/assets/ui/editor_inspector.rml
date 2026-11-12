@@ -20,6 +20,11 @@
         <div class="hint" data-if="parameters.size == 0">This document declares no parameters.</div>
         <div class="subtitle">Shape of {{selectedLayerName}}<span data-if="selectedShape != ''"> ({{selectedShape}})</span></div>
         <div class="hint" data-if="selectedShape == ''">{{shapeNote}}</div>
+        <!-- R872.1: the combine op of the selected layer; rows come from the generated layer-op table. -->
+        <div class="op-choices">
+            <span class="parameter-name">combine op</span>
+            <div class="button" data-for="choice : opChoices" data-attr-id="choice.elementId" data-class-selected="choice.isCurrent" hit-mask="none">{{choice.name}}</div>
+        </div>
         <div class="parameter-row" data-for="field : shape">
             <span class="parameter-name">{{field.label}}</span>
             <span class="parameter-value">{{field.value}}</span>

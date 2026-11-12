@@ -139,6 +139,13 @@ body {
     overflow-y: auto;
 }
 
+.primitive-list .button {
+    display: block;
+    margin-left: 0;
+    margin-bottom: 2px;
+    text-align: left;
+}
+
 .program-controls {
     display: block;
     margin-left: 24px;
@@ -199,4 +206,27 @@ body {
 
 .recipe-row .button.open {
     background-color: #3a6ea5;
+}
+
+/* The panel documents scroll (body overflow: auto). Without a declared scrollbar size RmlUi gives the vertical
+   scrollbar the whole width, collapsing the panel's content to 20 px once the rows outgrow the panel. */
+scrollbarvertical {
+    width: 12px;
+    pointer-events: auto;
+}
+
+scrollbarvertical slidertrack {
+    width: 12px;
+    background-color: #202840;
+}
+
+scrollbarvertical sliderbar {
+    width: 12px;
+    min-height: 24px;
+    background-color: #50609a;
+}
+
+scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
+    width: 0px;
+    height: 0px;
 }
