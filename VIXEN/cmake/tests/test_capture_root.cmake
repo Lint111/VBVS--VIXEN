@@ -59,6 +59,17 @@ if(NOT IS_DIRECTORY "${root}")
     message(FATAL_ERROR "MKPARENT did not create ${root}")
 endif()
 
+# --name=<path> options are rebased too, and cmake's own --fresh is only reachable in that spelling (row 15).
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_CAPTURE_DEFAULT_ROOT=${default_root}"
+        -P "${vixen_root}/cmake/run_with_capture_root.cmake"
+        "${CMAKE_COMMAND}" -E echo "--fresh=${default_root}/cold"
+    RESULT_VARIABLE option_result OUTPUT_VARIABLE option_text ERROR_QUIET)
+expect_equal("${option_result}" "0" "wrapper passes a cmake-named --fresh=<dir> option through")
+string(REGEX MATCH "--fresh=[^\n]*" option_text "${option_text}")
+string(STRIP "${option_text}" option_text)
+expect_equal("${option_text}" "--fresh=${root}/cold" "a --name=<path> option is rebased to the run-time root")
+
 execute_process(
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_CAPTURE_DEFAULT_ROOT=${default_root}"
         -P "${vixen_root}/cmake/run_with_capture_root.cmake"
