@@ -47,6 +47,7 @@ namespace Vixen::RenderGraph { class PhotonCellTableNode; }
 namespace Vixen::RenderGraph { class PhotonCellParamsConfigNode; }
 namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
+namespace Vixen::SVO { struct BodyInstanceRowDelta; }  // RE5: one edited row of the staged instance list
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
 #include "Recipe/RecipeRegistry.h"  // Lazy-Procedural-Delta-Baseline Inc0 M5: zero-bake uber-shader recipes.
 // Real include (not forward-declared like the two lines above) -- RecipeEntry is a NESTED type of
