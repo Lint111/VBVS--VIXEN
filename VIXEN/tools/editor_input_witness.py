@@ -90,6 +90,8 @@ def main() -> int:
     parser.add_argument("--editor", required=True, type=Path)
     parser.add_argument("--document", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--panels", action="store_true",
+                        help="windowed session (no offscreen capture): the readback includes the editor panels; only the inspector shots")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     report: dict = {}
@@ -97,8 +99,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="vixen-editorinput-") as temporary:
         descriptor = Path(temporary) / "session.json"
         env = os.environ.copy()
-        env.update({"VIXEN_APPFLOW_DESCRIPTOR": str(descriptor), "VIXEN_EDITOR_OFFSCREEN_CAPTURE": "1",
-                    "VIXEN_EDITOR_TEST_CAMERA": "top-down", "VIXEN_EXIT_AFTER_FRAMES": "100000"})
+        if not args.panels:
+            env["VIXEN_EDITOR_OFFSCREEN_CAPTURE"] = "1"
+        env.update({"VIXEN_APPFLOW_DESCRIPTOR": str(descriptor), "VIXEN_EDITOR_TEST_CAMERA": "top-down", "VIXEN_EXIT_AFTER_FRAMES": "100000"})
         editor_log = args.out / "editor.log"
         with editor_log.open("w", encoding="utf-8") as log:
             editor = subprocess.Popen([str(args.editor), str(args.document)], stdout=log,
@@ -113,6 +116,12 @@ def main() -> int:
                     time.sleep(0.05)
                 client = AppFlowClient(descriptor)
                 w = Witness(client, args.out, editor_log)
+                if args.panels:
+                    w.shot("P0-inspector-before")
+                    w.dispatch("SetParameter", parameterIndex=0, value=1.2)
+                    w.shot("P1-inspector-after-SetParameter-0-1.2")
+                    (args.out / "panels.json").write_text(json.dumps({"rows": w.rows, "snapshots": w.parameter_snapshots()}, indent=2))
+                    return 0
                 catalog = client.list()
                 keys = [{"id": k["id"], "action": next(a["name"] for a in catalog["actions"] if a["id"] == k["actionId"]),
                          "key": k["key"], "mods": k["mods"]} for k in catalog["chords"]]
@@ -180,6 +189,20 @@ def main() -> int:
                     "snapshotAfterOverRange": snaps_clamped[-1] if snaps_clamped else None,
                     "snapshotAfterReset": snaps_reset[-1] if snaps_reset else None,
                     "clampResult": clamped["dispatchResult"]["name"], "resetResult": reset["dispatchResult"]["name"]}
+                # scrub-shaped gesture: channel begin_group, three SetParameter steps, end_group = ONE undo step
+                g0 = client.read()["undoDepth"]
+                bg = client.call("appflow.begin_group", {"label": "scrub-witness"})
+                for v in (0.8, 0.9, 1.0):
+                    w.dispatch("SetParameter", parameterIndex=0, value=v)
+                eg = client.call("appflow.end_group")
+                g1 = client.read()["undoDepth"]
+                snaps_scrub = w.parameter_snapshots()[-1]
+                ug = client.dispatch(actionId=w.actions["Undo"]["id"], params={})
+                client.await_frame(action_id=ug["actionId"])
+                snaps_undo_group = w.parameter_snapshots()[-1]
+                report["scrubGroup"] = {"begin": bg["group"]["result"], "end": eg["group"]["result"],
+                                        "undoDepthBefore": g0, "afterThreeSteps": g1, "valueAfterScrub": snaps_scrub[0],
+                                        "valueAfterOneUndo": snaps_undo_group[0], "undoDepthAfterUndo": ug["undoDepth"]}
                 undone = client.dispatch(actionId=w.actions["Undo"]["id"], params={})
                 client.await_frame(action_id=undone["actionId"])
                 report["parameters"]["undoOnce"] = {"result": undone["dispatchResult"]["name"],
@@ -207,6 +230,10 @@ def main() -> int:
                 report["checks"] = {name: report["comparisons"][name]["same"] == expect
                                     for name, (x, y, expect) in pairs.items()}
                 report["checks"]["undo depth unchanged by camera"] = depth0 == depth1
+                sg = report["scrubGroup"]
+                report["checks"]["3-step scrub is ONE undo step restoring the pre-scrub value"] = (
+                    sg["afterThreeSteps"] == sg["undoDepthBefore"] + 1 and sg["undoDepthAfterUndo"] == sg["undoDepthBefore"]
+                    and abs(sg["valueAfterScrub"] - 1.0) < 1e-6 and abs(sg["valueAfterOneUndo"] - 0.6) < 1e-6)
                 (args.out / "witness.json").write_text(json.dumps({"report": report, "rows": w.rows}, indent=2) + "\n")
                 print(json.dumps(report, indent=2))
                 return 0 if all(report["checks"].values()) else 1
