@@ -665,7 +665,9 @@ void EditorApplication::RegisterAppFlowHandlers() {
         const uint32_t index = ParseParam(p, "parameterIndex");
         const auto value = ParseFloatParam(p, "value");
         if (index >= doc_.ParameterCount() || !value) {
-            logger_->Warning("[EditorApplication] SetParameter ignored: parameterIndex out of range or value not a finite number");
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::InvalidParameterValue,
+                "SetParameter: needs a parameterIndex inside the " + std::to_string(doc_.ParameterCount()) +
+                " document parameters and a finite numeric value"});
             return;
         }
         CommitParameter(FlowActionId::SetParameter, index, *value);
@@ -809,17 +811,29 @@ void EditorApplication::RegisterAppFlowHandlers() {
         lastEditorError_.clear();
     });
 
-    rt_.RegisterHandler(FlowActionId::SetLayerTransform, [setTransform, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+    rt_.RegisterHandler(FlowActionId::SetLayerTransform, [this, setTransform, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         static constexpr const char* kFields[9] = {"px", "py", "pz", "rx", "ry", "rz", "sx", "sy", "sz"};
         uint32_t index = 0;
-        std::array<float, 9> values{};
-        bool complete = ParseIndexParam(p, "layerIndex", index);
-        for (size_t f = 0; f < values.size() && complete; ++f) complete = ParseFloatParam(p, kFields[f], values[f]);
-        if (!complete) {
-            refuse("SetLayerTransform", "needs an integer layerIndex and numeric px py pz rx ry rz sx sy sz");
+        if (!ParseIndexParam(p, "layerIndex", index)) {
+            refuse("SetLayerTransform", "needs an integer layerIndex");
             return;
         }
+        // A component the call does not name keeps the layer's current value, so one typed field can set one
+        // component; a named component must be a number.
+        Vixen::Editor::DocumentDiagnostic diagnostic;
         Vixen::Editor::LayerTransform next;
+        if (!doc_.GetLayerTransform(index, next, diagnostic)) { refuse("SetLayerTransform", diagnostic.message); return; }
+        std::array<float, 9> values{next.position[0], next.position[1], next.position[2],
+                                    next.rotationDegrees[0], next.rotationDegrees[1], next.rotationDegrees[2],
+                                    next.scale[0], next.scale[1], next.scale[2]};
+        for (size_t f = 0; f < values.size(); ++f) {
+            bool named = false;
+            for (const auto& [n, v] : p) if (n == kFields[f]) named = true;
+            if (named && !ParseFloatParam(p, kFields[f], values[f])) {
+                refuse("SetLayerTransform", std::string(kFields[f]) + " is not a finite number");
+                return;
+            }
+        }
         next.position = {values[0], values[1], values[2]};
         next.rotationDegrees = {values[3], values[4], values[5]};
         next.scale = {values[6], values[7], values[8]};
@@ -940,12 +954,10 @@ void EditorApplication::RegisterAppFlowHandlers() {
         if (!doc_.GetLayerPrimitiveFields(index, fields, diagnostic)) { refuse("SetLayerPrimitiveField", diagnostic.message); return; }
         for (const auto& candidate : fields) {
             if (field != candidate.name) continue;
+            // A component the call does not name keeps the field's current value, so one typed field can set
+            // one component of a vector argument.
             for (uint32_t c = 0; c < candidate.width && c < 4u; ++c) {
-                if (!present[c]) {
-                    refuse("SetLayerPrimitiveField", "field '" + field + "' has " + std::to_string(candidate.width) +
-                                                     " components; component " + kComponents[c] + " is missing");
-                    return;
-                }
+                if (!present[c]) value[c] = candidate.value[c];
             }
         }
         setPrimitiveField(FlowActionId::SetLayerPrimitiveField, index, field, value);
@@ -1225,8 +1237,10 @@ void EditorApplication::TranslateCameraInput() {
     GLFWwindow* window = GetWindowHandle();
     const bool ctrl = window && (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
                                  glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS);
+    const auto* ui = GetUiRenderNode();
+    const Vixen::Editor::UiInputCapture capture{ui && ui->WantsKeyboard(), ui && ui->WantsPointer()};
     for (const auto& dispatch : Vixen::Editor::CameraDispatchesFromInput(
-             input->GetInputState(), ctrl, camera->GetMouseSensitivity(), camera->GetMoveSpeed())) {
+             input->GetInputState(), ctrl, camera->GetMouseSensitivity(), camera->GetMoveSpeed(), capture)) {
         switch (dispatch.action) {
             case FlowActionId::OrbitCamera:
                 rt_.DispatchById(dispatch.action, {{"dYaw", FloatParamText(dispatch.a)}, {"dPitch", FloatParamText(dispatch.b)}});
@@ -1722,6 +1736,23 @@ void EditorApplication::Update() {
             TraceEditorLatency("dispatch", "end", updateTick_);
         }
     }
+    // Typed values committed by text controls (Enter / blur after an edit): the control's id is the selector
+    // with its value slot filled, so a commit is one DispatchBySelector like a click. The runtime refuses a
+    // bad value through the handler's normal diagnostic path; UIRenderNode re-reads the model afterwards so
+    // the field shows the accepted (or unchanged) value.
+    if (auto* ui = GetUiRenderNode()) {
+        for (const auto& commit : ui->DrainCommittedInputs()) {
+            TraceEditorLatency("dispatch", "begin", updateTick_);
+            const auto result = rt_.DispatchBySelector(commit.selector);
+            if (result == Vixen::AppFlow::DispatchResult::RejectedByState) {
+                ReportEditorError(commit.text.empty()
+                                      ? "the field '" + commit.elementId + "' needs a value"
+                                      : "no action is bound to the typed field '" + commit.elementId + "' (value '" + commit.text + "')",
+                                  "RefusedEdit");
+            }
+            TraceEditorLatency("dispatch", "end", updateTick_);
+        }
+    }
 
     // Keybindings: dispatch by chord, edge-detected (press-only, not held-repeat) via KeyMap.h's
     // GLFW-keycode -> KeyId map. Carries no behavior itself -- DispatchByKey resolves the chord
@@ -1732,8 +1763,13 @@ void EditorApplication::Update() {
         // Every mapped key is edge-detected; each press resolves its chord (key + live modifiers) through
         // the runtime's InputProfile, so a [FlowKeyDefault] on any declared key binds with no change here.
         // An unbound chord (or Esc outside Settings) resolves to RejectedByState and is ignored.
+        // A focused text control owns the keyboard: the edge state still advances, the chord is dropped, so typing
+        // "s" into a field never saves and a key held across a blur does not fire late.
+        const auto* ui = GetUiRenderNode();
+        const bool typing = ui && ui->WantsKeyboard();
         keyEdges_.Poll([window](int key) { return glfwGetKey(window, key) == GLFW_PRESS; },
-                       [this](Vixen::AppFlow::Generated::KeyChord chord) { (void)rt_.DispatchByKey(chord); });
+                       [this](Vixen::AppFlow::Generated::KeyChord chord) { (void)rt_.DispatchByKey(chord); },
+                       typing);
     }
     TranslateCameraInput();
     StepParameterScrub();
@@ -2476,6 +2512,74 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         return nlohmann::json{{"dispatchResult", {{"code", static_cast<int>(result)},
                                                    {"name", std::string(magic_enum::enum_name(result))}}},
                               {"flowState", EnumRecord(rt_.Current())}}.dump();
+    }
+
+    if (method == "appflow.input") {
+        // Scripted input on the app's REAL input path (R468: the same path a person's input takes). Events are
+        // queued exactly where the GLFW callbacks queue theirs (InputNode's ring), so they are folded into the
+        // next frame's InputState and reach every consumer (the UI's text controls, the camera translation, the
+        // selection providers) the way typed or pointed input does; nothing here dispatches an action directly.
+        //   {"kind":"text","text":"1.5"}
+        //   {"kind":"key","key":"Enter","action":"press|release|repeat|tap","mods":["Ctrl"]}   (key = a generated KeyId name)
+        //   {"kind":"pointer","x":120,"y":80,"action":"move|press|release|click","button":"left|right|middle"}
+        auto* graph = GetRenderGraph();
+        auto* input = graph ? static_cast<Vixen::RenderGraph::InputNode*>(graph->GetInstanceByName("input_handler"))
+                            : nullptr;
+        if (!input) throw std::runtime_error("the running graph has no input node");
+        const std::string kind = params.value("kind", std::string{});
+        uint32_t queued = 0;
+        if (kind == "text") {
+            if (!params.contains("text") || !params.at("text").is_string()) throw std::runtime_error("input text requires a text string");
+            const std::string text = params.at("text").get<std::string>();
+            for (size_t i = 0; i < text.size();) {  // UTF-8 -> code points
+                const unsigned char lead = static_cast<unsigned char>(text[i]);
+                const size_t length = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3 : (lead >> 3) == 0x1E ? 4 : 0;
+                if (length == 0 || i + length > text.size()) throw std::runtime_error("input text is not valid UTF-8");
+                char32_t cp = length == 1 ? lead : static_cast<char32_t>(lead & (0xFF >> (length + 1)));
+                for (size_t k = 1; k < length; ++k) cp = (cp << 6) | (static_cast<unsigned char>(text[i + k]) & 0x3F);
+                input->InjectChar(cp);
+                ++queued;
+                i += length;
+            }
+        } else if (kind == "key") {
+            const auto id = magic_enum::enum_cast<Vixen::AppFlow::Generated::KeyId>(params.value("key", std::string{}));
+            const int glfwKey = id ? Vixen::Editor::KeyIdToGlfw(*id) : -1;
+            if (glfwKey < 0) throw std::runtime_error("input key must be a generated KeyId name (see appflow.list chords)");
+            int mods = 0;
+            for (const auto& name : params.value("mods", std::vector<std::string>{})) {
+                if (name == "Shift") mods |= GLFW_MOD_SHIFT;
+                else if (name == "Ctrl") mods |= GLFW_MOD_CONTROL;
+                else if (name == "Alt") mods |= GLFW_MOD_ALT;
+                else if (name == "Super") mods |= GLFW_MOD_SUPER;
+                else throw std::runtime_error("input mods are Shift, Ctrl, Alt, Super");
+            }
+            const std::string action = params.value("action", std::string("tap"));
+            if (action == "press" || action == "tap") { input->InjectRawKey(glfwKey, GLFW_PRESS, mods); ++queued; }
+            if (action == "repeat") { input->InjectRawKey(glfwKey, GLFW_REPEAT, mods); ++queued; }
+            if (action == "release" || action == "tap") { input->InjectRawKey(glfwKey, GLFW_RELEASE, mods); ++queued; }
+            if (queued == 0) throw std::runtime_error("input key action is press, release, repeat or tap");
+        } else if (kind == "pointer") {
+            if (!params.contains("x") || !params.contains("y") || !params.at("x").is_number() || !params.at("y").is_number()) {
+                throw std::runtime_error("input pointer requires numeric x and y (window pixels)");
+            }
+            input->InjectCursorPos(params.at("x").get<double>(), params.at("y").get<double>());
+            ++queued;
+            const std::string action = params.value("action", std::string("move"));
+            const std::string buttonName = params.value("button", std::string("left"));
+            const int button = buttonName == "left" ? GLFW_MOUSE_BUTTON_LEFT
+                             : buttonName == "right" ? GLFW_MOUSE_BUTTON_RIGHT
+                             : buttonName == "middle" ? GLFW_MOUSE_BUTTON_MIDDLE : -1;
+            if (action != "move" && button < 0) throw std::runtime_error("input pointer button is left, right or middle");
+            if (action == "press" || action == "click") { input->InjectMouseButton(button, GLFW_PRESS); ++queued; }
+            if (action == "release" || action == "click") { input->InjectMouseButton(button, GLFW_RELEASE); ++queued; }
+            if (action != "move" && action != "press" && action != "release" && action != "click") {
+                throw std::runtime_error("input pointer action is move, press, release or click");
+            }
+        } else {
+            throw std::runtime_error("input kind is text, key or pointer");
+        }
+        RecordAppFlowEvent("input", {{"kind", kind}, {"queued", queued}});
+        return nlohmann::json{{"queued", queued}, {"kind", kind}, {"frame", channelPresentedFrame_}}.dump();
     }
 
     if (method == "appflow.quit") {

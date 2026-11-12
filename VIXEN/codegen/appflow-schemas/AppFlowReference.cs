@@ -148,6 +148,7 @@ namespace Vixen.AppFlow.Reference
         public const int Param1Type = (int)FlowParamType.String;
     }
 
+    // Any placement component the call does not name keeps the layer's current value.
     [FlowActionParams(nameof(FlowAction.SetLayerTransform))]
     public static class SetLayerTransformParams
     {
@@ -213,7 +214,7 @@ namespace Vixen.AppFlow.Reference
     }
 
     // R872.1: one InstructionData argument of the layer's primitive, by its catalogue name; the
-    // components beyond the argument's width are ignored.
+    // components beyond the argument's width are ignored, and a component the call does not name keeps its current value.
     [FlowActionParams(nameof(FlowAction.SetLayerPrimitiveField))]
     public static class SetLayerPrimitiveFieldParams
     {
@@ -501,6 +502,141 @@ namespace Vixen.AppFlow.Reference
     public static class SetLayerOpTrigger
     {
         public const string Element = "layer-{index}-op-{op}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // sn-rmlinput1 block: typed value entry. A text control's element id is one of these patterns with its
+    // value slot left as the literal "{<param>}" ("parameter-0-set-{value}"); on commit (Enter, or blur after
+    // an edit) the UI fills the slot with the typed text and dispatches the selector, so the last placeholder
+    // binds the typed value to the action parameter it names. Nothing here is a new declaration form: they
+    // are ordinary element triggers whose second placeholder names a parameter, like panel-{panelId}-to-{region}.
+    [FlowElementTrigger(nameof(FlowAction.SetParameter))]
+    public static class SetParameterTypedTrigger
+    {
+        public const string Element = "parameter-{index}-set-{value}";
+        public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerBlend))]
+    public static class SetLayerBlendTypedTrigger
+    {
+        public const string Element = "layer-{index}-blend-{radius}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.RenameLayer))]
+    public static class RenameLayerTypedTrigger
+    {
+        public const string Element = "layer-{index}-name-{name}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // One component of a catalogue primitive argument; the other components keep their current values.
+    [FlowElementTrigger(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldXTrigger
+    {
+        public const string Element = "layer-{index}-field-{field}-x-{x}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldYTrigger
+    {
+        public const string Element = "layer-{index}-field-{field}-y-{y}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldZTrigger
+    {
+        public const string Element = "layer-{index}-field-{field}-z-{z}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldWTrigger
+    {
+        public const string Element = "layer-{index}-field-{field}-w-{w}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // One placement component of a layer; the other eight keep their current values.
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformPXTrigger
+    {
+        public const string Element = "layer-{index}-placement-px-{px}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformPYTrigger
+    {
+        public const string Element = "layer-{index}-placement-py-{py}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformPZTrigger
+    {
+        public const string Element = "layer-{index}-placement-pz-{pz}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformRXTrigger
+    {
+        public const string Element = "layer-{index}-placement-rx-{rx}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformRYTrigger
+    {
+        public const string Element = "layer-{index}-placement-ry-{ry}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformRZTrigger
+    {
+        public const string Element = "layer-{index}-placement-rz-{rz}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformSXTrigger
+    {
+        public const string Element = "layer-{index}-placement-sx-{sx}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformSYTrigger
+    {
+        public const string Element = "layer-{index}-placement-sy-{sy}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformSZTrigger
+    {
+        public const string Element = "layer-{index}-placement-sz-{sz}";
         public const string ParamName = "layerIndex";
         public const string On = "click";
     }

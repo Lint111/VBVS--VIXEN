@@ -89,6 +89,7 @@ public:
             row.blendUpId = "layer-" + std::to_string(i) + "-nudge-blend-up";
             row.blendDownId = "layer-" + std::to_string(i) + "-nudge-blend-down";
             row.selectId = "layer-" + std::to_string(i) + "-select";
+            row.blendValueId = "layer-" + std::to_string(i) + "-blend-{radius}";
             row.isSelected = static_cast<int>(i) == placement.selectedLayer;
             layers_.push_back(std::move(row));
         }
@@ -100,6 +101,7 @@ public:
             row.unit = Rml::String(parameterData[i].unit);
             row.upId = "parameter-" + std::to_string(i) + "-up";
             row.downId = "parameter-" + std::to_string(i) + "-down";
+            row.setId = "parameter-" + std::to_string(i) + "-set-{value}";
             row.value = parameterData[i].value;
             row.minimum = parameterData[i].minimum;
             row.maximum = parameterData[i].maximum;
@@ -125,6 +127,8 @@ public:
                 row.value = placement.values[f];
                 row.upId = stem + "-up";
                 row.downId = stem + "-down";
+                row.valueId = "layer-" + std::to_string(placement.selectedLayer) + "-placement-" +
+                              kPlacementKeys[f] + "-{" + kPlacementKeys[f] + "}";
                 transform_.push_back(std::move(row));
             }
         }
@@ -149,6 +153,11 @@ public:
                 row.maximum = field.maximum;
                 row.upId = layerStem + "-nudge-" + field.key + "-up";
                 row.downId = layerStem + "-nudge-" + field.key + "-down";
+                // "<argument>.<component>" -> "layer-<i>-field-<argument>-<component>-{<component>}".
+                const size_t dot = field.key.find('.');
+                const std::string argument = dot == std::string::npos ? field.key : field.key.substr(0, dot);
+                const std::string component = dot == std::string::npos ? std::string("x") : field.key.substr(dot + 1);
+                row.valueId = layerStem + "-field-" + argument + "-" + component + "-{" + component + "}";
                 shape_.push_back(std::move(row));
             }
         }

@@ -47,3 +47,29 @@ dropped; declared panels missing from the rows keep their defaults. The editor s
 `appflow.read` returns `panelLayout` (`viewport`, `stacks`, `panels` with content rects, the persisted
 `rows`, `layoutPath`, `revision`); `appflow.read {noun: "PanelLayout_panels"}` (and the other
 `PanelLayout_*` nouns) returns one field. Each verb records a `panel.<verb>` channel event.
+
+## Keyboard, text and pointer input
+
+Every app that hosts RmlUi forwards its `InputState` into the `Rml::Context` (`UiInputForwarder`, owned by `UIRenderNode`,
+fed through the node's optional `INPUT_STATE` slot): pointer moves and button edges in arrival order, wheel, every raw key
+transition and every typed code point (`InputNode` registers the GLFW char callback). With no focusable element a document
+sees only `:hover`/pointer state, so the game HUD is unchanged.
+
+- **Focus rule.** A focused text control (`<input type="text">`) owns the keyboard: `UIRenderNode::WantsKeyboard()` is true, the
+  editor's chord poll advances its edge state but dispatches nothing (`KeyEdgeTracker::Poll(..., typing)`), the camera key
+  axes are dropped, and `InputNode` no longer treats Escape as the shutdown request, the movement keys as axes or the digits as
+  debug-mode switches. Enter commits the value and blurs; Escape restores the value the field had on focus and blurs; leaving
+  the field after an edit commits it.
+- **Pointer ownership.** `WantsPointer()` is true while the pointer is over a UI element, or a press that began on one is still
+  held; a press that began outside the UI stays the world's (a camera orbit that crosses a panel keeps orbiting). The editor
+  drops camera orbit and wheel zoom while the UI owns the pointer. Editor panel bodies take pointer events (the wheel scrolls
+  a panel, a click on panel background is no longer a world pick).
+- **Typed values reach actions through the existing element triggers.** A text control's `id` is an element-trigger pattern with
+  its value slot left as the literal `{<param>}` (`parameter-0-set-{value}`, `layer-2-name-{name}`,
+  `layer-3-field-halfExtents-x-{x}`, `layer-0-placement-px-{px}`, `layer-1-blend-{radius}`). On commit the forwarder fills the
+  slot with the typed text and the host calls `DispatchBySelector(<filled selector>)` (`UIRenderNode::DrainCommittedInputs()`),
+  so the last placeholder binds the text to the action parameter it names: one `ActionStack` entry, refusals through the
+  handler's normal diagnostic path. The field's value is data-bound one way from the model (`data-attr-value`); after a commit
+  the node re-evaluates every bound value, so a refused value snaps back to the model's.
+- **Agents** use the same path: the channel verb `appflow.input` queues text, keys and pointer events into `InputNode`'s callback
+  ring (see AppFlow-Agent-Channel.md), so typing in a field can be witnessed without a human.

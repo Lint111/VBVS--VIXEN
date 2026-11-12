@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0x4F349EF3
+shape 0xFCF45423
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -247,6 +247,22 @@ trigger SelectLayerTrigger layer-{index}-select 28 layerIndex click
 trigger NudgeLayerFieldTrigger layer-{index}-nudge-{field} 29 layerIndex click
 trigger CreatePrimitiveLayerTrigger primitive-{primitive}-add 42 primitive click
 trigger SetLayerOpTrigger layer-{index}-op-{op} 43 layerIndex click
+trigger SetParameterTypedTrigger parameter-{index}-set-{value} 39 parameterIndex click
+trigger SetLayerBlendTypedTrigger layer-{index}-blend-{radius} 24 layerIndex click
+trigger RenameLayerTypedTrigger layer-{index}-name-{name} 25 layerIndex click
+trigger SetLayerPrimitiveFieldXTrigger layer-{index}-field-{field}-x-{x} 44 layerIndex click
+trigger SetLayerPrimitiveFieldYTrigger layer-{index}-field-{field}-y-{y} 44 layerIndex click
+trigger SetLayerPrimitiveFieldZTrigger layer-{index}-field-{field}-z-{z} 44 layerIndex click
+trigger SetLayerPrimitiveFieldWTrigger layer-{index}-field-{field}-w-{w} 44 layerIndex click
+trigger SetLayerTransformPXTrigger layer-{index}-placement-px-{px} 26 layerIndex click
+trigger SetLayerTransformPYTrigger layer-{index}-placement-py-{py} 26 layerIndex click
+trigger SetLayerTransformPZTrigger layer-{index}-placement-pz-{pz} 26 layerIndex click
+trigger SetLayerTransformRXTrigger layer-{index}-placement-rx-{rx} 26 layerIndex click
+trigger SetLayerTransformRYTrigger layer-{index}-placement-ry-{ry} 26 layerIndex click
+trigger SetLayerTransformRZTrigger layer-{index}-placement-rz-{rz} 26 layerIndex click
+trigger SetLayerTransformSXTrigger layer-{index}-placement-sx-{sx} 26 layerIndex click
+trigger SetLayerTransformSYTrigger layer-{index}-placement-sy-{sy} 26 layerIndex click
+trigger SetLayerTransformSZTrigger layer-{index}-placement-sz-{sz} 26 layerIndex click
 trigger ReopenSavedButtonTrigger reopen-button 27 - click
 trigger UndoButtonTrigger undo-button 1 - click
 trigger RedoButtonTrigger redo-button 2 - click

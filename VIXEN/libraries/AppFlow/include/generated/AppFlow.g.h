@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0x4F349EF3u;
+inline constexpr uint32_t kAppFlowShapeHash = 0xFCF45423u;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -67,6 +67,22 @@ namespace FlowElementTriggerId {
     inline constexpr const char* NudgeLayerFieldTrigger = "NudgeLayerFieldTrigger";
     inline constexpr const char* CreatePrimitiveLayerTrigger = "CreatePrimitiveLayerTrigger";
     inline constexpr const char* SetLayerOpTrigger = "SetLayerOpTrigger";
+    inline constexpr const char* SetParameterTypedTrigger = "SetParameterTypedTrigger";
+    inline constexpr const char* SetLayerBlendTypedTrigger = "SetLayerBlendTypedTrigger";
+    inline constexpr const char* RenameLayerTypedTrigger = "RenameLayerTypedTrigger";
+    inline constexpr const char* SetLayerPrimitiveFieldXTrigger = "SetLayerPrimitiveFieldXTrigger";
+    inline constexpr const char* SetLayerPrimitiveFieldYTrigger = "SetLayerPrimitiveFieldYTrigger";
+    inline constexpr const char* SetLayerPrimitiveFieldZTrigger = "SetLayerPrimitiveFieldZTrigger";
+    inline constexpr const char* SetLayerPrimitiveFieldWTrigger = "SetLayerPrimitiveFieldWTrigger";
+    inline constexpr const char* SetLayerTransformPXTrigger = "SetLayerTransformPXTrigger";
+    inline constexpr const char* SetLayerTransformPYTrigger = "SetLayerTransformPYTrigger";
+    inline constexpr const char* SetLayerTransformPZTrigger = "SetLayerTransformPZTrigger";
+    inline constexpr const char* SetLayerTransformRXTrigger = "SetLayerTransformRXTrigger";
+    inline constexpr const char* SetLayerTransformRYTrigger = "SetLayerTransformRYTrigger";
+    inline constexpr const char* SetLayerTransformRZTrigger = "SetLayerTransformRZTrigger";
+    inline constexpr const char* SetLayerTransformSXTrigger = "SetLayerTransformSXTrigger";
+    inline constexpr const char* SetLayerTransformSYTrigger = "SetLayerTransformSYTrigger";
+    inline constexpr const char* SetLayerTransformSZTrigger = "SetLayerTransformSZTrigger";
     inline constexpr const char* ReopenSavedButtonTrigger = "ReopenSavedButtonTrigger";
     inline constexpr const char* UndoButtonTrigger = "UndoButtonTrigger";
     inline constexpr const char* RedoButtonTrigger = "RedoButtonTrigger";
@@ -206,6 +222,22 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::NudgeLayerFieldTrigger, "layer-{index}-nudge-{field}", FlowActionId::NudgeLayerField, "layerIndex", "click" },
     { FlowElementTriggerId::CreatePrimitiveLayerTrigger, "primitive-{primitive}-add", FlowActionId::CreatePrimitiveLayer, "primitive", "click" },
     { FlowElementTriggerId::SetLayerOpTrigger, "layer-{index}-op-{op}", FlowActionId::SetLayerOp, "layerIndex", "click" },
+    { FlowElementTriggerId::SetParameterTypedTrigger, "parameter-{index}-set-{value}", FlowActionId::SetParameter, "parameterIndex", "click" },
+    { FlowElementTriggerId::SetLayerBlendTypedTrigger, "layer-{index}-blend-{radius}", FlowActionId::SetLayerBlend, "layerIndex", "click" },
+    { FlowElementTriggerId::RenameLayerTypedTrigger, "layer-{index}-name-{name}", FlowActionId::RenameLayer, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerPrimitiveFieldXTrigger, "layer-{index}-field-{field}-x-{x}", FlowActionId::SetLayerPrimitiveField, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerPrimitiveFieldYTrigger, "layer-{index}-field-{field}-y-{y}", FlowActionId::SetLayerPrimitiveField, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerPrimitiveFieldZTrigger, "layer-{index}-field-{field}-z-{z}", FlowActionId::SetLayerPrimitiveField, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerPrimitiveFieldWTrigger, "layer-{index}-field-{field}-w-{w}", FlowActionId::SetLayerPrimitiveField, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformPXTrigger, "layer-{index}-placement-px-{px}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformPYTrigger, "layer-{index}-placement-py-{py}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformPZTrigger, "layer-{index}-placement-pz-{pz}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformRXTrigger, "layer-{index}-placement-rx-{rx}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformRYTrigger, "layer-{index}-placement-ry-{ry}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformRZTrigger, "layer-{index}-placement-rz-{rz}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformSXTrigger, "layer-{index}-placement-sx-{sx}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformSYTrigger, "layer-{index}-placement-sy-{sy}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
+    { FlowElementTriggerId::SetLayerTransformSZTrigger, "layer-{index}-placement-sz-{sz}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
     { FlowElementTriggerId::ReopenSavedButtonTrigger, "reopen-button", FlowActionId::ReopenSaved, "", "click" },
     { FlowElementTriggerId::UndoButtonTrigger, "undo-button", FlowActionId::Undo, "", "click" },
     { FlowElementTriggerId::RedoButtonTrigger, "redo-button", FlowActionId::Redo, "", "click" },

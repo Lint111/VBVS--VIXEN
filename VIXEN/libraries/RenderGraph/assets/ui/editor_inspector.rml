@@ -5,19 +5,31 @@
 </head>
 <body>
     <!-- R766 "inspector" panel (right region): the open document's recipe parameters. Each row's +/- ids
-         are the AdjustParameterUp/Down selectors ("parameter-<index>-up"); pressing the value label starts a
-         horizontal drag-scrub (ScrubParameter, "parameter-<index>-value") and "reset" is ResetParameter. -->
+         are the AdjustParameterUp/Down selectors ("parameter-<index>-up"); the value is a text field
+         whose id is the SetParameter selector with a value slot ("parameter-<index>-set-{value}": Enter or leaving
+         the field commits the typed number); pressing the unit label starts a horizontal drag-scrub
+         (ScrubParameter, "parameter-<index>-value") and "reset" is ResetParameter. -->
     <div data-model="editor_layers" class="panel">
         <div class="subtitle">Recipe parameters</div>
         <div class="parameter-row" data-for="param : parameters">
             <span class="parameter-name">{{param.name}}</span>
-            <span class="parameter-value scrub" data-attr-id="'parameter-' + it_index + '-value'" hit-mask="none">{{param.value}} {{param.unit}}</span>
+            <input type="text" class="value-field" data-attr-id="param.setId" data-attr-value="param.value"/>
+            <span class="parameter-value scrub" data-attr-id="'parameter-' + it_index + '-value'" hit-mask="none">{{param.unit}} ⇔</span>
             <div class="button" data-attr-id="param.downId" hit-mask="none">−</div>
             <div class="button" data-attr-id="param.upId" hit-mask="none">+</div>
             <div class="button" data-attr-id="'parameter-' + it_index + '-reset'" hit-mask="none">reset</div>
             <div class="parameter-range">range {{param.minimum}}–{{param.maximum}}</div>
         </div>
         <div class="hint" data-if="parameters.size == 0">This document declares no parameters.</div>
+        <div class="subtitle">Layer {{selectedLayer}}</div>
+        <div class="parameter-row">
+            <span class="parameter-name">name</span>
+            <input type="text" class="name-field" data-attr-id="'layer-' + selectedLayer + '-name-{name}'" data-attr-value="selectedLayerName"/>
+        </div>
+        <div class="parameter-row" data-for="row : layers" data-if="row.isSelected">
+            <span class="parameter-name">blend radius</span>
+            <input type="text" class="value-field" data-attr-id="row.blendValueId" data-attr-value="row.blendRadius"/>
+        </div>
         <div class="subtitle">Shape of {{selectedLayerName}}<span data-if="selectedShape != ''"> ({{selectedShape}})</span></div>
         <div class="hint" data-if="selectedShape == ''">{{shapeNote}}</div>
         <!-- R872.1: the combine op of the selected layer; rows come from the generated layer-op table. -->
@@ -27,7 +39,7 @@
         </div>
         <div class="parameter-row" data-for="field : shape">
             <span class="parameter-name">{{field.label}}</span>
-            <span class="parameter-value">{{field.value}}</span>
+            <input type="text" class="value-field" data-attr-id="field.valueId" data-attr-value="field.value"/>
             <div class="button" data-attr-id="field.downId" hit-mask="none">−</div>
             <div class="button" data-attr-id="field.upId" hit-mask="none">+</div>
             <div class="parameter-range" data-if="field.hasRange">range {{field.minimum}}–{{field.maximum}}</div>
@@ -35,7 +47,7 @@
         <div class="subtitle">Placement of {{selectedLayerName}} (layer {{selectedLayer}})</div>
         <div class="parameter-row" data-for="field : transform">
             <span class="parameter-name">{{field.label}}</span>
-            <span class="parameter-value">{{field.value}}</span>
+            <input type="text" class="value-field" data-attr-id="field.valueId" data-attr-value="field.value"/>
             <div class="button" data-attr-id="field.downId" hit-mask="none">−</div>
             <div class="button" data-attr-id="field.upId" hit-mask="none">+</div>
         </div>

@@ -26,6 +26,8 @@ namespace Vixen.ViewSchemas
         public string blendDownId;
         public string selectId;
         public bool isSelected;
+        // sn-rmlinput1: the typed blend-radius field's id, "layer-<i>-blend-{radius}" (the value slot is filled on commit).
+        public string blendValueId;
     }
 
     // E3: one placement field (position/rotation/scale axis) of the selected layer, with its stepper ids.
@@ -34,6 +36,8 @@ namespace Vixen.ViewSchemas
         public float value;
         public string upId;
         public string downId;
+        // sn-rmlinput1: the typed field's id, "layer-<i>-placement-<key>-{<key>}".
+        public string valueId;
     }
 
     // R872.1: one catalogue primitive of the picker ("primitive-<name>-add" is its AppFlow selector).
@@ -61,6 +65,8 @@ namespace Vixen.ViewSchemas
         public float maximum;
         public string upId;
         public string downId;
+        // sn-rmlinput1: the typed field's id, "layer-<i>-field-<argument>-<component>-{<component>}".
+        public string valueId;
     }
 
     public struct EditorParameterRow {
@@ -71,6 +77,8 @@ namespace Vixen.ViewSchemas
         public float value;
         public float minimum;
         public float maximum;
+        // sn-rmlinput1: the typed field's id, "parameter-<i>-set-{value}".
+        public string setId;
     }
 
     // R765: one render-recipe document of the open pack, listed by content id. elementId is the row's
