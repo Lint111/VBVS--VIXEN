@@ -12,6 +12,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,12 @@ std::vector<std::uint8_t> ReadFile(const std::string& path) {
     file.seekg(0);
     if (!file.read(reinterpret_cast<char*>(bytes.data()), size)) return {};
     return bytes;
+}
+
+bool SameBytes(const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& a,
+               const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& b) {
+    return a.size() == b.size() &&
+           (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(a.front())) == 0);
 }
 
 struct ScopedDocumentFile {
@@ -352,6 +359,157 @@ TEST(EditorDocumentModelOperations, LayerInsertDeleteMoveAndProgramFieldEditPers
     EXPECT_EQ(reopened.LayerName(0u), "base");
     ASSERT_TRUE(reopened.GetLayerProgramField(0u, 0u, 3u, editedField, diagnostic)) << diagnostic.message;
     EXPECT_FLOAT_EQ(editedField, oldField + 0.5f);
+}
+
+// ---- Layer blend, name and placement (E3 catalogue-free half) -------------------------------
+
+TEST(EditorDocumentModelShape, BlendRadiusAndNameRoundTripAndInvalidValuesLeaveTheDocumentUntouched) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    const uint64_t revision = model.Revision();
+
+    ASSERT_TRUE(model.SetLayerBlendRadius(1u, 0.5f, diagnostic)) << diagnostic.message;
+    EXPECT_FLOAT_EQ(model.View().layers[1].header->blendRadius, 0.5f);
+    ASSERT_TRUE(model.SetLayerName(1u, "notch", diagnostic)) << diagnostic.message;
+    EXPECT_EQ(model.LayerName(1u), "notch");
+    const std::string longest(EditorDocumentModel::kMaximumLayerNameBytes, 'n');
+    ASSERT_TRUE(model.SetLayerName(0u, longest, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(model.LayerName(0u), longest);
+    const uint64_t accepted = model.Revision();
+    EXPECT_GT(accepted, revision);
+
+    EXPECT_FALSE(model.SetLayerBlendRadius(model.LayerCount(), 0.5f, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidLayerIndex);
+    EXPECT_FALSE(model.SetLayerBlendRadius(1u, -0.25f, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidBlendRadius);
+    EXPECT_FALSE(model.SetLayerBlendRadius(1u, std::numeric_limits<float>::quiet_NaN(), diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidBlendRadius);
+    EXPECT_FALSE(model.SetLayerName(model.LayerCount(), "x", diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidLayerIndex);
+    EXPECT_FALSE(model.SetLayerName(1u, std::string(32u, 'n'), diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidLayerName);
+    EXPECT_FALSE(model.SetLayerName(1u, "", diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidLayerName);
+    EXPECT_FALSE(model.SetLayerName(1u, std::string("a\0b", 3u), diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidLayerName);
+    EXPECT_EQ(model.Revision(), accepted);
+    EXPECT_FLOAT_EQ(model.View().layers[1].header->blendRadius, 0.5f);
+    EXPECT_EQ(model.LayerName(1u), "notch");
+
+    auto saved = MakeTempDocumentPath("shape-blend-name");
+    ASSERT_TRUE(model.Save(saved.path, diagnostic)) << diagnostic.message;
+    EditorDocumentModel reopened;
+    ASSERT_TRUE(reopened.Load(saved.path, diagnostic)) << diagnostic.message;
+    EXPECT_FLOAT_EQ(reopened.View().layers[1].header->blendRadius, 0.5f);
+    EXPECT_EQ(reopened.LayerName(1u), "notch");
+    EXPECT_EQ(reopened.LayerName(0u), longest);
+}
+
+TEST(EditorDocumentModelShape, TransformInsertsUpdatesAndRemovesTheWrapperAndFlattensToTheHandBuiltProgram) {
+    using Yeroket::Sdf::Generated::SdfInstruction;
+    using Vixen::SVO::Recipe::SdfOpCode;
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.SetEnabledMask(1u, diagnostic)) << diagnostic.message;
+
+    Vixen::Editor::EditableDocumentLayer original;
+    ASSERT_TRUE(model.GetLayer(0u, original, diagnostic)) << diagnostic.message;
+    Vixen::Editor::LayerTransform identity;
+    Vixen::Editor::LayerTransform placed;
+    ASSERT_TRUE(model.GetLayerTransform(0u, placed, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(placed.IsIdentity());
+
+    placed.position = {1.0f, 2.0f, 3.0f};
+    placed.scale = {2.0f, 2.0f, 2.0f};
+    ASSERT_TRUE(model.SetLayerTransform(0u, placed, diagnostic)) << diagnostic.message;
+
+    std::vector<SdfInstruction> expected;
+    SdfInstruction xform{};
+    xform.opCode = static_cast<uint8_t>(SdfOpCode::Transform);
+    xform.data[0] = 1.0f; xform.data[1] = 2.0f; xform.data[2] = 3.0f;
+    xform.data[7] = 1.0f;
+    xform.data[8] = 0.5f; xform.data[9] = 0.5f; xform.data[10] = 0.5f;
+    xform.data[11] = 2.0f;
+    SdfInstruction restore{};
+    restore.opCode = static_cast<uint8_t>(SdfOpCode::RestorePos);
+    expected.push_back(xform);
+    expected.insert(expected.end(), original.program.begin(), original.program.end());
+    expected.push_back(restore);
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    ASSERT_TRUE(model.FlattenToRecipeEntry(entry, diagnostic)) << diagnostic.message;
+    ASSERT_EQ(entry.bytecode.size(), expected.size());
+    EXPECT_EQ(std::memcmp(entry.bytecode.data(), expected.data(),
+                          expected.size() * sizeof(expected[0])), 0)
+        << "flattened transformed layer differs from the hand-built Transform..RestorePos program";
+
+    // Updating replaces the wrapper (no nesting) and the euler angles round-trip.
+    placed.position = {0.0f, -1.5f, 0.25f};
+    placed.rotationDegrees = {10.0f, -35.0f, 80.0f};
+    placed.scale = {1.5f, 1.0f, 0.75f};
+    ASSERT_TRUE(model.SetLayerTransform(0u, placed, diagnostic)) << diagnostic.message;
+    Vixen::Editor::EditableDocumentLayer updated;
+    ASSERT_TRUE(model.GetLayer(0u, updated, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(updated.program.size(), original.program.size() + 2u);
+    Vixen::Editor::LayerTransform read;
+    ASSERT_TRUE(model.GetLayerTransform(0u, read, diagnostic)) << diagnostic.message;
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_NEAR(read.position[i], placed.position[i], 1e-5f);
+        EXPECT_NEAR(read.rotationDegrees[i], placed.rotationDegrees[i], 1e-3f);
+        EXPECT_NEAR(read.scale[i], placed.scale[i], 1e-5f);
+    }
+
+    // A quarter turn about z: inverse rotation quaternion is (0, 0, -sin45, cos45).
+    Vixen::Editor::LayerTransform quarter;
+    quarter.rotationDegrees = {0.0f, 0.0f, 90.0f};
+    ASSERT_TRUE(model.SetLayerTransform(0u, quarter, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.GetLayer(0u, updated, diagnostic)) << diagnostic.message;
+    EXPECT_NEAR(updated.program.front().data[6], -0.70710678f, 1e-6f);
+    EXPECT_NEAR(updated.program.front().data[7], 0.70710678f, 1e-6f);
+
+    // Serialize -> Load keeps the placement, and the identity removes the wrapper again.
+    auto saved = MakeTempDocumentPath("shape-transform");
+    ASSERT_TRUE(model.Save(saved.path, diagnostic)) << diagnostic.message;
+    EditorDocumentModel reopened;
+    ASSERT_TRUE(reopened.Load(saved.path, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(reopened.GetLayerTransform(0u, read, diagnostic)) << diagnostic.message;
+    EXPECT_NEAR(read.rotationDegrees[2], 90.0f, 1e-3f);
+    ASSERT_TRUE(model.SetLayerTransform(0u, identity, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.GetLayer(0u, updated, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(SameBytes(updated.program, original.program));
+
+    // SetLayerProgram is the exact inverse of a placement edit.
+    ASSERT_TRUE(model.SetLayerTransform(0u, placed, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.SetLayerProgram(0u, original.program, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.GetLayer(0u, updated, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(SameBytes(updated.program, original.program));
+}
+
+TEST(EditorDocumentModelShape, InvalidTransformAndProgramAreRejectedWithoutChangingTheRevision) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    const uint64_t revision = model.Revision();
+    Vixen::Editor::LayerTransform bad;
+    EXPECT_FALSE(model.SetLayerTransform(model.LayerCount(), bad, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidLayerIndex);
+    bad.scale = {1.0f, 0.0f, 1.0f};
+    EXPECT_FALSE(model.SetLayerTransform(0u, bad, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidTransform);
+    bad.scale = {1.0f, -2.0f, 1.0f};
+    EXPECT_FALSE(model.SetLayerTransform(0u, bad, diagnostic));
+    bad.scale = {1.0f, 1.0f, 1.0f};
+    bad.position = {std::numeric_limits<float>::infinity(), 0.0f, 0.0f};
+    EXPECT_FALSE(model.SetLayerTransform(0u, bad, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidTransform);
+    std::vector<Yeroket::Sdf::Generated::SdfInstruction> program(1u);
+    program[0].data[0] = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(model.SetLayerProgram(0u, program, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidProgramField);
+    EXPECT_FALSE(model.SetLayerProgram(model.LayerCount(), program, diagnostic));
+    EXPECT_EQ(model.Revision(), revision);
 }
 
 TEST(EditorDocumentFraming, FramesThreeDifferentlyBoundedDocumentsAndParameterizedRecipe) {

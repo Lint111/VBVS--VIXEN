@@ -36,6 +36,79 @@ bool IsByteValue(float value) {
            std::floor(value) == value;
 }
 
+using Yeroket::Sdf::Generated::SdfInstruction;
+using Vixen::SVO::Recipe::SdfOpCode;
+
+constexpr float kDegreesToRadians = 0.017453292519943295f;
+constexpr float kRadiansToDegrees = 57.29577951308232f;
+
+bool PushesPosition(uint8_t opCode) {
+    switch (static_cast<SdfOpCode>(opCode)) {
+        case SdfOpCode::Transform:
+        case SdfOpCode::Twist:
+        case SdfOpCode::Bend:
+        case SdfOpCode::Elongate:
+        case SdfOpCode::MirrorX:
+        case SdfOpCode::MirrorY:
+        case SdfOpCode::MirrorZ:
+        case SdfOpCode::RepeatInfinite:
+        case SdfOpCode::RepeatLimited:
+        case SdfOpCode::Revolution:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// True when the program is exactly one Transform ... RestorePos pair around its whole body.
+bool HasTransformWrapper(const std::vector<SdfInstruction>& program) {
+    if (program.size() < 2u) return false;
+    if (program.front().opCode != static_cast<uint8_t>(SdfOpCode::Transform)) return false;
+    if (program.back().opCode != static_cast<uint8_t>(SdfOpCode::RestorePos)) return false;
+    int depth = 0;
+    for (size_t i = 0; i < program.size(); ++i) {
+        const uint8_t op = program[i].opCode;
+        if (PushesPosition(op)) {
+            ++depth;
+        } else if (op == static_cast<uint8_t>(SdfOpCode::RestorePos)) {
+            --depth;
+            if (depth == 0 && i + 1u != program.size()) return false;
+            if (depth < 0) return false;
+        }
+    }
+    return depth == 0;
+}
+
+bool AllFinite(const std::array<float, 3>& values) {
+    return std::isfinite(values[0]) && std::isfinite(values[1]) && std::isfinite(values[2]);
+}
+
+// Unit quaternion xyzw of R = Rz(z) * Ry(y) * Rx(x) (angles in radians).
+std::array<float, 4> QuaternionFromEuler(float x, float y, float z) {
+    const float cx = std::cos(x * 0.5f), sx = std::sin(x * 0.5f);
+    const float cy = std::cos(y * 0.5f), sy = std::sin(y * 0.5f);
+    const float cz = std::cos(z * 0.5f), sz = std::sin(z * 0.5f);
+    return {sx * cy * cz - cx * sy * sz,
+            cx * sy * cz + sx * cy * sz,
+            cx * cy * sz - sx * sy * cz,
+            cx * cy * cz + sx * sy * sz};
+}
+
+std::array<float, 3> EulerFromQuaternion(const std::array<float, 4>& q) {
+    const float x = q[0], y = q[1], z = q[2], w = q[3];
+    const float r20 = 2.0f * (x * z - y * w);
+    const float sinY = std::clamp(-r20, -1.0f, 1.0f);
+    float rx, rz;
+    if (std::fabs(sinY) > 0.999999f) {
+        rx = std::atan2(-2.0f * (y * z - x * w), 1.0f - 2.0f * (x * x + z * z));
+        rz = 0.0f;
+    } else {
+        rx = std::atan2(2.0f * (y * z + x * w), 1.0f - 2.0f * (x * x + y * y));
+        rz = std::atan2(2.0f * (x * y + z * w), 1.0f - 2.0f * (y * y + z * z));
+    }
+    return {rx, std::asin(sinY), rz};
+}
+
 }  // namespace
 
 uint32_t EditorDocumentModel::ValidMaskForLayerCount(uint32_t count) {
@@ -460,6 +533,168 @@ bool EditorDocumentModel::SetParameterValue(uint32_t index, float value,
     auto parameters = CopyParameters();
     parameters[index].value = value;
     return Rebuild(CopyLayers(), std::move(parameters), enabledMask_, diagnostic);
+}
+
+bool EditorDocumentModel::ValidateBlendRadius(float radius, DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (!std::isfinite(radius) || radius < 0.0f) {
+        diagnostic = {DocumentDiagnosticCode::InvalidBlendRadius,
+                      "layer blend radius must be finite and not negative"};
+        return false;
+    }
+    return true;
+}
+
+bool EditorDocumentModel::ValidateLayerName(const std::string& name,
+                                            DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (name.empty() || name.size() > kMaximumLayerNameBytes ||
+        name.find('\0') != std::string::npos) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerName,
+                      "layer name must be 1 to " + std::to_string(kMaximumLayerNameBytes) +
+                          " bytes without NUL (got " + std::to_string(name.size()) + " bytes)"};
+        return false;
+    }
+    return true;
+}
+
+bool EditorDocumentModel::ValidateLayerTransform(const LayerTransform& transform,
+                                                 DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (!AllFinite(transform.position) || !AllFinite(transform.rotationDegrees) ||
+        !AllFinite(transform.scale) || transform.scale[0] <= 0.0f ||
+        transform.scale[1] <= 0.0f || transform.scale[2] <= 0.0f) {
+        diagnostic = {DocumentDiagnosticCode::InvalidTransform,
+                      "layer transform values must be finite and the scale positive on every axis"};
+        return false;
+    }
+    return true;
+}
+
+bool EditorDocumentModel::SetLayerBlendRadius(uint32_t index, float radius,
+                                              DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+    if (!ValidateBlendRadius(radius, diagnostic)) return false;
+    if (radius == view_.layers[index].header->blendRadius) return true;
+    auto layers = CopyLayers();
+    layers[index].blendRadius = radius;
+    return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
+}
+
+bool EditorDocumentModel::SetLayerName(uint32_t index, const std::string& name,
+                                       DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+    if (!ValidateLayerName(name, diagnostic)) return false;
+    if (name == LayerName(index)) return true;
+    auto layers = CopyLayers();
+    layers[index].name = name;
+    return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
+}
+
+bool EditorDocumentModel::GetLayerTransform(uint32_t index, LayerTransform& out,
+                                            DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+    out = LayerTransform{};
+    const auto& layer = view_.layers[index];
+    const std::vector<SdfInstruction> program(layer.instructions,
+                                              layer.instructions + layer.header->instructionCount);
+    if (!HasTransformWrapper(program)) return true;
+    const SdfInstruction& xform = program.front();
+    out.position = {xform.data[0], xform.data[1], xform.data[2]};
+    const auto euler = EulerFromQuaternion(
+        {-xform.data[4], -xform.data[5], -xform.data[6], xform.data[7]});
+    out.rotationDegrees = {euler[0] * kRadiansToDegrees, euler[1] * kRadiansToDegrees,
+                           euler[2] * kRadiansToDegrees};
+    out.scale = {1.0f / xform.data[8], 1.0f / xform.data[9], 1.0f / xform.data[10]};
+    return true;
+}
+
+bool EditorDocumentModel::SetLayerTransform(uint32_t index, const LayerTransform& transform,
+                                            DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+    if (!ValidateLayerTransform(transform, diagnostic)) return false;
+
+    auto layers = CopyLayers();
+    auto& program = layers[index].program;
+    const bool wrapped = HasTransformWrapper(program);
+    if (wrapped && program.front().paramMask != 0u) {
+        diagnostic = {DocumentDiagnosticCode::InvalidTransform,
+                      "layer " + std::to_string(index) +
+                          " has a parameter-driven Transform; edit its parameters instead"};
+        return false;
+    }
+    if (wrapped) {
+        program.pop_back();
+        program.erase(program.begin());
+    }
+    if (!transform.IsIdentity()) {
+        SdfInstruction xform{};
+        xform.opCode = static_cast<uint8_t>(SdfOpCode::Transform);
+        xform.data[0] = transform.position[0];
+        xform.data[1] = transform.position[1];
+        xform.data[2] = transform.position[2];
+        const auto q = QuaternionFromEuler(transform.rotationDegrees[0] * kDegreesToRadians,
+                                           transform.rotationDegrees[1] * kDegreesToRadians,
+                                           transform.rotationDegrees[2] * kDegreesToRadians);
+        xform.data[4] = 0.0f - q[0];  // 0 - x keeps +0 for an identity rotation (never -0)
+        xform.data[5] = 0.0f - q[1];
+        xform.data[6] = 0.0f - q[2];
+        xform.data[7] = q[3];
+        xform.data[8] = 1.0f / transform.scale[0];
+        xform.data[9] = 1.0f / transform.scale[1];
+        xform.data[10] = 1.0f / transform.scale[2];
+        // A distance through a non-uniform scale is only bounded, never exact; the smallest axis
+        // scale keeps the bound conservative (exact for uniform scale).
+        xform.data[11] = std::min({transform.scale[0], transform.scale[1], transform.scale[2]});
+        SdfInstruction restore{};
+        restore.opCode = static_cast<uint8_t>(SdfOpCode::RestorePos);
+        program.insert(program.begin(), xform);
+        program.push_back(restore);
+    }
+    return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
+}
+
+bool EditorDocumentModel::SetLayerProgram(uint32_t index,
+                                          const std::vector<SdfInstruction>& program,
+                                          DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+    for (const auto& instruction : program) {
+        for (const float value : instruction.data) {
+            if (!std::isfinite(value)) {
+                diagnostic = {DocumentDiagnosticCode::InvalidProgramField,
+                              "program fields must be finite"};
+                return false;
+            }
+        }
+    }
+    auto layers = CopyLayers();
+    layers[index].program = program;
+    return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
 }
 
 std::string EditorDocumentModel::LayerName(uint32_t i) const {
