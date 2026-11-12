@@ -279,6 +279,15 @@ def main() -> int:
                     "chord": {"key": undo_chord["key"], "mods": undo_chord["mods"]}})
                 assert chorded["dispatchResult"]["name"] == "Ok", chorded
                 assert chorded["undoDepth"] == depth_before_chord - 1, chorded
+
+                # E15: the runtime publishes on the engine bus and the channel mirrors it.
+                navigated = mcp.tool("appflow.navigate", {"edge": "ToSettings"})
+                assert navigated["flowState"]["name"] == "Settings", navigated
+                returned = mcp.tool("appflow.dispatch", {"selector": "back-button"})
+                assert returned["dispatchResult"]["name"] == "Ok" and returned["flowState"]["name"] == "Editing", returned
+                edge_events = [event for event in mcp.tool("appflow.subscribe", {"after": 0})["events"]
+                               if event["type"] == "flow.edge"]
+                assert [event["detail"]["to"] for event in edge_events] == ["Settings", "Editing"], edge_events
                 region = mcp.tool("appflow.readback", {
                     "selection": {"type": "sceneInstance", "reference": {"type": "bodyInstance", "index": 0}},
                     "format": "raw",
