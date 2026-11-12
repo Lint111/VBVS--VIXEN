@@ -164,6 +164,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         // (round-5's gate-reaching tally, called later at :248) so the two
         // numbers aren't conflated.
         incrRtLoopEntries();
+        incrLeafInstrCandidate();
         if (rayQueryGetIntersectionTypeEXT(rq, false) != gl_RayQueryCandidateIntersectionAABBEXT) {
             continue;
         }

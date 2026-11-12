@@ -152,6 +152,16 @@ public:
      */
     void SetLookTargetNoOrbitForTest(glm::vec3 target) { hasLookTarget_ = true; lookTarget_ = target; }
 
+    // Contract renderer seam. Unlike the legacy test helpers this preserves the declared up
+    // vector and is intentionally named for a host-fed session camera.
+    void SetExternalCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up, float verticalFov) {
+        externalCameraActive_ = true;
+        externalEye_ = eye;
+        externalTarget_ = target;
+        externalUp_ = up;
+        fov = verticalFov;
+    }
+
     /**
      * @brief Read-only introspection of live camera pose state (Sampled Lighting Inc4 M5).
      * Added for live-gate debugging (confirming a scripted ForTest camera write actually
@@ -235,6 +245,10 @@ private:
     // exactly as before -- lookTarget_ itself is unused in that case.
     bool hasLookTarget_ = false;
     glm::vec3 lookTarget_{0.0f};
+    bool externalCameraActive_ = false;
+    glm::vec3 externalEye_{0.0f};
+    glm::vec3 externalTarget_{0.0f, 0.0f, -1.0f};
+    glm::vec3 externalUp_{0.0f, 1.0f, 0.0f};
 
     // Orbit distance bounds (keeps camera inside the 128^3 world). Shared by W/S zoom
     // (ApplyMovement) and wheel zoom (ExecuteImpl, M4) so both paths agree on one ceiling.

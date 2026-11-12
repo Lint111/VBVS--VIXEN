@@ -2727,6 +2727,14 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
     }
 }
 
+void VulkanGraphApplication::SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up,
+                                              float verticalFov) {
+    auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_));
+    if (camera) camera->SetExternalCamera(eye, target, up, verticalFov);
+    else if (mainLogger)
+        mainLogger->Warning("[VulkanGraphApplication::SetSessionCamera] camera node not found");
+}
+
 void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
     // Spec B I3/Task 6 (= main's I4.1 passthrough): forward the boot-baked recipe pool
     // (RecipeBootIngest -> BakeRegistryToPool) to BodyOctreeSceneNode, which then serves octree

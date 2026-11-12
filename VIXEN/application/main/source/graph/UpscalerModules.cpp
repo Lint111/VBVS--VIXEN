@@ -204,15 +204,14 @@ public:
     using Params = UpscalerModuleBuildContext;
 
     void Build(GraphScope& scope, const Params& params) {
-        if (!params.batch || !params.makeShaderFamily || !params.registerShaderFamily ||
-            !params.sourceTarget.IsValid() || !params.common.device.IsValid() ||
+        if (!params.batch || !params.sourceTarget.IsValid() ||
+            !params.common.device.IsValid() ||
             !params.common.presentationTarget.IsValid()) {
             throw std::runtime_error("FSR 3.1.4 module is missing graph build inputs");
         }
         ConnectionBatch& batch = *params.batch;
         const NodeHandle inputRead = scope.AddNode<ImageSyncGathererNodeType>("ffx_input_read");
         const NodeHandle outputTarget = scope.AddNode<RenderTargetNodeType>("ffx_output");
-        const NodeHandle shader = scope.AddNode<ShaderLibraryNodeType>("ffx_dispatch_shader");
         const NodeHandle stage = scope.AddNode<ComputeStageNodeType>("fsr3_temporal");
         scope.GetInstance<ImageSyncGathererNode>(inputRead)->PreRegisterImageSlots(4);
         scope.BindInputIndex(UpscalerModulePorts::SOURCE_TARGET, inputRead, 0);
@@ -243,18 +242,8 @@ public:
         output->SetParameter(RenderTargetNodeConfig::PARAM_FORMAT,
                              static_cast<uint32_t>(VK_FORMAT_R8G8B8A8_UNORM));
 
-        const auto shaderFamily = params.makeShaderFamily("Fsr1Easu.comp", "Fsr1Easu");
-        params.registerShaderFamily(shader, shaderFamily);
-        SdiProviderRegistry providers = params.sceneProviders;
-        providers.Provide("InputTexture", params.sourceTarget,
-                          RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-        providers.Provide("OutputTexture", outputTarget,
-                          RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-        const auto synthesized = SynthesizeComputeStage<ShaderInterface::Fsr1Easu::Metadata,
-                                                         ShaderInterface::Fsr1Easu::MEMBERS>(
-            &scope, batch, "fsr3_external_dispatch", shader, stage, params.common,
-            providers, {});
-        (void)synthesized;
+        // FidelityFX records its own dispatches: the stage is wired for engine inputs only.
+        WireExternalComputeStage(batch, params.common, stage);
 
         auto* compute = scope.GetInstance<ComputeStageNode>(stage);
         compute->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);

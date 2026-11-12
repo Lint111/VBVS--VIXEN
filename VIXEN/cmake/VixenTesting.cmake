@@ -121,7 +121,9 @@ function(vixen_gtest_discover_tests suite target)
     endif()
 
     # GoogleTest leaves every discovered case name in a TEST_LIST variable (default <target>_TESTS);
-    # the class stub reads it at CTest load time to label each case gpu or cpu.
+    # the class stub reads it at CTest load time to apply the generated class metadata. The suite and
+    # executable labels are the only discovery-time labels: CTest load context cannot read a TEST
+    # property's existing labels, and LABELS writes append there.
     set(_test_list_variable "${target}_TESTS")
     if(VGT_TEST_LIST)
         set(_test_list_variable "${VGT_TEST_LIST}")
@@ -137,8 +139,23 @@ function(vixen_gtest_discover_tests suite target)
     endif()
     vixen_test_class_environment_modification(_class_modification)
 
+    # Classify the declared executable at configure time. This target class is also emitted into the
+    # generated selection tables; the load-time hook uses those generated inputs when it has to apply
+    # a per-case manifest result.
+    get_target_property(_class_label ${target} VIXEN_TEST_CLASS)
+    if(NOT _class_label OR _class_label MATCHES "-NOTFOUND$")
+        get_target_property(_declared_gpu ${target} VIXEN_DECLARED_GPU)
+        if(_declared_gpu)
+            set(_class_label gpu)
+        else()
+            _vixen_classify_by_link(${target} _class_label _class_evidence)
+        endif()
+        set_property(TARGET ${target} PROPERTY VIXEN_TEST_CLASS "${_class_label}")
+    endif()
+
     # The exe: label names the registering executable so a changed target selects its own cases;
-    # ctest -L is an unanchored regex, so callers selecting cpu/gpu must anchor (^gpu$).
+    # ctest -L is an unanchored regex, so callers selecting cpu/gpu must anchor (^gpu$). The class
+    # label is deliberately applied by the generated load hook, not duplicated here.
     # GoogleTest re-expands the property list in a second script: escape the label separator.
     set(_labels "${suite};exe:${target}")
     string(REPLACE ";" "\\\\;" _labels "${_labels}")
@@ -260,11 +277,11 @@ function(vixen_gtest_discover_tests suite target)
     # Register after the policy include: the class hook owns the single CTest property write and
     # can append benchmark/on-demand/smoke labels to the class labels and environment it derives.
     if(VGT_GPU)
-        vixen_test_class_register(${target} "${_test_list_variable}" DECLARED_GPU)
+        vixen_test_class_register(${target} "${_test_list_variable}" "${suite}" DECLARED_GPU)
     elseif(VGT_GPU_TESTS)
-        vixen_test_class_register(${target} "${_test_list_variable}" DECLARED_GPU_PATTERNS ${VGT_GPU_TESTS})
+        vixen_test_class_register(${target} "${_test_list_variable}" "${suite}" DECLARED_GPU_PATTERNS ${VGT_GPU_TESTS})
     else()
-        vixen_test_class_register(${target} "${_test_list_variable}")
+        vixen_test_class_register(${target} "${_test_list_variable}" "${suite}")
     endif()
 endfunction()
 
@@ -294,6 +311,9 @@ function(vixen_set_suite_properties suite)
         list(APPEND _properties ENVIRONMENT "${_environment_value}")
     endif()
     if(VSP_GPU)
+        foreach(_test IN LISTS VSP_TESTS)
+            set_property(GLOBAL PROPERTY "VIXEN_TEST_DECLARED_GPU_${_test}" TRUE)
+        endforeach()
         list(APPEND _properties RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
         # Plain CTest commands do not pass through a target TEST_LAUNCHER. Translated Dzn is a
         # smoke device for discovered GoogleTest families, not a full native-capture witness, so
@@ -312,6 +332,9 @@ function(vixen_lock_gpu_tests)
         message(FATAL_ERROR "vixen_lock_gpu_tests requires TESTS")
     endif()
     vixen_gpu_resource_apply(${VLG_TESTS})
+    foreach(_test IN LISTS VLG_TESTS)
+        set_property(GLOBAL PROPERTY "VIXEN_TEST_DECLARED_GPU_${_test}" TRUE)
+    endforeach()
     # These tests are plain CTest commands and therefore cannot use the discovered-test launcher.
     # On translated Dzn, only one launcher-marked smoke case per GoogleTest family is meaningful;
     # direct application/capture witnesses remain enabled for native configurations.

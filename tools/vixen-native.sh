@@ -231,13 +231,20 @@ need_cmd_quiet() { cmd_exe="$(find_cmd)" || return 1; }
 # under the queue the chosen jobs * per_job is published as this holder's claim for the step's duration.
 derived_build_jobs=""
 resolve_build_jobs() {
-    local cpus mem per jobs other holders where="direct"
+    local cpus mem per jobs other holders manual where="direct"
     per="${VIXEN_BUILD_MB_PER_JOB:-$BUILD_MB_PER_JOB_DEFAULT}"
     [[ "$per" =~ ^[1-9][0-9]*$ ]] || die "VIXEN_BUILD_MB_PER_JOB='$per' is not a positive integer"
     # A value this function exported for an earlier step of the same command (provision, then build) is
     # not an override: each step reads the node again.
     if [[ -n "${VIXEN_MAX_BUILD_JOBS:-}" && "$VIXEN_MAX_BUILD_JOBS" != "$derived_build_jobs" ]]; then
         say "build jobs: $VIXEN_MAX_BUILD_JOBS (explicit VIXEN_MAX_BUILD_JOBS)"
+        return 0
+    fi
+    # A manual queue grant (--regrant) is the owner's choice of width: read from the grant file at the start of every step.
+    if manual="$(nw_manual_grant_cpus)"; then
+        export VIXEN_MAX_BUILD_JOBS="$manual"
+        derived_build_jobs="$manual"
+        say "build jobs: $manual (source=manual queue grant, re-read at this step; the node width rule is not applied)"
         return 0
     fi
     [[ -z "${UT_QUEUE_HOLDER_PID:-}" ]] || where="queue"
