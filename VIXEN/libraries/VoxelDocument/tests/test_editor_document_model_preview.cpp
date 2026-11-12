@@ -6,6 +6,7 @@
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/generated/RecipeSimd.g.hpp"
 #include "Recipe/RecipeBounds.h"
+#include "Recipe/SdfRecipeEval.h"
 
 #include <chrono>
 #include <cmath>
@@ -594,6 +595,176 @@ TEST(EditorDocumentFraming, FramesThreeDifferentlyBoundedDocumentsAndParameteriz
         parameterized, 3u, parameterValues);
     ASSERT_TRUE(parameterizedBounds.ok);
     EXPECT_GE(parameterizedBounds.radius, 1.75f);
+}
+
+// ---- R872.1 catalogue consumer -------------------------------------------------------------
+
+// Samples a flattened recipe on a coarse grid and reports whether it has a surface (both signs).
+bool HasSurface(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
+    float lowest = std::numeric_limits<float>::infinity();
+    float highest = -std::numeric_limits<float>::infinity();
+    for (int x = 0; x <= 20; ++x) for (int y = 0; y <= 20; ++y) for (int z = 0; z <= 20; ++z) {
+        const glm::vec3 p(-2.0f + 0.2f * x, -2.0f + 0.2f * y, -2.0f + 0.2f * z);
+        const float d = Vixen::SVO::Recipe::evalRecipe(entry.bytecode.data(),
+                                                       static_cast<uint32_t>(entry.bytecode.size()), p);
+        lowest = std::min(lowest, d);
+        highest = std::max(highest, d);
+    }
+    return lowest < 0.0f && highest > 0.0f;
+}
+
+TEST(EditorDocumentModelCatalogue, EveryCreatablePrimitiveMakesALayerThatSerializesLoadsFlattensAndHasASurface) {
+    using Vixen::SVO::Recipe::SdfOpCategory;
+    using Vixen::SVO::Recipe::SdfOpCode;
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    const uint32_t original = model.LayerCount();
+
+    size_t primitives = 0;
+    size_t refused = 0;
+    for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+        if (info.category != SdfOpCategory::Primitive) continue;
+        const auto opcode = static_cast<SdfOpCode>(info.opcode);
+        ++primitives;
+        std::string reason;
+        if (!EditorDocumentModel::CanMakePrimitive(opcode, &reason)) {
+            // Instance-typed primitives (no declared default for the instance reference) are refused by name.
+            EXPECT_NE(reason.find("declares no default"), std::string::npos) << info.name << ": " << reason;
+            ++refused;
+            continue;
+        }
+        Vixen::Editor::EditableDocumentLayer layer;
+        ASSERT_TRUE(EditorDocumentModel::MakePrimitiveLayer(opcode, info.name, layer, diagnostic))
+            << info.name << ": " << diagnostic.message;
+        ASSERT_EQ(layer.program.size(), 1u);
+        ASSERT_EQ(layer.program[0].opCode, info.opcode);
+        // Every InstructionData argument holds exactly its declared default.
+        const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(info);
+        for (uint32_t i = 0; i < info.argumentCount; ++i) {
+            if (arguments[i].source != Vixen::SVO::Recipe::SdfArgumentSource::InstructionData) continue;
+            for (uint32_t c = 0; c < arguments[i].width; ++c) {
+                EXPECT_EQ(layer.program[0].data[arguments[i].offset + c], arguments[i].defaultValue[c])
+                    << info.name << "." << arguments[i].name;
+            }
+        }
+        const uint32_t index = model.LayerCount();
+        ASSERT_TRUE(model.InsertLayer(index, layer, diagnostic)) << info.name << ": " << diagnostic.message;
+        ASSERT_TRUE(model.SetEnabledMask(1u << index, diagnostic)) << diagnostic.message;
+
+        // Serialize -> Load keeps the layer, and flatten + CPU evaluation finds a surface.
+        auto saved = MakeTempDocumentPath(std::string("catalogue-") + info.name);
+        ASSERT_TRUE(model.Save(saved.path, diagnostic)) << info.name << ": " << diagnostic.message;
+        EditorDocumentModel reopened;
+        ASSERT_TRUE(reopened.Load(saved.path, diagnostic)) << info.name << ": " << diagnostic.message;
+        Vixen::Editor::EditableDocumentLayer reloaded;
+        ASSERT_TRUE(reopened.GetLayer(index, reloaded, diagnostic)) << diagnostic.message;
+        EXPECT_TRUE(SameBytes(reloaded.program, layer.program)) << info.name;
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+        ASSERT_TRUE(reopened.FlattenToRecipeEntry(entry, diagnostic)) << info.name << ": " << diagnostic.message;
+        EXPECT_TRUE(HasSurface(entry)) << info.name << " at its declared defaults has no surface on [-2,2]^3";
+
+        ASSERT_TRUE(model.DeleteLayer(index, nullptr, diagnostic)) << diagnostic.message;
+        ASSERT_TRUE(model.SetEnabledMask(0xFFFFFFFFu & ((1u << original) - 1u), diagnostic)) << diagnostic.message;
+    }
+    EXPECT_EQ(primitives, 24u);
+    EXPECT_EQ(refused, 2u) << "GlyphOutline and PathDistance take typed instance references";
+    EXPECT_EQ(model.LayerCount(), original);
+
+    // A non-Primitive opcode is refused.
+    Vixen::Editor::EditableDocumentLayer none;
+    EXPECT_FALSE(EditorDocumentModel::MakePrimitiveLayer(SdfOpCode::Union, "x", none, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidPrimitive);
+    EXPECT_FALSE(EditorDocumentModel::MakePrimitiveLayer(SdfOpCode::GlyphOutline, "x", none, diagnostic));
+    EXPECT_NE(diagnostic.message.find("glyph"), std::string::npos) << diagnostic.message;
+}
+
+TEST(EditorDocumentModelCatalogue, SetLayerOpCoversTheLayerOpTableAndRefusesUnknownValues) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    for (const auto& entry : Vixen::SVO::Recipe::SdfLayerOpTable) {
+        ASSERT_TRUE(model.SetLayerOp(1u, entry.layerOp, diagnostic)) << entry.name << ": " << diagnostic.message;
+        EXPECT_EQ(model.View().layers[1].header->op, entry.layerOp);
+        EXPECT_STREQ(EditorDocumentModel::OpName(entry.layerOp), entry.name);
+        auto saved = MakeTempDocumentPath(std::string("layerop-") + entry.name);
+        ASSERT_TRUE(model.Save(saved.path, diagnostic)) << diagnostic.message;
+        EditorDocumentModel reopened;
+        ASSERT_TRUE(reopened.Load(saved.path, diagnostic)) << diagnostic.message;
+        EXPECT_EQ(reopened.View().layers[1].header->op, entry.layerOp);
+    }
+    const uint64_t revision = model.Revision();
+    EXPECT_FALSE(model.SetLayerOp(1u, 9u, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidLayerOp);
+    EXPECT_FALSE(model.SetLayerOp(99u, 0u, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidLayerIndex);
+    EXPECT_EQ(model.Revision(), revision);
+    EXPECT_STREQ(EditorDocumentModel::OpName(9u), "unknown");
+}
+
+TEST(EditorDocumentModelCatalogue, PrimitiveFieldsRoundTripAreRangeCheckedAndNonEditableLayersReportIt) {
+    using Vixen::SVO::Recipe::SdfOpCode;
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+
+    Vixen::Editor::EditableDocumentLayer box;
+    ASSERT_TRUE(EditorDocumentModel::MakePrimitiveLayer(SdfOpCode::Box, "boxed", box, diagnostic)) << diagnostic.message;
+    const uint32_t index = model.LayerCount();
+    ASSERT_TRUE(model.InsertLayer(index, box, diagnostic)) << diagnostic.message;
+
+    std::vector<Vixen::Editor::PrimitiveFieldInfo> fields;
+    ASSERT_TRUE(model.GetLayerPrimitiveFields(index, fields, diagnostic)) << diagnostic.message;
+    ASSERT_EQ(fields.size(), 1u);
+    EXPECT_STREQ(fields[0].name, "b");
+    EXPECT_EQ(fields[0].width, 3u);
+    EXPECT_TRUE(fields[0].hasRange);
+    EXPECT_FLOAT_EQ(fields[0].value[0], 0.5f);
+
+    // Set -> get round trip, then Serialize -> Load keeps it.
+    ASSERT_TRUE(model.SetLayerPrimitiveField(index, "b", {1.0f, 2.0f, 3.0f, 9.0f}, diagnostic)) << diagnostic.message;
+    std::array<float, 4> read{};
+    ASSERT_TRUE(model.GetLayerPrimitiveField(index, "b", read, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(read[0], 1.0f); EXPECT_EQ(read[1], 2.0f); EXPECT_EQ(read[2], 3.0f);
+    Vixen::Editor::EditableDocumentLayer stored;
+    ASSERT_TRUE(model.GetLayer(index, stored, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(stored.program[0].data[3], 0.0f) << "components beyond the argument width are ignored";
+    auto saved = MakeTempDocumentPath("primitive-field");
+    ASSERT_TRUE(model.Save(saved.path, diagnostic)) << diagnostic.message;
+    EditorDocumentModel reopened;
+    ASSERT_TRUE(reopened.Load(saved.path, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(reopened.GetLayerPrimitiveField(index, "b", read, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(read[2], 3.0f);
+
+    // A placement wrapper keeps the layer editable (the primitive sits between Transform and RestorePos).
+    Vixen::Editor::LayerTransform placed;
+    placed.position = {1.0f, 0.0f, 0.0f};
+    ASSERT_TRUE(model.SetLayerTransform(index, placed, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.SetLayerPrimitiveField(index, "b", {0.25f, 0.25f, 0.25f, 0.0f}, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.GetLayerTransform(index, placed, diagnostic)) << diagnostic.message;
+    EXPECT_FLOAT_EQ(placed.position[0], 1.0f);
+
+    // Range refusal (the declared range of b is non-negative), non-finite refusal, unknown field: the
+    // document and its revision stay untouched.
+    const uint64_t revision = model.Revision();
+    EXPECT_FALSE(model.SetLayerPrimitiveField(index, "b", {-1.0f, 1.0f, 1.0f, 0.0f}, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidPrimitiveField);
+    EXPECT_NE(diagnostic.message.find("declared range"), std::string::npos) << diagnostic.message;
+    EXPECT_FALSE(model.SetLayerPrimitiveField(index, "b", {std::numeric_limits<float>::quiet_NaN(), 1.0f, 1.0f, 0.0f}, diagnostic));
+    EXPECT_FALSE(model.SetLayerPrimitiveField(index, "nope", {1.0f, 1.0f, 1.0f, 0.0f}, diagnostic));
+    EXPECT_EQ(model.Revision(), revision);
+
+    // A program that is not Transform + one primitive (+RestorePos) reports its fields as not editable.
+    std::vector<Yeroket::Sdf::Generated::SdfInstruction> two = box.program;
+    two.push_back(box.program[0]);
+    Yeroket::Sdf::Generated::SdfInstruction combine{};
+    combine.opCode = static_cast<uint8_t>(SdfOpCode::Union);
+    two.push_back(combine);
+    ASSERT_TRUE(model.SetLayerProgram(index, two, diagnostic)) << diagnostic.message;
+    EXPECT_FALSE(model.GetLayerPrimitiveFields(index, fields, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::FieldNotEditable);
+    EXPECT_FALSE(model.SetLayerPrimitiveField(index, "b", {1.0f, 1.0f, 1.0f, 0.0f}, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::FieldNotEditable);
 }
 
 }  // namespace

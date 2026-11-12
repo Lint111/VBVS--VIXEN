@@ -30,6 +30,11 @@ enum class DocumentDiagnosticCode : uint8_t {
     StaleBakeSnapshot,
     FlattenError,
     WriteError,
+    // Catalogue-driven shape edits (appended: ids are stable).
+    InvalidPrimitive,
+    InvalidLayerOp,
+    FieldNotEditable,
+    InvalidPrimitiveField,
 };
 
 struct DocumentDiagnostic {
@@ -65,6 +70,19 @@ struct LayerTransform {
                rotationDegrees == std::array<float, 3>{0.0f, 0.0f, 0.0f} &&
                scale == std::array<float, 3>{1.0f, 1.0f, 1.0f};
     }
+};
+
+// One editable component group of a layer's primitive: an InstructionData argument of the
+// generated catalogue (name, width in floats, declared range), with its current value. `name` and
+// `type` point into the generated argument table.
+struct PrimitiveFieldInfo {
+    const char* name = "";
+    const char* type = "";
+    uint32_t width = 0;
+    bool hasRange = false;
+    float minimum = 0.0f;
+    float maximum = 0.0f;
+    std::array<float, 4> value{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 struct DocumentBakeSnapshot {
@@ -138,6 +156,38 @@ public:
     bool SetLayerProgram(uint32_t index,
                          const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& program,
                          DocumentDiagnostic& diagnostic);
+
+    // Catalogue-driven shape editing (R872.1). A layer is "shape-editable" only when its program is
+    // [Transform] + exactly one Primitive-category instruction + [RestorePos]; any other program
+    // reports its fields as not editable and refuses writes (no guessing).
+    // MakePrimitiveLayer builds one layer holding one instruction of `primitive` with every
+    // InstructionData argument at its declared default; it refuses a non-Primitive opcode and a
+    // primitive with an argument that declares no default (the diagnostic names it).
+    static bool MakePrimitiveLayer(Vixen::SVO::Recipe::SdfOpCode primitive, const std::string& name,
+                                   EditableDocumentLayer& out, DocumentDiagnostic& diagnostic);
+    // True when MakePrimitiveLayer can build `primitive` (the picker lists exactly these); on false
+    // `reason` receives the diagnostic naming the blocking argument.
+    static bool CanMakePrimitive(Vixen::SVO::Recipe::SdfOpCode primitive, std::string* reason = nullptr);
+    // Sets the layer's combine op (a value of the generated SdfLayerOpTable).
+    bool SetLayerOp(uint32_t index, uint8_t layerOp, DocumentDiagnostic& diagnostic);
+    // The primitive opcode of an editable layer; false (with FieldNotEditable) otherwise.
+    bool GetLayerPrimitive(uint32_t index, Vixen::SVO::Recipe::SdfOpCode& out,
+                           DocumentDiagnostic& diagnostic) const;
+    // The editable fields of the layer's primitive in argument-table order; empty with a
+    // FieldNotEditable diagnostic when the layer is not shape-editable.
+    bool GetLayerPrimitiveFields(uint32_t index, std::vector<PrimitiveFieldInfo>& out,
+                                 DocumentDiagnostic& diagnostic) const;
+    bool GetLayerPrimitiveField(uint32_t index, const std::string& argumentName,
+                                std::array<float, 4>& out, DocumentDiagnostic& diagnostic) const;
+    // The value rule of SetLayerPrimitiveField (finite, inside the declared range), public so a
+    // caller can refuse before it records an edit.
+    static bool ValidatePrimitiveField(const PrimitiveFieldInfo& field, const std::array<float, 4>& value,
+                                       DocumentDiagnostic& diagnostic);
+    // Writes the first `width` components of `value` (the rest are ignored). A value outside the
+    // declared range, a non-finite value, an unknown argument or a non-editable layer is refused
+    // and leaves the document and its revision untouched.
+    bool SetLayerPrimitiveField(uint32_t index, const std::string& argumentName,
+                                const std::array<float, 4>& value, DocumentDiagnostic& diagnostic);
 
     std::string LayerName(uint32_t i) const;
     static const char* OpName(uint8_t op);

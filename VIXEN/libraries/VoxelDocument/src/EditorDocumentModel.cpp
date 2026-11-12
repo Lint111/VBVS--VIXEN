@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <utility>
 
 #include "Recipe/generated/RecipeContainer.g.h"
@@ -109,7 +110,216 @@ std::array<float, 3> EulerFromQuaternion(const std::array<float, 4>& q) {
     return {rx, std::asin(sinY), rz};
 }
 
+// The index of the one primitive instruction of a shape-editable program, or nullopt.
+// Shape-editable = [Transform] + exactly one Primitive-category instruction + [RestorePos].
+std::optional<size_t> FindPrimitiveInstruction(const std::vector<SdfInstruction>& program) {
+    size_t first = 0;
+    size_t last = program.size();
+    if (HasTransformWrapper(program)) {
+        first = 1;
+        last = program.size() - 1u;
+    }
+    if (last != first + 1u) return std::nullopt;
+    const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(static_cast<SdfOpCode>(program[first].opCode));
+    if (info == nullptr || info->category != Vixen::SVO::Recipe::SdfOpCategory::Primitive) {
+        return std::nullopt;
+    }
+    return first;
+}
+
+// The InstructionData arguments of an opcode (the editable fields), in table order.
+std::vector<const Vixen::SVO::Recipe::SdfOpArgument*> EditableArguments(SdfOpCode opcode) {
+    std::vector<const Vixen::SVO::Recipe::SdfOpArgument*> out;
+    const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(opcode);
+    if (info == nullptr) return out;
+    const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(*info);
+    for (uint32_t i = 0; i < info->argumentCount; ++i) {
+        if (arguments[i].source == Vixen::SVO::Recipe::SdfArgumentSource::InstructionData) {
+            out.push_back(&arguments[i]);
+        }
+    }
+    return out;
+}
+
+DocumentDiagnostic NotEditable(uint32_t index) {
+    return {DocumentDiagnosticCode::FieldNotEditable,
+            "layer " + std::to_string(index) +
+                " is not a Transform + one primitive (+RestorePos) program; its shape fields are not editable"};
+}
+
 }  // namespace
+
+bool EditorDocumentModel::MakePrimitiveLayer(SdfOpCode primitive, const std::string& name,
+                                             EditableDocumentLayer& out,
+                                             DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(primitive);
+    if (info == nullptr || info->category != Vixen::SVO::Recipe::SdfOpCategory::Primitive) {
+        diagnostic = {DocumentDiagnosticCode::InvalidPrimitive,
+                      "opcode " + std::to_string(static_cast<unsigned>(primitive)) +
+                          " is not a Primitive in the recipe op catalogue"};
+        return false;
+    }
+    SdfInstruction instruction{};
+    instruction.opCode = static_cast<uint8_t>(primitive);
+    const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(*info);
+    for (uint32_t i = 0; i < info->argumentCount; ++i) {
+        const auto& argument = arguments[i];
+        // Position and value-stack arguments are the evaluator's inputs, not user fields.
+        if (argument.source == Vixen::SVO::Recipe::SdfArgumentSource::Position ||
+            argument.source == Vixen::SVO::Recipe::SdfArgumentSource::ValueStack) {
+            continue;
+        }
+        if (!argument.hasDefault) {
+            diagnostic = {DocumentDiagnosticCode::InvalidPrimitive,
+                          std::string("primitive ") + info->name + " argument '" + argument.name +
+                              "' declares no default; the catalogue cannot build it"};
+            return false;
+        }
+        for (uint32_t c = 0; c < argument.width; ++c) {
+            instruction.data[argument.offset + c] = argument.defaultValue[c];
+        }
+    }
+    if (!ValidateLayerName(name, diagnostic)) return false;
+    out = EditableDocumentLayer{};
+    out.name = name;
+    out.program.push_back(instruction);
+    return true;
+}
+
+bool EditorDocumentModel::CanMakePrimitive(SdfOpCode primitive, std::string* reason) {
+    EditableDocumentLayer scratch;
+    DocumentDiagnostic diagnostic;
+    const bool ok = MakePrimitiveLayer(primitive, "probe", scratch, diagnostic);
+    if (!ok && reason != nullptr) *reason = diagnostic.message;
+    return ok;
+}
+
+bool EditorDocumentModel::SetLayerOp(uint32_t index, uint8_t layerOp, DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+    if (Vixen::SVO::Recipe::FindSdfLayerOp(layerOp) == nullptr) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerOp,
+                      "layer op " + std::to_string(layerOp) + " is not in the layer-op table"};
+        return false;
+    }
+    if (view_.layers[index].header->op == layerOp) return true;
+    auto layers = CopyLayers();
+    layers[index].op = layerOp;
+    return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
+}
+
+bool EditorDocumentModel::GetLayerPrimitive(uint32_t index, SdfOpCode& out,
+                                            DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+    const auto& layer = view_.layers[index];
+    const std::vector<SdfInstruction> program(layer.instructions,
+                                              layer.instructions + layer.header->instructionCount);
+    const auto at = FindPrimitiveInstruction(program);
+    if (!at) {
+        diagnostic = NotEditable(index);
+        return false;
+    }
+    out = static_cast<SdfOpCode>(program[*at].opCode);
+    return true;
+}
+
+bool EditorDocumentModel::GetLayerPrimitiveFields(uint32_t index, std::vector<PrimitiveFieldInfo>& out,
+                                                  DocumentDiagnostic& diagnostic) const {
+    out.clear();
+    SdfOpCode primitive{};
+    if (!GetLayerPrimitive(index, primitive, diagnostic)) return false;
+    const auto& layer = view_.layers[index];
+    const std::vector<SdfInstruction> program(layer.instructions,
+                                              layer.instructions + layer.header->instructionCount);
+    const SdfInstruction& instruction = program[*FindPrimitiveInstruction(program)];
+    for (const auto* argument : EditableArguments(primitive)) {
+        PrimitiveFieldInfo field;
+        field.name = argument->name;
+        field.type = argument->type;
+        field.width = argument->width;
+        field.hasRange = argument->hasRange != 0u;
+        field.minimum = argument->minValue;
+        field.maximum = argument->maxValue;
+        for (uint32_t c = 0; c < argument->width && c < 4u; ++c) {
+            field.value[c] = instruction.data[argument->offset + c];
+        }
+        out.push_back(field);
+    }
+    return true;
+}
+
+bool EditorDocumentModel::GetLayerPrimitiveField(uint32_t index, const std::string& argumentName,
+                                                 std::array<float, 4>& out,
+                                                 DocumentDiagnostic& diagnostic) const {
+    std::vector<PrimitiveFieldInfo> fields;
+    if (!GetLayerPrimitiveFields(index, fields, diagnostic)) return false;
+    for (const auto& field : fields) {
+        if (argumentName == field.name) {
+            out = field.value;
+            return true;
+        }
+    }
+    diagnostic = {DocumentDiagnosticCode::InvalidPrimitiveField,
+                  "layer " + std::to_string(index) + " primitive has no editable field '" + argumentName + "'"};
+    return false;
+}
+
+bool EditorDocumentModel::ValidatePrimitiveField(const PrimitiveFieldInfo& field,
+                                                 const std::array<float, 4>& value,
+                                                 DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    for (uint32_t c = 0; c < field.width && c < 4u; ++c) {
+        if (!std::isfinite(value[c])) {
+            diagnostic = {DocumentDiagnosticCode::InvalidPrimitiveField,
+                          std::string("field '") + field.name + "' must be finite"};
+            return false;
+        }
+        if (field.hasRange && (value[c] < field.minimum || value[c] > field.maximum)) {
+            diagnostic = {DocumentDiagnosticCode::InvalidPrimitiveField,
+                          std::string("field '") + field.name + "' component " + std::to_string(c) + " = " +
+                              std::to_string(value[c]) + " is outside the declared range [" +
+                              std::to_string(field.minimum) + ", " + std::to_string(field.maximum) + "]"};
+            return false;
+        }
+    }
+    return true;
+}
+
+bool EditorDocumentModel::SetLayerPrimitiveField(uint32_t index, const std::string& argumentName,
+                                                 const std::array<float, 4>& value,
+                                                 DocumentDiagnostic& diagnostic) {
+    std::vector<PrimitiveFieldInfo> fields;
+    if (!GetLayerPrimitiveFields(index, fields, diagnostic)) return false;
+    const PrimitiveFieldInfo* field = nullptr;
+    for (const auto& candidate : fields) {
+        if (argumentName == candidate.name) field = &candidate;
+    }
+    if (field == nullptr) {
+        diagnostic = {DocumentDiagnosticCode::InvalidPrimitiveField,
+                      "layer " + std::to_string(index) + " primitive has no editable field '" + argumentName + "'"};
+        return false;
+    }
+    if (!ValidatePrimitiveField(*field, value, diagnostic)) return false;
+    auto layers = CopyLayers();
+    auto& program = layers[index].program;
+    SdfInstruction& instruction = program[*FindPrimitiveInstruction(program)];
+    // Locate the argument's data offset again through the table (PrimitiveFieldInfo carries no offset).
+    for (const auto* argument : EditableArguments(static_cast<SdfOpCode>(instruction.opCode))) {
+        if (argumentName != argument->name) continue;
+        for (uint32_t c = 0; c < argument->width; ++c) instruction.data[argument->offset + c] = value[c];
+    }
+    return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
+}
 
 uint32_t EditorDocumentModel::ValidMaskForLayerCount(uint32_t count) {
     if (count == 0u) return 0u;
@@ -709,13 +919,8 @@ std::string EditorDocumentModel::LayerName(uint32_t i) const {
 }
 
 const char* EditorDocumentModel::OpName(uint8_t op) {
-    switch (op) {
-        case 0: return "union";
-        case 1: return "smooth_union";
-        case 2: return "subtract";
-        case 3: return "intersect";
-        default: return "unknown";
-    }
+    const auto* entry = Vixen::SVO::Recipe::FindSdfLayerOp(op);
+    return entry != nullptr ? entry->name : "unknown";
 }
 
 bool EditorDocumentModel::Flatten(std::vector<uint8_t>& outVrc1Blob,
