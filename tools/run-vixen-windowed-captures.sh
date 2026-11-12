@@ -12,6 +12,7 @@ editor_runtime_dir="$(cd -- "$3" && pwd -P)"
 editor_name="$4"
 mkdir -p -- "$5"
 capture_root="$(cd -- "$5" && pwd -P)"
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 hud_dir="$capture_root/hud"
 editor_dir="$capture_root/editor"
 mkdir -p "$hud_dir" "$editor_dir"
@@ -152,12 +153,19 @@ run_capture() {
     local working_dir="$3"
     local log_path="$4"
     shift 4
+    # Remaining arguments are VAR=value assignments; after a "--" they are the command to run instead
+    # of the bare executable (the editor leg runs its channel-driving capture producer this way).
+    local env_args=() command=("$executable")
+    while (($#)); do
+        if [[ "$1" == "--" ]]; then shift; command=("$@"); break; fi
+        env_args+=("$1"); shift
+    done
 
     # The app log goes to a file, so the queue's idle watchdog would see a silent payload for up to
     # the 300 s bound. Run the capture in its own process group (setsid) so a killed wrapper can
     # take the whole group down instead of orphaning it, and print a heartbeat while it runs.
     local capture_pid heartbeat_pid rc=0 started=$SECONDS
-    (cd -- "$working_dir" && exec setsid timeout -k 10s 300s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "$@" "$executable") >"$log_path" 2>&1 &
+    (cd -- "$working_dir" && exec setsid timeout -k 10s 300s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "${env_args[@]}" "${command[@]}") >"$log_path" 2>&1 &
     capture_pid=$!
     (while sleep 30; do
         echo "[heartbeat] $name capture running $((SECONDS - started))s, log $(stat -c %s -- "$log_path" 2>/dev/null || echo 0) bytes"
@@ -192,12 +200,15 @@ run_capture "HUD" "$vixen" "$vixen_runtime_dir" "$capture_root/hud.log" \
     "VIXEN_HUD_CAPTURE_DIR=$hud_dir" \
     "VIXEN_EXIT_AFTER_FRAMES=85"
 
+# The editor is driven through its AppFlow channel by the capture producer (R468.4); it saves, so it
+# edits a copy of the sample document rather than the tracked asset.
+editor_document="$editor_dir/sample_tri_layer.vxd"
+cp -- "$repo_root/VIXEN/BuiltAssets/documents/sample_tri_layer.vxd" "$editor_document"
 run_capture "editor" "$editor" "$editor_runtime_dir" "$capture_root/editor.log" \
-    "VIXEN_EDITOR_SCRIPT=toggle:2@30,undo@60,redo@90,settings@100,back@110" \
-    "VIXEN_EDITOR_CAPTURE_FRAMES=5,45,75,105" \
     "VIXEN_EDITOR_CAPTURE_DIR=$editor_dir" \
     "VIXEN_EDITOR_TEST_CAMERA=top-down" \
-    "VIXEN_EXIT_AFTER_FRAMES=120"
+    -- python3 "$repo_root/VIXEN/tools/editor_capture_producer.py" --editor "$editor" \
+    --document "$editor_document" --capture-dir "$editor_dir"
 
 for image in \
     "$hud_dir/hud_capture_5.png" \
