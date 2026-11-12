@@ -96,6 +96,11 @@ int RmlModifiersFromGlfw(int mods) {
     return out;
 }
 
+bool HasValueSlot(const std::string& elementId) {
+    const size_t open = elementId.rfind('{');
+    return open != std::string::npos && elementId.find('}', open) != std::string::npos;
+}
+
 std::string SelectorFromCommittedId(const std::string& elementId, const std::string& text) {
     const size_t open = elementId.rfind('{');
     const size_t close = open == std::string::npos ? std::string::npos : elementId.find('}', open);

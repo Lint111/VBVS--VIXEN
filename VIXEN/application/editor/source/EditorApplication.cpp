@@ -1730,7 +1730,9 @@ void EditorApplication::Update() {
     // selector with no binding (a non-editor UI hit) resolves to RejectedByState and is ignored.
     if (auto* selection = GetUiSelectionProviderNode()) {
         const std::string clickedId = selection->DrainClickedElementId();
-        if (!clickedId.empty()) {
+        // A text control's id is a selector pattern with a value slot, not a selector: clicking it focuses it
+        // (the Rml context took the press); nothing dispatches until a value is committed.
+        if (!clickedId.empty() && !Vixen::RenderGraph::HasValueSlot(clickedId)) {
             TraceEditorLatency("dispatch", "begin", updateTick_);
             rt_.DispatchBySelector(clickedId);
             TraceEditorLatency("dispatch", "end", updateTick_);

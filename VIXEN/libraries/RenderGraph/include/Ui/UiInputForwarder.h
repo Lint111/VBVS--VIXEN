@@ -29,6 +29,11 @@ Rml::Input::KeyIdentifier RmlKeyFromGlfw(int glfwKey);
 /// GLFW modifier bitmask -> RmlUi KeyModifier mask.
 int RmlModifiersFromGlfw(int glfwMods);
 
+/// True when `elementId` ends in a value slot ("parameter-0-set-{value}"): the id is a pattern for a typed
+/// value, not a selector, so a click on the control must not be dispatched as one (the host skips it; the
+/// control takes focus instead).
+bool HasValueSlot(const std::string& elementId);
+
 /// The selector a committed text control dispatches: `elementId` with its last `{...}` slot replaced
 /// by `text`. An id with no slot is returned unchanged (nothing to fill).
 std::string SelectorFromCommittedId(const std::string& elementId, const std::string& text);

@@ -169,7 +169,7 @@ body {
 /* Typed value fields (the id is an AppFlow selector with a value slot; see UiInputForwarder.h). */
 input.value-field, input.name-field {
     display: inline-block;
-    width: 68px;
+    width: 58px;
     height: 18px;
     padding: 1px 4px;
     color: #e8f0ff;

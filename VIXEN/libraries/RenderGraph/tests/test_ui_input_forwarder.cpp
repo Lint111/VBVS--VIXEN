@@ -130,6 +130,14 @@ TEST(UiInputForwarderPure, SelectorFillsTheLastValueSlot) {
     EXPECT_EQ(SelectorFromCommittedId("no-slot-here", "1"), "no-slot-here");
 }
 
+TEST(UiInputForwarderPure, AnIdWithAValueSlotIsAPatternNotAClickableSelector) {
+    EXPECT_TRUE(HasValueSlot("parameter-0-set-{value}"));
+    EXPECT_TRUE(HasValueSlot("layer-2-name-{name}"));
+    EXPECT_FALSE(HasValueSlot("layer-2-toggle"));
+    EXPECT_FALSE(HasValueSlot("save-button"));
+    EXPECT_FALSE(HasValueSlot(""));
+}
+
 TEST(UiInputForwarderPure, GlfwKeysAndModifiersMapToRml) {
     EXPECT_EQ(RmlKeyFromGlfw(GLFW_KEY_A), Rml::Input::KI_A);
     EXPECT_EQ(RmlKeyFromGlfw(GLFW_KEY_Z), Rml::Input::KI_Z);

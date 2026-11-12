@@ -14,7 +14,7 @@
         <div class="parameter-row" data-for="param : parameters">
             <span class="parameter-name">{{param.name}}</span>
             <input type="text" class="value-field" data-attr-id="param.setId" data-attr-value="param.value"/>
-            <span class="parameter-value scrub" data-attr-id="'parameter-' + it_index + '-value'" hit-mask="none">{{param.unit}} ⇔</span>
+            <span class="parameter-value scrub" data-attr-id="'parameter-' + it_index + '-value'" hit-mask="none">{{param.unit}} (drag)</span>
             <div class="button" data-attr-id="param.downId" hit-mask="none">−</div>
             <div class="button" data-attr-id="param.upId" hit-mask="none">+</div>
             <div class="button" data-attr-id="'parameter-' + it_index + '-reset'" hit-mask="none">reset</div>
