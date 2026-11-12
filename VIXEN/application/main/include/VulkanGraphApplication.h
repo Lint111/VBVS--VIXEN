@@ -425,6 +425,10 @@ private:
     NodeHandle computeShaderLibNode_{};              // stored so RecompileProceduralShader can MarkNodeNeedsRecompile
     // Registered source families share the recipe registry and its live invalidation.
     std::vector<NodeHandle> proceduralShaderLibNodes_;
+    bool lockstepProceduralRecompile_ = false;
+    bool proceduralSwapPending_ = false;             // precompiles running; swap at the next update tick when done
+    void MarkProceduralShaderLibsDirty();            // drain GPU, then mark the libraries for recompile
+    void PollProceduralShaderSwap();                 // per update tick: swap when every precompile finished
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live orchestration state for the opt-in
     // VIXEN_RECIPE_BUCKETED_DISPATCH gate. Node handles are default-constructed/invalid when
@@ -683,7 +687,18 @@ public:
     // handle). No-op (logs a warning) if the graph hasn't been compiled yet -- there is
     // nothing to mark dirty before the first Compile(), which will pick up whatever is
     // registered at that point anyway.
+    // The shader compile runs OFF the frame thread: the call starts the compile of every procedural
+    // shader library on worker threads (filling the shader cache) and returns; the old pipelines
+    // keep rendering. The first update tick after all compiles have finished marks the libraries
+    // dirty and the graph rebuilds them in one frame-boundary swap (a cache hit). A capture request
+    // (CaptureFrameToPng and friends) first completes a pending swap, so captures are deterministic.
     void RecompileProceduralShader();
+    // Finishes a pending procedural shader swap now (waits for the compiles, swaps, recompiles).
+    // No-op when none is pending. Capture entry points call it; hosts may too.
+    void FlushProceduralShaderSwap();
+    // Lockstep: RecompileProceduralShader waits for the compile and marks the libraries dirty at once,
+    // so the swap lands on a fixed frame (the pre-async behaviour). For deterministic captures/replays.
+    void SetLockstepProceduralRecompile(bool lockstep) { lockstepProceduralRecompile_ = lockstep; }
     // Editor Brick-Residency Fix: forwards to BodyOctreeSceneNode::RequestBrickResidency (stash-only,
     // dirty-flag pattern -- safe to call any time, including right after SetRecipePool/SetBodyInstances;
     // ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool's passthrough above --

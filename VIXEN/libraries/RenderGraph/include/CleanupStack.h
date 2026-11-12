@@ -117,10 +117,12 @@ public:
     void CollectDependentHandles(std::unordered_set<NodeHandle>& outHandles) const {
         for (const auto& weakDep : dependents) {
             if (auto dep = weakDep.lock()) {
-                // Add this dependent
-                outHandles.insert(dep->GetHandle());
-                // Recursively collect its dependents
-                dep->CollectDependentHandles(outHandles);
+                // Add this dependent; descend only the first time it is reached. Without this a
+                // node reachable by many paths (diamonds A->B->D, A->C->D, repeated across a deep
+                // graph) is walked once PER PATH: exponential, seconds per recompile frame.
+                if (outHandles.insert(dep->GetHandle()).second) {
+                    dep->CollectDependentHandles(outHandles);
+                }
             }
         }
     }

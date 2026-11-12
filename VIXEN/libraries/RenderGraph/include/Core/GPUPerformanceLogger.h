@@ -53,7 +53,12 @@ public:
      */
     GPUPerformanceLogger(const std::string& name, std::shared_ptr<GPUQueryManager> queryManager,
                          size_t rollingWindowSize = 60);
-    ~GPUPerformanceLogger() override = default;
+    /// Releases the query slot back to the shared manager so a recreated logger (shader
+    /// recompile) reuses it instead of leaking toward the manager's slot cap.
+    ~GPUPerformanceLogger() override;
+
+    GPUPerformanceLogger(const GPUPerformanceLogger&) = delete;
+    GPUPerformanceLogger& operator=(const GPUPerformanceLogger&) = delete;
 
     // ========================================================================
     // COMMAND BUFFER RECORDING (per-frame)
@@ -188,5 +193,20 @@ private:
 
     void UpdateRollingStats();
 };
+
+/**
+ * @brief Drop a node's GPU perf logger: detach it from its parent logger (which holds a
+ * shared_ptr child) and release it, so its destructor frees the query slot. Call before
+ * creating a replacement logger on recompile, and from node cleanup.
+ */
+inline void ReleaseGPUPerfLogger(Logger* parent, std::shared_ptr<GPUPerformanceLogger>& logger) {
+    if (!logger) {
+        return;
+    }
+    if (parent) {
+        parent->RemoveChild(logger.get());
+    }
+    logger.reset();
+}
 
 } // namespace Vixen::RenderGraph

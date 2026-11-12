@@ -105,7 +105,7 @@ void BlitNode::TypedCompileImpl(TypedCompileContext& ctx) {
     if (!gpuPerfLogger_) {
         auto* queryMgrPtr = static_cast<GPUQueryManager*>(GetDevice()->GetQueryManager());
         if (queryMgrPtr) {
-            auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+            auto queryManager = std::shared_ptr<GPUQueryManager>(GetDevice()->GetQueryManagerShared(), queryMgrPtr);
             gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(GetInstanceName(), queryManager);
             gpuPerfLogger_->SetEnabled(true);
             gpuPerfLogger_->SetLogFrequency(120);

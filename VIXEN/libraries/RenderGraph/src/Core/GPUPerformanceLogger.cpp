@@ -35,6 +35,13 @@ GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, std::shared_
     }
 }
 
+GPUPerformanceLogger::~GPUPerformanceLogger() {
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        queryManager_->FreeQuerySlot(querySlot_);
+        querySlot_ = GPUQueryManager::INVALID_SLOT;
+    }
+}
+
 // ============================================================================
 // COMMAND BUFFER RECORDING
 // ============================================================================

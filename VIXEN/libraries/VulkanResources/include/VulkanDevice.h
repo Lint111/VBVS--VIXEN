@@ -406,6 +406,8 @@ public:
      * Cast to RenderGraph::GPUQueryManager* in RenderGraph code.
      */
     [[nodiscard]] void* GetQueryManager() const;
+    /// Owning handle of the same manager, for holders (GPUPerformanceLogger) that free their slot on destruction.
+    [[nodiscard]] std::shared_ptr<void> GetQueryManagerShared() const { return queryManager_; }
 
     /**
      * @brief Check if GPU query infrastructure is ready
