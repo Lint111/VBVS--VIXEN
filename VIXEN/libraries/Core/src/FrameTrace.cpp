@@ -86,7 +86,56 @@ uint64_t NowNs() {
         std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
-void SetFrame(uint64_t frame) { gFrame.store(frame, std::memory_order_relaxed); }
+namespace {
+// The ledger layer's exports, resolved once it is loaded (the loader loads it at vkCreateInstance, after this library starts).
+struct LedgerApi {
+    void (*pushScope)(const char*) = nullptr;
+    void (*popScope)() = nullptr;
+    void (*setFrame)(uint64_t) = nullptr;
+    void (*touch)(const void*, uint64_t) = nullptr;
+    void (*flush)() = nullptr;
+};
+LedgerApi gLedger;
+std::atomic<bool> gLedgerResolved{false};
+
+const LedgerApi* Ledger() {
+#if defined(_WIN32)
+    static const bool wanted = std::getenv("VIXEN_GPU_LEDGER") != nullptr;   // the layer only loads when asked for
+    if (!wanted) return nullptr;
+    if (!gLedgerResolved.load(std::memory_order_acquire)) {
+        HMODULE module = GetModuleHandleA("VkLayer_vixen_gpu_ledger.dll");
+        if (!module) return nullptr;
+        gLedger.pushScope = reinterpret_cast<void (*)(const char*)>(GetProcAddress(module, "VixenLedgerPushScope"));
+        gLedger.popScope = reinterpret_cast<void (*)()>(GetProcAddress(module, "VixenLedgerPopScope"));
+        gLedger.setFrame = reinterpret_cast<void (*)(uint64_t)>(GetProcAddress(module, "VixenLedgerSetFrame"));
+        gLedger.touch = reinterpret_cast<void (*)(const void*, uint64_t)>(GetProcAddress(module, "VixenLedgerTouch"));
+        gLedger.flush = reinterpret_cast<void (*)()>(GetProcAddress(module, "VixenLedgerFlush"));
+        gLedgerResolved.store(true, std::memory_order_release);
+    }
+    return &gLedger;
+#else
+    return nullptr;
+#endif
+}
+}  // namespace
+
+void SetFrame(uint64_t frame) {
+    gFrame.store(frame, std::memory_order_relaxed);
+    if (const LedgerApi* api = Ledger(); api && api->setFrame) api->setFrame(frame);
+}
+
+void LedgerPushScope(const char* name) {
+    if (const LedgerApi* api = Ledger(); api && api->pushScope) api->pushScope(name);
+}
+void LedgerPopScope() {
+    if (const LedgerApi* api = Ledger(); api && api->popScope) api->popScope();
+}
+void LedgerTouch(const void* mapped, uint64_t bytes) {
+    if (const LedgerApi* api = Ledger(); api && api->touch) api->touch(mapped, bytes);
+}
+void LedgerFlush() {
+    if (const LedgerApi* api = Ledger(); api && api->flush) api->flush();
+}
 
 void Add(const char* category, std::string_view name, uint64_t t0Ns, uint64_t t1Ns) {
     if (!Enabled()) return;
@@ -219,6 +268,7 @@ void WriteThreadCensus(std::FILE* out) {
 }  // namespace
 
 void Write() {
+    LedgerFlush();
     if (!Enabled()) return;
     static std::atomic<bool> written{false};
     if (written.exchange(true)) return;

@@ -11,6 +11,7 @@
 #include "Memory/ResourceBudgetManager.h"
 #include "NodeContext.h"
 #include "ITaskProfile.h"  // Sprint 6.3: Task profile system
+#include "FrameTrace.h"     // VIXEN_LEDGER_SCOPE (benchmark builds; empty otherwise)
 #include <string>
 #include <vector>
 #include <map>
@@ -526,6 +527,7 @@ public:
      * Derived classes should override SetupImpl(), NOT this method.
      */
     virtual void Setup() {
+        VIXEN_LEDGER_SCOPE(instanceName.c_str());
         try {
             ResetInputsUsedInCompile();
             SetupImpl();
@@ -548,6 +550,7 @@ public:
      * Derived classes should override CompileImpl(), NOT this method.
      */
     virtual void Compile() final {
+        VIXEN_LEDGER_SCOPE(instanceName.c_str());
         try {
             CompileImpl();
             RegisterCleanup();
@@ -573,6 +576,7 @@ public:
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
     virtual void Execute() final {
+        VIXEN_LEDGER_SCOPE(instanceName.c_str());
         try {
             ExecuteImpl();
         } catch (const std::exception& e) {
