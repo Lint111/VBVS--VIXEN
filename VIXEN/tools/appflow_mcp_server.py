@@ -88,6 +88,25 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {"edge": {"type": "string", "minLength": 1}}, "required": ["edge"], "additionalProperties": False},
     },
     {
+        "name": "appflow.input",
+        "description": "Queue scripted input on the editor's real input path (the one GLFW callbacks use): kind=text (text), key (key = a generated KeyId name, action press|release|repeat|tap, mods), or pointer (x, y in window pixels, action move|press|release|click, button). Applied on the next frame; call appflow.step on a paused editor to advance.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["text", "key", "pointer"]},
+                "text": {"type": "string"},
+                "key": {"type": "string"},
+                "action": {"type": "string", "enum": ["press", "release", "repeat", "tap", "move", "click"]},
+                "mods": {"type": "array", "items": {"type": "string", "enum": ["Shift", "Ctrl", "Alt", "Super"]}},
+                "x": {"type": "number"},
+                "y": {"type": "number"},
+                "button": {"type": "string", "enum": ["left", "right", "middle"]},
+            },
+            "required": ["kind"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "appflow.begin_group",
         "description": "Open a labelled undo group: every dispatch until appflow.end_group is one undo step. Nested calls are refused with a typed result.",
         "inputSchema": {"type": "object", "properties": {"label": {"type": "string", "minLength": 1}}, "required": ["label"], "additionalProperties": False},
@@ -137,6 +156,8 @@ def tool_content(name: str, arguments: dict[str, Any], client: AppFlowClient) ->
         result = client.quit()
     elif name == "appflow.navigate":
         result = client.navigate(arguments["edge"])
+    elif name == "appflow.input":
+        result = client.input(**arguments)
     elif name == "appflow.begin_group":
         result = client.begin_group(arguments["label"])
     elif name == "appflow.end_group":

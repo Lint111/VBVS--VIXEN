@@ -98,6 +98,14 @@ class AppFlowClient:
             params["frame"] = frame
         return self.call("appflow.readback", params)
 
+    def input(self, **event: Any) -> dict[str, Any]:
+        """Queue scripted input on the app's real input path (the one GLFW callbacks use).
+
+        input(kind="text", text="1.5"); input(kind="key", key="Enter", action="tap", mods=["Ctrl"]);
+        input(kind="pointer", x=120, y=80, action="click", button="left"). Takes effect on the next frame.
+        """
+        return self.call("appflow.input", event)
+
     def quit(self) -> dict[str, Any]:
         return self.call("appflow.quit")
 
