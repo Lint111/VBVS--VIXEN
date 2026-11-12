@@ -150,3 +150,30 @@ TEST(KeyChord, ModNamesAreGeneratedNamesNotIntegers) {
     EXPECT_FALSE(Vixen::Editor::ParseChordMods({"Hyper"}, parsed));
     EXPECT_FALSE(Vixen::Editor::ParseChordMods({"1"}, parsed));
 }
+
+// sn-rmlinput1 focus rule: while a UI text control owns the keyboard the edge poll still advances but
+// dispatches nothing, so typing "s" (or Ctrl+S inside a field) never acts as a binding, and a key held across the
+// end of the edit does not fire late.
+TEST(KeyChord, TypingSuppressesChordsAndAKeyHeldAcrossTheEditDoesNotFireLate) {
+    Vixen::Editor::KeyEdgeTracker tracker;
+    std::vector<int> down;
+    const auto isDown = [&down](int key) { return std::find(down.begin(), down.end(), key) != down.end(); };
+    std::vector<KeyChord> fired;
+    const auto onPress = [&fired](KeyChord chord) { fired.push_back(chord); };
+
+    down = {83};  // "s" typed into a focused field
+    tracker.Poll(isDown, onPress, /*typing=*/true);
+    EXPECT_TRUE(fired.empty());
+    down = {Vixen::Editor::kGlfwKeyLeftControl, 83};  // Ctrl+S inside the field
+    tracker.Poll(isDown, onPress, true);
+    EXPECT_TRUE(fired.empty());
+    tracker.Poll(isDown, onPress, /*typing=*/false);  // field blurred with S still held: not a new press
+    EXPECT_TRUE(fired.empty());
+    down.clear();
+    tracker.Poll(isDown, onPress, false);
+    down = {Vixen::Editor::kGlfwKeyLeftControl, 83};  // a real press with no field focused fires
+    tracker.Poll(isDown, onPress, false);
+    ASSERT_EQ(fired.size(), 1u);
+    EXPECT_EQ(fired[0].key, KeyId::S);
+    EXPECT_EQ(fired[0].mods, KeyMod::Ctrl);
+}

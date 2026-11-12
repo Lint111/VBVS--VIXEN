@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 #include "InputEvents.h"
@@ -21,6 +22,16 @@ struct ClickEvent {
     bool pressed = false;  // true=press edge, false=release edge
     float x = 0.0f;
     float y = 0.0f;
+};
+
+/// One raw key transition as GLFW reported it (input-rework R-rml-input): every key, not only the
+/// ones InputNode tracks, so a UI text field can see Backspace/Delete/Home/End/Enter/Tab. `action`
+/// is GLFW_RELEASE (0), GLFW_PRESS (1) or GLFW_REPEAT (2); `mods` is the GLFW modifier bitmask.
+/// Plain ints keep this header free of GLFW.
+struct RawKeyEvent {
+    int glfwKey = 0;
+    int action = 0;
+    int mods = 0;
 };
 
 /// Per-frame continuous input axes. Mouse-look remains available as pixel deltas in mouseDelta.
@@ -75,6 +86,12 @@ struct InputState {
     glm::vec2 wheelDelta{0.0f};      // Scroll offsets this frame (x=horizontal, y=vertical)
     std::vector<ClickEvent> clicksThisFrame;  // Every press+release edge since last frame, in order
 
+    // Keyboard text path (UI forwarding): every raw key transition and every typed code point since
+    // the last frame, in arrival order. Consumed by the UI node (Rml key/text events); nothing else
+    // reads them, so a graph with no focusable UI element is unchanged.
+    std::vector<RawKeyEvent> keyEventsThisFrame;
+    std::u32string textThisFrame;
+
     // InputConfig fields CameraNode needs (input-rework M4), mirrored in by InputNode::
     // PopulateInputState each frame. CameraNode has no InputNode reference — only this InputState
     // slot — so riding the existing data path here is cheaper than a new graph-slot/lookup type
@@ -124,6 +141,8 @@ struct InputState {
         axes.fill(0.0f);
         mouseDelta = glm::vec2(0.0f);
         clicksThisFrame.clear();
+        keyEventsThisFrame.clear();
+        textThisFrame.clear();
         wheelDelta = glm::vec2(0.0f);
     }
 

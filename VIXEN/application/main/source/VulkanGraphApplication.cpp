@@ -2602,6 +2602,10 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             VIXEN_FRAME_TRACE_SCOPE("update", "input");
             if (auto* input = static_cast<InputNode*>(renderGraph->GetInstance(inputNode_))) {
+                // A focused UI text control owns the keyboard: typed keys are text, not game input
+                // (no Escape shutdown, no movement axes, no debug-mode digits). State as of the last UI Execute.
+                const auto* ui = GetUiRenderNode();
+                input->SetKeyboardCapturedByUi(ui && ui->WantsKeyboard());
                 input->ProcessPendingInput();
             }
         }

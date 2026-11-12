@@ -6,6 +6,7 @@
 #include "Data/Nodes/UIRenderNodeConfig.h"
 #include "Ui/BlobView.h"
 #include "Ui/IView.h"
+#include "Ui/UiInputForwarder.h"
 #include "Ui/ViewBlobFile.h"
 #include "Ui/VixenRmlRenderInterface.h"
 #include "Ui/VixenRmlSystemInterface.h"
@@ -85,6 +86,16 @@ public:
     /// calls Context::GetElementAtPoint; it never mutates the context, the GPU sync objects, the
     /// composite pass, or the live-reload state. Returns nullptr if the context failed to create.
     [[nodiscard]] Rml::Context* GetUiContext() const { return context_; }
+
+    /// Keyboard / pointer ownership, as of the last Execute. The host consults these before it turns raw
+    /// input into actions: a focused text control owns the keyboard (no chords, no camera keys), and a
+    /// pointer over (or dragging from) a UI element is not also a camera drag.
+    [[nodiscard]] bool WantsKeyboard() const { return inputForwarder_.WantsKeyboard(); }
+    [[nodiscard]] bool WantsPointer() const { return inputForwarder_.WantsPointer(); }
+
+    /// Typed values committed by text controls since the last drain; the host dispatches each `selector`
+    /// through the runtime (see UiInputForwarder.h) exactly as it dispatches a drained click.
+    [[nodiscard]] std::vector<UiInputForwarder::Commit> DrainCommittedInputs() { return inputForwarder_.DrainCommits(); }
 
     /// Get GPU performance logger for external metrics extraction (M5.1; mirrors ComputeDispatchNode).
     /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized.
@@ -197,6 +208,11 @@ private:
     // recording (BeginRenderPass..EndRenderPass) so a p99 hitch can be attributed to the UI pass
     // vs. the compute dispatch vs. neither (CPU/present).
     std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
+
+    // Input forwarding (INPUT_STATE slot) + the text-control commit queue.
+    UiInputForwarder inputForwarder_;
+    void ForwardInput(const InputState& input);
+    void DirtyAllViewVariables();  // re-evaluate every bound value so a refused edit snaps back to the model
 };
 
 } // namespace Vixen::RenderGraph

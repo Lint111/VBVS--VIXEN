@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Data/Core/ResourceConfig.h"
+#include "Data/InputState.h"
 #include "VulkanDeviceFwd.h"
 
 namespace Vixen::RenderGraph {
@@ -22,7 +23,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * Parameters: rmlDocumentPath, fontPath.
  */
 namespace UIRenderNodeCounts {
-    static constexpr size_t INPUTS = 13;  // +COMPOSITE_WAIT_SEMAPHORE (compute→UI handoff) +TIMELINE_SEMAPHORE_IN +TIMELINE_FRAME_BASE_IN (P5b M1)
+    static constexpr size_t INPUTS = 14;  // +COMPOSITE_WAIT_SEMAPHORE (compute→UI handoff) +TIMELINE_SEMAPHORE_IN +TIMELINE_FRAME_BASE_IN (P5b M1) +INPUT_STATE (keyboard/text/pointer forwarding)
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array;
 }
@@ -102,6 +103,15 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     INPUT_SLOT(TIMELINE_FRAME_BASE_IN, uint64_t, 12,
         SlotNullability::Optional, SlotRole::Execute, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 
+    /**
+     * @brief Per-frame InputState from InputNode (optional).
+     * Forwarded into the Rml::Context each frame (pointer, wheel, keys, text) by UiInputForwarder. The edge
+     * also orders this node's Execute after InputNode's, so a key typed this frame reaches the UI this
+     * frame. Unconnected (demo/offscreen graphs) the UI simply receives no input.
+     */
+    INPUT_SLOT(INPUT_STATE, InputStatePtr, 13,
+        SlotNullability::Optional, SlotRole::Execute, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+
     // ===== OUTPUTS (2) =====
     OUTPUT_SLOT(COMMAND_BUFFERS, VkCommandBuffer, 0,
         SlotNullability::Required, SlotMutability::WriteOnly);
@@ -143,6 +153,9 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
         HandleDescriptor frameBaseDesc{"uint64_t"};
         INIT_INPUT_DESC(TIMELINE_FRAME_BASE_IN, "timeline_frame_base_in", ResourceLifetime::Transient, frameBaseDesc);
 
+        HandleDescriptor inputStateDesc{"InputState*"};
+        INIT_INPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Persistent, inputStateDesc);
+
         INIT_OUTPUT_DESC(COMMAND_BUFFERS, "command_buffers", ResourceLifetime::Transient, BufferDescription{});
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore",
             ResourceLifetime::Transient, BufferDescription{});
@@ -166,6 +179,8 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     static_assert(TIMELINE_SEMAPHORE_IN_Slot::nullable, "TIMELINE_SEMAPHORE_IN is optional");
     static_assert(TIMELINE_FRAME_BASE_IN_Slot::index == 12, "TIMELINE_FRAME_BASE_IN must be at index 12");
     static_assert(TIMELINE_FRAME_BASE_IN_Slot::nullable, "TIMELINE_FRAME_BASE_IN is optional");
+    static_assert(INPUT_STATE_Slot::index == 13, "INPUT_STATE must be at index 13");
+    static_assert(INPUT_STATE_Slot::nullable, "INPUT_STATE is optional");
     static_assert(COMMAND_BUFFERS_Slot::index == 0, "COMMAND_BUFFERS must be at index 0");
     static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 1, "RENDER_COMPLETE_SEMAPHORE must be at index 1");
 

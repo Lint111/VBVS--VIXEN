@@ -299,6 +299,7 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         }
         context_ = Rml::CreateContext("vixen_ui", Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         if (context_) {
+            inputForwarder_.Attach(context_);
             // Renderer-agnostic view seam (Inc-2): the consumer's IView registers its own structs/
             // arrays and binds them to its own storage — the node knows no field name.
             if (view_) {
@@ -529,6 +530,9 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
 }
 
 void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
+    // Pointer, wheel, keys and text reach the Rml context before this frame's Update(); done ahead of
+    // the early returns below so a skipped frame does not drop typed input.
+    if (const InputStatePtr input = ctx.In(UIRenderNodeConfig::INPUT_STATE)) ForwardInput(*input);
     const uint32_t imageIndex = ctx.In(UIRenderNodeConfig::IMAGE_INDEX);
     const uint32_t currentFrameIndex = ctx.In(UIRenderNodeConfig::CURRENT_FRAME_INDEX);
     const std::vector<VkSemaphore>& imageAvailable = ctx.In(UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
@@ -642,6 +646,20 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 void UIRenderNode::SetView(std::shared_ptr<IView> view) {
     configuredView_ = std::move(view);
     if (!hudHotReloadEnabled_) view_ = configuredView_;
+}
+
+void UIRenderNode::ForwardInput(const InputState& input) {
+    if (!context_) return;
+    // After a commit drain the model changed (or the action refused to change it): the forwarder asks
+    // for a re-evaluation of every bound value first, so a refused text control shows the model's value.
+    inputForwarder_.Forward(input, [this] { DirtyAllViewVariables(); });
+}
+
+void UIRenderNode::DirtyAllViewVariables() {
+    if (viewModel_) viewModel_.DirtyAllVariables();
+    for (auto& [handle, mount] : mounts_) {
+        if (mount.model) mount.model.DirtyAllVariables();
+    }
 }
 
 void UIRenderNode::MarkViewDirty(const char* field) { if (viewModel_ && field) viewModel_.DirtyVariable(field); }
@@ -864,6 +882,7 @@ void UIRenderNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
     // it so a second FinalTeardown (defensive) does not double-shutdown RmlUi.
     if (initialized_) {
         if (context_) {
+            inputForwarder_.Detach();        // before the context dies: it holds capture listeners on it
             Rml::RemoveContext("vixen_ui");  // releases context_ + document_ + all mounted docs (context-owned)
             context_ = nullptr;
             document_ = nullptr;

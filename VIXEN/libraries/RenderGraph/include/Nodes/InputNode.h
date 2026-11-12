@@ -78,15 +78,24 @@ public:
     /// events keep accumulating into the same canonical state either way.
     void ProcessPendingInput();
 
-#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
-    // Fail-scenario seam (mirrors WindowNode::InjectWindowEvent): enqueue a synthetic mouse-button
-    // event exactly where OnMouseButton does. Needed because the fail-scenario runner creates the
-    // window hidden (GLFW_VISIBLE=false), so no real click ever reaches the GLFW callback.
+    /// True while a UI text field owns the keyboard. Set each Update by the host (before
+    /// ProcessPendingInput) from UIRenderNode::WantsKeyboard(): while set, typed keys must not act as
+    /// game input, so Escape no longer publishes the shutdown WindowCloseEvent, the movement axes are
+    /// zero and the number keys do not switch the debug mode. Raw key/char events still reach the UI
+    /// through InputState::keyEventsThisFrame / textThisFrame.
+    void SetKeyboardCapturedByUi(bool captured) { keyboardCapturedByUi_ = captured; }
+    [[nodiscard]] bool KeyboardCapturedByUi() const { return keyboardCapturedByUi_; }
+
+    // Injection seam (always compiled): enqueue a synthetic event exactly where the GLFW callbacks do, so
+    // scripted input (the fail-scenario runner, whose window is hidden so no real click arrives, and the
+    // editor channel's appflow.input verb) takes the SAME path a person's input does: queue -> fold ->
+    // InputState -> consumers. Nothing here bypasses a consumer.
     void InjectMouseButton(int button, int action);
     void InjectKey(EventBus::KeyCode key, bool pressed);
+    void InjectChar(char32_t codepoint);
+    void InjectRawKey(int glfwKey, int glfwAction, int glfwMods);
     void InjectCursorPos(double x, double y);
     void InjectFocusLoss();
-#endif
 
 protected:
     void TypedSetupImpl(TypedSetupContext& ctx) override;
@@ -107,12 +116,13 @@ private:
     // x/y as offsets; cursor-pos uses x/y as the new absolute position; button/key use
     // buttonOrKey+action (GLFW_PRESS/GLFW_RELEASE) and leave x/y at 0.
     struct InputEvent {
-        enum class Type : uint8_t { MouseButton, CursorPos, Scroll, Key };
+        enum class Type : uint8_t { MouseButton, CursorPos, Scroll, Key, Char };
         Type type;
-        int buttonOrKey = 0;
+        int buttonOrKey = 0;   // Char: the Unicode code point
         int action = 0;
         double x = 0.0;
         double y = 0.0;
+        int mods = 0;          // Key: GLFW modifier bitmask
     };
 
     // Helper methods
@@ -145,6 +155,7 @@ private:
     static void OnCursorPos(GLFWwindow* w, double x, double y);
     static void OnScroll(GLFWwindow* w, double xoffset, double yoffset);
     static void OnKey(GLFWwindow* w, int key, int scancode, int action, int mods);
+    static void OnChar(GLFWwindow* w, unsigned int codepoint);
 
     // Publish one event into pendingInput_ (shared body for the 4 trampolines; wait-free).
     void QueueEvent(const InputEvent& event);
@@ -196,6 +207,9 @@ private:
     glm::vec2 pendingDelta_{0.0f};
     glm::vec2 pendingScroll_{0.0f};
     std::vector<ClickEvent> pendingClicks_;
+    std::vector<RawKeyEvent> pendingKeyEvents_;
+    std::u32string pendingText_;
+    bool keyboardCapturedByUi_ = false;
 
     // Delta time for held duration calculation
     std::chrono::steady_clock::time_point lastFrameTime;

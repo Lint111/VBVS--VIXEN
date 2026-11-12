@@ -89,15 +89,17 @@ KeyMod ReadLiveMods(IsDown&& isDown) {
 // Rising-edge detector over every mapped key (press only, never held-repeat). Poll() calls
 // onPress(KeyChord{key, liveMods}) once per key that went down since the previous Poll; the caller
 // routes the chord through the runtime's InputProfile, so which chords do anything is declaration
-// data, not host code.
+// data, not host code. `typing` (a UI text control owns the keyboard) keeps the edge state advancing but
+// reports no chord: typing "s" into a field must not act as a key binding, and a key held across the end of
+// the edit must not fire late.
 class KeyEdgeTracker {
 public:
     template <class IsDown, class OnPress>
-    void Poll(IsDown&& isDown, OnPress&& onPress) {
+    void Poll(IsDown&& isDown, OnPress&& onPress, bool typing = false) {
         const KeyMod mods = ReadLiveMods(isDown);
         for (size_t i = 0; i < kMappedKeys.size(); ++i) {
             const bool down = isDown(kMappedKeys[i].glfw);
-            if (down && !wasDown_[i]) onPress(KeyChord{kMappedKeys[i].id, mods});
+            if (down && !wasDown_[i] && !typing) onPress(KeyChord{kMappedKeys[i].id, mods});
             wasDown_[i] = down;
         }
     }

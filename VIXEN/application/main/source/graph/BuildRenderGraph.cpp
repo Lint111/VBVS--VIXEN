@@ -4795,6 +4795,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
              .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                       uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     }
+    // Keyboard / text / pointer reach the Rml context through this edge (UiInputForwarder). The edge also
+    // orders the UI's Execute after InputNode's, so input typed this frame is seen this frame.
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE, uiCompositeNode, UIRenderNodeConfig::INPUT_STATE);
 
     // ===================================================================
     // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode + BlitNode wiring. The chain is now

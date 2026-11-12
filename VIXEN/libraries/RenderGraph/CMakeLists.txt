@@ -446,6 +446,7 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/PanelDock.h
     include/Ui/PanelDockHost.h
     include/Ui/PanelLayoutView.h
+    include/Ui/UiInputForwarder.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
 )
@@ -460,6 +461,7 @@ set(RENDERGRAPH_UI_SOURCES
     src/Ui/BlobView.cpp
     src/Ui/PanelDock.cpp
     src/Ui/PanelDockHost.cpp
+    src/Ui/UiInputForwarder.cpp
     # UIRenderNode.cpp moved to RENDERGRAPH_NODE_SOURCES (Inc-1 M4) -- it's a node, and needs its
     # own RenderGraphNode_UIRenderNode OBJECT lib for scoped linkage to work correctly.
 )

@@ -21,23 +21,32 @@ struct CameraDispatch {
 inline constexpr float kCameraKeyZoomSpeed = 100.0f;
 inline constexpr float kCameraArrowLookSpeed = 120.0f;
 
+// What the UI currently owns (UIRenderNode::WantsKeyboard / WantsPointer): a focused text control takes the
+// keyboard (typed letters are not camera movement), and a pointer over or dragging from a panel is not also a
+// camera orbit or zoom.
+struct UiInputCapture {
+    bool keyboard = false;
+    bool pointer = false;
+};
+
 // sensitivity: radians per pixel; moveSpeed: world units per second. ctrlHeld suppresses the held-key axes so the
 // Ctrl chords (Ctrl+S/Z/Y/R) never also move the camera.
 inline std::vector<CameraDispatch> CameraDispatchesFromInput(const Vixen::RenderGraph::InputState& state,
-                                                             bool ctrlHeld, float sensitivity, float moveSpeed) {
+                                                             bool ctrlHeld, float sensitivity, float moveSpeed,
+                                                             UiInputCapture ui = {}) {
     using Vixen::AppFlow::Generated::FlowActionId;
     using Vixen::RenderGraph::InputAxis;
     std::vector<CameraDispatch> out;
     const float dt = std::min(state.deltaTime, 0.1f);
 
     // Right-mouse orbit: pixels become radians; screen-down is pitch-down.
-    if (state.mouseButtons[1] && (state.mouseDelta.x != 0.0f || state.mouseDelta.y != 0.0f)) {
+    if (!ui.pointer && state.mouseButtons[1] && (state.mouseDelta.x != 0.0f || state.mouseDelta.y != 0.0f)) {
         out.push_back({FlowActionId::OrbitCamera, state.mouseDelta.x * sensitivity, -state.mouseDelta.y * sensitivity});
     }
-    if (state.wheelZoom && state.wheelDelta.y != 0.0f) {
+    if (!ui.pointer && state.wheelZoom && state.wheelDelta.y != 0.0f) {
         out.push_back({FlowActionId::ZoomCamera, state.wheelDelta.y * state.wheelZoomSpeed, 0.0f});
     }
-    if (ctrlHeld) return out;
+    if (ctrlHeld || ui.keyboard) return out;
 
     const auto axis = [&state](InputAxis a) { return state.axes[static_cast<std::size_t>(a)]; };
     if (const float forward = axis(InputAxis::MoveForward); forward != 0.0f) {
