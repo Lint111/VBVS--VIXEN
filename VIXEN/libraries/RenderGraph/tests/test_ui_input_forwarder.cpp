@@ -439,5 +439,12 @@ TEST_F(UiInputForwarderTest, KitNudgeAndScrubCommitTheSameSelectorPathAsTyping) 
     commits = forwarder_.DrainCommits();
     ASSERT_EQ(commits.size(), 1u);
     EXPECT_EQ(commits[0].selector, "parameter-0-set-12") << "9.25 + 100 px of a 200 px range, clamped to 12";
-}
 
+    // A Shift pressed in an EARLIER frame is still held for the click now: shift-nudge is ten steps (clamped to 12).
+    Run(Frame{}.Key(GLFW_KEY_LEFT_SHIFT, GLFW_PRESS, GLFW_MOD_SHIFT));
+    Run(Frame{}.Press(at.x, at.y));
+    Run(Frame{}.Release(at.x, at.y));
+    commits = forwarder_.DrainCommits();
+    ASSERT_EQ(commits.size(), 1u);
+    EXPECT_EQ(commits[0].selector, "parameter-0-set-12") << "9.25 + 10 x 1 clamped to the declared maximum 12";
+}

@@ -198,8 +198,10 @@ void UiInputForwarder::Forward(const InputState& input, const std::function<void
         resyncRequested_ = false;
         if (resync) resync();
     }
-    int modifiers = 0;  // refreshed from each key event; pointer events reuse the latest seen
-    if (!input.keyEventsThisFrame.empty()) modifiers = RmlModifiersFromGlfw(input.keyEventsThisFrame.back().mods);
+    // The modifier state is the latest key event's mods and PERSISTS across frames, so a Shift pressed in an earlier
+    // frame is still held for a pointer event now (a shift-click); a modifier release event clears it.
+    if (!input.keyEventsThisFrame.empty()) modifiers_ = RmlModifiersFromGlfw(input.keyEventsThisFrame.back().mods);
+    const int modifiers = modifiers_;
 
     const auto move = [&](float x, float y) {
         const int ix = static_cast<int>(x), iy = static_cast<int>(y);

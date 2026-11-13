@@ -188,6 +188,21 @@ TEST_F(UiKitTest, NudgeCommitsThroughTheValueSlotWithTheOneRule) {
     EXPECT_EQ(recorder_.commits.size(), 2u) << "clamped at the maximum: nothing to commit";
 }
 
+TEST_F(UiKitTest, ShiftNudgeStepsTenTimesAsFarOnEveryNumberField) {
+    Load(R"(<rml><body>
+<ut-number-field id="a" value="1" value-id="a-set-{value}" min="0" max="100"/>
+<ut-number-field id="b" value="1" value-id="b-set-{value}" step="0.25"/>
+</body></rml>)");
+    const auto shiftClick = [&](Rml::Element* e) { Rml::Dictionary p; p["shift_key"] = true; e->DispatchEvent("click", p); };
+    shiftClick(Part(doc_->GetElementById("a"), "up"));
+    shiftClick(Part(doc_->GetElementById("b"), "up"));
+    ASSERT_EQ(recorder_.commits.size(), 2u);
+    EXPECT_EQ(recorder_.commits[0].text, "100") << "1 + 10 x (100/8) = 126, clamped to the range";
+    EXPECT_EQ(recorder_.commits[1].text, "3.5") << "1 + 10 x 0.25";
+    Click(Part(doc_->GetElementById("b"), "up"));
+    EXPECT_EQ(recorder_.commits[2].text, "1.25") << "without Shift the step is unchanged";
+}
+
 TEST_F(UiKitTest, ResetIsHiddenAtTheDefaultAndShownOtherwise) {
     Load(kDoc);
     auto* nf = doc_->GetElementById("nf");

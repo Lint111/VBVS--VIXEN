@@ -248,6 +248,8 @@ void SetText(Rml::Element* element, const std::string& text) {
 
 bool Truthy(const std::string& v) { return v == "true" || v == "1" || v == "checked" || v == "yes"; }
 
+constexpr float kShiftStepMultiplier = 10.0f;
+
 class KitElement final : public Rml::Element, public Rml::EventListener {
 public:
     KitElement(const Rml::String& tag, const KindInfo& info, Registry::Impl& host)
@@ -415,11 +417,13 @@ private:
         return ParseNumber(Attr("step"), s) && s > 0.0f ? s : DefaultStep(r.has, r.min, r.max);
     }
 
+    // CAPABILITY (added after the migration, one place): Shift+nudge steps ten times as far, on every number field.
+    static float StepMultiplier(Rml::Event& event) { return event.GetParameter<bool>("shift_key", false) ? kShiftStepMultiplier : 1.0f; }
+
     void Nudge(int direction, Rml::Event& event) {
-        (void)event;
         const Range r = ReadRange();
         const float before = CurrentValue();
-        const float after = UiKit::Nudge(before, direction, StepValue(r), 1.0f, r.has, r.min, r.max);
+        const float after = UiKit::Nudge(before, direction, StepValue(r), StepMultiplier(event), r.has, r.min, r.max);
         if (after != before) Commit(FormatNumber(after));
     }
 

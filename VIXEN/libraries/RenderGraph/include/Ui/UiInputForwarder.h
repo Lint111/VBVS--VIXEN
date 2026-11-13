@@ -93,6 +93,7 @@ private:
     int lastX_ = -1;
     int lastY_ = -1;
     bool havePointer_ = false;
+    int modifiers_ = 0;  // RmlUi key-modifier mask from the latest key event, kept across frames
 };
 
 }  // namespace Vixen::RenderGraph
