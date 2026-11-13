@@ -20,6 +20,9 @@
 #include "Text/RmlFontEngine.h"
 #include "Ui/UiInputForwarder.h"
 
+#include "Ui/UiKit.h"
+
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -86,6 +89,8 @@ protected:
         Rml::SetRenderInterface(&render_);
         Rml::SetFontEngineInterface(&fonts_);
         ASSERT_TRUE(Rml::Initialise());
+        kit_ = std::make_unique<Vixen::RenderGraph::UiKit::Registry>([](const std::string& a) { return a; });  // R874: the documents use kit elements
+        kit_->Register();
         Rml::LoadFontFace("assets/ui/LatoLatin-Regular.ttf");
         ctx_ = Rml::CreateContext("ui_input_forwarder", Rml::Vector2i(1280, 720));
         ASSERT_NE(ctx_, nullptr);
@@ -95,6 +100,7 @@ protected:
         forwarder_.Detach();
         if (ctx_) Rml::RemoveContext("ui_input_forwarder");
         ctx_ = nullptr;
+        kit_.reset();
         Rml::Shutdown();
     }
 
@@ -119,6 +125,7 @@ protected:
     NullRenderInterface render_;
     Vixen::Text::RmlFontEngine fonts_;
     Rml::Context* ctx_ = nullptr;
+    std::unique_ptr<Vixen::RenderGraph::UiKit::Registry> kit_;
     Rml::ElementDocument* doc_ = nullptr;
     UiInputForwarder forwarder_;
 };

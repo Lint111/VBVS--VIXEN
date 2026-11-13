@@ -22,6 +22,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include "Ui/UiKit.h"
+
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -59,6 +62,8 @@ protected:
         Rml::SetRenderInterface(&render_);
         Rml::SetFontEngineInterface(&fonts_);
         ASSERT_TRUE(Rml::Initialise());
+        kit_ = std::make_unique<Vixen::RenderGraph::UiKit::Registry>([](const std::string& a) { return a; });  // R874: the documents use kit elements
+        kit_->Register();
         Rml::LoadFontFace("assets/ui/LatoLatin-Regular.ttf");
         ctx_ = Rml::CreateContext("panel_dock_documents", Rml::Vector2i(1280, 720));
         ASSERT_NE(ctx_, nullptr);
@@ -104,6 +109,7 @@ protected:
     void TearDown() override {
         if (ctx_) Rml::RemoveContext("panel_dock_documents");
         ctx_ = nullptr;
+        kit_.reset();
         Rml::Shutdown();
     }
 
@@ -150,6 +156,7 @@ protected:
     NullRenderInterface render_;
     Vixen::Text::RmlFontEngine fonts_;
     Rml::Context* ctx_ = nullptr;
+    std::unique_ptr<Vixen::RenderGraph::UiKit::Registry> kit_;
     PanelDock dock_;
     PanelLayoutView chromeView_;
     Vixen::App::EditorLayersView layers_;
@@ -174,7 +181,12 @@ TEST_F(PanelDockDocumentsTest, EditorPanelsShareOneModelAndLandInTheirRegions) {
     EXPECT_TRUE(panelDocs_.at("inspector")->GetElementById("parameter-0-value") != nullptr);
     EXPECT_TRUE(panelDocs_.at("inspector")->GetElementById("parameter-0-reset") != nullptr);
     EXPECT_FALSE(panelDocs_.at("inspector")->GetElementById("parameter-0-value")->GetAttribute("hit-mask", Rml::String("x")) == Rml::String("x"));
-    EXPECT_NE(panelDocs_.at("status")->GetInnerRML().find("witness:boulder"), std::string::npos);
+    // The status line is the kit element: the bound attributes reach its parts.
+    Rml::ElementList statusLines;
+    panelDocs_.at("status")->GetElementsByTagName(statusLines, "ut-status-line");
+    ASSERT_EQ(statusLines.size(), 1u);
+    EXPECT_EQ(statusLines[0]->GetAttribute<Rml::String>("doc", ""), "witness:boulder");
+    EXPECT_NE(statusLines[0]->GetInnerRML().find("witness:boulder"), std::string::npos);
 
     // Chrome: a tab per headed panel at the computed position, closable panels get a close button,
     // the dock-to buttons skip the region the panel is already in. The status line has no tab.

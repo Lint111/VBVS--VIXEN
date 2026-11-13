@@ -39,26 +39,6 @@ body {
     font-size: 13px;
 }
 
-.panel.status {
-    padding: 3px 10px;
-    font-size: 13px;
-    white-space: nowrap;
-}
-
-.status-doc {
-    color: #e0d0b0;
-}
-
-.status-sep {
-    color: #505878;
-    margin-left: 6px;
-    margin-right: 6px;
-}
-
-.status-message {
-    color: #a0b0d0;
-}
-
 .title {
     display: block;
     color: #90c0ff;
