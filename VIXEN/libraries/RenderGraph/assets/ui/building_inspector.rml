@@ -7,7 +7,8 @@
          model. Bound by BuildingInspectorView::Register (BuildingInspectorBridge.cpp). All display
          transforms (impact label, unit formatting, "you own this") are computed host-side and pushed
          as pre-formatted strings — no game logic in the fragment (spec §7.10 / §4). -->
-    <ut-panel variant="hud" data-model="building" id="building">
+    <div data-model="building" id="building">
+        <ut-panel variant="hud">
         <!-- Identity -->
         <div class="ut-hud-title">{{defId}}</div>
         <div class="ut-row"><span class="ut-field-label">Owner</span><span class="ut-field-value">{{ownerName}}</span></div>
@@ -29,6 +30,7 @@
 
         <!-- Ownership affordance line — shown only to the owning viewer (IsOwnerViewer, spec §5). -->
         <div class="owned ut-hud-owned" data-if="isOwnerViewer">You own this.</div>
-    </ut-panel>
+        </ut-panel>
+    </div>
 </body>
 </rml>
