@@ -120,7 +120,7 @@ TEST_F(UiCompositionHostTest, NonOwnerHidesOwnershipAffordance) {
     // affordance is HIDDEN, not removed. Assert the .owned element is not visible (the §5 gate) rather
     // than absence of its text, which RmlUi leaves in the (hidden) inner RML.
     Rml::Element* owned = doc->QuerySelector(".owned");
-    ASSERT_NE(owned, nullptr) << "parsed inspector: " << doc->GetInnerRML();
+    ASSERT_NE(owned, nullptr);
     EXPECT_FALSE(owned->IsVisible())
         << "IsOwnerViewer=false must HIDE the ownership affordance (data-if display:none)";
 
