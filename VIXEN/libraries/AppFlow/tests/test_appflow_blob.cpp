@@ -177,6 +177,40 @@ TEST(AppFlowBlob, ReloadedRuntimeResolvesStringPatternAfterBlobIsFreed) {
     EXPECT_EQ(opened, "core:asteroid");
 }
 
+// Live reload of a key default onto a running runtime: the new chord is bound and the old one is not, while the
+// undo history, the flow state and the registered handlers stay (an agent editing the data must not lose its work).
+TEST(AppFlowBlob, ReloadRebindsKeyDefaultAndKeepsUndoStateAndHandlers) {
+    AppFlowRuntime runtime(nullptr, 1);
+    ASSERT_EQ(runtime.Load(), LoadResult::Ok);
+    int undone = 0;
+    runtime.RegisterHandler(FlowActionId::ToggleLayer, [&](const AppFlowRuntime::Params&) {
+        runtime.Stack().Dispatch(FlowActionId::ToggleLayer, [](bool) {});
+    });
+    runtime.RegisterHandler(FlowActionId::Undo, [&](const AppFlowRuntime::Params&) { ++undone; });
+    ASSERT_EQ(runtime.DispatchBySelector("layer-1-toggle"), DispatchResult::Ok);
+    ASSERT_EQ(runtime.Stack().UndoDepth(), 1u);
+    runtime.SetGuardResult(FlowGuardId::DocumentValid, true);
+    ASSERT_EQ(runtime.DispatchByKey({KeyId::Z, KeyMod::Ctrl}), DispatchResult::Ok) << "Ctrl+Z is the shipped Undo default";
+    ASSERT_EQ(undone, 1);
+
+    auto blob = AppFlowBlobFile::Parse(ReplaceOnce(ReadGeneratedBlob(), "keydefault UndoKey 1 26 1 0 0", "keydefault UndoKey 1 21 1 0 0"));
+    ASSERT_TRUE(blob.has_value());
+    ASSERT_EQ(runtime.NavTo(FlowEdgeId::ToSettings, {FlowTriggerKind::System, "test"}), DispatchResult::Ok);
+    ASSERT_EQ(runtime.Reload(&blob->View()), LoadResult::Ok);
+    blob.reset();
+
+    EXPECT_EQ(runtime.Current(), FlowStateId::Settings) << "reload keeps the running flow state";
+    EXPECT_EQ(runtime.Stack().UndoDepth(), 1u) << "reload keeps the undo history";
+    ASSERT_EQ(runtime.NavTo(FlowEdgeId::SettingsEditingEdge, {FlowTriggerKind::System, "test"}), DispatchResult::Ok);
+    EXPECT_EQ(runtime.DispatchByKey({KeyId::Z, KeyMod::Ctrl}), DispatchResult::RejectedByState) << "the old chord is no longer bound";
+    EXPECT_EQ(runtime.DispatchByKey({KeyId::U, KeyMod::Ctrl}), DispatchResult::Ok) << "the new chord is";
+    EXPECT_EQ(undone, 2) << "the registered handler survived the reload";
+
+    const AppFlowContainerView invalid(std::span<const AppFlowActionDecl>{}, std::span<const AppFlowTransition>{});
+    EXPECT_EQ(runtime.Reload(&invalid), LoadResult::EmptyArtifact) << "an invalid candidate changes nothing";
+    EXPECT_EQ(runtime.DispatchByKey({KeyId::U, KeyMod::Ctrl}), DispatchResult::Ok);
+}
+
 TEST(AppFlowBlob, ShapeHashMismatchRejectsAndRuntimeFallsBack) {
     std::string shapeEdit = ReadGeneratedBlob();
     const std::size_t shapeStart = shapeEdit.find("shape 0x");

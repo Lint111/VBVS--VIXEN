@@ -1205,11 +1205,14 @@ bool EditorApplication::ReloadAppFlowData(std::string& error) {
     // AppFlowRuntime::Load() validates and builds fresh primitives before committing them. The
     // parsed blob is a local candidate and may be destroyed immediately after this call: runtime
     // primitives deep-own the pointer-bearing generated fields they retain.
-    if (rt_.Load(&blob->View(), &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
+    // Reload, not Load: the running flow state, the undo history and the handlers stay (an agent editing a key
+    // default must not lose the document's undo stack); only triggers, key defaults and data targets are replaced.
+    if (rt_.Reload(&blob->View(), &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
         error = "AppFlow reload rejected: validation failure; keeping the running state";
         return false;
     }
     RegisterAppFlowHandlers();
+    appFlowBlob_ = std::move(*blob);
     // Consume this file's mtime: a forced reload must not be followed by a redundant watched one.
     std::error_code ec;
     if (const auto mtime = std::filesystem::last_write_time(appFlowPath_, ec); !ec) {
@@ -2374,13 +2377,17 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
                                {"params", std::move(paramList)}});
         }
         nlohmann::json selectors = nlohmann::json::array();
-        for (const auto& trigger : kElementTriggers) {
+        const std::span<const AppFlowElementTrigger> triggerTable = appFlowBlob_
+            ? appFlowBlob_->View().elementTriggerTable() : std::span<const AppFlowElementTrigger>(kElementTriggers);
+        const std::span<const AppFlowKeyDefault> keyTable = appFlowBlob_
+            ? appFlowBlob_->View().keyDefaultTable() : std::span<const AppFlowKeyDefault>(kKeyDefaults);
+        for (const auto& trigger : triggerTable) {
             selectors.push_back({{"id", trigger.id}, {"pattern", trigger.elementPattern},
                                  {"actionId", static_cast<uint16_t>(trigger.action)},
                                  {"param", trigger.paramName}, {"on", trigger.on}});
         }
         nlohmann::json keys = nlohmann::json::array();
-        for (const auto& key : kKeyDefaults) {
+        for (const auto& key : keyTable) {
             keys.push_back({{"id", key.id}, {"actionId", static_cast<uint16_t>(key.action)},
                             {"key", std::string(magic_enum::enum_name(key.chord.key))},
                             {"mods", Vixen::Editor::ChordModNames(key.chord.mods)},

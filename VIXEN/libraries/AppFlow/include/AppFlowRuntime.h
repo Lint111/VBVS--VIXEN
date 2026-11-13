@@ -39,6 +39,13 @@ public:
     // through it (nullptr — the default — leaves the Data leg inert, never a crash).
     LoadResult Load(const AppFlowContainerView* view = nullptr, IViewDataProvider* dataProvider = nullptr);
     LoadResult Load(IViewDataProvider* dataProvider);
+
+    // Live reload of a data-file view onto a RUNNING runtime. The candidate is fully validated first (as in Load);
+    // on success only the data-driven tables are replaced: element triggers/bindings, the key/return input profile
+    // and the Data targets. The running flow state, the undo/redo stack, the registered handlers and the guard
+    // results are kept, because a compatible reload (shape hash gated by the caller) changes none of them: an agent
+    // that edits a key default must not lose the editing history. On failure nothing changes.
+    LoadResult Reload(const AppFlowContainerView* view, IViewDataProvider* dataProvider = nullptr);
     void SetEventBus(Vixen::EventBus::MessageBus* bus, Vixen::EventBus::SenderID sender) {
         bus_ = bus;
         sender_ = sender;

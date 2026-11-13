@@ -76,6 +76,24 @@ LoadResult AppFlowRuntime::Load(const AppFlowContainerView* view, IViewDataProvi
     return LoadResult::Ok;
 }
 
+LoadResult AppFlowRuntime::Reload(const AppFlowContainerView* view, IViewDataProvider* dataProvider) {
+    FlowStateMachine candidateFsm;   // validated and then discarded: the running fsm/stack keep their state
+    ActionStack candidateStack;
+    BindingStore freshBindings;
+    InputProfile freshInputProfile;
+    DataTargetTable freshDataTargets;
+    const AppFlowContainerView compiledIn{};
+    const LoadResult result = AppFlowLoader::Load(view ? *view : compiledIn, candidateFsm, candidateStack,
+                                                  freshBindings, freshInputProfile, &freshDataTargets);
+    if (result != LoadResult::Ok) return result;
+
+    bindings_ = std::move(freshBindings);
+    inputProfile_ = std::move(freshInputProfile);
+    dataTargets_ = std::move(freshDataTargets);
+    dataProvider_ = dataProvider;
+    return LoadResult::Ok;
+}
+
 LoadResult AppFlowRuntime::Load(IViewDataProvider* dataProvider) {
     return Load(nullptr, dataProvider);
 }

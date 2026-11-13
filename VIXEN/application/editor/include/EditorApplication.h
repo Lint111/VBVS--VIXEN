@@ -25,6 +25,7 @@
 #include <glm/vec3.hpp>
 #include "AppFlowReadback.h"
 #include "AppFlowRuntime.h"
+#include "AppFlowBlobFile.h"
 #include "RuntimeCachePaths.h"
 #include "GaiaLayerViewDataProvider.h"  // Inc-B: Gaia-backed IViewDataProvider (was LayerControllerViewDataProvider)
 #include "ViewReconcileNode.h"         // Inc-B: per-frame .changed<LayerMask>() reconcile
@@ -264,6 +265,9 @@ private:
     } scrub_;
     uint32_t nextUndoGroup_ = 1;
     std::string appFlowPath_;
+    // The last good reloaded AppFlow data file, kept only so `appflow.list` reports the triggers and chords the
+    // running runtime actually uses (the runtime deep-owns what it needs; the compiled-in tables are the fallback).
+    std::optional<Vixen::AppFlow::AppFlowBlobFile> appFlowBlob_;
     std::filesystem::file_time_type appFlowMtime_{};
     bool appFlowMtimeInitialized_ = false;
 
