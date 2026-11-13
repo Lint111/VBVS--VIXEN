@@ -159,7 +159,6 @@ body.building-inspector > #building .ut-row { display: block; margin-top: 1px; }
 body.building-inspector > #building .ut-field-label { display: inline-block; width: 96px; color: #8090a8; }
 body.building-inspector > #building .ut-field-value { display: inline-block; color: #d8e0f0; }
 body.building-inspector > #building .ut-hud-owned { display: block; margin-top: 6px; color: #80e0a0; }
-body.building-inspector > #building .ut-hud-owned-hidden { display: none; }
 body.building-inspector > #building .impact-ok { color: #80e0a0; }
 body.building-inspector > #building .impact-throttled { color: #f0c060; }
 body.building-inspector > #building .impact-halted { color: #f07060; }
