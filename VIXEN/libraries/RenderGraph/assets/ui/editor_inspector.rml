@@ -32,6 +32,28 @@
                          data-attr-value-id="field.valueId" data-attr-reset-id="field.resetId"
                          data-attr-default="field.defaultValue"
                          data-attr-min="field.hasRange ? field.minimum : ''" data-attr-max="field.hasRange ? field.maximum : ''"> </ut-number-field>
+        <div class="subtitle">Nodes</div>
+        <div class="hint" data-if="rawProgram">raw program: {{rawProgramDiagnostic}}</div>
+        <ut-list class="node-outline" data-if="!rawProgram">
+            <ut-toolbar class="node-row" data-for="node : nodes"
+                        data-attr-style="'margin-left: ' + (node.indent * 16) + 'px'">
+                <ut-button variant="name" data-attr-label="node.name + ' (' + node.category + ')'"> </ut-button>
+                <ut-button variant="row" data-attr-id="node.addId" data-attr-label="'add ' + node.addOp"
+                            data-attr-disabled="node.addOp == ''"> </ut-button>
+                <ut-button variant="row" data-attr-id="node.removeId" label="×"
+                            data-attr-disabled="!node.canRemove" data-attr-title="node.removeTitle"> </ut-button>
+                <ut-number-field data-for="field : nodeArguments" data-if="field.nodeIndex == node.nodeIndex"
+                                 data-attr-label="field.label" data-attr-value="field.value"
+                                 data-attr-value-id="field.valueId" data-attr-reset-id="field.resetId"
+                                 data-attr-default="field.defaultValue"
+                                 data-attr-min="field.hasRange ? field.minimum : ''"
+                                 data-attr-max="field.hasRange ? field.maximum : ''"> </ut-number-field>
+            </ut-toolbar>
+        </ut-list>
+        <ut-choice-group label="wrap in" data-if="!rawProgram">
+            <ut-button data-for="choice : nodeWrapChoices" data-attr-id="choice.elementId"
+                       data-attr-label="choice.label"> </ut-button>
+        </ut-choice-group>
         <div class="subtitle">Placement of {{selectedLayerName}} (layer {{selectedLayer}})</div>
         <ut-number-field variant="inline" data-for="field : transform" data-attr-label="field.label"
                          data-attr-value="field.value" data-attr-value-id="field.valueId"> </ut-number-field>

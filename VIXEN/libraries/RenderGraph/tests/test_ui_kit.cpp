@@ -51,6 +51,8 @@ TEST(UiKitContract, InstancesMayOnlyCarryTheOverrideContract) {
     EXPECT_FALSE(UiKit::AttributeAllowed("ut-number-field", "hit-mask")) << "an instance cannot skip the hit rules";
     EXPECT_FALSE(UiKit::AttributeAllowed("ut-number-field", "data-attr-onclick"));
     EXPECT_FALSE(UiKit::AttributeAllowed("ut-button", "value"));
+    EXPECT_TRUE(UiKit::AttributeAllowed("ut-button", "disabled"));
+    EXPECT_TRUE(UiKit::AttributeAllowed("ut-button", "data-attr-disabled"));
     EXPECT_TRUE(UiKit::AttributeAllowed("div", "anything")) << "non-kit tags are not the kit's business";
     EXPECT_EQ(UiKit::RefusedAttributes("ut-button", {"label", "bogus", "id", "hit-mask"}),
               (std::vector<std::string>{"bogus", "hit-mask"}));
@@ -171,6 +173,19 @@ TEST_F(UiKitTest, ButtonVariantRoundForcesTheEllipseHitMask) {
     EXPECT_EQ(b->GetAttribute<Rml::String>("hit-mask", ""), "ellipse");
     EXPECT_EQ(ParseHitMask(b->GetAttribute<Rml::String>("hit-mask", "")).shape, HitMaskShape::Ellipse);
     EXPECT_EQ(doc_->GetElementById("t")->GetAttribute<Rml::String>("hit-mask", ""), "none");
+}
+
+TEST_F(UiKitTest, DisabledButtonIsVisibleButDoesNotTakePointerInput) {
+    Load(R"(<rml><body><ut-button id="disabled" label="Remove" disabled="true"/></body></rml>)");
+    auto* button = doc_->GetElementById("disabled");
+    ASSERT_NE(button, nullptr);
+    EXPECT_TRUE(button->IsClassSet("disabled"));
+    EXPECT_EQ(button->GetProperty("pointer-events")->ToString(), "none");
+
+    button->SetAttribute("disabled", "false");
+    ctx_->Update();
+    EXPECT_FALSE(button->IsClassSet("disabled"));
+    EXPECT_EQ(button->GetProperty("pointer-events")->ToString(), "auto");
 }
 
 TEST_F(UiKitTest, NudgeCommitsThroughTheValueSlotWithTheOneRule) {

@@ -16,6 +16,7 @@ ut-button, ut-number-field .ut-step, ut-number-field .ut-reset {
 }
 ut-button .ut-label { pointer-events: none; }
 ut-button.selected, ut-button.open { color: #ffffff; background-color: #50609a; border-color: #a0c0ff; }
+ut-button.disabled { color: #707890; background-color: #25283a; border-color: #3d4660; opacity: 0.65; }
 ut-button.open { background-color: #3a6ea5; }
 ut-button.row { display: block; margin-left: 0; margin-bottom: 2px; text-align: left; }
 ut-button.name { display: inline-block; width: 70px; margin-left: 0; padding: 0; border-width: 0; background-color: transparent; color: #e0d0b0; text-align: left; }

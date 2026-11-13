@@ -42,6 +42,8 @@ namespace Vixen.AppFlow.Reference
         // R872.6/R872.8: append-only recipe-reference and document-material edits.
         InsertRecipeReference = 46,
         SetDocumentMaterials = 47,
+        // R876 LM-V1: graph-node argument and structural edits. Keep append-only ids.
+        SetNodeArgument = 48, InsertNodeAfter = 49, RemoveNode = 50, WrapNodes = 51,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -262,6 +264,58 @@ namespace Vixen.AppFlow.Reference
         public const int Param4Type = (int)FlowParamType.Float;
         public const string Param5Name = "w";
         public const int Param5Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetNodeArgument))]
+    public static class SetNodeArgumentParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "node";
+        public const int Param1Type = (int)FlowParamType.Int;
+        public const string Param2Name = "field";
+        public const int Param2Type = (int)FlowParamType.String;
+        public const string Param3Name = "x";
+        public const int Param3Type = (int)FlowParamType.Float;
+        public const string Param4Name = "y";
+        public const int Param4Type = (int)FlowParamType.Float;
+        public const string Param5Name = "z";
+        public const int Param5Type = (int)FlowParamType.Float;
+        public const string Param6Name = "w";
+        public const int Param6Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.InsertNodeAfter))]
+    public static class InsertNodeAfterParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "afterNode";
+        public const int Param1Type = (int)FlowParamType.Int;
+        public const string Param2Name = "op";
+        public const int Param2Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.RemoveNode))]
+    public static class RemoveNodeParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "node";
+        public const int Param1Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.WrapNodes))]
+    public static class WrapNodesParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "first";
+        public const int Param1Type = (int)FlowParamType.Int;
+        public const string Param2Name = "last";
+        public const int Param2Type = (int)FlowParamType.Int;
+        public const string Param3Name = "op";
+        public const int Param3Type = (int)FlowParamType.String;
     }
 
     // R766: panel ids are the declared PanelDecl ids; regions are left | right | bottom | overlay | floating.
@@ -605,6 +659,62 @@ namespace Vixen.AppFlow.Reference
     public static class SetLayerPrimitiveFieldWTrigger
     {
         public const string Element = "layer-{index}-field-{field}-w-{w}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetNodeArgument))]
+    public static class SetNodeArgumentXTrigger
+    {
+        public const string Element = "layer-{index}-node-{node}-field-{field}-x-{x}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetNodeArgument))]
+    public static class SetNodeArgumentYTrigger
+    {
+        public const string Element = "layer-{index}-node-{node}-field-{field}-y-{y}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetNodeArgument))]
+    public static class SetNodeArgumentZTrigger
+    {
+        public const string Element = "layer-{index}-node-{node}-field-{field}-z-{z}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetNodeArgument))]
+    public static class SetNodeArgumentWTrigger
+    {
+        public const string Element = "layer-{index}-node-{node}-field-{field}-w-{w}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.InsertNodeAfter))]
+    public static class InsertNodeAfterTrigger
+    {
+        public const string Element = "layer-{index}-node-{node}-add-{op}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.RemoveNode))]
+    public static class RemoveNodeTrigger
+    {
+        public const string Element = "layer-{index}-node-{node}-remove";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.WrapNodes))]
+    public static class WrapNodesTrigger
+    {
+        public const string Element = "layer-{index}-nodes-{first}-{last}-wrap-{op}";
         public const string ParamName = "layerIndex";
         public const string On = "click";
     }

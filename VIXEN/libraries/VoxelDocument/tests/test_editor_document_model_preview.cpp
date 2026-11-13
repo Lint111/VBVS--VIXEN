@@ -9,17 +9,25 @@
 #include "Recipe/SdfRecipeEval.h"
 
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <limits>
 #include <string>
 #include <vector>
 
 #ifndef VXD_GOLDEN_PATH
 #error "VXD_GOLDEN_PATH must be defined by CMake"
+#endif
+#ifndef VXD_ASTEROID_PATH
+#error "VXD_ASTEROID_PATH must be defined by CMake"
+#endif
+#ifndef VXD_BOULDER_PATH
+#error "VXD_BOULDER_PATH must be defined by CMake"
 #endif
 #ifndef VXD_TEST_TEMP_DIR
 #error "VXD_TEST_TEMP_DIR must be defined by CMake"
@@ -805,6 +813,189 @@ TEST(EditorDocumentModelCatalogue, PrimitiveFieldsCarryTheCataloguesLabelAndDefa
         ASSERT_TRUE(model.DeleteLayer(index, nullptr, diagnostic)) << diagnostic.message;
     }
     EXPECT_GT(fieldsChecked, 20u);
+}
+
+TEST(EditorDocumentModelGraph, DerivesNodesAndRoutesArgumentsAndRewritesThroughGeneratedGraph) {
+    using Vixen::SVO::Recipe::SdfGraphDiagnosticCode;
+    using Vixen::SVO::Recipe::SdfOpCode;
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+
+    Vixen::Editor::EditableDocumentLayer sphere;
+    ASSERT_TRUE(EditorDocumentModel::MakePrimitiveLayer(SdfOpCode::Sphere, "graph", sphere, diagnostic));
+    const uint32_t index = model.LayerCount();
+    ASSERT_TRUE(model.InsertLayer(index, sphere, diagnostic)) << diagnostic.message;
+
+    const auto* graph = model.GetLayerGraph(index, diagnostic);
+    ASSERT_NE(graph, nullptr);
+    ASSERT_FALSE(graph->raw);
+    ASSERT_EQ(graph->view.nodeCount, 1u);
+    ASSERT_STREQ(graph->view.nodes[0].opcodeInfo->name, "Sphere");
+
+    ASSERT_TRUE(model.SetNodeArgument(index, 0u, "radius", {2.5f, 0.0f, 0.0f, 0.0f}, diagnostic))
+        << diagnostic.message;
+    std::array<float, 4> radius{};
+    ASSERT_TRUE(model.GetLayerPrimitiveField(index, "radius", radius, diagnostic)) << diagnostic.message;
+    EXPECT_FLOAT_EQ(radius[0], 2.5f);
+    const auto original = [&]() {
+        Vixen::Editor::EditableDocumentLayer layer;
+        EXPECT_TRUE(model.GetLayer(index, layer, diagnostic));
+        return layer.program;
+    }();
+
+    ASSERT_TRUE(model.InsertNodeAfter(index, 0u, "Round", diagnostic)) << diagnostic.message;
+    graph = model.GetLayerGraph(index, diagnostic);
+    ASSERT_FALSE(graph->raw);
+    ASSERT_EQ(graph->view.nodeCount, 2u);
+    EXPECT_STREQ(graph->view.nodes[1].opcodeInfo->name, "Round");
+    ASSERT_TRUE(model.RemoveNode(index, 1u, diagnostic)) << diagnostic.message;
+    Vixen::Editor::EditableDocumentLayer restored;
+    ASSERT_TRUE(model.GetLayer(index, restored, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(SameBytes(restored.program, original));
+
+    ASSERT_TRUE(model.WrapNodes(index, 0u, 0u, "Transform", diagnostic)) << diagnostic.message;
+    graph = model.GetLayerGraph(index, diagnostic);
+    ASSERT_FALSE(graph->raw);
+    ASSERT_EQ(graph->view.nodeCount, 3u);
+    EXPECT_STREQ(graph->view.nodes[0].opcodeInfo->name, "Transform");
+    EXPECT_STREQ(graph->view.nodes[2].opcodeInfo->name, "RestorePos");
+    ASSERT_TRUE(model.SetLayerProgram(index, original, diagnostic)) << diagnostic.message;
+
+    auto invalid = original;
+    invalid.front().opCode = 0xFFu;
+    ASSERT_TRUE(model.SetLayerProgram(index, invalid, diagnostic)) << diagnostic.message;
+    graph = model.GetLayerGraph(index, diagnostic);
+    ASSERT_TRUE(graph->raw);
+    EXPECT_EQ(graph->diagnostic.code, SdfGraphDiagnosticCode::UnknownOpcode);
+    ASSERT_FALSE(model.RemoveNode(index, 0u, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidGraphEdit);
+    EXPECT_NE(diagnostic.message.find("generated graph diagnostic"), std::string::npos);
+}
+
+TEST(EditorDocumentModelGraph, RealUndertowLayersRoundTripArgumentsAndGeneratedRewrites) {
+    using Vixen::SVO::Recipe::SdfArgumentSource;
+
+    struct LayerSpec {
+        const char* path;
+        std::initializer_list<const char*> names;
+    };
+    const LayerSpec documents[] = {
+        {VXD_ASTEROID_PATH, {"body", "ring"}},
+        {VXD_BOULDER_PATH, {"body", "lump", "chip"}},
+    };
+
+    for (const auto& document : documents) {
+        EditorDocumentModel model;
+        DocumentDiagnostic diagnostic;
+        ASSERT_TRUE(model.Load(document.path, diagnostic)) << document.path << ": " << diagnostic.message;
+
+        for (const char* expectedName : document.names) {
+            uint32_t layerIndex = model.LayerCount();
+            for (uint32_t i = 0; i < model.LayerCount(); ++i) {
+                if (model.LayerName(i) == expectedName) {
+                    layerIndex = i;
+                    break;
+                }
+            }
+            ASSERT_LT(layerIndex, model.LayerCount()) << document.path << ": missing layer " << expectedName;
+
+            const auto* graph = model.GetLayerGraph(layerIndex, diagnostic);
+            ASSERT_NE(graph, nullptr) << diagnostic.message;
+            ASSERT_FALSE(graph->raw) << expectedName << ": "
+                                      << EditorDocumentModel::GraphDiagnosticMessage(graph->diagnostic);
+            ASSERT_GT(graph->view.nodeCount, 0u) << expectedName;
+
+            std::vector<Yeroket::Sdf::Generated::SdfInstruction> before;
+            const auto layer = model.View().layers[layerIndex];
+            before.assign(layer.instructions, layer.instructions + layer.header->instructionCount);
+            struct ArgumentEdit {
+                uint32_t nodeIndex;
+                std::string name;
+                std::array<float, 4> value{};
+            };
+            std::vector<ArgumentEdit> edits;
+            for (uint32_t nodeIndex = 0; nodeIndex < graph->view.nodeCount; ++nodeIndex) {
+                const auto& node = graph->view.nodes[nodeIndex];
+                const auto& instruction = layer.instructions[node.instructionIndex];
+                const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(*node.opcodeInfo);
+                for (uint32_t i = 0; i < node.opcodeInfo->argumentCount; ++i) {
+                    const auto& argument = arguments[i];
+                    if (argument.source != SdfArgumentSource::InstructionData) continue;
+                    ArgumentEdit edit{nodeIndex, argument.name};
+                    for (uint32_t component = 0; component < argument.width; ++component)
+                        edit.value[component] = instruction.data[argument.offset + static_cast<int16_t>(component)];
+                    edits.push_back(std::move(edit));
+                }
+            }
+            ASSERT_GT(edits.size(), 0u) << expectedName;
+            for (const auto& edit : edits) {
+                ASSERT_TRUE(model.SetNodeArgument(layerIndex, edit.nodeIndex, edit.name, edit.value, diagnostic))
+                    << expectedName << ".node" << edit.nodeIndex << "." << edit.name << ": "
+                    << diagnostic.message;
+            }
+            const auto after = model.View().layers[layerIndex];
+            ASSERT_EQ(after.header->instructionCount, before.size());
+            EXPECT_TRUE(std::equal(before.begin(), before.end(), after.instructions,
+                                   [](const auto& lhs, const auto& rhs) {
+                                       return std::memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
+                                   }))
+                << expectedName << ": setting current catalogue values changed bytes";
+        }
+    }
+
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_BOULDER_PATH, diagnostic)) << diagnostic.message;
+    uint32_t bodyIndex = model.LayerCount();
+    for (uint32_t i = 0; i < model.LayerCount(); ++i)
+        if (model.LayerName(i) == "body") bodyIndex = i;
+    ASSERT_LT(bodyIndex, model.LayerCount());
+
+    const auto* graph = model.GetLayerGraph(bodyIndex, diagnostic);
+    ASSERT_NE(graph, nullptr);
+    ASSERT_FALSE(graph->raw);
+    uint32_t sphereNode = graph->view.nodeCount;
+    for (uint32_t i = 0; i < graph->view.nodeCount; ++i)
+        if (std::string_view(graph->view.nodes[i].opcodeInfo->name) == "Sphere") sphereNode = i;
+    ASSERT_LT(sphereNode, graph->view.nodeCount);
+
+    const auto original = [&]() {
+        const auto layer = model.View().layers[bodyIndex];
+        return std::vector<Yeroket::Sdf::Generated::SdfInstruction>(
+            layer.instructions, layer.instructions + layer.header->instructionCount);
+    }();
+
+    ASSERT_FALSE(model.RemoveNode(bodyIndex, sphereNode, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidGraphEdit);
+    EXPECT_NE(diagnostic.message.find("generated graph diagnostic"), std::string::npos);
+
+    ASSERT_TRUE(model.InsertNodeAfter(bodyIndex, sphereNode, "Round", diagnostic)) << diagnostic.message;
+    graph = model.GetLayerGraph(bodyIndex, diagnostic);
+    ASSERT_FALSE(graph->raw);
+    uint32_t roundNode = graph->view.nodeCount;
+    for (uint32_t i = 0; i < graph->view.nodeCount; ++i)
+        if (std::string_view(graph->view.nodes[i].opcodeInfo->name) == "Round") roundNode = i;
+    ASSERT_LT(roundNode, graph->view.nodeCount);
+    ASSERT_TRUE(model.RemoveNode(bodyIndex, roundNode, diagnostic)) << diagnostic.message;
+    auto restored = model.View().layers[bodyIndex];
+    ASSERT_EQ(restored.header->instructionCount, original.size());
+    EXPECT_TRUE(std::equal(original.begin(), original.end(), restored.instructions,
+                           [](const auto& lhs, const auto& rhs) {
+                               return std::memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
+                           }));
+
+    graph = model.GetLayerGraph(bodyIndex, diagnostic);
+    ASSERT_FALSE(graph->raw);
+    ASSERT_TRUE(model.WrapNodes(bodyIndex, 0u, graph->view.nodeCount - 1u, "Transform", diagnostic))
+        << diagnostic.message;
+    graph = model.GetLayerGraph(bodyIndex, diagnostic);
+    ASSERT_FALSE(graph->raw);
+    ASSERT_GT(graph->view.nodeCount, 2u);
+    ASSERT_TRUE(model.SetLayerProgram(bodyIndex, original, diagnostic)) << diagnostic.message;
+    graph = model.GetLayerGraph(bodyIndex, diagnostic);
+    ASSERT_FALSE(graph->raw);
+    EXPECT_EQ(graph->view.nodeCount, original.size());
 }
 
 TEST(EditorDocumentModelCatalogue, DisplayNamesSplitAtCamelCaseBoundariesAndIdsKeepTheOpcodeName) {

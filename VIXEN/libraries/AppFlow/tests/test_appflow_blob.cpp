@@ -240,11 +240,11 @@ TEST(AppFlowBlob, DeclaredActionWithNoHandlerIsNoHandlerNotRejectedAndLocated) {
 
     const size_t declared = runtime.CatalogActions().size();
     ASSERT_GT(declared, 3u);
-    EXPECT_EQ(runtime.UnimplementedActions().size(), declared) << "no handler registered yet";
+    EXPECT_EQ(runtime.UnimplementedActions().size(), declared - 1) << "Data is served by its data target";
     runtime.RegisterHandler(FlowActionId::ToggleLayer, [](const AppFlowRuntime::Params&) {});
     EXPECT_TRUE(runtime.IsImplemented(FlowActionId::ToggleLayer));
     EXPECT_FALSE(runtime.IsImplemented(FlowActionId::Save));
-    EXPECT_EQ(runtime.UnimplementedActions().size(), declared - 1);
+    EXPECT_EQ(runtime.UnimplementedActions().size(), declared - 2);
 
     EXPECT_EQ(runtime.DispatchById(FlowActionId::Save), DispatchResult::NoHandler);
     ASSERT_EQ(diagnostics.size(), 1u) << "one diagnostic per dispatch";
@@ -264,8 +264,8 @@ TEST(AppFlowBlob, DeclaredActionWithNoHandlerIsNoHandlerNotRejectedAndLocated) {
     diagnostics.clear();
     EXPECT_EQ(runtime.ReportUnimplemented(), 0u) << "the one declared action (ToggleLayer) has its handler";
     runtime.Reload(nullptr);
-    EXPECT_EQ(runtime.ReportUnimplemented(), declared - 1) << "back to the full table: every unhandled declaration reported once";
-    EXPECT_EQ(diagnostics.size(), declared - 1);
+    EXPECT_EQ(runtime.ReportUnimplemented(), declared - 2) << "back to the full table: every unhandled declaration reported once";
+    EXPECT_EQ(diagnostics.size(), declared - 2);
 }
 
 TEST(AppFlowBlob, CatalogueIsTheLoadedDataNotTheCompiledTables) {

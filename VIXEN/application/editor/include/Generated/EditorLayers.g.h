@@ -16,6 +16,10 @@ struct EditorLayerOpRow { Rml::String name; Rml::String elementId; bool isCurren
 struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool isDefault; Rml::String resetId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorPackRecipeRow { Rml::String id; Rml::String elementId; };
+struct EditorNodeRow { int nodeIndex; Rml::String name; Rml::String category; Rml::String addOp; Rml::String elementId; Rml::String addId; Rml::String removeId; bool canRemove; Rml::String removeTitle; int indent; };
+struct EditorNodeArgumentRow { int nodeIndex; Rml::String field; Rml::String component; Rml::String label; float value; bool hasRange; float minimum; float maximum; float defaultValue; bool isDefault; Rml::String valueId; Rml::String upId; Rml::String downId; Rml::String resetId; };
+struct EditorNodeWrapRow { int firstNode; int lastNode; Rml::String op; Rml::String label; Rml::String elementId; };
+struct EditorNodeChoiceRow { Rml::String name; Rml::String display; Rml::String category; Rml::String elementId; };
 struct EditorLayersBind {
     std::vector<EditorLayerRow>* layers;
     std::vector<EditorParameterRow>* parameters;
@@ -31,6 +35,13 @@ struct EditorLayersBind {
     int* activeLayerCount;
     std::vector<EditorRecipeRow>* recipes;
     std::vector<EditorPackRecipeRow>* packRecipes;
+    std::vector<EditorNodeRow>* nodes;
+    std::vector<EditorNodeArgumentRow>* nodeArguments;
+    std::vector<EditorNodeWrapRow>* nodeWrapChoices;
+    std::vector<EditorNodeChoiceRow>* nodeChoices;
+    bool* nodePickerActive;
+    bool* rawProgram;
+    Rml::String* rawProgramDiagnostic;
     Rml::String* statusDocument;
     Rml::String* statusMessage;
     Rml::String* flowState;
@@ -106,6 +117,47 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("id", &EditorPackRecipeRow::id);
         sh.RegisterMember("elementId", &EditorPackRecipeRow::elementId);
     }
+    if (auto sh = c.RegisterStruct<EditorNodeRow>()) {
+        sh.RegisterMember("nodeIndex", &EditorNodeRow::nodeIndex);
+        sh.RegisterMember("name", &EditorNodeRow::name);
+        sh.RegisterMember("category", &EditorNodeRow::category);
+        sh.RegisterMember("addOp", &EditorNodeRow::addOp);
+        sh.RegisterMember("elementId", &EditorNodeRow::elementId);
+        sh.RegisterMember("addId", &EditorNodeRow::addId);
+        sh.RegisterMember("removeId", &EditorNodeRow::removeId);
+        sh.RegisterMember("canRemove", &EditorNodeRow::canRemove);
+        sh.RegisterMember("removeTitle", &EditorNodeRow::removeTitle);
+        sh.RegisterMember("indent", &EditorNodeRow::indent);
+    }
+    if (auto sh = c.RegisterStruct<EditorNodeArgumentRow>()) {
+        sh.RegisterMember("nodeIndex", &EditorNodeArgumentRow::nodeIndex);
+        sh.RegisterMember("field", &EditorNodeArgumentRow::field);
+        sh.RegisterMember("component", &EditorNodeArgumentRow::component);
+        sh.RegisterMember("label", &EditorNodeArgumentRow::label);
+        sh.RegisterMember("value", &EditorNodeArgumentRow::value);
+        sh.RegisterMember("hasRange", &EditorNodeArgumentRow::hasRange);
+        sh.RegisterMember("minimum", &EditorNodeArgumentRow::minimum);
+        sh.RegisterMember("maximum", &EditorNodeArgumentRow::maximum);
+        sh.RegisterMember("defaultValue", &EditorNodeArgumentRow::defaultValue);
+        sh.RegisterMember("isDefault", &EditorNodeArgumentRow::isDefault);
+        sh.RegisterMember("valueId", &EditorNodeArgumentRow::valueId);
+        sh.RegisterMember("upId", &EditorNodeArgumentRow::upId);
+        sh.RegisterMember("downId", &EditorNodeArgumentRow::downId);
+        sh.RegisterMember("resetId", &EditorNodeArgumentRow::resetId);
+    }
+    if (auto sh = c.RegisterStruct<EditorNodeWrapRow>()) {
+        sh.RegisterMember("firstNode", &EditorNodeWrapRow::firstNode);
+        sh.RegisterMember("lastNode", &EditorNodeWrapRow::lastNode);
+        sh.RegisterMember("op", &EditorNodeWrapRow::op);
+        sh.RegisterMember("label", &EditorNodeWrapRow::label);
+        sh.RegisterMember("elementId", &EditorNodeWrapRow::elementId);
+    }
+    if (auto sh = c.RegisterStruct<EditorNodeChoiceRow>()) {
+        sh.RegisterMember("name", &EditorNodeChoiceRow::name);
+        sh.RegisterMember("display", &EditorNodeChoiceRow::display);
+        sh.RegisterMember("category", &EditorNodeChoiceRow::category);
+        sh.RegisterMember("elementId", &EditorNodeChoiceRow::elementId);
+    }
     c.RegisterArray<std::vector<EditorLayerRow>>();
     c.RegisterArray<std::vector<EditorParameterRow>>();
     c.RegisterArray<std::vector<EditorTransformRow>>();
@@ -114,6 +166,10 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.RegisterArray<std::vector<EditorShapeFieldRow>>();
     c.RegisterArray<std::vector<EditorRecipeRow>>();
     c.RegisterArray<std::vector<EditorPackRecipeRow>>();
+    c.RegisterArray<std::vector<EditorNodeRow>>();
+    c.RegisterArray<std::vector<EditorNodeArgumentRow>>();
+    c.RegisterArray<std::vector<EditorNodeWrapRow>>();
+    c.RegisterArray<std::vector<EditorNodeChoiceRow>>();
     c.Bind("layers", b.layers);
     c.Bind("parameters", b.parameters);
     c.Bind("transform", b.transform);
@@ -128,6 +184,13 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
     c.Bind("recipes", b.recipes);
     c.Bind("packRecipes", b.packRecipes);
+    c.Bind("nodes", b.nodes);
+    c.Bind("nodeArguments", b.nodeArguments);
+    c.Bind("nodeWrapChoices", b.nodeWrapChoices);
+    c.Bind("nodeChoices", b.nodeChoices);
+    c.Bind("nodePickerActive", b.nodePickerActive);
+    c.Bind("rawProgram", b.rawProgram);
+    c.Bind("rawProgramDiagnostic", b.rawProgramDiagnostic);
     c.Bind("statusDocument", b.statusDocument);
     c.Bind("statusMessage", b.statusMessage);
     c.Bind("flowState", b.flowState);

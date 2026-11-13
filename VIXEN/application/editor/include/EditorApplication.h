@@ -164,6 +164,7 @@ private:
     // filter into the View and the editor republishes the ranked primitive rows when it changes.
     static constexpr const char* kPickerPanelId = "picker";
     void PublishPickerPrimitives();
+    void PublishNodePickerChoices();
     bool PickerOpen() const;
     void ClosePicker();
     void StepPicker();
@@ -175,6 +176,9 @@ private:
     // The element the last UI click came from (cleared after its dispatch): where an OpenPanel anchors a flyout.
     std::string clickAnchorElementId_;
     std::string publishedPickerFilter_;
+    uint32_t nodePickerLayer_ = 0;
+    uint32_t nodePickerNode_ = 0;
+    bool nodePickerActive_ = false;
     // R766: the status-line panel (document, flow state, undo depth, last message).
     void RefreshStatusView();
     // R766: applies one panel verb's result: persists the layout and records a channel event.

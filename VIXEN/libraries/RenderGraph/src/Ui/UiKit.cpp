@@ -82,7 +82,7 @@ struct KindInfo {
 
 const std::vector<KindInfo>& Kinds() {
     static const std::vector<KindInfo> kinds = {
-        {Kind::Button, "ut-button", "button", {"label", "variant"}, {"label"}},
+        {Kind::Button, "ut-button", "button", {"label", "variant", "disabled"}, {"label"}},
         {Kind::Toggle, "ut-toggle", "toggle", {"checked", "variant"}, {"mark"}},
         {Kind::TextField, "ut-text-field", nullptr, {"value", "autofocus", "variant", "type"}, {}},
         {Kind::NumberField, "ut-number-field", "number-field",
@@ -284,6 +284,7 @@ public:
             if (auto* label = Part("label")) label->AddEventListener("mousedown", this);
         }
         built_ = true;
+        Refresh();
     }
 
     // A data-for row clone (and any caller) replaces the instance's own contents with SetInnerRML; the kit's structure
@@ -354,7 +355,11 @@ private:
 
     void Refresh() {
         switch (info_.kind) {
-            case Kind::Button: SetText(Part("label"), Attr("label")); break;
+            case Kind::Button:
+                SetText(Part("label"), Attr("label"));
+                SetClass("disabled", Truthy(Attr("disabled")));
+                SetProperty("pointer-events", Truthy(Attr("disabled")) ? "none" : "auto");
+                break;
             case Kind::ChoiceGroup: SetText(Part("label"), Attr("label")); break;
             case Kind::Toggle: SetClass("checked", Truthy(Attr("checked"))); break;
             case Kind::StatusLine: RefreshStatus(); break;

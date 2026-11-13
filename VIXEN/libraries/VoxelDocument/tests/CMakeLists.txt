@@ -6,6 +6,8 @@ target_link_libraries(test_editor_document_model_preview PRIVATE VoxelDocument A
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/VoxelDocument-tests")
 target_compile_definitions(test_editor_document_model_preview PRIVATE
     VXD_GOLDEN_PATH="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
+    VXD_ASTEROID_PATH="/home/liory/projects/undertow/core/content/core/recipes/asteroid.vxd"
+    VXD_BOULDER_PATH="/home/liory/projects/undertow/modpacks/_templates/render_recipe/boulder.vxd"
     VXD_TEST_TEMP_DIR="${CMAKE_BINARY_DIR}/VoxelDocument-tests"
 )
 set_target_properties(test_editor_document_model_preview PROPERTIES FOLDER "Tests/VoxelDocument Tests")

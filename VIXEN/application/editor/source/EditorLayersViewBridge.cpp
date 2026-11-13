@@ -25,8 +25,9 @@ void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
                              const std::vector<EditorLayerData>& layers,
                              const std::vector<EditorParameterData>& parameters,
                              const EditorPlacementData& placement,
-                             const EditorShapeData& shape) {
-    view.PopulateFromDocument(mask, layers, parameters, placement, shape);
+                             const EditorShapeData& shape,
+                             const EditorGraphData& graph) {
+    view.PopulateFromDocument(mask, layers, parameters, placement, shape, graph);
 }
 
 void RefreshEditorPrimitivesView(EditorLayersView& view, const std::vector<EditorPrimitiveData>& primitives) {
@@ -36,6 +37,12 @@ void RefreshEditorPrimitivesView(EditorLayersView& view, const std::vector<Edito
 std::string EditorPickerFilter(const EditorLayersView& view) { return view.PickerFilter(); }
 
 void ClearEditorPickerFilter(EditorLayersView& view) { view.ClearPickerFilter(); }
+
+void RefreshEditorNodeChoicesView(EditorLayersView& view,
+                                  const std::vector<EditorNodeChoiceData>& choices,
+                                  bool active) {
+    view.PopulateNodeChoices(choices, active);
+}
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes) {
     view.PopulateRecipes(recipes);

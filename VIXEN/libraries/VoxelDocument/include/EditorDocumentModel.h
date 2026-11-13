@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "Recipe/generated/VoxelDocument.g.h"
+#include "Recipe/generated/SdfOpCodes.g.h"
 #include "Recipe/RecipeRegistry.h"
 
 namespace Vixen::Editor {
@@ -45,6 +46,8 @@ enum class DocumentDiagnosticCode : uint8_t {
     ReferenceInUse,
     ReferenceNotFound,
     InvalidReferenceLayer,
+    InvalidGraphEdit,
+    RawProgram,
 };
 
 struct DocumentDiagnostic {
@@ -96,6 +99,15 @@ struct PrimitiveFieldInfo {
     bool hasDefault = false;
     std::array<float, 4> defaultValue{0.0f, 0.0f, 0.0f, 0.0f};
     std::array<float, 4> value{0.0f, 0.0f, 0.0f, 0.0f};
+};
+
+// The generated graph is the editor's node seam. The storage is owned by the document model;
+// callers may inspect the view and diagnostic until the next document mutation. Invalid authored
+// programs remain loadable and are represented as raw=true with the located generated diagnostic.
+struct LayerGraph {
+    Vixen::SVO::Recipe::SdfGraphView view{};
+    Vixen::SVO::Recipe::SdfGraphDiagnostic diagnostic{};
+    bool raw = true;
 };
 
 struct DocumentBakeSnapshot {
@@ -189,6 +201,19 @@ public:
     bool SetLayerProgram(uint32_t index,
                          const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& program,
                          DocumentDiagnostic& diagnostic);
+
+    // R876 LM-V1: node-level graph editing. Structural edits are delegated to the generated
+    // graph rewrites; argument edits use the generated catalogue and are re-derived before commit.
+    const LayerGraph* GetLayerGraph(uint32_t index, DocumentDiagnostic& diagnostic) const;
+    static std::string GraphDiagnosticMessage(
+        const Vixen::SVO::Recipe::SdfGraphDiagnostic& diagnostic);
+    bool SetNodeArgument(uint32_t layerIndex, uint32_t nodeIndex, std::string_view argumentName,
+                         const std::array<float, 4>& value, DocumentDiagnostic& diagnostic);
+    bool InsertNodeAfter(uint32_t layerIndex, uint32_t nodeIndex, std::string_view opcode,
+                         DocumentDiagnostic& diagnostic);
+    bool RemoveNode(uint32_t layerIndex, uint32_t nodeIndex, DocumentDiagnostic& diagnostic);
+    bool WrapNodes(uint32_t layerIndex, uint32_t firstNode, uint32_t lastNode,
+                   std::string_view domainOpcode, DocumentDiagnostic& diagnostic);
 
     // Catalogue-driven shape editing (R872.1). A layer is "shape-editable" only when its program is
     // [Transform] + exactly one Primitive-category instruction + [RestorePos]; any other program
@@ -296,6 +321,7 @@ private:
     bool Rebuild(std::vector<EditableDocumentLayer> layers,
                  std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader> parameters,
                  uint32_t enabledMask, DocumentDiagnostic& diagnostic);
+    void RefreshLayerGraphs();
 
     std::vector<uint8_t> rawBytes_;
     Yeroket::Sdf::Generated::VoxelDocumentView view_{};
@@ -308,6 +334,10 @@ private:
     uint32_t majorMaterialPercent_ = 0;
     std::vector<std::string> references_;
     bool serializationDirty_ = false;
+    std::vector<LayerGraph> layerGraphs_;
+    std::vector<std::vector<Vixen::SVO::Recipe::SdfGraphNode>> layerGraphNodes_;
+    std::vector<std::vector<Vixen::SVO::Recipe::SdfGraphInputSocket>> layerGraphInputs_;
+    std::vector<std::vector<Vixen::SVO::Recipe::SdfGraphOutputSocket>> layerGraphOutputs_;
 };
 
 }  // namespace Vixen::Editor

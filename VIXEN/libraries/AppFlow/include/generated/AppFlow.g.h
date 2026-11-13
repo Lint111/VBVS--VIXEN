@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0xDCAD6F92u;
+inline constexpr uint32_t kAppFlowShapeHash = 0x6CF3C4EDu;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -16,7 +16,7 @@ inline constexpr std::array<FlowStateId, 0> kTerminalStateIds = {  };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41, CreatePrimitiveLayer=42, SetLayerOp=43, SetLayerPrimitiveField=44, ChoosePrimitive=45, InsertRecipeReference=46, SetDocumentMaterials=47 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41, CreatePrimitiveLayer=42, SetLayerOp=43, SetLayerPrimitiveField=44, ChoosePrimitive=45, InsertRecipeReference=46, SetDocumentMaterials=47, SetNodeArgument=48, InsertNodeAfter=49, RemoveNode=50, WrapNodes=51 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -75,6 +75,13 @@ namespace FlowElementTriggerId {
     inline constexpr const char* SetLayerPrimitiveFieldYTrigger = "SetLayerPrimitiveFieldYTrigger";
     inline constexpr const char* SetLayerPrimitiveFieldZTrigger = "SetLayerPrimitiveFieldZTrigger";
     inline constexpr const char* SetLayerPrimitiveFieldWTrigger = "SetLayerPrimitiveFieldWTrigger";
+    inline constexpr const char* SetNodeArgumentXTrigger = "SetNodeArgumentXTrigger";
+    inline constexpr const char* SetNodeArgumentYTrigger = "SetNodeArgumentYTrigger";
+    inline constexpr const char* SetNodeArgumentZTrigger = "SetNodeArgumentZTrigger";
+    inline constexpr const char* SetNodeArgumentWTrigger = "SetNodeArgumentWTrigger";
+    inline constexpr const char* InsertNodeAfterTrigger = "InsertNodeAfterTrigger";
+    inline constexpr const char* RemoveNodeTrigger = "RemoveNodeTrigger";
+    inline constexpr const char* WrapNodesTrigger = "WrapNodesTrigger";
     inline constexpr const char* SetLayerTransformPXTrigger = "SetLayerTransformPXTrigger";
     inline constexpr const char* SetLayerTransformPYTrigger = "SetLayerTransformPYTrigger";
     inline constexpr const char* SetLayerTransformPZTrigger = "SetLayerTransformPZTrigger";
@@ -142,6 +149,10 @@ inline constexpr FlowParamSchema kInsertRecipeReferenceParams[] = { {"recipe", F
 inline constexpr FlowParamSchema kSetDocumentMaterialsParams[] = { {"major", FlowParamType::Int}, {"minor", FlowParamType::Int}, {"majorPercent", FlowParamType::Float} };
 inline constexpr FlowParamSchema kSetLayerOpParams[] = { {"layerIndex", FlowParamType::Int}, {"op", FlowParamType::String} };
 inline constexpr FlowParamSchema kSetLayerPrimitiveFieldParams[] = { {"layerIndex", FlowParamType::Int}, {"field", FlowParamType::String}, {"x", FlowParamType::Float}, {"y", FlowParamType::Float}, {"z", FlowParamType::Float}, {"w", FlowParamType::Float} };
+inline constexpr FlowParamSchema kSetNodeArgumentParams[] = { {"layerIndex", FlowParamType::Int}, {"node", FlowParamType::Int}, {"field", FlowParamType::String}, {"x", FlowParamType::Float}, {"y", FlowParamType::Float}, {"z", FlowParamType::Float}, {"w", FlowParamType::Float} };
+inline constexpr FlowParamSchema kInsertNodeAfterParams[] = { {"layerIndex", FlowParamType::Int}, {"afterNode", FlowParamType::Int}, {"op", FlowParamType::String} };
+inline constexpr FlowParamSchema kRemoveNodeParams[] = { {"layerIndex", FlowParamType::Int}, {"node", FlowParamType::Int} };
+inline constexpr FlowParamSchema kWrapNodesParams[] = { {"layerIndex", FlowParamType::Int}, {"first", FlowParamType::Int}, {"last", FlowParamType::Int}, {"op", FlowParamType::String} };
 inline constexpr FlowParamSchema kOpenPanelParams[] = { {"panelId", FlowParamType::String} };
 inline constexpr FlowParamSchema kClosePanelParams[] = { {"panelId", FlowParamType::String} };
 inline constexpr FlowParamSchema kFocusPanelParams[] = { {"panelId", FlowParamType::String} };
@@ -205,7 +216,11 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::SetLayerPrimitiveField, sizeof(LayerState), true, kSetLayerPrimitiveFieldParams, 6 },
     { FlowActionId::ChoosePrimitive, sizeof(LayerState), true, kChoosePrimitiveParams, 1 },
     { FlowActionId::InsertRecipeReference, sizeof(LayerState), true, kInsertRecipeReferenceParams, 1 },
-    { FlowActionId::SetDocumentMaterials, sizeof(LayerState), true, kSetDocumentMaterialsParams, 3 }
+    { FlowActionId::SetDocumentMaterials, sizeof(LayerState), true, kSetDocumentMaterialsParams, 3 },
+    { FlowActionId::SetNodeArgument, sizeof(LayerState), true, kSetNodeArgumentParams, 7 },
+    { FlowActionId::InsertNodeAfter, sizeof(LayerState), true, kInsertNodeAfterParams, 3 },
+    { FlowActionId::RemoveNode, sizeof(LayerState), true, kRemoveNodeParams, 2 },
+    { FlowActionId::WrapNodes, sizeof(LayerState), true, kWrapNodesParams, 4 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -239,6 +254,13 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::SetLayerPrimitiveFieldYTrigger, "layer-{index}-field-{field}-y-{y}", FlowActionId::SetLayerPrimitiveField, "layerIndex", "click" },
     { FlowElementTriggerId::SetLayerPrimitiveFieldZTrigger, "layer-{index}-field-{field}-z-{z}", FlowActionId::SetLayerPrimitiveField, "layerIndex", "click" },
     { FlowElementTriggerId::SetLayerPrimitiveFieldWTrigger, "layer-{index}-field-{field}-w-{w}", FlowActionId::SetLayerPrimitiveField, "layerIndex", "click" },
+    { FlowElementTriggerId::SetNodeArgumentXTrigger, "layer-{index}-node-{node}-field-{field}-x-{x}", FlowActionId::SetNodeArgument, "layerIndex", "click" },
+    { FlowElementTriggerId::SetNodeArgumentYTrigger, "layer-{index}-node-{node}-field-{field}-y-{y}", FlowActionId::SetNodeArgument, "layerIndex", "click" },
+    { FlowElementTriggerId::SetNodeArgumentZTrigger, "layer-{index}-node-{node}-field-{field}-z-{z}", FlowActionId::SetNodeArgument, "layerIndex", "click" },
+    { FlowElementTriggerId::SetNodeArgumentWTrigger, "layer-{index}-node-{node}-field-{field}-w-{w}", FlowActionId::SetNodeArgument, "layerIndex", "click" },
+    { FlowElementTriggerId::InsertNodeAfterTrigger, "layer-{index}-node-{node}-add-{op}", FlowActionId::InsertNodeAfter, "layerIndex", "click" },
+    { FlowElementTriggerId::RemoveNodeTrigger, "layer-{index}-node-{node}-remove", FlowActionId::RemoveNode, "layerIndex", "click" },
+    { FlowElementTriggerId::WrapNodesTrigger, "layer-{index}-nodes-{first}-{last}-wrap-{op}", FlowActionId::WrapNodes, "layerIndex", "click" },
     { FlowElementTriggerId::SetLayerTransformPXTrigger, "layer-{index}-placement-px-{px}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
     { FlowElementTriggerId::SetLayerTransformPYTrigger, "layer-{index}-placement-py-{py}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
     { FlowElementTriggerId::SetLayerTransformPZTrigger, "layer-{index}-placement-pz-{pz}", FlowActionId::SetLayerTransform, "layerIndex", "click" },

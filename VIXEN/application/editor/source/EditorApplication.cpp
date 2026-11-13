@@ -384,6 +384,7 @@ void EditorApplication::RefreshLayersView() {
     // R872.1: the selected layer's combine-op choices and typed primitive fields, read from the generated
     // recipe-op catalogue through the document model.
     Vixen::App::EditorShapeData shape;
+    Vixen::App::EditorGraphData graphData;
     if (doc_.LayerCount() != 0u) {
         const uint8_t currentOp = doc_.View().layers[selectedLayer_].header->op;
         for (const auto& choice : Vixen::SVO::Recipe::SdfLayerOpTable) {
@@ -407,10 +408,140 @@ void EditorApplication::RefreshLayersView() {
                 }
             }
         } else {
-            shape.note = shapeDiagnostic.message;
+            std::string recipeId;
+            Vixen::Editor::DocumentDiagnostic recipeDiagnostic;
+            if (doc_.IsRecipeReferenceLayer(selectedLayer_, &recipeId, recipeDiagnostic)) {
+                shape.primitive = "Recipe " + recipeId;
+                shape.note.clear();
+            } else {
+                shape.note = shapeDiagnostic.message;
+            }
+        }
+
+        Vixen::Editor::DocumentDiagnostic graphDiagnostic;
+        const Vixen::Editor::LayerGraph* graph = doc_.GetLayerGraph(selectedLayer_, graphDiagnostic);
+        if (graph != nullptr) {
+            graphData.rawProgram = graph->raw;
+            if (graph->raw) {
+                graphData.rawProgramDiagnostic =
+                    Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(graph->diagnostic);
+            } else {
+                const auto categoryName = [](Vixen::SVO::Recipe::SdfOpCategory category) {
+                    using Category = Vixen::SVO::Recipe::SdfOpCategory;
+                    switch (category) {
+                        case Category::Control: return std::string("Control");
+                        case Category::Domain: return std::string("Domain");
+                        case Category::Vector: return std::string("Expression");
+                        case Category::Primitive: return std::string("Primitive");
+                        case Category::Combine: return std::string("Combine");
+                        case Category::Modifier: return std::string("Modifier");
+                        case Category::Input: return std::string("Input");
+                        case Category::Expression: return std::string("Expression");
+                    }
+                    return std::string("Unknown");
+                };
+                const auto indentFor = [graph](const Vixen::SVO::Recipe::SdfGraphNode& node) {
+                    int indent = 0;
+                    int32_t frame = node.domainFrame;
+                    for (uint32_t depth = 0; frame >= 0 && depth < graph->view.nodeCount; ++depth) {
+                        ++indent;
+                        const auto* enclosing = std::find_if(
+                            graph->view.nodes, graph->view.nodes + graph->view.nodeCount,
+                            [frame](const auto& candidate) {
+                                return static_cast<int32_t>(candidate.instructionIndex) == frame;
+                            });
+                        if (enclosing == graph->view.nodes + graph->view.nodeCount) break;
+                        frame = enclosing->domainFrame;
+                    }
+                    return indent;
+                };
+                const auto& layer = doc_.View().layers[selectedLayer_];
+                const std::span<const Vixen::SVO::Recipe::SdfInstruction> program(
+                    layer.instructions, layer.header->instructionCount);
+                for (uint32_t nodeIndex = 0; nodeIndex < graph->view.nodeCount; ++nodeIndex) {
+                    const auto& node = graph->view.nodes[nodeIndex];
+                    std::vector<Vixen::SVO::Recipe::SdfInstruction> candidate(
+                        program.size() > 0u ? program.size() - 1u : 0u);
+                    uint32_t candidateCount = 0u;
+                    Vixen::SVO::Recipe::SdfGraphDiagnostic removeDiagnostic{};
+                    const bool canRemove = Vixen::SVO::Recipe::RemoveNode(
+                        program, node.instructionIndex,
+                        std::span<Vixen::SVO::Recipe::SdfInstruction>(candidate.data(), candidate.size()),
+                        candidateCount, removeDiagnostic);
+                    std::string removeTitle = canRemove
+                        ? "Remove node"
+                        : "Remove refused: " +
+                              Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(removeDiagnostic);
+                    std::string addOp;
+                    for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+                        std::vector<Vixen::SVO::Recipe::SdfInstruction> inserted(program.size() + 1u);
+                        uint32_t insertedCount = 0u;
+                        Vixen::SVO::Recipe::SdfGraphDiagnostic insertDiagnostic{};
+                        if (Vixen::SVO::Recipe::InsertNodeAfter(
+                                program, node.instructionIndex, info.opcode,
+                                std::span<Vixen::SVO::Recipe::SdfInstruction>(inserted.data(), inserted.size()),
+                                insertedCount, insertDiagnostic)) {
+                            addOp = info.name;
+                            break;
+                        }
+                    }
+                    std::string displayName = node.opcodeInfo->name;
+                    std::string recipeId;
+                    Vixen::Editor::DocumentDiagnostic recipeDiagnostic;
+                    if (node.opcodeInfo->opcode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe) &&
+                        doc_.IsRecipeReferenceLayer(selectedLayer_, &recipeId, recipeDiagnostic)) {
+                        displayName = "Recipe " + recipeId;
+                    }
+                    graphData.nodes.push_back({static_cast<int>(nodeIndex), std::move(displayName),
+                                               categoryName(node.opcodeInfo->category), std::move(addOp), canRemove,
+                                               std::move(removeTitle), indentFor(node)});
+
+                    const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(*node.opcodeInfo);
+                    for (uint32_t argumentIndex = 0;
+                         argumentIndex < node.opcodeInfo->argumentCount; ++argumentIndex) {
+                        const auto& argument = arguments[argumentIndex];
+                        if (argument.source != Vixen::SVO::Recipe::SdfArgumentSource::InstructionData) continue;
+                        static constexpr const char* kComponents[4] = {"x", "y", "z", "w"};
+                        for (uint32_t component = 0; component < argument.width && component < 4u; ++component) {
+                            const std::string field = argument.name;
+                            const std::string componentName = kComponents[component];
+                            const float value = layer.instructions[node.instructionIndex]
+                                .data[argument.offset + static_cast<int16_t>(component)];
+                            graphData.arguments.push_back({static_cast<int>(nodeIndex), field, componentName,
+                                                           argument.width > 1u
+                                                               ? std::string(argument.label) + " " + kComponents[component]
+                                                               : std::string(argument.label),
+                                                           value, argument.hasRange != 0u, argument.minValue,
+                                                           argument.maxValue, argument.defaultValue[component],
+                                                           argument.hasDefault != 0u &&
+                                                               value == argument.defaultValue[component]});
+                        }
+                    }
+                }
+                // The catalogue is the only source for domain choices. The generated rewrite is
+                // tried for every contiguous pair; only candidates accepted by its validation are published.
+                for (uint32_t first = 0; first < graph->view.nodeCount; ++first) {
+                    for (uint32_t last = first; last < graph->view.nodeCount; ++last) {
+                        for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+                            if (info.opensDomainFrame == 0u) continue;
+                            std::vector<Vixen::SVO::Recipe::SdfInstruction> candidate(program.size() + 2u);
+                            uint32_t candidateCount = 0u;
+                            Vixen::SVO::Recipe::SdfGraphDiagnostic wrapDiagnostic{};
+                            if (!Vixen::SVO::Recipe::WrapInDomain(
+                                    program, graph->view.nodes[first].instructionIndex,
+                                    graph->view.nodes[last].instructionIndex, info.opcode,
+                                    std::span<Vixen::SVO::Recipe::SdfInstruction>(candidate.data(), candidate.size()),
+                                    candidateCount, wrapDiagnostic)) continue;
+                            graphData.wrapChoices.push_back({static_cast<int>(first), static_cast<int>(last),
+                                                             info.name, Vixen::Editor::EditorDocumentModel::DisplayName(info.name)});
+                        }
+                    }
+                }
+            }
         }
     }
-    Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), layers, parameters, placement, shape);
+    Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), layers, parameters, placement, shape,
+                                        graphData);
     if (!primitivesPublished_) {
         primitivesPublished_ = true;
         PublishPickerPrimitives();
@@ -419,9 +550,73 @@ void EditorApplication::RefreshLayersView() {
 
 void EditorApplication::PublishPickerPrimitives() {
     publishedPickerFilter_ = Vixen::App::EditorPickerFilter(*layersView_);
+    if (nodePickerActive_) {
+        Vixen::App::RefreshEditorPrimitivesView(*layersView_, {});
+        Vixen::App::RefreshEditorPackRecipesView(*layersView_, {});
+        PublishNodePickerChoices();
+        return;
+    }
     Vixen::App::RefreshEditorPrimitivesView(*layersView_, PickerPrimitives(publishedPickerFilter_));
     Vixen::App::RefreshEditorPackRecipesView(
         *layersView_, PickerPackRecipes(pack_, openRecipeId_, publishedPickerFilter_));
+    Vixen::App::RefreshEditorNodeChoicesView(*layersView_, {}, false);
+}
+
+void EditorApplication::PublishNodePickerChoices() {
+    std::vector<Vixen::App::EditorNodeChoiceData> choices;
+    if (nodePickerLayer_ < doc_.LayerCount()) {
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        const auto* graph = doc_.GetLayerGraph(nodePickerLayer_, diagnostic);
+        if (graph != nullptr && !graph->raw && nodePickerNode_ < graph->view.nodeCount) {
+            const auto& layer = doc_.View().layers[nodePickerLayer_];
+            const std::span<const Vixen::SVO::Recipe::SdfInstruction> program(
+                layer.instructions, layer.header->instructionCount);
+            struct RankedChoice {
+                int rank;
+                const Vixen::SVO::Recipe::SdfOpInfo* info;
+            };
+            std::vector<RankedChoice> ranked;
+            const std::string filter = Vixen::App::EditorPickerFilter(*layersView_);
+            const auto categoryName = [](Vixen::SVO::Recipe::SdfOpCategory category) {
+                using Category = Vixen::SVO::Recipe::SdfOpCategory;
+                switch (category) {
+                    case Category::Control: return std::string("Control");
+                    case Category::Domain: return std::string("Domain");
+                    case Category::Vector: return std::string("Expression");
+                    case Category::Primitive: return std::string("Primitive");
+                    case Category::Combine: return std::string("Combine");
+                    case Category::Modifier: return std::string("Modifier");
+                    case Category::Input: return std::string("Input");
+                    case Category::Expression: return std::string("Expression");
+                }
+                return std::string("Unknown");
+            };
+            const auto& node = graph->view.nodes[nodePickerNode_];
+            for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+                std::vector<Vixen::SVO::Recipe::SdfInstruction> candidate(program.size() + 1u);
+                uint32_t candidateCount = 0u;
+                Vixen::SVO::Recipe::SdfGraphDiagnostic insertDiagnostic{};
+                if (!Vixen::SVO::Recipe::InsertNodeAfter(
+                        program, node.instructionIndex, info.opcode,
+                        std::span<Vixen::SVO::Recipe::SdfInstruction>(candidate.data(), candidate.size()),
+                        candidateCount, insertDiagnostic)) continue;
+                const int rank = Vixen::Editor::EditorDocumentModel::FilterRank(info.name, filter);
+                if (rank >= 0) ranked.push_back({rank, &info});
+            }
+            std::sort(ranked.begin(), ranked.end(), [](const RankedChoice& a, const RankedChoice& b) {
+                return a.rank != b.rank ? a.rank < b.rank : std::string_view(a.info->name) < b.info->name;
+            });
+            choices.reserve(ranked.size());
+            for (const auto& choice : ranked) {
+                choices.push_back({choice.info->name,
+                                   Vixen::Editor::EditorDocumentModel::DisplayName(choice.info->name),
+                                   categoryName(choice.info->category),
+                                   "layer-" + std::to_string(nodePickerLayer_) + "-node-" +
+                                       std::to_string(nodePickerNode_) + "-add-" + choice.info->name});
+            }
+        }
+    }
+    Vixen::App::RefreshEditorNodeChoicesView(*layersView_, choices, nodePickerActive_);
 }
 
 bool EditorApplication::PickerOpen() const {
@@ -433,6 +628,7 @@ bool EditorApplication::PickerOpen() const {
 
 void EditorApplication::ClosePicker() {
     AfterPanelVerb("close", Panels().Dock().Close(kPickerPanelId));
+    nodePickerActive_ = false;
     Vixen::App::ClearEditorPickerFilter(*layersView_);
     PublishPickerPrimitives();
 }
@@ -482,6 +678,9 @@ void EditorApplication::SyncAfterDocumentMutation() {
     rt_.Layers().SetLayerCount(doc_.LayerCount());
     rt_.Layers().SetMask(mask);
     dirty_ = true;
+    // A successful action supersedes the previous action's located refusal. Keep this generic at
+    // the mutation seam so typed-filter adds, undo/redo, and node edits all clear stale status.
+    ClearEditorError();
     RefreshLayersView();
 }
 
@@ -981,6 +1180,25 @@ void EditorApplication::RegisterAppFlowHandlers() {
                        return doc_.SetLayerProgram(index, program, d); });
         lastEditorError_.clear();
     };
+    const auto setNodeArgument = [this, recordEdit, refuse](FlowActionId actionId, uint32_t layerIndex,
+                                                            uint32_t nodeIndex, const std::string& field,
+                                                            const std::array<float, 4>& value) {
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        Vixen::Editor::EditableDocumentLayer layerBefore;
+        if (!doc_.GetLayer(layerIndex, layerBefore, diagnostic)) {
+            refuse("SetNodeArgument", diagnostic.message);
+            return;
+        }
+        recordEdit(actionId, "SetNodeArgument",
+                   [this, layerIndex, nodeIndex, field, value](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetNodeArgument(layerIndex, nodeIndex, field, value, d);
+                   },
+                   [this, layerIndex, program = std::move(layerBefore.program)](
+                       Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerProgram(layerIndex, program, d);
+                   });
+        lastEditorError_.clear();
+    };
     rt_.RegisterHandler(FlowActionId::SetLayerBlend, [this, setBlend, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         uint32_t index = 0;
         float radius = 0.0f;
@@ -989,6 +1207,85 @@ void EditorApplication::RegisterAppFlowHandlers() {
             return;
         }
         setBlend(FlowActionId::SetLayerBlend, index, radius);
+    });
+
+    rt_.RegisterHandler(FlowActionId::SetNodeArgument,
+                        [this, setNodeArgument, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerIndex = 0;
+        uint32_t nodeIndex = 0;
+        std::string field;
+        if (!ParseIndexParam(p, "layerIndex", layerIndex) || !ParseIndexParam(p, "node", nodeIndex) ||
+            !ParseTextParam(p, "field", field)) {
+            refuse("SetNodeArgument", "needs layerIndex, node, and field");
+            return;
+        }
+        std::array<float, 4> value{};
+        for (size_t i = 0; i < value.size(); ++i) {
+            const char* names[4] = {"x", "y", "z", "w"};
+            (void)ParseFloatParam(p, names[i], value[i]);
+        }
+        setNodeArgument(FlowActionId::SetNodeArgument, layerIndex, nodeIndex, field, value);
+    });
+
+    const auto registerNodeStructuralEdit = [this, recordEdit, refuse](
+        FlowActionId actionId, const char* label, uint32_t layerIndex,
+        uint32_t first, uint32_t last, std::string op) {
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        Vixen::Editor::EditableDocumentLayer layerBefore;
+        if (!doc_.GetLayer(layerIndex, layerBefore, diagnostic)) {
+            refuse(label, diagnostic.message);
+            return;
+        }
+        recordEdit(actionId, label,
+                   [this, actionId, layerIndex, first, last, op](Vixen::Editor::DocumentDiagnostic& d) {
+                       if (actionId == FlowActionId::InsertNodeAfter)
+                           return doc_.InsertNodeAfter(layerIndex, first, op, d);
+                       if (actionId == FlowActionId::RemoveNode)
+                           return doc_.RemoveNode(layerIndex, first, d);
+                       return doc_.WrapNodes(layerIndex, first, last, op, d);
+                   },
+                   [this, layerIndex, program = std::move(layerBefore.program)](
+                       Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerProgram(layerIndex, program, d);
+                   });
+        if (actionId == FlowActionId::InsertNodeAfter && PickerOpen()) ClosePicker();
+    };
+
+    rt_.RegisterHandler(FlowActionId::InsertNodeAfter,
+                        [this, registerNodeStructuralEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerIndex = 0;
+        uint32_t node = 0;
+        std::string op;
+        if (!ParseIndexParam(p, "layerIndex", layerIndex) || !ParseIndexParam(p, "afterNode", node) ||
+            !ParseTextParam(p, "op", op)) {
+            refuse("InsertNodeAfter", "needs layerIndex, afterNode, and op");
+            return;
+        }
+        registerNodeStructuralEdit(FlowActionId::InsertNodeAfter, "InsertNodeAfter", layerIndex,
+                                   node, node, std::move(op));
+    });
+    rt_.RegisterHandler(FlowActionId::RemoveNode,
+                        [this, registerNodeStructuralEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerIndex = 0;
+        uint32_t node = 0;
+        if (!ParseIndexParam(p, "layerIndex", layerIndex) || !ParseIndexParam(p, "node", node)) {
+            refuse("RemoveNode", "needs layerIndex and node");
+            return;
+        }
+        registerNodeStructuralEdit(FlowActionId::RemoveNode, "RemoveNode", layerIndex, node, node, {});
+    });
+    rt_.RegisterHandler(FlowActionId::WrapNodes,
+                        [this, registerNodeStructuralEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerIndex = 0;
+        uint32_t first = 0;
+        uint32_t last = 0;
+        std::string op;
+        if (!ParseIndexParam(p, "layerIndex", layerIndex) || !ParseIndexParam(p, "first", first) ||
+            !ParseIndexParam(p, "last", last) || !ParseTextParam(p, "op", op)) {
+            refuse("WrapNodes", "needs layerIndex, first, last, and op");
+            return;
+        }
+        registerNodeStructuralEdit(FlowActionId::WrapNodes, "WrapNodes", layerIndex, first, last, std::move(op));
     });
 
     rt_.RegisterHandler(FlowActionId::RenameLayer, [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
@@ -1232,10 +1529,39 @@ void EditorApplication::RegisterAppFlowHandlers() {
     rt_.RegisterHandler(FlowActionId::OpenPanel, [this, param](const Params& p) {
         // A flyout opened by a click lands beside the control that was clicked; a scripted dispatch has no such
         // control and opens at the panel's own rect.
-        AfterPanelVerb("open", Panels().OpenAnchored(param(p, "panelId"), clickAnchorElementId_));
+        std::string panelId = param(p, "panelId");
+        if (panelId.rfind("node-picker-", 0) == 0) {
+            const std::string_view suffix(panelId.data() + 12, panelId.size() - 12);
+            const size_t dash = suffix.find('-');
+            uint32_t layer = 0;
+            uint32_t node = 0;
+            const auto layerEnd = suffix.data() + (dash == std::string_view::npos ? 0 : dash);
+            const auto layerParse = std::from_chars(suffix.data(), layerEnd, layer);
+            const auto nodeBegin = dash == std::string_view::npos ? suffix.data() : suffix.data() + dash + 1;
+            const auto nodeParse = std::from_chars(nodeBegin, suffix.data() + suffix.size(), node);
+            if (dash != std::string_view::npos && layerParse.ec == std::errc{} && layerParse.ptr == layerEnd &&
+                nodeParse.ec == std::errc{} && nodeParse.ptr == suffix.data() + suffix.size()) {
+                Vixen::Editor::DocumentDiagnostic diagnostic;
+                const auto* graph = doc_.GetLayerGraph(layer, diagnostic);
+                if (graph != nullptr && !graph->raw && node < graph->view.nodeCount) {
+                    nodePickerLayer_ = layer;
+                    nodePickerNode_ = node;
+                    nodePickerActive_ = true;
+                    PublishPickerPrimitives();
+                    panelId = kPickerPanelId;
+                }
+            }
+        }
+        AfterPanelVerb("open", Panels().OpenAnchored(panelId, clickAnchorElementId_));
     });
     rt_.RegisterHandler(FlowActionId::ClosePanel, [this, param](const Params& p) {
-        AfterPanelVerb("close", Panels().Dock().Close(param(p, "panelId")));
+        const std::string panelId = param(p, "panelId");
+        AfterPanelVerb("close", Panels().Dock().Close(panelId));
+        if (panelId == kPickerPanelId) {
+            nodePickerActive_ = false;
+            Vixen::App::ClearEditorPickerFilter(*layersView_);
+            PublishPickerPrimitives();
+        }
     });
     rt_.RegisterHandler(FlowActionId::FocusPanel, [this, param](const Params& p) {
         AfterPanelVerb("focus", Panels().Dock().Focus(param(p, "panelId")));

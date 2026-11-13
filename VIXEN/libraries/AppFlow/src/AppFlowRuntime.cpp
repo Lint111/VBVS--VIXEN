@@ -232,6 +232,9 @@ DispatchResult AppFlowRuntime::DispatchWithCause(FlowActionId id, const Params& 
                                                   FlowTriggerCause cause) {
     auto it = handlers_.find(uint16_t(id));
     if (it == handlers_.end()) {
+        // Data actions are served through the generated target table and DispatchData. A direct
+        // gesture dispatch has no handler route, but it is not an unimplemented declaration.
+        if (dataTargets_.contains(uint16_t(id))) return DispatchResult::RejectedByState;
         const bool declared = std::any_of(catalogActions_.begin(), catalogActions_.end(),
                                           [id](const CatalogAction& a) { return a.id == id; });
         if (!declared) return DispatchResult::RejectedByState;

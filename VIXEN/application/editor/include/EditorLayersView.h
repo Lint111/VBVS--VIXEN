@@ -54,7 +54,9 @@ public:
             Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
                                             &selectedLayer_, &primitives_, &opChoices_, &shape_,
                                             &selectedShape_, &shapeNote_, &pickerFilter_, &activeLayerCountRaw_, &recipes_,
-                                            &packRecipes_,
+                                            &packRecipes_, &nodes_, &nodeArguments_, &nodeWrapChoices_,
+                                            &nodeChoices_, &nodePickerActive_,
+                                            &rawProgram_, &rawProgramDiagnostic_,
                                             &statusDocument_, &statusMessage_, &flowState_,
                                             &undoDepth_, &redoDepth_ });
         model_ = c.GetModelHandle();
@@ -75,7 +77,8 @@ public:
                               const std::vector<EditorLayerData>& layerData,
                               const std::vector<EditorParameterData>& parameterData,
                               const EditorPlacementData& placement = {},
-                              const EditorShapeData& shape = {}) {
+                              const EditorShapeData& shape = {},
+                              const EditorGraphData& graph = {}) {
         layers_.clear();
         layers_.reserve(layerData.size());
         for (uint32_t i = 0; i < layerData.size(); ++i) {
@@ -169,6 +172,62 @@ public:
         }
         selectedShape_ = Rml::String(shape.primitive);
         shapeNote_ = Rml::String(shape.note);
+        nodes_.clear();
+        nodeArguments_.clear();
+        nodeWrapChoices_.clear();
+        if (!layerData.empty()) {
+            const std::string layerStem = "layer-" + std::to_string(placement.selectedLayer);
+            nodes_.reserve(graph.nodes.size());
+            for (const auto& node : graph.nodes) {
+                Vixen::Views::EditorNodeRow row;
+                row.nodeIndex = node.nodeIndex;
+                row.name = Rml::String(node.name);
+                row.category = Rml::String(node.category);
+                row.addOp = Rml::String(node.addOp);
+                row.elementId = layerStem + "-node-" + std::to_string(node.nodeIndex);
+                row.addId = "panel-node-picker-" + std::to_string(placement.selectedLayer) + "-" +
+                            std::to_string(node.nodeIndex) + "-open";
+                row.removeId = row.elementId + "-remove";
+                row.canRemove = node.canRemove;
+                row.removeTitle = Rml::String(node.removeTitle);
+                row.indent = node.indent;
+                nodes_.push_back(std::move(row));
+            }
+            nodeArguments_.reserve(graph.arguments.size());
+            for (const auto& argument : graph.arguments) {
+                Vixen::Views::EditorNodeArgumentRow row;
+                row.nodeIndex = argument.nodeIndex;
+                row.field = Rml::String(argument.field);
+                row.component = Rml::String(argument.component);
+                row.label = Rml::String(argument.label);
+                row.value = argument.value;
+                row.hasRange = argument.hasRange;
+                row.minimum = argument.minimum;
+                row.maximum = argument.maximum;
+                row.defaultValue = argument.defaultValue;
+                row.isDefault = argument.isDefault;
+                const std::string stem = layerStem + "-node-" + std::to_string(argument.nodeIndex) +
+                                         "-field-" + argument.field;
+                row.upId = stem + "-" + argument.component + "-up";
+                row.downId = stem + "-" + argument.component + "-down";
+                row.valueId = stem + "-" + argument.component + "-{" + argument.component + "}";
+                row.resetId = stem + "-" + argument.component + "-" + FloatText(argument.defaultValue);
+                nodeArguments_.push_back(std::move(row));
+            }
+            nodeWrapChoices_.reserve(graph.wrapChoices.size());
+            for (const auto& choice : graph.wrapChoices) {
+                Vixen::Views::EditorNodeWrapRow row;
+                row.firstNode = choice.firstNode;
+                row.lastNode = choice.lastNode;
+                row.op = Rml::String(choice.op);
+                row.label = Rml::String(choice.label);
+                row.elementId = layerStem + "-nodes-" + std::to_string(choice.firstNode) + "-" +
+                                std::to_string(choice.lastNode) + "-wrap-" + choice.op;
+                nodeWrapChoices_.push_back(std::move(row));
+            }
+        }
+        rawProgram_ = graph.rawProgram;
+        rawProgramDiagnostic_ = Rml::String(graph.rawProgramDiagnostic);
         // activeLayerCount (Inc-Ovr Override proof): storage holds the raw mask reinterpreted as
         // int; BindEditorLayersModel_activeLayerCountOverride (this file, above) popcounts it at
         // bind time. Only needs a dirty when the mask itself changes, same as "layers".
@@ -183,6 +242,13 @@ public:
             model_.DirtyVariable("shape");
             model_.DirtyVariable("selectedShape");
             model_.DirtyVariable("shapeNote");
+            model_.DirtyVariable("nodes");
+            model_.DirtyVariable("nodeArguments");
+            model_.DirtyVariable("nodeWrapChoices");
+            model_.DirtyVariable("nodeChoices");
+            model_.DirtyVariable("nodePickerActive");
+            model_.DirtyVariable("rawProgram");
+            model_.DirtyVariable("rawProgramDiagnostic");
             model_.DirtyVariable("activeLayerCount");
         }
     }
@@ -200,6 +266,26 @@ public:
             primitives_.push_back(std::move(row));
         }
         if (model_) model_.DirtyVariable("primitives");
+    }
+
+    void PopulateNodeChoices(const std::vector<EditorNodeChoiceData>& choices, bool active) {
+        nodeChoices_.clear();
+        nodeChoices_.reserve(choices.size());
+        for (const auto& choice : choices) {
+            Vixen::Views::EditorNodeChoiceRow row;
+            row.name = Rml::String(choice.name);
+            row.display = Rml::String(choice.display);
+            row.category = Rml::String(choice.category);
+            // InsertNodeAfter's generated trigger owns the full selector; the opcode is kept in the
+            // choice only for presentation and filtering.
+            row.elementId = choice.elementId;
+            nodeChoices_.push_back(std::move(row));
+        }
+        nodePickerActive_ = active;
+        if (model_) {
+            model_.DirtyVariable("nodeChoices");
+            model_.DirtyVariable("nodePickerActive");
+        }
     }
 
     // R765: the open pack's render-recipe documents; each row carries its OpenRecipe selector.
@@ -266,6 +352,9 @@ public:
     const Vixen::Views::EditorLayerOpRow& DebugOpChoice(size_t i) const { return opChoices_.at(i); }
     size_t DebugShapeFieldCount() const { return shape_.size(); }
     const Vixen::Views::EditorShapeFieldRow& DebugShapeField(size_t i) const { return shape_.at(i); }
+    size_t DebugNodeCount() const { return nodes_.size(); }
+    const Vixen::Views::EditorNodeRow& DebugNode(size_t i) const { return nodes_.at(i); }
+    size_t DebugNodeChoiceCount() const { return nodeChoices_.size(); }
     int DebugActiveLayerCount() const {
         return Vixen::Views::BindEditorLayersModel_activeLayerCountOverride(
             const_cast<int*>(&activeLayerCountRaw_));
@@ -293,6 +382,13 @@ private:
     int activeLayerCountRaw_ = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes_;
     std::vector<Vixen::Views::EditorPackRecipeRow> packRecipes_;
+    std::vector<Vixen::Views::EditorNodeRow> nodes_;
+    std::vector<Vixen::Views::EditorNodeArgumentRow> nodeArguments_;
+    std::vector<Vixen::Views::EditorNodeWrapRow> nodeWrapChoices_;
+    std::vector<Vixen::Views::EditorNodeChoiceRow> nodeChoices_;
+    bool nodePickerActive_ = false;
+    bool rawProgram_ = true;
+    Rml::String rawProgramDiagnostic_;
     Rml::String statusDocument_;
     Rml::String statusMessage_;
     Rml::String flowState_;

@@ -69,7 +69,11 @@ public:
     const std::vector<CatalogTransition>& CatalogTransitions() const { return catalogTransitions_; }
     const DataTargetTable& DataTargets() const { return dataTargets_; }
     // True iff a handler is registered for `id`. False for a declared action with no code behind it, and for an unknown id.
-    bool IsImplemented(Generated::FlowActionId id) const { return handlers_.contains(uint16_t(id)); }
+    // Data-target actions are implemented by DispatchData/ReadData, not by a handler. They must
+    // not be reported as missing merely because the consumer did not register a gesture handler.
+    bool IsImplemented(Generated::FlowActionId id) const {
+        return handlers_.contains(uint16_t(id)) || dataTargets_.contains(uint16_t(id));
+    }
     // Declared in the loaded data, no handler registered: visible but inert (R874.3), never a load failure.
     std::vector<Generated::FlowActionId> UnimplementedActions() const;
     // Names the file the loaded declarations came from, so a diagnostic is located ("AppFlow.appflow: action X ...").

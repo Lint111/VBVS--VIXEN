@@ -143,21 +143,19 @@ std::array<float, 3> EulerFromQuaternion(const std::array<float, 4>& q) {
     return {rx, std::asin(sinY), rz};
 }
 
-// The index of the one primitive instruction of a shape-editable program, or nullopt.
-// Shape-editable = [Transform] + exactly one Primitive-category instruction + [RestorePos].
+// The index of the one primitive instruction in a graph-shaped layer, or nullopt. The graph
+// editor keeps the existing primitive inspector as a convenience projection: it is valid for a
+// program with exactly one primitive anywhere in its generated instruction graph (including the
+// Transform/domain nodes around the primitive), not only for the old three-instruction shape.
 std::optional<size_t> FindPrimitiveInstruction(const std::vector<SdfInstruction>& program) {
-    size_t first = 0;
-    size_t last = program.size();
-    if (HasTransformWrapper(program)) {
-        first = 1;
-        last = program.size() - 1u;
+    std::optional<size_t> found;
+    for (size_t i = 0; i < program.size(); ++i) {
+        const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(static_cast<SdfOpCode>(program[i].opCode));
+        if (info == nullptr || info->category != Vixen::SVO::Recipe::SdfOpCategory::Primitive) continue;
+        if (found.has_value()) return std::nullopt;
+        found = i;
     }
-    if (last != first + 1u) return std::nullopt;
-    const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(static_cast<SdfOpCode>(program[first].opCode));
-    if (info == nullptr || info->category != Vixen::SVO::Recipe::SdfOpCategory::Primitive) {
-        return std::nullopt;
-    }
-    return first;
+    return found;
 }
 
 // The InstructionData arguments of an opcode (the editable fields), in table order.
@@ -599,6 +597,7 @@ bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diag
     majorMaterialPercent_ = view_.header.majorWeightPercent;
     references_ = std::move(candidateReferences);
     serializationDirty_ = false;
+    RefreshLayerGraphs();
     ++revision_;
     return true;
 }
@@ -972,6 +971,7 @@ bool EditorDocumentModel::Rebuild(
     view_ = candidateView;
     enabledMask_ = enabledMask;
     serializationDirty_ = true;
+    RefreshLayerGraphs();
     ++revision_;
     return true;
 }
@@ -1283,6 +1283,293 @@ bool EditorDocumentModel::SetLayerProgram(uint32_t index,
     auto layers = CopyLayers();
     layers[index].program = program;
     return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
+}
+
+namespace {
+
+const char* GraphDiagnosticCodeName(Vixen::SVO::Recipe::SdfGraphDiagnosticCode code) {
+    using Code = Vixen::SVO::Recipe::SdfGraphDiagnosticCode;
+    switch (code) {
+        case Code::None: return "None";
+        case Code::UnknownOpcode: return "UnknownOpcode";
+        case Code::ValueStackUnderflow: return "ValueStackUnderflow";
+        case Code::ValueStackLeftover: return "ValueStackLeftover";
+        case Code::ValueTypeMismatch: return "ValueTypeMismatch";
+        case Code::PositionStackUnderflow: return "PositionStackUnderflow";
+        case Code::UnbalancedDomainFrame: return "UnbalancedDomainFrame";
+        case Code::ArgumentOutOfRange: return "ArgumentOutOfRange";
+        case Code::BufferTooSmall: return "BufferTooSmall";
+        case Code::InvalidEdit: return "InvalidEdit";
+        case Code::DanglingSocket: return "DanglingSocket";
+    }
+    return "Unknown";
+}
+
+const char* GraphValueTypeName(Vixen::SVO::Recipe::SdfGraphValueType type) {
+    using Type = Vixen::SVO::Recipe::SdfGraphValueType;
+    switch (type) {
+        case Type::Float: return "Float";
+        case Type::U32: return "U32";
+        case Type::Q16_16: return "Q16_16";
+        case Type::Unknown: return "Unknown";
+    }
+    return "Unknown";
+}
+
+}  // namespace
+
+std::string EditorDocumentModel::GraphDiagnosticMessage(
+    const Vixen::SVO::Recipe::SdfGraphDiagnostic& graphDiagnostic) {
+    std::string text = std::string(GraphDiagnosticCodeName(graphDiagnostic.code)) +
+                       " at instruction " + std::to_string(graphDiagnostic.instructionIndex);
+    if (graphDiagnostic.argumentName != nullptr && graphDiagnostic.argumentName[0] != '\0') {
+        text += " (";
+        text += graphDiagnostic.argumentName;
+        text += ")";
+    }
+    if (graphDiagnostic.expected != Vixen::SVO::Recipe::SdfGraphValueType::Unknown ||
+        graphDiagnostic.actual != Vixen::SVO::Recipe::SdfGraphValueType::Unknown) {
+        text += ": expected ";
+        text += GraphValueTypeName(graphDiagnostic.expected);
+        text += ", actual ";
+        text += GraphValueTypeName(graphDiagnostic.actual);
+    }
+    return text;
+}
+
+void EditorDocumentModel::RefreshLayerGraphs() {
+    const uint32_t count = LayerCount();
+    layerGraphs_.resize(count);
+    layerGraphNodes_.resize(count);
+    layerGraphInputs_.resize(count);
+    layerGraphOutputs_.resize(count);
+    for (uint32_t layerIndex = 0; layerIndex < count; ++layerIndex) {
+        const auto& layer = view_.layers[layerIndex];
+        const uint32_t instructionCount = layer.header->instructionCount;
+        auto& nodes = layerGraphNodes_[layerIndex];
+        auto& inputs = layerGraphInputs_[layerIndex];
+        auto& outputs = layerGraphOutputs_[layerIndex];
+        nodes.resize(instructionCount);
+        inputs.resize(Vixen::SVO::Recipe::SdfGraphInputCapacityFor(instructionCount));
+        outputs.resize(Vixen::SVO::Recipe::SdfGraphOutputCapacityFor(instructionCount));
+
+        Vixen::SVO::Recipe::SdfGraphBuffers buffers{
+            std::span<Vixen::SVO::Recipe::SdfGraphNode>(nodes.data(), nodes.size()),
+            std::span<Vixen::SVO::Recipe::SdfGraphInputSocket>(inputs.data(), inputs.size()),
+            std::span<Vixen::SVO::Recipe::SdfGraphOutputSocket>(outputs.data(), outputs.size())};
+        auto& graph = layerGraphs_[layerIndex];
+        Vixen::SVO::Recipe::ClearSdfGraphDiagnostic(graph.diagnostic);
+        graph.raw = !Vixen::SVO::Recipe::DeriveSdfGraph(
+            std::span<const SdfInstruction>(layer.instructions, instructionCount), buffers,
+            graph.view, graph.diagnostic);
+    }
+}
+
+const LayerGraph* EditorDocumentModel::GetLayerGraph(uint32_t index,
+                                                     DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return nullptr;
+    }
+    return &layerGraphs_[index];
+}
+
+bool EditorDocumentModel::SetNodeArgument(uint32_t layerIndex, uint32_t nodeIndex,
+                                          std::string_view argumentName,
+                                          const std::array<float, 4>& value,
+                                          DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const LayerGraph* graph = GetLayerGraph(layerIndex, diagnostic);
+    if (graph == nullptr) return false;
+    auto reject = [&](const Vixen::SVO::Recipe::SdfGraphDiagnostic& graphDiagnostic) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: " + GraphDiagnosticMessage(graphDiagnostic)};
+        return false;
+    };
+    if (graph->raw) return reject(graph->diagnostic);
+    if (nodeIndex >= graph->view.nodeCount) {
+        Vixen::SVO::Recipe::SdfGraphDiagnostic invalid{};
+        Vixen::SVO::Recipe::SetSdfGraphDiagnostic(
+            invalid, Vixen::SVO::Recipe::SdfGraphDiagnosticCode::InvalidEdit, nodeIndex);
+        return reject(invalid);
+    }
+    const auto& node = graph->view.nodes[nodeIndex];
+    std::string_view catalogueName = argumentName;
+    uint32_t componentOnly = 4u;
+    if (argumentName.size() > 2u && argumentName[argumentName.size() - 2u] == '.') {
+        const char component = argumentName.back();
+        if (component == 'x' || component == 'y' || component == 'z' || component == 'w') {
+            componentOnly = static_cast<uint32_t>(component == 'x' ? 0u : component == 'y' ? 1u : component == 'z' ? 2u : 3u);
+            catalogueName = argumentName.substr(0, argumentName.size() - 2u);
+        }
+    }
+    const auto* argument = [&]() -> const Vixen::SVO::Recipe::SdfOpArgument* {
+        const auto* args = Vixen::SVO::Recipe::SdfOpArguments(*node.opcodeInfo);
+        for (uint32_t i = 0; i < node.opcodeInfo->argumentCount; ++i) {
+            if (args[i].source == Vixen::SVO::Recipe::SdfArgumentSource::InstructionData &&
+                catalogueName == args[i].name) {
+                return &args[i];
+            }
+        }
+        return nullptr;
+    }();
+    if (argument == nullptr || argument->width == 0u || argument->width > 4u) {
+        diagnostic = {DocumentDiagnosticCode::FieldNotEditable,
+                      "node " + std::to_string(nodeIndex) + " has no editable argument '" +
+                          std::string(argumentName) + "'"};
+        return false;
+    }
+    if (componentOnly < argument->width && !std::isfinite(value[componentOnly])) {
+        diagnostic = {DocumentDiagnosticCode::InvalidPrimitiveField,
+                      "node argument '" + std::string(argumentName) + "' must be finite"};
+        return false;
+    }
+    for (uint32_t component = 0; component < argument->width && componentOnly == 4u; ++component) {
+        if (!std::isfinite(value[component])) {
+            diagnostic = {DocumentDiagnosticCode::InvalidPrimitiveField,
+                          "node argument '" + std::string(argumentName) + "' must be finite"};
+            return false;
+        }
+    }
+
+    auto layers = CopyLayers();
+    auto& program = layers[layerIndex].program;
+    const uint32_t instructionIndex = node.instructionIndex;
+    if (instructionIndex >= program.size()) {
+        Vixen::SVO::Recipe::SdfGraphDiagnostic invalid{};
+        Vixen::SVO::Recipe::SetSdfGraphDiagnostic(
+            invalid, Vixen::SVO::Recipe::SdfGraphDiagnosticCode::InvalidEdit, instructionIndex);
+        return reject(invalid);
+    }
+    if (componentOnly < argument->width) {
+        program[instructionIndex].data[argument->offset + static_cast<int16_t>(componentOnly)] = value[componentOnly];
+    } else {
+        for (uint32_t component = 0; component < argument->width; ++component) {
+            program[instructionIndex].data[argument->offset + static_cast<int16_t>(component)] = value[component];
+        }
+    }
+    Vixen::SVO::Recipe::SdfGraphDiagnostic graphDiagnostic{};
+    if (!Vixen::SVO::Recipe::ValidateSdfGraphProgram(
+            std::span<const SdfInstruction>(program.data(), program.size()), graphDiagnostic)) {
+        return reject(graphDiagnostic);
+    }
+    return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
+}
+
+bool EditorDocumentModel::InsertNodeAfter(uint32_t layerIndex, uint32_t nodeIndex,
+                                          std::string_view opcode,
+                                          DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const LayerGraph* graph = GetLayerGraph(layerIndex, diagnostic);
+    if (graph == nullptr) return false;
+    if (graph->raw) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: " + GraphDiagnosticMessage(graph->diagnostic)};
+        return false;
+    }
+    Vixen::SVO::Recipe::SdfOpCode op{};
+    if (!Vixen::SVO::Recipe::FindSdfOpCode(opcode, op)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: unknown opcode '" + std::string(opcode) + "'"};
+        return false;
+    }
+    if (nodeIndex >= graph->view.nodeCount) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: InvalidEdit at node " + std::to_string(nodeIndex)};
+        return false;
+    }
+    const auto& source = view_.layers[layerIndex];
+    const std::span<const SdfInstruction> program(source.instructions,
+                                                   source.header->instructionCount);
+    std::vector<SdfInstruction> candidate(program.size() + 1u);
+    uint32_t candidateCount = 0u;
+    Vixen::SVO::Recipe::SdfGraphDiagnostic graphDiagnostic{};
+    if (!Vixen::SVO::Recipe::InsertNodeAfter(
+            program, graph->view.nodes[nodeIndex].instructionIndex, static_cast<uint8_t>(op),
+            std::span<SdfInstruction>(candidate.data(), candidate.size()), candidateCount,
+            graphDiagnostic)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: " + GraphDiagnosticMessage(graphDiagnostic)};
+        return false;
+    }
+    candidate.resize(candidateCount);
+    return SetLayerProgram(layerIndex, candidate, diagnostic);
+}
+
+bool EditorDocumentModel::RemoveNode(uint32_t layerIndex, uint32_t nodeIndex,
+                                     DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const LayerGraph* graph = GetLayerGraph(layerIndex, diagnostic);
+    if (graph == nullptr) return false;
+    if (graph->raw) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: " + GraphDiagnosticMessage(graph->diagnostic)};
+        return false;
+    }
+    if (nodeIndex >= graph->view.nodeCount) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: InvalidEdit at node " + std::to_string(nodeIndex)};
+        return false;
+    }
+    const auto& source = view_.layers[layerIndex];
+    const std::span<const SdfInstruction> program(source.instructions,
+                                                   source.header->instructionCount);
+    std::vector<SdfInstruction> candidate(program.size() > 0u ? program.size() - 1u : 0u);
+    uint32_t candidateCount = 0u;
+    Vixen::SVO::Recipe::SdfGraphDiagnostic graphDiagnostic{};
+    if (!Vixen::SVO::Recipe::RemoveNode(
+            program, graph->view.nodes[nodeIndex].instructionIndex,
+            std::span<SdfInstruction>(candidate.data(), candidate.size()), candidateCount,
+            graphDiagnostic)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: " + GraphDiagnosticMessage(graphDiagnostic)};
+        return false;
+    }
+    candidate.resize(candidateCount);
+    return SetLayerProgram(layerIndex, candidate, diagnostic);
+}
+
+bool EditorDocumentModel::WrapNodes(uint32_t layerIndex, uint32_t firstNode, uint32_t lastNode,
+                                    std::string_view domainOpcode,
+                                    DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const LayerGraph* graph = GetLayerGraph(layerIndex, diagnostic);
+    if (graph == nullptr) return false;
+    if (graph->raw) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: " + GraphDiagnosticMessage(graph->diagnostic)};
+        return false;
+    }
+    Vixen::SVO::Recipe::SdfOpCode op{};
+    if (!Vixen::SVO::Recipe::FindSdfOpCode(domainOpcode, op)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: unknown opcode '" + std::string(domainOpcode) + "'"};
+        return false;
+    }
+    if (firstNode > lastNode || lastNode >= graph->view.nodeCount) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: InvalidEdit at node " + std::to_string(firstNode)};
+        return false;
+    }
+    const auto& source = view_.layers[layerIndex];
+    const std::span<const SdfInstruction> program(source.instructions,
+                                                   source.header->instructionCount);
+    std::vector<SdfInstruction> candidate(program.size() + 2u);
+    uint32_t candidateCount = 0u;
+    Vixen::SVO::Recipe::SdfGraphDiagnostic graphDiagnostic{};
+    if (!Vixen::SVO::Recipe::WrapInDomain(
+            program, graph->view.nodes[firstNode].instructionIndex,
+            graph->view.nodes[lastNode].instructionIndex, static_cast<uint8_t>(op),
+            std::span<SdfInstruction>(candidate.data(), candidate.size()), candidateCount,
+            graphDiagnostic)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "generated graph diagnostic: " + GraphDiagnosticMessage(graphDiagnostic)};
+        return false;
+    }
+    candidate.resize(candidateCount);
+    return SetLayerProgram(layerIndex, candidate, diagnostic);
 }
 
 std::string EditorDocumentModel::LayerName(uint32_t i) const {

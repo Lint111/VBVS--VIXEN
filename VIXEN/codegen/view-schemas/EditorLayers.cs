@@ -103,6 +103,54 @@ namespace Vixen.ViewSchemas
         public string elementId;
     }
 
+    // R876 LM-V1: the selected layer's generated graph outline. nodeIndex is the graph node index,
+    // not an instruction walk owned by the view; all names and edit affordances are published by
+    // the document model/application projection.
+    public struct EditorNodeRow {
+        public int nodeIndex;
+        public string name;
+        public string category;
+        public string addOp;
+        public string elementId;
+        public string addId;
+        public string removeId;
+        public bool canRemove;
+        public string removeTitle;
+        public int indent;
+    }
+
+    public struct EditorNodeArgumentRow {
+        public int nodeIndex;
+        public string field;
+        public string component;
+        public string label;
+        public float value;
+        public bool hasRange;
+        public float minimum;
+        public float maximum;
+        public float defaultValue;
+        public bool isDefault;
+        public string valueId;
+        public string upId;
+        public string downId;
+        public string resetId;
+    }
+
+    public struct EditorNodeWrapRow {
+        public int firstNode;
+        public int lastNode;
+        public string op;
+        public string label;
+        public string elementId;
+    }
+
+    public struct EditorNodeChoiceRow {
+        public string name;
+        public string display;
+        public string category;
+        public string elementId;
+    }
+
     // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML
     // data-model: the layer bitmask the LayerControllerViewDataProvider reads/writes through
     // IViewDataProvider. Kept as its own struct (not a field on EditorLayers) so EditorLayers.g.h's
@@ -147,6 +195,16 @@ namespace Vixen.ViewSchemas
         [ViewSection(Layout = ViewLayout.Aos)] public EditorRecipeRow[] recipes;
         // R872.6: the Add flyout's second section; the editor filters this with the same picker text.
         [ViewSection(Layout = ViewLayout.Aos)] public EditorPackRecipeRow[] packRecipes;
+
+        // R876 LM-V1: graph inspector. A raw program retains its located diagnostic and has no
+        // node controls; valid programs expose generated nodes and catalogue-backed arguments.
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorNodeRow[] nodes;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorNodeArgumentRow[] nodeArguments;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorNodeWrapRow[] nodeWrapChoices;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorNodeChoiceRow[] nodeChoices;
+        public bool nodePickerActive;
+        public bool rawProgram;
+        public string rawProgramDiagnostic;
 
         // R766: the status-line panel (bottom region) binds these.
         public string statusDocument;

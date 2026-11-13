@@ -64,6 +64,53 @@ struct EditorShapeData {
     std::string note;
 };
 
+struct EditorNodeData {
+    int nodeIndex = 0;
+    std::string name;
+    std::string category;
+    std::string addOp;
+    bool canRemove = false;
+    std::string removeTitle;
+    int indent = 0;
+};
+
+struct EditorNodeArgumentData {
+    int nodeIndex = 0;
+    std::string field;
+    std::string component;
+    std::string label;
+    float value = 0.0f;
+    bool hasRange = false;
+    float minimum = 0.0f;
+    float maximum = 0.0f;
+    float defaultValue = 0.0f;
+    bool isDefault = false;
+};
+
+struct EditorNodeWrapData {
+    int firstNode = 0;
+    int lastNode = 0;
+    std::string op;
+    std::string label;
+};
+
+struct EditorNodeChoiceData {
+    std::string name;
+    std::string display;
+    std::string category;
+    std::string elementId;
+};
+
+struct EditorGraphData {
+    std::vector<EditorNodeData> nodes;
+    std::vector<EditorNodeArgumentData> arguments;
+    std::vector<EditorNodeWrapData> wrapChoices;
+    std::vector<EditorNodeChoiceData> choices;
+    bool nodePickerActive = false;
+    bool rawProgram = true;
+    std::string rawProgramDiagnostic;
+};
+
 struct EditorPlacementData {
     int selectedLayer = 0;
     std::string selectedName;
@@ -117,7 +164,8 @@ void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
                              const std::vector<EditorLayerData>& layers,
                              const std::vector<EditorParameterData>& parameters,
                              const EditorPlacementData& placement = {},
-                             const EditorShapeData& shape = {});
+                             const EditorShapeData& shape = {},
+                             const EditorGraphData& graph = {});
 
 // R872.1: the picker rows (static for a build of the catalogue).
 void RefreshEditorPrimitivesView(EditorLayersView& view, const std::vector<EditorPrimitiveData>& primitives);
@@ -125,6 +173,10 @@ void RefreshEditorPrimitivesView(EditorLayersView& view, const std::vector<Edito
 // sn-editorpicker1: the Add flyout's filter text as the picker's text field last wrote it, and clearing it.
 std::string EditorPickerFilter(const EditorLayersView& view);
 void ClearEditorPickerFilter(EditorLayersView& view);
+
+void RefreshEditorNodeChoicesView(EditorLayersView& view,
+                                  const std::vector<EditorNodeChoiceData>& choices,
+                                  bool active);
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
 void RefreshEditorPackRecipesView(EditorLayersView& view,

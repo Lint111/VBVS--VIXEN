@@ -12,13 +12,23 @@
          Clicking a row adds that primitive (CreatePrimitiveLayer, selector "primitive-<name>-add"); Escape closes. -->
     <ut-flyout data-model="editor_layers">
         <ut-text-field autofocus="autofocus" id="picker-filter-{filter}" data-value="pickerFilter"/>
-        <div class="hint picker-hint" data-if="primitives.size == 0">No primitive matches "{{pickerFilter}}".</div>
-        <ut-list class="fill picker-rows">
-            <ut-button variant="row" data-for="item : primitives" data-attr-id="item.elementId" data-attr-label="item.display"> </ut-button>
-        </ut-list>
+        <div class="picker-section" data-if="nodePickerActive">
+            <div class="picker-section-title">Insert after node</div>
+            <div class="hint picker-hint" data-if="nodeChoices.size == 0">No compatible operations match "{{pickerFilter}}".</div>
+            <ut-list class="fill picker-rows">
+                <ut-button variant="row" data-for="item : nodeChoices" data-attr-id="item.elementId"
+                           data-attr-label="item.display"> </ut-button>
+            </ut-list>
+        </div>
+        <div data-if="!nodePickerActive">
+            <div class="hint picker-hint" data-if="primitives.size == 0">No primitive matches "{{pickerFilter}}".</div>
+            <ut-list class="fill picker-rows">
+                <ut-button variant="row" data-for="item : primitives" data-attr-id="item.elementId" data-attr-label="item.display"> </ut-button>
+            </ut-list>
+        </div>
         <!-- R872.6: the same filter drives the second, pack-recipe section. Each row dispatches
              InsertRecipeReference and is omitted for the open recipe by the editor publisher. -->
-        <div class="picker-section">
+        <div class="picker-section" data-if="!nodePickerActive">
             <div class="picker-section-title">Pack recipes</div>
             <div class="hint picker-hint" data-if="packRecipes.size == 0">No pack recipes match "{{pickerFilter}}".</div>
             <div class="picker-rows">
