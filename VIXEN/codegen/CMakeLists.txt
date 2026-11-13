@@ -205,7 +205,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "26bfb96913327d3e872130dd2f56ac8be5b5c275")
+set(_vixen_tracked_yeroket_kernel_sha "0feda4247b8db1c0892b75bde11a3ba0f4fb8f2a")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -225,8 +225,7 @@ set(_recipe_simd_input_files
     "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs"
     "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs"
     "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs"
-    "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs"
-    "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
+    "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs")
 set(_schema_gpu_source "${_cg}/gpu-schemas")
 set(_schema_gpu_systems "${_cg}/gpu-systems")
 # AA kernel callables (R619.1): inlined into the GPU systems, C++ face for the resolve tests.
@@ -478,7 +477,6 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs" _recipe_kernel_extra_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs" _recipe_value_kernel_source_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs" _recipe_op_declarations_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp" _out_sdf_core_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl" _out_sdf_core_hlsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl" _out_sdf_core_glsl_run)
@@ -582,7 +580,6 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
         set(_recipe_kernel_extra_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs")
         set(_recipe_value_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs")
-        set(_recipe_op_declarations_run "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
         set(_out_sdf_core_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp")
         set(_out_sdf_core_hlsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl")
         set(_out_sdf_core_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
@@ -882,7 +879,6 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
         --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
-        --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_recipe_simd_run}")
     add_custom_command(
         OUTPUT "${_recipe_simd_build_output}"
@@ -909,7 +905,6 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
         --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
-        --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_core_cpp_run}"
         --out-hlsl "${_out_sdf_core_hlsl_run}"
         --out-glsl "${_out_sdf_core_glsl_run}")
@@ -930,7 +925,6 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
         --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
-        --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_opcodes_run}")
     vixen_add_codegen_check(recipe_opcode_mirror_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_opcode_mirror_args} --check
