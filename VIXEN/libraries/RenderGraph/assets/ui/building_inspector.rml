@@ -8,6 +8,10 @@
          transforms (impact label, unit formatting, "you own this") are computed host-side and pushed
          as pre-formatted strings — no game logic in the fragment (spec §7.10 / §4). -->
     <div data-model="building" id="building">
+        <!-- Ownership affordance line — shown only to the owning viewer (IsOwnerViewer, spec §5).
+             It stays in the model wrapper so host-side selector queries see it across the kit boundary. -->
+        <div class="owned ut-hud-owned">You own this.</div>
+
         <ut-panel variant="hud">
         <!-- Identity -->
         <div class="ut-hud-title">{{defId}}</div>
@@ -28,10 +32,6 @@
         <div class="ut-row"><span class="ut-field-label">Need</span><span class="ut-field-value">{{laborNeed}}</span></div>
         <div class="ut-row"><span class="ut-field-label">Met</span><span class="ut-field-value">{{laborNeedMet}}</span></div>
         </ut-panel>
-
-        <!-- Ownership affordance line — shown only to the owning viewer (IsOwnerViewer, spec §5).
-             It stays in the model wrapper so host-side selector queries see it across the kit boundary. -->
-        <div class="owned ut-hud-owned">You own this.</div>
     </div>
 </body>
 </rml>
