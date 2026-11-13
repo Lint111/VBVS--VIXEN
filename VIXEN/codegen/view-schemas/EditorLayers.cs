@@ -96,6 +96,13 @@ namespace Vixen.ViewSchemas
         public bool isOpen;
     }
 
+    // R872.6: one insertable recipe in the Add flyout's Pack recipes section. It is distinct from
+    // the sidebar's open-recipe rows: its selector dispatches InsertRecipeReference, not OpenRecipe.
+    public struct EditorPackRecipeRow {
+        public string id;
+        public string elementId;
+    }
+
     // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML
     // data-model: the layer bitmask the LayerControllerViewDataProvider reads/writes through
     // IViewDataProvider. Kept as its own struct (not a field on EditorLayers) so EditorLayers.g.h's
@@ -138,6 +145,8 @@ namespace Vixen.ViewSchemas
 
         // R765: the open pack's render-recipe documents (empty when the editor runs on a loose file).
         [ViewSection(Layout = ViewLayout.Aos)] public EditorRecipeRow[] recipes;
+        // R872.6: the Add flyout's second section; the editor filters this with the same picker text.
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorPackRecipeRow[] packRecipes;
 
         // R766: the status-line panel (bottom region) binds these.
         public string statusDocument;

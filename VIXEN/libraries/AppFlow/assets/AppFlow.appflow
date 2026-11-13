@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0x05763615
+shape 0xDCAD6F92
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -53,6 +53,8 @@ action CreatePrimitiveLayer 42
 action SetLayerOp 43
 action SetLayerPrimitiveField 44
 action ChoosePrimitive 45
+action InsertRecipeReference 46
+action SetDocumentMaterials 47
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -171,6 +173,8 @@ decl 42 sizeof(LayerState) 1
 decl 43 sizeof(LayerState) 1
 decl 44 sizeof(LayerState) 1
 decl 45 sizeof(LayerState) 1
+decl 46 sizeof(LayerState) 1
+decl 47 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -199,6 +203,10 @@ param 29 layerIndex 1
 param 29 field 0
 param 42 primitive 0
 param 45 filter 0
+param 46 recipe 0
+param 47 major 1
+param 47 minor 1
+param 47 majorPercent 2
 param 43 layerIndex 1
 param 43 op 0
 param 44 layerIndex 1
@@ -249,6 +257,7 @@ trigger OpenRecipeTrigger recipe-{recipeId}-open 15 recipeId click
 trigger SelectLayerTrigger layer-{index}-select 28 layerIndex click
 trigger NudgeLayerFieldTrigger layer-{index}-nudge-{field} 29 layerIndex click
 trigger CreatePrimitiveLayerTrigger primitive-{primitive}-add 42 primitive click
+trigger InsertRecipeReferenceTrigger recipe-ref-{recipe}-add 46 recipe click
 trigger SetLayerOpTrigger layer-{index}-op-{op} 43 layerIndex click
 trigger SetParameterTypedTrigger parameter-{index}-set-{value} 39 parameterIndex click
 trigger SetLayerBlendTypedTrigger layer-{index}-blend-{radius} 24 layerIndex click

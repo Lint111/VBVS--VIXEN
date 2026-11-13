@@ -39,6 +39,9 @@ namespace Vixen.AppFlow.Reference
         // sn-editorpicker1 block: Enter in the Add flyout's filter field adds the best match (a view verb; the
         // layer it adds is the CreatePrimitiveLayer document edit).
         ChoosePrimitive = 45,
+        // R872.6/R872.8: append-only recipe-reference and document-material edits.
+        InsertRecipeReference = 46,
+        SetDocumentMaterials = 47,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -212,6 +215,24 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Param0Name = "filter";
         public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.InsertRecipeReference))]
+    public static class InsertRecipeReferenceParams
+    {
+        public const string Param0Name = "recipe";
+        public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetDocumentMaterials))]
+    public static class SetDocumentMaterialsParams
+    {
+        public const string Param0Name = "major";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "minor";
+        public const int Param1Type = (int)FlowParamType.Int;
+        public const string Param2Name = "majorPercent";
+        public const int Param2Type = (int)FlowParamType.Float;
     }
 
     // R872.1: the layer's combine op, by its name in the generated layer-op table.
@@ -505,6 +526,15 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Element = "primitive-{primitive}-add";
         public const string ParamName = "primitive";
+        public const string On = "click";
+    }
+
+    // R872.6: the pack-recipe section's row carries the authored <pack>:<recipe> id.
+    [FlowElementTrigger(nameof(FlowAction.InsertRecipeReference))]
+    public static class InsertRecipeReferenceTrigger
+    {
+        public const string Element = "recipe-ref-{recipe}-add";
+        public const string ParamName = "recipe";
         public const string On = "click";
     }
 

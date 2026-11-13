@@ -89,6 +89,11 @@ struct EditorRecipeData {
     bool isOpen = false;
 };
 
+// R872.6: an open-pack recipe that can be inserted from the Add flyout.
+struct EditorPackRecipeData {
+    std::string id;
+};
+
 // R766: the status-line panel's content.
 struct EditorStatusData {
     std::string document;
@@ -122,6 +127,8 @@ std::string EditorPickerFilter(const EditorLayersView& view);
 void ClearEditorPickerFilter(EditorLayersView& view);
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
+void RefreshEditorPackRecipesView(EditorLayersView& view,
+                                  const std::vector<EditorPackRecipeData>& recipes);
 
 void RefreshEditorStatusView(EditorLayersView& view, const EditorStatusData& status);
 

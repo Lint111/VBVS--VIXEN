@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0x05763615u;
+inline constexpr uint32_t kAppFlowShapeHash = 0xDCAD6F92u;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -16,7 +16,7 @@ inline constexpr std::array<FlowStateId, 0> kTerminalStateIds = {  };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41, CreatePrimitiveLayer=42, SetLayerOp=43, SetLayerPrimitiveField=44, ChoosePrimitive=45 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41, CreatePrimitiveLayer=42, SetLayerOp=43, SetLayerPrimitiveField=44, ChoosePrimitive=45, InsertRecipeReference=46, SetDocumentMaterials=47 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -66,6 +66,7 @@ namespace FlowElementTriggerId {
     inline constexpr const char* SelectLayerTrigger = "SelectLayerTrigger";
     inline constexpr const char* NudgeLayerFieldTrigger = "NudgeLayerFieldTrigger";
     inline constexpr const char* CreatePrimitiveLayerTrigger = "CreatePrimitiveLayerTrigger";
+    inline constexpr const char* InsertRecipeReferenceTrigger = "InsertRecipeReferenceTrigger";
     inline constexpr const char* SetLayerOpTrigger = "SetLayerOpTrigger";
     inline constexpr const char* SetParameterTypedTrigger = "SetParameterTypedTrigger";
     inline constexpr const char* SetLayerBlendTypedTrigger = "SetLayerBlendTypedTrigger";
@@ -137,6 +138,8 @@ inline constexpr FlowParamSchema kSelectLayerParams[] = { {"layerIndex", FlowPar
 inline constexpr FlowParamSchema kNudgeLayerFieldParams[] = { {"layerIndex", FlowParamType::Int}, {"field", FlowParamType::String} };
 inline constexpr FlowParamSchema kCreatePrimitiveLayerParams[] = { {"primitive", FlowParamType::String} };
 inline constexpr FlowParamSchema kChoosePrimitiveParams[] = { {"filter", FlowParamType::String} };
+inline constexpr FlowParamSchema kInsertRecipeReferenceParams[] = { {"recipe", FlowParamType::String} };
+inline constexpr FlowParamSchema kSetDocumentMaterialsParams[] = { {"major", FlowParamType::Int}, {"minor", FlowParamType::Int}, {"majorPercent", FlowParamType::Float} };
 inline constexpr FlowParamSchema kSetLayerOpParams[] = { {"layerIndex", FlowParamType::Int}, {"op", FlowParamType::String} };
 inline constexpr FlowParamSchema kSetLayerPrimitiveFieldParams[] = { {"layerIndex", FlowParamType::Int}, {"field", FlowParamType::String}, {"x", FlowParamType::Float}, {"y", FlowParamType::Float}, {"z", FlowParamType::Float}, {"w", FlowParamType::Float} };
 inline constexpr FlowParamSchema kOpenPanelParams[] = { {"panelId", FlowParamType::String} };
@@ -200,7 +203,9 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::CreatePrimitiveLayer, sizeof(LayerState), true, kCreatePrimitiveLayerParams, 1 },
     { FlowActionId::SetLayerOp, sizeof(LayerState), true, kSetLayerOpParams, 2 },
     { FlowActionId::SetLayerPrimitiveField, sizeof(LayerState), true, kSetLayerPrimitiveFieldParams, 6 },
-    { FlowActionId::ChoosePrimitive, sizeof(LayerState), true, kChoosePrimitiveParams, 1 }
+    { FlowActionId::ChoosePrimitive, sizeof(LayerState), true, kChoosePrimitiveParams, 1 },
+    { FlowActionId::InsertRecipeReference, sizeof(LayerState), true, kInsertRecipeReferenceParams, 1 },
+    { FlowActionId::SetDocumentMaterials, sizeof(LayerState), true, kSetDocumentMaterialsParams, 3 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -225,6 +230,7 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::SelectLayerTrigger, "layer-{index}-select", FlowActionId::SelectLayer, "layerIndex", "click" },
     { FlowElementTriggerId::NudgeLayerFieldTrigger, "layer-{index}-nudge-{field}", FlowActionId::NudgeLayerField, "layerIndex", "click" },
     { FlowElementTriggerId::CreatePrimitiveLayerTrigger, "primitive-{primitive}-add", FlowActionId::CreatePrimitiveLayer, "primitive", "click" },
+    { FlowElementTriggerId::InsertRecipeReferenceTrigger, "recipe-ref-{recipe}-add", FlowActionId::InsertRecipeReference, "recipe", "click" },
     { FlowElementTriggerId::SetLayerOpTrigger, "layer-{index}-op-{op}", FlowActionId::SetLayerOp, "layerIndex", "click" },
     { FlowElementTriggerId::SetParameterTypedTrigger, "parameter-{index}-set-{value}", FlowActionId::SetParameter, "parameterIndex", "click" },
     { FlowElementTriggerId::SetLayerBlendTypedTrigger, "layer-{index}-blend-{radius}", FlowActionId::SetLayerBlend, "layerIndex", "click" },
