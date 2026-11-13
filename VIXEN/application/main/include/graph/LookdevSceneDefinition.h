@@ -471,7 +471,12 @@ inline std::vector<Vixen::SVO::BodyInstanceGpu> BodyInstances(
     std::vector<Vixen::SVO::BodyInstanceGpu> instances;
     instances.reserve(recipes.size());
     for (const MaterialRecipe& recipe : recipes) {
-        const glm::vec3 color = storedHull ? glm::vec3(1.0f)
+        // The stored fixture contains only the hull recipe. Keep the other look-dev bodies
+        // procedural, and map the hull's 64-cell bake into the same 10-unit world span as the
+        // ordinary camera. Previously every recipe was marked stored and left in grid space,
+        // so the camera could render a valid frame while the entire stored asset sat outside it.
+        const bool useStoredHull = storedHull && recipe.material == Material::Hull;
+        const glm::vec3 color = useStoredHull ? glm::vec3(1.0f)
                                             : MaterialColor(recipe.material, materialTable);
         const glm::vec3 instanceOrigin = recipe.material == Material::Lamp ||
                 (serviceLightsEnabled && IsServiceEmitter(recipe.material))
@@ -482,17 +487,19 @@ inline std::vector<Vixen::SVO::BodyInstanceGpu> BodyInstances(
         // routing all placement through the R424 affine transform pair.
         const glm::mat4 translation = glm::translate(glm::mat4(1.0f), instanceOrigin);
         const glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), 0.0f, glm::vec3(0.0f, 1.0f, 0.0f));
-        const glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f));
+        const float storedWorldScale = kWorldSpan / static_cast<float>(kResolution);
+        const glm::mat4 scale = glm::scale(glm::mat4(1.0f),
+                                            glm::vec3(useStoredHull ? storedWorldScale : 1.0f));
         Vixen::SVO::SetInstanceTransform(instance, translation * rotation * scale);
 
         Vixen::SVO::BodyInstanceMaterialGpu& materialData = instance.material;
         materialData.color[0] = color.r;
         materialData.color[1] = color.g;
         materialData.color[2] = color.b;
-        materialData.providerKind = storedHull ? 0u : 1u;
+        materialData.providerKind = useStoredHull ? 0u : 1u;
         materialData.octreeIndex = 0u;
         materialData.recipeId = recipe.recipeId;
-        if (storedHull) materialData.recipeParams[0] = recipe.edgeSmoothness;
+        if (useStoredHull) materialData.recipeParams[0] = recipe.edgeSmoothness;
         if (recipe.material == Material::Lamp) materialData.recipeParams[3] = serviceLightsEnabled ? 0.25f : 2.0f;
         if (recipe.material == Material::Window || recipe.material == Material::Worklight)
             materialData.recipeParams[3] = 0.25f;

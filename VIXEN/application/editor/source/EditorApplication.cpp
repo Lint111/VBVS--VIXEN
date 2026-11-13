@@ -1605,7 +1605,19 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     // material-id channel is visible immediately without changing the procedural shader.
     // Documents without material fields retain the virtual provider's parameter-edit behavior.
     Vixen::SVO::BodyInstanceGpu inst{};
-    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f), 1.0f);
+    // RecipeBakeConfig stores an object-centered document at grid center (32,32,32), while the
+    // stored octree's fixed local frame maps that center to world (5,5,5). Use the same scale
+    // as the live editor render gate (10/64 * 5 = 0.78125) and translate that center back to the
+    // editor's origin. Without this affine placement the procedural preview was visible at the
+    // origin, but the first material edit moved the stored body to world (25,25,25), outside the
+    // still-valid camera frame; the rematerialization was real, yet every material readback was blank.
+    constexpr float kStoredRenderScale = 5.0f;
+    constexpr float kStoredGridToWorld = (10.0f / 64.0f) * kStoredRenderScale;
+    const glm::vec3 storedOrigin = hasDocumentMaterials
+        ? -glm::vec3(32.0f * kStoredGridToWorld)
+        : glm::vec3(0.0f);
+    Vixen::SVO::SetInstanceTranslationScale(inst, storedOrigin,
+                                             hasDocumentMaterials ? kStoredRenderScale : 1.0f);
     inst.material.color[0] = 1.0f; inst.material.color[1] = 1.0f; inst.material.color[2] = 1.0f;
     inst.material.octreeIndex = 0u;
     inst.material.providerKind = hasDocumentMaterials ? Vixen::SVO::PROVIDER_STORED
@@ -1646,10 +1658,12 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
                 ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
             using CC = Vixen::RenderGraph::CameraNodeConfig;
             // Virtual recipe coordinates are world units. The helper's one-voxel-to-world
-            // factor is normalized to 1.0 here so arbitrary recipe bounds map directly.
+            // factor is normalized to 1.0 here so arbitrary procedural recipe bounds map directly.
+            // Stored documents use the baked grid-to-world factor and the affine origin above.
             const auto frame = Vixen::Editor::FitEditorCameraToBounds(
                 entry.boundCenter, entry.boundRadius, glm::vec3(0.0f), 64,
-                /*worldGridSize=*/10.0f, /*renderScale=*/6.4f,
+                /*worldGridSize=*/10.0f,
+                /*renderScale=*/hasDocumentMaterials ? kStoredRenderScale : 6.4f,
                 /*verticalFovDegrees=*/45.0f, /*padding=*/1.15f);
             cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_X, frame.center.x);
             cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Y, frame.center.y);
@@ -2055,13 +2069,20 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
     if (!materialTable.Loaded()) {
         logger_->Warning("[EDITOR/materials] " + materialTable.Diagnostic());
     }
+    materialRows_.clear();
+    materialRows_.reserve(materialTable.Rows().size());
     if (layersView_ != nullptr) {
         std::vector<Vixen::App::EditorMaterialData> materials;
         materials.reserve(materialTable.Rows().size());
         for (const auto& row : materialTable.Rows()) {
+            materialRows_.push_back({row.id, row.name != nullptr ? row.name : ""});
             materials.push_back({std::to_string(row.id), row.name != nullptr ? row.name : ""});
         }
         Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
+    } else {
+        for (const auto& row : materialTable.Rows()) {
+            materialRows_.push_back({row.id, row.name != nullptr ? row.name : ""});
+        }
     }
     RefreshRecipesView();
     if (layersView_ != nullptr) PublishPickerPrimitives();
@@ -2891,11 +2912,16 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         for (const auto& recipe : pack_.Recipes()) {
             recipes.push_back({{"id", recipe.id}, {"open", recipe.id == openRecipeId_}});
         }
+        nlohmann::json materials = nlohmann::json::array();
+        for (const auto& material : materialRows_) {
+            materials.push_back({{"slot", material.slot}, {"name", material.name}});
+        }
         return nlohmann::json{
             {"flowState", EnumRecord(rt_.Current())},
             {"undoDepth", rt_.Stack().UndoDepth()},
             {"redoDepth", rt_.Stack().RedoDepth()},
             {"views", std::move(views)},
+            {"materials", std::move(materials)},
             {"pack", {{"root", pack_.PackRoot()}, {"id", pack_.PackId()}, {"recipes", std::move(recipes)},
                       {"open", openRecipeId_}, {"lastSaved", lastSavedPath_}}},
             {"panelLayout", nlohmann::json::parse(Panels().LayoutJson())},
