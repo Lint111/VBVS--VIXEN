@@ -10,6 +10,7 @@
 #include <optional>
 #include <utility>
 
+#include "Recipe/RecipeBounds.h"
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "Recipe/generated/PathInstance.g.hpp"
@@ -142,6 +143,33 @@ std::vector<const Vixen::SVO::Recipe::SdfOpArgument*> EditableArguments(SdfOpCod
     return out;
 }
 
+// Wraps `program` in the placement Transform ... RestorePos pair (nothing for the identity placement).
+void WrapInTransform(std::vector<SdfInstruction>& program, const LayerTransform& transform) {
+    if (transform.IsIdentity()) return;
+    SdfInstruction xform{};
+    xform.opCode = static_cast<uint8_t>(SdfOpCode::Transform);
+    xform.data[0] = transform.position[0];
+    xform.data[1] = transform.position[1];
+    xform.data[2] = transform.position[2];
+    const auto q = QuaternionFromEuler(transform.rotationDegrees[0] * kDegreesToRadians,
+                                       transform.rotationDegrees[1] * kDegreesToRadians,
+                                       transform.rotationDegrees[2] * kDegreesToRadians);
+    xform.data[4] = 0.0f - q[0];  // 0 - x keeps +0 for an identity rotation (never -0)
+    xform.data[5] = 0.0f - q[1];
+    xform.data[6] = 0.0f - q[2];
+    xform.data[7] = q[3];
+    xform.data[8] = 1.0f / transform.scale[0];
+    xform.data[9] = 1.0f / transform.scale[1];
+    xform.data[10] = 1.0f / transform.scale[2];
+    // A distance through a non-uniform scale is only bounded, never exact; the smallest axis
+    // scale keeps the bound conservative (exact for uniform scale).
+    xform.data[11] = std::min({transform.scale[0], transform.scale[1], transform.scale[2]});
+    SdfInstruction restore{};
+    restore.opCode = static_cast<uint8_t>(SdfOpCode::RestorePos);
+    program.insert(program.begin(), xform);
+    program.push_back(restore);
+}
+
 DocumentDiagnostic NotEditable(uint32_t index) {
     return {DocumentDiagnosticCode::FieldNotEditable,
             "layer " + std::to_string(index) +
@@ -248,6 +276,80 @@ bool EditorDocumentModel::CanMakePrimitive(SdfOpCode primitive, std::string* rea
     const bool ok = MakePrimitiveLayer(primitive, "probe", scratch, diagnostic);
     if (!ok && reason != nullptr) *reason = diagnostic.message;
     return ok;
+}
+
+void EditorDocumentModel::DeriveBoundsOf(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
+                                         std::array<float, 3>& center, float& radius) const {
+    // Non-whitelisted programs use the finite editor bake domain as a conservative envelope (64 voxels,
+    // its half diagonal): the same fallback the preview and the camera framing use.
+    constexpr float kBakeResolution = 64.0f;
+    center = {0.0f, 0.0f, 0.0f};
+    radius = kBakeResolution * 0.86602540378f;
+    std::array<float, 6> maxima{};
+    for (uint32_t i = 0; i < ParameterCount(); ++i) {
+        const uint32_t slot = ParameterSlot(i);
+        if (slot < maxima.size()) maxima[slot] = ParameterMax(i);
+    }
+    const auto derived = Vixen::SVO::Recipe::DeriveConservativeBounds(
+        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), maxima);
+    if (derived.ok && std::isfinite(derived.radius) && derived.radius > 0.0f) {
+        center = {derived.center.x, derived.center.y, derived.center.z};
+        radius = derived.radius;
+    }
+}
+
+void EditorDocumentModel::DerivePreviewBounds(std::array<float, 3>& center, float& radius) const {
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    DocumentDiagnostic ignored;
+    if (!FlattenToRecipeEntry(entry, ignored)) entry.bytecode.clear();  // falls back to the bake domain
+    DeriveBoundsOf(entry, center, radius);
+}
+
+bool EditorDocumentModel::PlaceNewPrimitive(EditableDocumentLayer& layer, std::optional<uint32_t> selectedLayer,
+                                            DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    std::array<float, 3> documentCenter{};
+    float documentRadius = 0.0f;
+    DerivePreviewBounds(documentCenter, documentRadius);
+
+    // The primitive's own default bound radius (its catalogue defaults stay as they are); a primitive the
+    // bound whitelist does not cover counts as unit size.
+    float defaultRadius = 1.0f;
+    if (const auto own = Vixen::SVO::Recipe::DeriveConservativeBounds(
+            layer.program.data(), static_cast<uint32_t>(layer.program.size()));
+        own.ok && std::isfinite(own.radius) && own.radius > 0.0f) {
+        defaultRadius = own.radius;
+    }
+    const float scale = kNewPrimitiveBoundsFraction * documentRadius / defaultRadius;
+
+    LayerTransform placement;
+    placement.scale = {scale, scale, scale};
+    placement.position = documentCenter;
+    if (selectedLayer && *selectedLayer < LayerCount()) {
+        LayerTransform selected;
+        DocumentDiagnostic ignored;
+        GetLayerTransform(*selectedLayer, selected, ignored);
+        // The selected layer's bound radius: its unwrapped program's bound times its largest axis scale;
+        // a layer the whitelist cannot bound lands on the document radius instead.
+        const auto& source = view_.layers[*selectedLayer];
+        std::vector<SdfInstruction> program(source.instructions, source.instructions + source.header->instructionCount);
+        if (HasTransformWrapper(program)) {
+            program.pop_back();
+            program.erase(program.begin());
+        }
+        float selectedRadius = documentRadius;
+        if (const auto bounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
+                program.data(), static_cast<uint32_t>(program.size()));
+            bounds.ok && std::isfinite(bounds.radius) && bounds.radius > 0.0f) {
+            selectedRadius = bounds.radius * std::max({selected.scale[0], selected.scale[1], selected.scale[2]});
+        }
+        for (size_t axis = 0; axis < 3; ++axis) {
+            placement.position[axis] = selected.position[axis] + kNewPrimitiveAxis[axis] * selectedRadius;
+        }
+    }
+    if (!ValidateLayerTransform(placement, diagnostic)) return false;
+    WrapInTransform(layer.program, placement);
+    return true;
 }
 
 bool EditorDocumentModel::SetLayerOp(uint32_t index, uint8_t layerOp, DocumentDiagnostic& diagnostic) {
@@ -916,30 +1018,7 @@ bool EditorDocumentModel::SetLayerTransform(uint32_t index, const LayerTransform
         program.pop_back();
         program.erase(program.begin());
     }
-    if (!transform.IsIdentity()) {
-        SdfInstruction xform{};
-        xform.opCode = static_cast<uint8_t>(SdfOpCode::Transform);
-        xform.data[0] = transform.position[0];
-        xform.data[1] = transform.position[1];
-        xform.data[2] = transform.position[2];
-        const auto q = QuaternionFromEuler(transform.rotationDegrees[0] * kDegreesToRadians,
-                                           transform.rotationDegrees[1] * kDegreesToRadians,
-                                           transform.rotationDegrees[2] * kDegreesToRadians);
-        xform.data[4] = 0.0f - q[0];  // 0 - x keeps +0 for an identity rotation (never -0)
-        xform.data[5] = 0.0f - q[1];
-        xform.data[6] = 0.0f - q[2];
-        xform.data[7] = q[3];
-        xform.data[8] = 1.0f / transform.scale[0];
-        xform.data[9] = 1.0f / transform.scale[1];
-        xform.data[10] = 1.0f / transform.scale[2];
-        // A distance through a non-uniform scale is only bounded, never exact; the smallest axis
-        // scale keeps the bound conservative (exact for uniform scale).
-        xform.data[11] = std::min({transform.scale[0], transform.scale[1], transform.scale[2]});
-        SdfInstruction restore{};
-        restore.opCode = static_cast<uint8_t>(SdfOpCode::RestorePos);
-        program.insert(program.begin(), xform);
-        program.push_back(restore);
-    }
+    WrapInTransform(program, transform);
     return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
 }
 

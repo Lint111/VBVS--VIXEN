@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <array>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -172,6 +173,28 @@ public:
     // True when MakePrimitiveLayer can build `primitive` (the picker lists exactly these); on false
     // `reason` receives the diagnostic naming the blocking argument.
     static bool CanMakePrimitive(Vixen::SVO::Recipe::SdfOpCode primitive, std::string* reason = nullptr);
+    // R872.9 Q1: a newly created primitive lands visible. The size is ONE declared fraction of the document's
+    // conservative bound radius (a quarter: big enough to read next to the document, small enough to stay a
+    // detail), applied as a uniform scale on the layer's placement Transform (the catalogue defaults stay
+    // untouched: the scale divides out the primitive's own default bound radius). The position is the
+    // selected layer's placement position offset along a fixed document axis (+Y, up) by the selected
+    // layer's bound radius, so the new shape straddles the selected layer's surface. With no selected
+    // layer it sits at the document bounds centre. Deterministic and document-only (no camera state).
+    static constexpr float kNewPrimitiveBoundsFraction = 0.25f;
+    static constexpr std::array<float, 3> kNewPrimitiveAxis{0.0f, 1.0f, 0.0f};
+    // Conservative bound sphere of the enabled layers' flattened program, the one rule the editor's
+    // preview frames with (parameter maxima in; a non-whitelisted program falls back to the finite editor
+    // bake domain). radius is always finite and positive.
+    void DerivePreviewBounds(std::array<float, 3>& center, float& radius) const;
+    // The same rule over an already flattened entry (the editor's per-edit re-flatten reuses its entry).
+    void DeriveBoundsOf(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry, std::array<float, 3>& center,
+                        float& radius) const;
+    // Places a layer built by MakePrimitiveLayer: wraps its program in the placement Transform per the rule
+    // above. `selectedLayer` is the layer to land on (nullopt: document centre). Refuses nothing that
+    // MakePrimitiveLayer accepted; a diagnostic is set only on an impossible transform.
+    bool PlaceNewPrimitive(EditableDocumentLayer& layer, std::optional<uint32_t> selectedLayer,
+                           DocumentDiagnostic& diagnostic) const;
+
     // Sets the layer's combine op (a value of the generated SdfLayerOpTable).
     bool SetLayerOp(uint32_t index, uint8_t layerOp, DocumentDiagnostic& diagnostic);
     // The primitive opcode of an editable layer; false (with FieldNotEditable) otherwise.

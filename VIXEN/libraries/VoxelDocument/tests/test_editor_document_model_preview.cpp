@@ -848,4 +848,130 @@ TEST(EditorDocumentModelCatalogue, FlyoutRowsAreTheCreatablePrimitivesAndTheFilt
     EXPECT_EQ(EditorDocumentModel::FilterRank("Box", ""), 0);
 }
 
+// ---- R872.9 Q1: a new primitive lands visible --------------------------------------------------
+
+namespace {
+Vixen::SVO::RecipeRegistry::RecipeEntry FlattenWithMask(EditorDocumentModel& model, uint32_t mask) {
+    DocumentDiagnostic diagnostic;
+    EXPECT_TRUE(model.SetEnabledMask(mask, diagnostic)) << diagnostic.message;
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    EXPECT_TRUE(model.FlattenToRecipeEntry(entry, diagnostic)) << diagnostic.message;
+    return entry;
+}
+float EvalAt(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry, const glm::vec3& p) {
+    return Vixen::SVO::Recipe::evalRecipe(entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), p);
+}
+}  // namespace
+
+TEST(EditorDocumentModelPlacement, EveryCreatablePrimitiveLandsWithShapeOutsideTheDocumentsSurface) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    const uint32_t original = model.LayerCount();
+    const uint32_t originalMask = model.EnabledMask();
+    std::array<float, 3> docCenter{};
+    float docRadius = 0.0f;
+    model.DerivePreviewBounds(docCenter, docRadius);
+    ASSERT_GT(docRadius, 1.0f);
+    const auto oldEntry = FlattenWithMask(model, originalMask);
+
+    size_t checked = 0;
+    for (const auto& choice : EditorDocumentModel::CreatablePrimitives()) {
+        Vixen::SVO::Recipe::SdfOpCode opcode{};
+        ASSERT_TRUE(Vixen::SVO::Recipe::FindSdfOpCode(choice.name, opcode));
+        Vixen::Editor::EditableDocumentLayer layer;
+        ASSERT_TRUE(EditorDocumentModel::MakePrimitiveLayer(opcode, choice.name, layer, diagnostic)) << diagnostic.message;
+        const uint64_t revision = model.Revision();
+        // Placing is pure: it reads the document and changes only the layer it is handed.
+        auto again = layer;
+        ASSERT_TRUE(model.PlaceNewPrimitive(layer, 0u, diagnostic)) << choice.name << ": " << diagnostic.message;
+        ASSERT_TRUE(model.PlaceNewPrimitive(again, 0u, diagnostic)) << diagnostic.message;
+        EXPECT_EQ(model.Revision(), revision) << choice.name;
+        ASSERT_EQ(layer.program.size(), again.program.size());
+        EXPECT_EQ(0, std::memcmp(layer.program.data(), again.program.data(),
+                                 layer.program.size() * sizeof(layer.program.front()))) << "deterministic: " << choice.name;
+        ASSERT_EQ(layer.program.size(), 3u) << "Transform + primitive + RestorePos: " << choice.name;
+
+        const uint32_t index = model.LayerCount();
+        ASSERT_TRUE(model.InsertLayer(index, layer, diagnostic)) << choice.name << ": " << diagnostic.message;
+        const auto newEntry = FlattenWithMask(model, 1u << index);
+
+        // Sample inside the new layer's own placement sphere: some point is inside the new shape (d < 0)
+        // while the previous union has it outside (d > 0): the shape is visible in principle.
+        Vixen::Editor::LayerTransform placed;
+        ASSERT_TRUE(model.GetLayerTransform(index, placed, diagnostic)) << diagnostic.message;
+        const float reach = EditorDocumentModel::kNewPrimitiveBoundsFraction * docRadius;
+        EXPECT_NEAR(placed.scale[0], placed.scale[1], 1e-6f) << "uniform scale";
+        const glm::vec3 centre(placed.position[0], placed.position[1], placed.position[2]);
+        const float step = reach / 24.0f;
+        bool visible = false;
+        for (int x = -28; x <= 28 && !visible; ++x) for (int y = -28; y <= 28 && !visible; ++y) for (int z = -28; z <= 28; ++z) {
+            const glm::vec3 p = centre + step * glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+            if (EvalAt(newEntry, p) < 0.0f && EvalAt(oldEntry, p) > 0.0f) { visible = true; break; }
+        }
+        EXPECT_TRUE(visible) << choice.name << " has no point outside the previous union's surface (scale " << placed.scale[0] << ")";
+
+        ASSERT_TRUE(model.DeleteLayer(index, nullptr, diagnostic)) << diagnostic.message;
+        ASSERT_TRUE(model.SetEnabledMask(originalMask, diagnostic)) << diagnostic.message;
+        ++checked;
+    }
+    EXPECT_EQ(checked, 22u);
+    EXPECT_EQ(model.LayerCount(), original);
+}
+
+TEST(EditorDocumentModelPlacement, SizeIsTheDeclaredFractionOfTheBoundsAndPositionFollowsTheSelectedLayer) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    std::array<float, 3> docCenter{};
+    float docRadius = 0.0f;
+    model.DerivePreviewBounds(docCenter, docRadius);
+
+    Vixen::Editor::EditableDocumentLayer sphere;
+    ASSERT_TRUE(EditorDocumentModel::MakePrimitiveLayer(Vixen::SVO::Recipe::SdfOpCode::Sphere, "s", sphere, diagnostic));
+    const auto own = Vixen::SVO::Recipe::DeriveConservativeBounds(sphere.program.data(), 1u);
+    ASSERT_TRUE(own.ok);
+    auto placed = sphere;
+    ASSERT_TRUE(model.PlaceNewPrimitive(placed, 0u, diagnostic)) << diagnostic.message;
+    // Round-trip through the model to read the placement back (no private decoding in the test).
+    ASSERT_TRUE(model.InsertLayer(model.LayerCount(), placed, diagnostic));
+    const uint32_t index = model.LayerCount() - 1u;
+    Vixen::Editor::LayerTransform t0;
+    ASSERT_TRUE(model.GetLayerTransform(index, t0, diagnostic));
+    EXPECT_NEAR(t0.scale[0] * own.radius, EditorDocumentModel::kNewPrimitiveBoundsFraction * docRadius, 1e-3f * docRadius)
+        << "the new shape's bound radius is the declared fraction of the document's";
+    // Moving the selected layer moves the landing spot by exactly the same offset.
+    Vixen::Editor::LayerTransform base;
+    ASSERT_TRUE(model.GetLayerTransform(0u, base, diagnostic));
+    auto moved = base;
+    moved.position = {base.position[0] + 7.0f, base.position[1] - 3.0f, base.position[2] + 1.0f};
+    ASSERT_TRUE(model.SetLayerTransform(0u, moved, diagnostic)) << diagnostic.message;
+    auto placedMoved = sphere;
+    ASSERT_TRUE(model.PlaceNewPrimitive(placedMoved, 0u, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.InsertLayer(model.LayerCount(), placedMoved, diagnostic));
+    Vixen::Editor::LayerTransform t1;
+    ASSERT_TRUE(model.GetLayerTransform(model.LayerCount() - 1u, t1, diagnostic));
+    // The first layer's scale is unchanged by moving it, so its bound radius (and the +Y offset) is the same;
+    // only the 'bounds' of the document may differ, which moves the size: compare positions only.
+    EXPECT_NEAR(t1.position[0] - t0.position[0], 7.0f, 1e-3f);
+    EXPECT_NEAR(t1.position[2] - t0.position[2], 1.0f, 1e-3f);
+}
+
+TEST(EditorDocumentModelPlacement, WithNoSelectedLayerTheShapeSitsAtTheDocumentBoundsCentre) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    std::array<float, 3> docCenter{};
+    float docRadius = 0.0f;
+    model.DerivePreviewBounds(docCenter, docRadius);
+    Vixen::Editor::EditableDocumentLayer layer;
+    ASSERT_TRUE(EditorDocumentModel::MakePrimitiveLayer(Vixen::SVO::Recipe::SdfOpCode::Sphere, "s", layer, diagnostic));
+    ASSERT_TRUE(model.PlaceNewPrimitive(layer, std::nullopt, diagnostic)) << diagnostic.message;
+    const uint32_t index = model.LayerCount();
+    ASSERT_TRUE(model.InsertLayer(index, layer, diagnostic));
+    Vixen::Editor::LayerTransform placed;
+    ASSERT_TRUE(model.GetLayerTransform(index, placed, diagnostic));
+    for (size_t axis = 0; axis < 3; ++axis) EXPECT_NEAR(placed.position[axis], docCenter[axis], 1e-3f);
+}
+
 }  // namespace
