@@ -35,6 +35,20 @@ public:
     const std::filesystem::path& LayoutPath() const { return layoutPath_; }
     bool LoadLayout(std::string& error);
     bool SaveLayout(std::string& error) const;
+    // Saves only when the persisted layout changed since the last save: a verb on a transient panel (a flyout
+    // opening, being dragged, closing) writes nothing. Returns false only on a write error.
+    bool SaveLayoutIfChanged(std::string& error);
+
+    // Opens a floating panel beside the element `anchorElementId` (the control that opened it): its rect is read from
+    // the live layout, the dock places the panel next to it inside the window, away from the viewport centre. With no
+    // anchor, no such element, or a non-floating panel this is Open.
+    DockResult OpenAnchored(std::string_view panelId, const std::string& anchorElementId);
+
+    // One pointer sample per frame (window pixels, left button state): drags a floating panel by its header strip
+    // and an edge region by its splitter. The live gesture is applied to the dock without a save; the returned
+    // step's `commit` is the gesture to emit as its verb (FloatPanel / ResizeRegion) on release, and `captured`
+    // tells the app the pointer belongs to the dock.
+    DockDragStep StepDrag(float pointerX, float pointerY, bool leftDown);
 
     // Mounts the chrome and every declared panel on `host`. Call once, after the declarations.
     void Attach(IUiCompositionHost& host);
@@ -60,6 +74,8 @@ private:
     std::unordered_map<std::string, IUiCompositionHost::MountHandle> handles_;
     std::filesystem::path layoutPath_;
     DockFrame frame_;
+    PanelDockDrag drag_;
+    uint64_t savedPersistedRevision_ = ~uint64_t{0};
     uint64_t placedRevision_ = ~uint64_t{0};
     float placedWidth_ = -1.0f;
     float placedHeight_ = -1.0f;

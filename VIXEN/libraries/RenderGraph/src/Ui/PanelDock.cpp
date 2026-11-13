@@ -100,13 +100,20 @@ void PanelDock::ResetToDefaults() {
         row.region = decl.region;
         row.stack = IsEdge(decl.region) ? decl.stack : 0;
         row.order = orders[{row.region, row.stack}]++;
-        row.visible = true;
+        row.visible = !decl.transient;
         row.floatRect = decl.floatRect;
         if (decl.region == DockRegion::Floating) row.focus = ++focusCounter_;
         rows_.push_back(std::move(row));
     }
     Normalize();
     ++revision_;
+    ++persistedRevision_;
+}
+
+void PanelDock::Touch(std::string_view panelId) {
+    ++revision_;
+    const PanelDecl* decl = Find(panelId);
+    if (!decl || !decl->transient) ++persistedRevision_;
 }
 
 uint32_t PanelDock::NextStack(DockRegion region) const {
@@ -175,7 +182,7 @@ DockResult PanelDock::Open(std::string_view panelId) {
     if (!row) return DockResult::UnknownPanel;
     ActivateOnly(*row);
     Normalize();
-    ++revision_;
+    Touch(panelId);
     return DockResult::Ok;
 }
 
@@ -186,7 +193,7 @@ DockResult PanelDock::Close(std::string_view panelId) {
     row->visible = false;
     row->active = false;
     Normalize();
-    ++revision_;
+    Touch(panelId);
     return DockResult::Ok;
 }
 
@@ -212,7 +219,7 @@ DockResult PanelDock::Move(std::string_view panelId, DockRegion region) {
     if (IsEdge(region) && RegionSize(region) <= 0.0f) RegionOf(region)->size = Find(panelId)->size;
     ActivateOnly(*row);
     Normalize();
-    ++revision_;
+    Touch(panelId);
     return DockResult::Ok;
 }
 
@@ -226,7 +233,7 @@ DockResult PanelDock::Split(std::string_view panelId, DockRegion region) {
     if (RegionSize(region) <= 0.0f) RegionOf(region)->size = Find(panelId)->size;
     ActivateOnly(*row);
     Normalize();
-    ++revision_;
+    Touch(panelId);
     return DockResult::Ok;
 }
 
@@ -240,7 +247,7 @@ DockResult PanelDock::Float(std::string_view panelId, PanelRect rect) {
     row->floatRect = rect;
     ActivateOnly(*row);
     Normalize();
-    ++revision_;
+    Touch(panelId);
     return DockResult::Ok;
 }
 
@@ -249,7 +256,60 @@ DockResult PanelDock::Resize(DockRegion region, float size) {
     if (!std::isfinite(size) || size <= 0.0f) return DockResult::InvalidSize;
     RegionOf(region)->size = size;
     ++revision_;
+    ++persistedRevision_;
     return DockResult::Ok;
+}
+
+PanelRect PanelDock::PlaceBeside(const PanelRect& anchor, float width, float height, float windowWidth,
+                                 float windowHeight, float avoidX, float avoidY) {
+    constexpr float kGap = 4.0f;
+    const float w = std::min(width, windowWidth);
+    const float h = std::min(height, windowHeight);
+    const auto clamped = [&](float x, float y) {
+        return PanelRect{std::clamp(x, 0.0f, std::max(0.0f, windowWidth - w)),
+                         std::clamp(y, 0.0f, std::max(0.0f, windowHeight - h)), w, h};
+    };
+    const PanelRect candidates[] = {
+        clamped(anchor.x + anchor.width + kGap, anchor.y),         // right of the anchor, tops aligned
+        clamped(anchor.x, anchor.y + anchor.height + kGap),        // below it, left edges aligned
+        clamped(anchor.x - w - kGap, anchor.y),                    // left of it
+        clamped(anchor.x, anchor.y - h - kGap),                    // above it
+    };
+    for (const PanelRect& rect : candidates) {
+        const bool covers = avoidX >= rect.x && avoidX <= rect.x + rect.width &&
+                            avoidY >= rect.y && avoidY <= rect.y + rect.height;
+        if (!covers) return rect;
+    }
+    return candidates[0];
+}
+
+DockResult PanelDock::OpenAnchored(std::string_view panelId, const PanelRect& anchor, float windowWidth,
+                                   float windowHeight) {
+    PanelRow* row = RowOf(panelId);
+    if (!row) return DockResult::UnknownPanel;
+    if (row->region != DockRegion::Floating || anchor.width <= 0.0f || anchor.height <= 0.0f ||
+        !std::isfinite(anchor.x) || !std::isfinite(anchor.y) || !std::isfinite(anchor.width) ||
+        !std::isfinite(anchor.height) || windowWidth <= 0.0f || windowHeight <= 0.0f) {
+        return Open(panelId);
+    }
+    const DockFrame frame = Compute(windowWidth, windowHeight);
+    const PanelRect placed = PlaceBeside(anchor, row->floatRect.width, row->floatRect.height, windowWidth,
+                                         windowHeight, frame.viewport.x + frame.viewport.width * 0.5f,
+                                         frame.viewport.y + frame.viewport.height * 0.5f);
+    return Float(panelId, placed);
+}
+
+std::string PanelDock::TopDismissible() const {
+    const PanelRow* best = nullptr;
+    for (size_t i = 0; i < rows_.size(); ++i) {
+        if (!decls_[i].dismissible || !decls_[i].closable || !rows_[i].visible) continue;
+        const bool floating = rows_[i].region == DockRegion::Floating;
+        const bool bestFloating = best && best->region == DockRegion::Floating;
+        if (!best || (floating && (!bestFloating || rows_[i].focus > best->focus)) || (!floating && !bestFloating)) {
+            best = &rows_[i];
+        }
+    }
+    return best ? best->panel : std::string{};
 }
 
 DockLayoutRows PanelDock::Rows() const {
@@ -266,6 +326,7 @@ void PanelDock::ApplyRows(const DockLayoutRows& rows) {
     for (const auto& saved : rows.panels) {
         PanelRow* row = RowOf(saved.panel);
         if (!row) continue;  // a row for a panel this app does not declare
+        if (const PanelDecl* decl = Find(saved.panel); decl && decl->transient) continue;  // never restored
         PanelRow next = saved;
         if (!ValidRect(next.floatRect)) next.floatRect = row->floatRect;
         *row = std::move(next);
@@ -273,6 +334,7 @@ void PanelDock::ApplyRows(const DockLayoutRows& rows) {
     }
     Normalize();
     ++revision_;
+    ++persistedRevision_;
 }
 
 std::string PanelDock::RowsJson() const {
@@ -281,7 +343,9 @@ std::string PanelDock::RowsJson() const {
         regions.push_back({{"region", DockRegionName(region.region)}, {"size", region.size}});
     }
     nlohmann::json panels = nlohmann::json::array();
-    for (const auto& row : rows_) {
+    for (size_t i = 0; i < rows_.size(); ++i) {
+        const PanelRow& row = rows_[i];
+        if (decls_[i].transient) continue;  // transient panels are not part of the persisted layout
         panels.push_back({{"panel", row.panel}, {"region", DockRegionName(row.region)},
                           {"stack", row.stack}, {"order", row.order}, {"visible", row.visible},
                           {"active", row.active}, {"focus", row.focus},
@@ -448,6 +512,91 @@ DockFrame PanelDock::Compute(float windowWidth, float windowHeight) const {
         frame.panels.push_back({decls_[i].id, {}, false, 0});
     }
     return frame;
+}
+
+DockGesture PanelDockDrag::Gesture(float windowWidth, float windowHeight, float pointerX, float pointerY) const {
+    DockGesture gesture;
+    if (kind_ == DockGesture::Kind::MovePanel) {
+        gesture.kind = kind_;
+        gesture.panel = panel_;
+        gesture.rect = startRect_;
+        gesture.rect.x = std::clamp(startRect_.x + (pointerX - startX_), 0.0f, std::max(0.0f, windowWidth - startRect_.width));
+        gesture.rect.y = std::clamp(startRect_.y + (pointerY - startY_), 0.0f, std::max(0.0f, windowHeight - startRect_.height));
+    } else if (kind_ == DockGesture::Kind::ResizeRegion) {
+        gesture.kind = kind_;
+        gesture.region = region_;
+        // The extent the pointer implies: its distance from the window edge the region hangs on. The dock clamps to
+        // the panels' minimum and the viewport minimum when it computes the frame.
+        switch (region_) {
+            case DockRegion::Left: gesture.size = pointerX; break;
+            case DockRegion::Right: gesture.size = windowWidth - pointerX; break;
+            default: gesture.size = windowHeight - pointerY; break;
+        }
+        gesture.size = std::max(1.0f, std::round(gesture.size));
+    }
+    return gesture;
+}
+
+DockDragStep PanelDockDrag::Step(const PanelDock& dock, const DockFrame& frame, float windowWidth,
+                                 float windowHeight, float pointerX, float pointerY, bool leftDown) {
+    (void)dock;
+    DockDragStep step;
+    const bool pressEdge = leftDown && !wasDown_;
+    wasDown_ = leftDown;
+    if (pressEdge && mode_ == Mode::Idle) {
+        const auto inside = [&](const PanelRect& r) {
+            return pointerX >= r.x && pointerX < r.x + r.width && pointerY >= r.y && pointerY < r.y + r.height;
+        };
+        kind_ = DockGesture::Kind::None;
+        // A floating panel's header strip first (topmost last in the frame), then the region splitters.
+        for (auto it = frame.stacks.rbegin(); it != frame.stacks.rend() && kind_ == DockGesture::Kind::None; ++it) {
+            if (it->region != DockRegion::Floating || it->headerHeight <= 0.0f || it->tabs.empty()) continue;
+            if (!inside({it->frame.x, it->frame.y, it->frame.width, it->headerHeight})) continue;
+            kind_ = DockGesture::Kind::MovePanel;
+            panel_ = it->tabs.front().panel;
+            startRect_ = it->frame;
+        }
+        if (kind_ == DockGesture::Kind::None) {
+            std::array<bool, 3> present{false, false, false};
+            for (const auto& stack : frame.stacks) {
+                if (stack.region == DockRegion::Left) present[0] = true;
+                if (stack.region == DockRegion::Right) present[1] = true;
+                if (stack.region == DockRegion::Bottom) present[2] = true;
+            }
+            const PanelRect& vp = frame.viewport;
+            const float leftEdge = vp.x, rightEdge = vp.x + vp.width, bottomEdge = vp.y + vp.height;
+            if (present[0] && pointerY >= 0.0f && pointerY < bottomEdge &&
+                pointerX >= leftEdge - kSplitterNear && pointerX <= leftEdge + kSplitterFar) {
+                kind_ = DockGesture::Kind::ResizeRegion; region_ = DockRegion::Left;
+            } else if (present[1] && pointerY >= 0.0f && pointerY < bottomEdge &&
+                       pointerX >= rightEdge - kSplitterFar && pointerX <= rightEdge + kSplitterNear) {
+                kind_ = DockGesture::Kind::ResizeRegion; region_ = DockRegion::Right;
+            } else if (present[2] && pointerX >= 0.0f && pointerX < windowWidth &&
+                       pointerY >= bottomEdge - kSplitterFar && pointerY <= bottomEdge + kSplitterNear) {
+                kind_ = DockGesture::Kind::ResizeRegion; region_ = DockRegion::Bottom;
+            }
+        }
+        if (kind_ != DockGesture::Kind::None) {
+            mode_ = Mode::Pending;
+            startX_ = pointerX;
+            startY_ = pointerY;
+        }
+    }
+    if (mode_ == Mode::Idle) return step;
+    if (leftDown) {
+        step.captured = true;
+        if (mode_ == Mode::Pending) {
+            const float dx = pointerX - startX_, dy = pointerY - startY_;
+            if (dx * dx + dy * dy >= kDragThreshold * kDragThreshold) mode_ = Mode::Dragging;
+        }
+        if (mode_ == Mode::Dragging) step.preview = Gesture(windowWidth, windowHeight, pointerX, pointerY);
+        return step;
+    }
+    // Released.
+    if (mode_ == Mode::Dragging) step.commit = Gesture(windowWidth, windowHeight, pointerX, pointerY);
+    mode_ = Mode::Idle;
+    kind_ = DockGesture::Kind::None;
+    return step;
 }
 
 }  // namespace Vixen::RenderGraph

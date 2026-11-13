@@ -173,15 +173,6 @@ constexpr float kMinimumScale = 0.25f;
 
 constexpr uint32_t kEditorProceduralRecipeId = 0xE0D17001u;
 
-std::array<float, 6> ParameterRangeMaxima(const Vixen::Editor::EditorDocumentModel& document) {
-    std::array<float, 6> maxima{};
-    for (uint32_t i = 0; i < document.ParameterCount(); ++i) {
-        const uint32_t slot = document.ParameterSlot(i);
-        if (slot < maxima.size()) maxima[slot] = document.ParameterMax(i);
-    }
-    return maxima;
-}
-
 template <typename Enum>
 nlohmann::json EnumRecord(Enum value) {
     using Underlying = std::underlying_type_t<Enum>;
@@ -282,19 +273,12 @@ void AppendPngBytes(void* context, void* data, int size) {
 
 void ApplyEditorPreviewBounds(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
                               const Vixen::Editor::EditorDocumentModel& document) {
-    const auto maxima = ParameterRangeMaxima(document);
-    const auto derived = Vixen::SVO::Recipe::DeriveConservativeBounds(
-        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), maxima);
-    if (derived.ok && std::isfinite(derived.radius) && derived.radius > 0.0f) {
-        entry.boundCenter = derived.center;
-        entry.boundRadius = derived.radius;
-    } else {
-        // Non-whitelisted recipes use the finite editor bake domain as a conservative preview
-        // envelope. The camera still frames the document rather than assuming a golden fixture.
-        constexpr float kBakeResolution = 64.0f;
-        entry.boundCenter = glm::vec3(0.0f);
-        entry.boundRadius = kBakeResolution * 0.86602540378f;
-    }
+    // The one bounds rule lives in the model (it also sizes new primitives).
+    std::array<float, 3> center{};
+    float radius = 0.0f;
+    document.DeriveBoundsOf(entry, center, radius);
+    entry.boundCenter = glm::vec3(center[0], center[1], center[2]);
+    entry.boundRadius = radius;
     entry.stepRelaxation = 0.9f;
 }
 
@@ -420,20 +404,40 @@ void EditorApplication::ClosePicker() {
 }
 
 void EditorApplication::StepPicker() {
-    if (!PickerOpen()) {
-        // A closed flyout holds no filter: the next open lists everything.
-        if (!Vixen::App::EditorPickerFilter(*layersView_).empty()) Vixen::App::ClearEditorPickerFilter(*layersView_);
-    } else if (auto* graph = GetRenderGraph()) {
-        // Escape cancels the filter field's edit (the UI forwarder restores the value and blurs); it also dismisses
-        // the flyout. Read from the frame's key events, because a tap's press and release can land in one frame.
-        if (auto* input = static_cast<Vixen::RenderGraph::InputNode*>(graph->GetInstanceByName("input_handler"))) {
-            for (const auto& key : input->GetInputState().keyEventsThisFrame) {
-                if (key.glfwKey == GLFW_KEY_ESCAPE && key.action == GLFW_PRESS) { ClosePicker(); break; }
-            }
-        }
+    // A closed flyout holds no filter: the next open lists everything.
+    if (!PickerOpen() && !Vixen::App::EditorPickerFilter(*layersView_).empty()) {
+        Vixen::App::ClearEditorPickerFilter(*layersView_);
     }
     // The picker's text field writes the filter as the user types; list what it now matches.
     if (Vixen::App::EditorPickerFilter(*layersView_) != publishedPickerFilter_) PublishPickerPrimitives();
+}
+
+void EditorApplication::StepDock() {
+    using Vixen::AppFlow::Generated::FlowActionId;
+    auto* graph = GetRenderGraph();
+    auto* input = graph ? static_cast<Vixen::RenderGraph::InputNode*>(graph->GetInstanceByName("input_handler")) : nullptr;
+    auto* ui = GetUiRenderNode();
+    // Escape nothing consumed (a focused text field's own Escape cancels its edit first): close the dismissible
+    // panel through the ordinary ClosePanel action.
+    if (ui && ui->DrainCancelRequested()) {
+        const std::string panel = Panels().Dock().TopDismissible();
+        if (!panel.empty()) rt_.DispatchById(FlowActionId::ClosePanel, {{"panelId", panel}});
+    }
+    dockPointerCaptured_ = false;
+    if (!input) return;
+    const auto& state = input->GetInputState();
+    const auto step = Panels().StepDrag(state.mousePosition.x, state.mousePosition.y, state.mouseButtons[0]);
+    dockPointerCaptured_ = step.captured;
+    using Kind = Vixen::RenderGraph::DockGesture::Kind;
+    const auto whole = [](float value) { return std::to_string(static_cast<int>(std::lround(value))); };
+    if (step.commit.kind == Kind::MovePanel) {
+        const auto& rect = step.commit.rect;
+        rt_.DispatchById(FlowActionId::FloatPanel, {{"panelId", step.commit.panel}, {"x", whole(rect.x)}, {"y", whole(rect.y)},
+                                                    {"width", whole(rect.width)}, {"height", whole(rect.height)}});
+    } else if (step.commit.kind == Kind::ResizeRegion) {
+        rt_.DispatchById(FlowActionId::ResizeRegion, {{"region", std::string(Vixen::RenderGraph::DockRegionName(step.commit.region))},
+                                                      {"size", whole(step.commit.size)}});
+    }
 }
 
 void EditorApplication::SyncAfterDocumentMutation() {
@@ -572,8 +576,15 @@ void EditorApplication::RegisterAppFlowHandlers() {
             ReportEditorDiagnostic(makeDiagnostic);
             return false;
         }
+        // R872.9 Q1: the layer lands visible, sized from the document's bounds and placed on the selected layer's
+        // surface (EditorDocumentModel::PlaceNewPrimitive). Placement and insert are one ActionStack entry.
+        const uint32_t previousSelection = selectedLayer_;
+        if (!doc_.PlaceNewPrimitive(layer, previousSelection, makeDiagnostic)) {
+            ReportEditorDiagnostic(makeDiagnostic);
+            return false;
+        }
         const uint32_t index = doc_.LayerCount();
-        rt_.Stack().Dispatch(actionId, [this, layer, index](bool forward) {
+        rt_.Stack().Dispatch(actionId, [this, layer, index, previousSelection](bool forward) {
             Vixen::Editor::DocumentDiagnostic diagnostic;
             const bool ok = forward
                 ? doc_.InsertLayer(index, layer, diagnostic)
@@ -583,6 +594,8 @@ void EditorApplication::RegisterAppFlowHandlers() {
                 logger_->Error("[EditorApplication] CreateLayer operation failed: " + diagnostic.message);
                 return;
             }
+            // The new layer is selected; undo gives the selection back.
+            selectedLayer_ = forward ? index : previousSelection;
             SyncAfterDocumentMutation();
         });
         return true;
@@ -1087,7 +1100,9 @@ void EditorApplication::RegisterAppFlowHandlers() {
         return !text.empty() && parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
     };
     rt_.RegisterHandler(FlowActionId::OpenPanel, [this, param](const Params& p) {
-        AfterPanelVerb("open", Panels().Dock().Open(param(p, "panelId")));
+        // A flyout opened by a click lands beside the control that was clicked; a scripted dispatch has no such
+        // control and opens at the panel's own rect.
+        AfterPanelVerb("open", Panels().OpenAnchored(param(p, "panelId"), clickAnchorElementId_));
     });
     rt_.RegisterHandler(FlowActionId::ClosePanel, [this, param](const Params& p) {
         AfterPanelVerb("close", Panels().Dock().Close(param(p, "panelId")));
@@ -1224,8 +1239,6 @@ void EditorApplication::BuildRenderGraph() {
 
     // R766: the editor's panels (DeclarePanels) were mounted on the UI node by the base graph build's
     // panel dock; there is no hard-wired editor document to re-point any more.
-    // The Add flyout starts closed whatever the saved layout says (the base build has applied it by now).
-    (void)Panels().Dock().Close(kPickerPanelId);
 
     if (auto* cameraInst = GetRenderGraph() ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
         using CC = Vixen::RenderGraph::CameraNodeConfig;
@@ -1293,7 +1306,7 @@ void EditorApplication::TranslateCameraInput() {
     using Vixen::AppFlow::Generated::FlowActionId;
     const bool ctrl = input->IsRawKeyHeld(GLFW_KEY_LEFT_CONTROL) || input->IsRawKeyHeld(GLFW_KEY_RIGHT_CONTROL);
     const auto* ui = GetUiRenderNode();
-    const Vixen::Editor::UiInputCapture capture{ui && ui->WantsKeyboard(), ui && ui->WantsPointer()};
+    const Vixen::Editor::UiInputCapture capture{ui && ui->WantsKeyboard(), (ui && ui->WantsPointer()) || dockPointerCaptured_};
     for (const auto& dispatch : Vixen::Editor::CameraDispatchesFromInput(
              input->GetInputState(), ctrl, camera->GetMouseSensitivity(), camera->GetMoveSpeed(), capture)) {
         switch (dispatch.action) {
@@ -1654,7 +1667,8 @@ void EditorApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
     Vixen::RenderGraph::IView& view = Vixen::App::EditorLayersAsView(*layersView_);
     const auto declare = [&](std::string id, std::string title, std::string document, DockRegion region,
                              uint32_t stack, float size, float minSize, bool closable, bool header,
-                             Vixen::RenderGraph::PanelRect floatRect = {80.0f, 80.0f, 360.0f, 420.0f}) {
+                             Vixen::RenderGraph::PanelRect floatRect = {80.0f, 80.0f, 360.0f, 420.0f},
+                             bool flyout = false) {
         PanelDecl decl;
         decl.id = std::move(id);
         decl.title = std::move(title);
@@ -1667,6 +1681,8 @@ void EditorApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
         decl.closable = closable;
         decl.header = header;
         decl.floatRect = floatRect;
+        decl.transient = flyout;     // starts closed, never persisted
+        decl.dismissible = flyout;   // Escape closes it
         dock.Declare(std::move(decl));
     };
     // R765 three regions: layers | viewport | inspector, plus the status line. The viewport is what
@@ -1676,21 +1692,23 @@ void EditorApplication::DeclarePanels(Vixen::RenderGraph::PanelDock& dock) {
     declare("inspector", "Inspector", "assets/ui/editor_inspector.rml", DockRegion::Right, 0, 320.0f, 220.0f, true, true);
     declare("status", "Status", "assets/ui/editor_status.rml", DockRegion::Bottom, 0, 28.0f, 24.0f, false, false);
     // sn-editorpicker1: the Add flyout, a Floating panel opened by the Layers toolbar's Add button (OpenPanel).
-    // It sits just right of the left column, over the viewport edge. BuildRenderGraph closes it at start: it is
-    // transient, never restored from a saved layout.
+    // Transient (starts closed, never saved) and dismissible (Escape); the rect below is only the fallback size and
+    // place, an Add click anchors it beside the button.
     declare(kPickerPanelId, "Add primitive", "assets/ui/editor_picker.rml", DockRegion::Floating, 0, 300.0f, 220.0f,
-            true, true, {348.0f, 56.0f, 300.0f, 360.0f});
+            true, true, {348.0f, 56.0f, 300.0f, 360.0f}, /*flyout=*/true);
 }
 
 void EditorApplication::AfterPanelVerb(const char* verb, Vixen::RenderGraph::DockResult result) {
     const std::string resultName(Vixen::RenderGraph::DockResultName(result));
     if (result == Vixen::RenderGraph::DockResult::Ok) {
+        // Only a change the persisted layout contains is written (a flyout opening, moving or closing is not one).
         std::string error;
-        if (!Panels().SaveLayout(error)) {
+        if (!Panels().SaveLayoutIfChanged(error)) {
             logger_->Warning("[EDITOR/panels] layout save failed: " + error);
         }
-        statusMessage_ = std::string("layout: ") + verb;
     } else {
+        // A refusal is the user's explicit layout action failing: it reaches the status line. A success does not
+        // (it used to overwrite the message of the edit that closed the flyout: "layout: close").
         statusMessage_ = std::string("layout ") + verb + " refused: " + resultName;
     }
     logger_->Info(std::string("[EDITOR/panels] verb=") + verb + " result=" + resultName +
@@ -1796,7 +1814,9 @@ void EditorApplication::Update() {
         // (the Rml context took the press); nothing dispatches until a value is committed.
         if (!clickedId.empty() && !Vixen::RenderGraph::HasValueSlot(clickedId)) {
             TraceEditorLatency("dispatch", "begin", updateTick_);
+            clickAnchorElementId_ = clickedId;
             rt_.DispatchBySelector(clickedId);
+            clickAnchorElementId_.clear();
             TraceEditorLatency("dispatch", "end", updateTick_);
         }
     }
@@ -1842,6 +1862,7 @@ void EditorApplication::Update() {
                        [this](Vixen::AppFlow::Generated::KeyChord chord) { (void)rt_.DispatchByKey(chord); },
                        typing);
     }
+    StepDock();
     TranslateCameraInput();
     StepParameterScrub();
 

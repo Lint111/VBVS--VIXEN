@@ -787,6 +787,22 @@ bool UIRenderNode::Extent(float& width, float& height) const {
     return true;
 }
 
+bool UIRenderNode::ElementRect(const std::string& elementId, PanelRect& out) const {
+    if (!context_ || elementId.empty()) return false;
+    for (int i = 0; i < context_->GetNumDocuments(); ++i) {
+        Rml::ElementDocument* doc = context_->GetDocument(i);
+        if (!doc) continue;
+        Rml::Element* element = doc->GetElementById(elementId);
+        if (!element) continue;
+        const Rml::Vector2f offset = element->GetAbsoluteOffset(Rml::BoxArea::Border);
+        const Rml::Vector2f size = element->GetBox().GetSize(Rml::BoxArea::Border);
+        if (size.x <= 0.0f || size.y <= 0.0f) continue;  // not laid out (hidden)
+        out = {offset.x, offset.y, size.x, size.y};
+        return true;
+    }
+    return false;
+}
+
 void UIRenderNode::ApplyPlacements() {
     for (auto& [handle, placement] : placements_) {
         Rml::ElementDocument* doc = nullptr;

@@ -103,6 +103,37 @@ bool PanelDockHost::SaveLayout(std::string& error) const {
     return Vixen::AtomicWriteText(layoutPath_, dock_.RowsJson(), &error);
 }
 
+bool PanelDockHost::SaveLayoutIfChanged(std::string& error) {
+    if (dock_.PersistedRevision() == savedPersistedRevision_) return true;
+    if (!SaveLayout(error)) return false;
+    savedPersistedRevision_ = dock_.PersistedRevision();
+    return true;
+}
+
+DockResult PanelDockHost::OpenAnchored(std::string_view panelId, const std::string& anchorElementId) {
+    PanelRect anchor;
+    float width = 0.0f, height = 0.0f;
+    if (!host_ || anchorElementId.empty() || !host_->Extent(width, height) ||
+        !host_->ElementRect(anchorElementId, anchor)) {
+        return dock_.Open(panelId);
+    }
+    return dock_.OpenAnchored(panelId, anchor, width, height);
+}
+
+DockDragStep PanelDockHost::StepDrag(float pointerX, float pointerY, bool leftDown) {
+    float width = 0.0f, height = 0.0f;
+    if (!host_ || !host_->Extent(width, height)) return {};
+    // The frame the pointer sees is the one placed on screen (Update keeps it current).
+    const DockDragStep step = drag_.Step(dock_, frame_, width, height, pointerX, pointerY, leftDown);
+    const DockGesture& live = step.commit ? step.commit : step.preview;
+    if (live.kind == DockGesture::Kind::MovePanel) {
+        (void)dock_.Float(live.panel, live.rect);
+    } else if (live.kind == DockGesture::Kind::ResizeRegion) {
+        (void)dock_.Resize(live.region, live.size);
+    }
+    return step;
+}
+
 void PanelDockHost::Attach(IUiCompositionHost& host) {
     host_ = &host;
     chromeHandle_ = host.Mount(*chromeView_);

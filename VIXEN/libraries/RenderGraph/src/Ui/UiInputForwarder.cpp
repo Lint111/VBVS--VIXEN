@@ -243,6 +243,7 @@ void UiInputForwarder::Forward(const InputState& input, const std::function<void
                 field->Blur();
                 continue;
             }
+            cancelPressed_ = true;  // nothing owned the key: the generic cancel
         }
         context_->ProcessKeyDown(id, mods);
     }

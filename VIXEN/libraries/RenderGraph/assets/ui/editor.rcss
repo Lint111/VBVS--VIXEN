@@ -274,15 +274,34 @@ input.value-field selection, input.name-field selection {
     font-size: 11px;
 }
 
+/* sn-editordock2: one line per field: name | value | -/+ | reset | range. The name and the range shrink (clip)
+   before anything wraps, so a reset button stays on its field's row down to the inspector's minimum width. */
 .parameter-row {
-    display: block;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
     margin-top: 5px;
 }
 
 .parameter-name {
-    display: inline-block;
-    width: 110px;
+    display: block;
+    flex: 0 1 110px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
     color: #e0d0b0;
+}
+
+.parameter-row input.value-field, .parameter-row input.name-field, .parameter-row .button {
+    flex: none;
+}
+
+.parameter-row .range, .parameter-row .parameter-value {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .parameter-range {

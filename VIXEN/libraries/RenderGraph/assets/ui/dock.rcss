@@ -30,6 +30,7 @@ body {
 
 .header {
     display: block;
+    pointer-events: auto;   /* the header strip is UI (a floating panel's drag handle), not the world behind it */
     background-color: #141a28;
     border-bottom-width: 1px;
     border-color: #34405a;

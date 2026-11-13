@@ -523,7 +523,8 @@ void InputNode::PopulateInputState() {
 
     // ESC -> graceful-shutdown WindowCloseEvent (was PublishKeyEvents' only real job; folded in
     // here since it's a one-shot check against the same keyStates map this loop already walked).
-    if (inputState_.IsKeyPressed(KeyCode::Escape) && GetMessageBus() && !keyboardCapturedByUi_) {
+    if (inputState_.IsKeyPressed(KeyCode::Escape) && GetMessageBus() && !keyboardCapturedByUi_ &&
+        !escapeConsumedByUi_) {
         GetMessageBus()->Publish(std::make_unique<EventBus::WindowCloseEvent>(instanceId));
         NODE_LOG_INFO("[InputNode] ESC pressed - published WindowCloseEvent for graceful shutdown");
     }

@@ -86,6 +86,9 @@ public:
     /// through InputState::keyEventsThisFrame / textThisFrame.
     void SetKeyboardCapturedByUi(bool captured) { keyboardCapturedByUi_ = captured; }
     [[nodiscard]] bool KeyboardCapturedByUi() const { return keyboardCapturedByUi_; }
+    /// True while an open UI panel dismisses on Escape: the key means "cancel" to the UI, so it must not also
+    /// publish the shutdown WindowCloseEvent. Set each Update by the host before ProcessPendingInput.
+    void SetEscapeConsumedByUi(bool consumed) { escapeConsumedByUi_ = consumed; }
 
     /// Canonical held state of ANY key (GLFW key code), folded from the callback queue like everything else
     /// (cleared on focus loss). Consumers that need "is this key down" for keys InputNode does not track by
@@ -218,6 +221,7 @@ private:
     std::unordered_set<int> heldRawKeys_;  // GLFW key codes currently down (event-derived)
     std::u32string pendingText_;
     bool keyboardCapturedByUi_ = false;
+    bool escapeConsumedByUi_ = false;
 
     // Delta time for held duration calculation
     std::chrono::steady_clock::time_point lastFrameTime;

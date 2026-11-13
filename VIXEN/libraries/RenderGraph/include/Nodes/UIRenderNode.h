@@ -72,6 +72,7 @@ public:
     void BindPrimary(IView& view) override;
     void Place(MountHandle handle, const PanelRect& rect, bool visible, int z) override;
     bool Extent(float& width, float& height) const override;
+    bool ElementRect(const std::string& elementId, PanelRect& out) const override;
     void Unmount(MountHandle handle) override;
     void MarkMountedDirty(MountHandle handle, const char* field) override;
     [[nodiscard]] bool IsMounted(MountHandle handle) const override;
@@ -92,6 +93,9 @@ public:
     /// pointer over (or dragging from) a UI element is not also a camera drag.
     [[nodiscard]] bool WantsKeyboard() const { return inputForwarder_.WantsKeyboard(); }
     [[nodiscard]] bool WantsPointer() const { return inputForwarder_.WantsPointer(); }
+    /// An Escape press no text control consumed since the last call (the generic cancel: a host closes its
+    /// dismissible panel on it). Draining clears it.
+    [[nodiscard]] bool DrainCancelRequested() { return inputForwarder_.DrainCancel(); }
 
     /// Typed values committed by text controls since the last drain; the host dispatches each `selector`
     /// through the runtime (see UiInputForwarder.h) exactly as it dispatches a drained click.

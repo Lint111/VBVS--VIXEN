@@ -2606,6 +2606,8 @@ void VulkanGraphApplication::Update() {
                 // (no Escape shutdown, no movement axes, no debug-mode digits). State as of the last UI Execute.
                 const auto* ui = GetUiRenderNode();
                 input->SetKeyboardCapturedByUi(ui && ui->WantsKeyboard());
+                // An open dismissible panel takes Escape as "cancel" (the app closes it), not as "quit".
+                input->SetEscapeConsumedByUi(panelDock_->Dock().HasOpenDismissible());
                 input->ProcessPendingInput();
             }
         }

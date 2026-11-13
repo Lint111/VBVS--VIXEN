@@ -7,6 +7,9 @@
 
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 using namespace Vixen::RenderGraph;
 
@@ -230,4 +233,264 @@ TEST(PanelDockHost, SteadyFramesPlaceNothingAndOnlyChangesReplace) {
     EXPECT_EQ(node.places, 5 + 5 * kChanges);
     std::printf("[panel-dock-cost] steady frame %.1f ns; layout change (verb + compute + view rows + 5 places) %.2f us\n",
                 steadyNs, changeUs);
+}
+
+// ---- sn-editordock2: transient / anchored / draggable / dismissible panels ---------------------------------------
+
+namespace {
+
+PanelDock DockWithFlyout() {
+    PanelDock dock = EditorDock();
+    PanelDecl flyout = Decl("picker", DockRegion::Floating);
+    flyout.floatRect = {348.0f, 56.0f, 300.0f, 360.0f};
+    flyout.transient = true;
+    flyout.dismissible = true;
+    dock.Declare(flyout);
+    return dock;
+}
+
+bool Visible(const PanelDock& dock, std::string_view id) {
+    for (const auto& row : dock.Rows().panels) if (row.panel == id) return row.visible;
+    return false;
+}
+
+}  // namespace
+
+TEST(PanelDockTransient, StartsClosedIsNeverPersistedAndNeverRestored) {
+    PanelDock dock = DockWithFlyout();
+    EXPECT_FALSE(Visible(dock, "picker")) << "a transient panel starts closed";
+    ASSERT_EQ(dock.Open("picker"), DockResult::Ok);
+    ASSERT_TRUE(Visible(dock, "picker"));
+    const std::string json = dock.RowsJson();
+    EXPECT_EQ(json.find("picker"), std::string::npos) << "not part of the persisted layout";
+    EXPECT_NE(json.find("outliner"), std::string::npos);
+
+    // A saved layout that does name it (an older file) cannot reopen it.
+    PanelDock restored = DockWithFlyout();
+    std::string error;
+    const std::string withRow =
+        R"({"version":1,"regions":[],"panels":[{"panel":"picker","region":"floating","visible":true,"active":true,"float":[1,2,300,360]}]})";
+    ASSERT_TRUE(restored.ApplyRowsJson(withRow, error)) << error;
+    EXPECT_FALSE(Visible(restored, "picker"));
+}
+
+TEST(PanelDockTransient, OpeningMovingAndClosingDoNotTouchTheSavedLayout) {
+    PanelDock dock = DockWithFlyout();
+    const uint64_t before = dock.PersistedRevision();
+    const uint64_t revision = dock.Revision();
+    ASSERT_EQ(dock.Open("picker"), DockResult::Ok);
+    ASSERT_EQ(dock.Float("picker", {500.0f, 100.0f, 300.0f, 360.0f}), DockResult::Ok);
+    ASSERT_EQ(dock.Close("picker"), DockResult::Ok);
+    EXPECT_GT(dock.Revision(), revision) << "the host still re-places";
+    EXPECT_EQ(dock.PersistedRevision(), before) << "nothing a layout file contains changed";
+    ASSERT_EQ(dock.Resize(DockRegion::Left, 300.0f), DockResult::Ok);
+    EXPECT_GT(dock.PersistedRevision(), before) << "a splitter change does";
+    const uint64_t afterResize = dock.PersistedRevision();
+    ASSERT_EQ(dock.Close("layers"), DockResult::Ok);
+    EXPECT_GT(dock.PersistedRevision(), afterResize) << "an ordinary panel verb does";
+}
+
+TEST(PanelDockHost, SaveLayoutIfChangedWritesOnlyWhenThePersistedLayoutChanged) {
+    NullView view;
+    PanelDockHost host;
+    for (PanelDecl decl : {Decl("left", DockRegion::Left), Decl("picker", DockRegion::Floating)}) {
+        decl.view = &view;
+        decl.transient = decl.id == "picker";
+        host.Dock().Declare(decl);
+    }
+    const auto path = std::filesystem::temp_directory_path() / "editordock2-layout-test" / "layout.json";
+    std::filesystem::remove_all(path.parent_path());
+    host.SetLayoutPath(path);
+    std::string error;
+    ASSERT_TRUE(host.SaveLayoutIfChanged(error)) << error;   // the first call writes the baseline
+    ASSERT_TRUE(std::filesystem::exists(path));
+    const auto stamp = std::filesystem::last_write_time(path);
+    std::filesystem::remove(path);
+    ASSERT_EQ(host.Dock().Open("picker"), DockResult::Ok);
+    ASSERT_EQ(host.Dock().Close("picker"), DockResult::Ok);
+    ASSERT_TRUE(host.SaveLayoutIfChanged(error)) << error;
+    EXPECT_FALSE(std::filesystem::exists(path)) << "opening and closing a flyout writes no layout";
+    ASSERT_EQ(host.Dock().Resize(DockRegion::Left, 280.0f), DockResult::Ok);
+    ASSERT_TRUE(host.SaveLayoutIfChanged(error)) << error;
+    EXPECT_TRUE(std::filesystem::exists(path)) << "a splitter move does";
+    (void)stamp;
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST(PanelDockAnchored, SitsBesideTheAnchorClampedInsideTheWindowAndAwayFromTheViewportCentre) {
+    PanelDock dock = DockWithFlyout();
+    // The Add button of the Layers toolbar, in the left column.
+    const PanelRect add{12.0f, 380.0f, 40.0f, 22.0f};
+    ASSERT_EQ(dock.OpenAnchored("picker", add, 1280.0f, 720.0f), DockResult::Ok);
+    PanelRow row;
+    for (const auto& candidate : dock.Rows().panels) if (candidate.panel == "picker") row = candidate;
+    EXPECT_TRUE(row.visible);
+    EXPECT_EQ(row.region, DockRegion::Floating);
+    // Right of the button first; clamped so the 360-high panel stays inside the 720-high window.
+    EXPECT_FLOAT_EQ(row.floatRect.x, add.x + add.width + 4.0f);
+    EXPECT_FLOAT_EQ(row.floatRect.y, 720.0f - 360.0f);
+    EXPECT_GE(row.floatRect.y, 0.0f);
+    const DockFrame frame = dock.Compute(1280.0f, 720.0f);
+    const float centreX = frame.viewport.x + frame.viewport.width * 0.5f;
+    const float centreY = frame.viewport.y + frame.viewport.height * 0.5f;
+    EXPECT_FALSE(centreX >= row.floatRect.x && centreX <= row.floatRect.x + row.floatRect.width &&
+                 centreY >= row.floatRect.y && centreY <= row.floatRect.y + row.floatRect.height);
+}
+
+TEST(PanelDockAnchored, PlaceBesideFallsThroughCandidatesThatCoverTheCentreAndClampsEveryEdge) {
+    // An anchor whose right-hand candidate would cover the centre: the next candidate (below) is used.
+    const PanelRect anchor{500.0f, 100.0f, 80.0f, 20.0f};
+    const PanelRect rect = PanelDock::PlaceBeside(anchor, 200.0f, 150.0f, 1280.0f, 720.0f, 640.0f, 120.0f);
+    EXPECT_FALSE(640.0f >= rect.x && 640.0f <= rect.x + rect.width && 120.0f >= rect.y && 120.0f <= rect.y + rect.height);
+    EXPECT_FLOAT_EQ(rect.x, anchor.x) << "the below candidate keeps the anchor's left edge";
+    // Corners clamp inside the window.
+    const PanelRect corner = PanelDock::PlaceBeside({1260.0f, 700.0f, 20.0f, 20.0f}, 300.0f, 360.0f, 1280.0f, 720.0f, 0.0f, 0.0f);
+    EXPECT_GE(corner.x, 0.0f);
+    EXPECT_GE(corner.y, 0.0f);
+    EXPECT_LE(corner.x + corner.width, 1280.0f);
+    EXPECT_LE(corner.y + corner.height, 720.0f);
+    // A panel larger than the window shrinks to it.
+    const PanelRect huge = PanelDock::PlaceBeside(anchor, 4000.0f, 4000.0f, 1280.0f, 720.0f, 0.0f, 0.0f);
+    EXPECT_LE(huge.width, 1280.0f);
+    EXPECT_LE(huge.height, 720.0f);
+}
+
+TEST(PanelDockAnchored, MissingAnchorOrNonFloatingPanelOpensWhereItIs) {
+    PanelDock dock = DockWithFlyout();
+    const PanelRect rectBefore = dock.Rows().panels.back().floatRect;
+    ASSERT_EQ(dock.OpenAnchored("picker", {}, 1280.0f, 720.0f), DockResult::Ok);
+    EXPECT_TRUE(Visible(dock, "picker"));
+    EXPECT_EQ(dock.Rows().panels.back().floatRect, rectBefore) << "no anchor: the declared rect";
+    EXPECT_EQ(dock.OpenAnchored("nope", {1, 1, 10, 10}, 1280.0f, 720.0f), DockResult::UnknownPanel);
+    ASSERT_EQ(dock.Close("layers"), DockResult::Ok);
+    ASSERT_EQ(dock.OpenAnchored("layers", {1, 1, 10, 10}, 1280.0f, 720.0f), DockResult::Ok);
+    for (const auto& row : dock.Rows().panels) if (row.panel == "layers") EXPECT_EQ(row.region, DockRegion::Left);
+}
+
+TEST(PanelDockDismissible, TheTopmostOpenDismissiblePanelIsTheEscapeTarget) {
+    PanelDock dock = DockWithFlyout();
+    EXPECT_TRUE(dock.TopDismissible().empty()) << "closed: Escape means nothing to the dock";
+    EXPECT_FALSE(dock.HasOpenDismissible());
+    ASSERT_EQ(dock.Open("picker"), DockResult::Ok);
+    EXPECT_EQ(dock.TopDismissible(), "picker");
+    EXPECT_TRUE(dock.HasOpenDismissible());
+    PanelDecl second = Decl("second", DockRegion::Floating);
+    second.dismissible = true;
+    dock.Declare(second);
+    ASSERT_EQ(dock.Open("second"), DockResult::Ok);
+    EXPECT_EQ(dock.TopDismissible(), "second") << "the most recently raised floating panel";
+    ASSERT_EQ(dock.Open("picker"), DockResult::Ok);
+    EXPECT_EQ(dock.TopDismissible(), "picker");
+    // A panel that does not declare itself dismissible never is one.
+    EXPECT_NE(dock.TopDismissible(), "layers");
+}
+
+// ---- pointer drag ------------------------------------------------------------------------------------------------
+
+TEST(PanelDockDrag, DraggingAFloatingPanelsHeaderMovesItAndEmitsOneCommitOnRelease) {
+    PanelDock dock = DockWithFlyout();
+    ASSERT_EQ(dock.Open("picker"), DockResult::Ok);
+    ASSERT_EQ(dock.Float("picker", {400.0f, 100.0f, 300.0f, 360.0f}), DockResult::Ok);
+    PanelDockDrag drag;
+    DockFrame frame = dock.Compute(1280.0f, 720.0f);
+    // Press on the header strip (y 100..126), far from any splitter.
+    auto step = drag.Step(dock, frame, 1280.0f, 720.0f, 600.0f, 110.0f, true);
+    EXPECT_TRUE(step.captured);
+    EXPECT_FALSE(step.preview) << "a press alone moves nothing";
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, 602.0f, 111.0f, true);
+    EXPECT_TRUE(step.captured);
+    EXPECT_FALSE(step.preview) << "under the drag threshold";
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, 640.0f, 150.0f, true);
+    ASSERT_EQ(step.preview.kind, DockGesture::Kind::MovePanel);
+    EXPECT_EQ(step.preview.panel, "picker");
+    EXPECT_FLOAT_EQ(step.preview.rect.x, 440.0f);
+    EXPECT_FLOAT_EQ(step.preview.rect.y, 140.0f);
+    EXPECT_FLOAT_EQ(step.preview.rect.width, 300.0f);
+    EXPECT_FALSE(step.commit);
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, 700.0f, 200.0f, false);
+    EXPECT_FALSE(step.captured);
+    ASSERT_EQ(step.commit.kind, DockGesture::Kind::MovePanel);
+    EXPECT_FLOAT_EQ(step.commit.rect.x, 500.0f);
+    EXPECT_FLOAT_EQ(step.commit.rect.y, 190.0f);
+    EXPECT_FALSE(drag.Active());
+    // Nothing more after release.
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, 701.0f, 200.0f, false);
+    EXPECT_FALSE(step.captured);
+    EXPECT_FALSE(step.commit);
+}
+
+TEST(PanelDockDrag, TheMovedRectStaysInsideTheWindow) {
+    PanelDock dock = DockWithFlyout();
+    ASSERT_EQ(dock.Float("picker", {400.0f, 100.0f, 300.0f, 360.0f}), DockResult::Ok);
+    PanelDockDrag drag;
+    const DockFrame frame = dock.Compute(1280.0f, 720.0f);
+    drag.Step(dock, frame, 1280.0f, 720.0f, 600.0f, 110.0f, true);
+    auto step = drag.Step(dock, frame, 1280.0f, 720.0f, 5000.0f, 5000.0f, true);
+    ASSERT_EQ(step.preview.kind, DockGesture::Kind::MovePanel);
+    EXPECT_FLOAT_EQ(step.preview.rect.x, 1280.0f - 300.0f);
+    EXPECT_FLOAT_EQ(step.preview.rect.y, 720.0f - 360.0f);
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, -5000.0f, -5000.0f, true);
+    EXPECT_FLOAT_EQ(step.preview.rect.x, 0.0f);
+    EXPECT_FLOAT_EQ(step.preview.rect.y, 0.0f);
+}
+
+TEST(PanelDockDrag, DraggingASplitterResizesItsRegionAndANoMovePressEmitsNothing) {
+    PanelDock dock = DockWithFlyout();
+    PanelDockDrag drag;
+    DockFrame frame = dock.Compute(1280.0f, 720.0f);
+    const float leftEdge = frame.viewport.x;   // 340
+    auto step = drag.Step(dock, frame, 1280.0f, 720.0f, leftEdge + 2.0f, 300.0f, true);
+    EXPECT_TRUE(step.captured) << "the press began on the splitter";
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, 420.0f, 300.0f, true);
+    ASSERT_EQ(step.preview.kind, DockGesture::Kind::ResizeRegion);
+    EXPECT_EQ(step.preview.region, DockRegion::Left);
+    EXPECT_FLOAT_EQ(step.preview.size, 420.0f);
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, 421.0f, 300.0f, false);
+    ASSERT_EQ(step.commit.kind, DockGesture::Kind::ResizeRegion);
+    EXPECT_FLOAT_EQ(step.commit.size, 421.0f);
+
+    // The right splitter measures from the window's right edge.
+    const float rightEdge = frame.viewport.x + frame.viewport.width;   // 960
+    drag.Step(dock, frame, 1280.0f, 720.0f, rightEdge - 2.0f, 300.0f, true);
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, 900.0f, 300.0f, true);
+    ASSERT_EQ(step.preview.kind, DockGesture::Kind::ResizeRegion);
+    EXPECT_EQ(step.preview.region, DockRegion::Right);
+    EXPECT_FLOAT_EQ(step.preview.size, 380.0f);
+    drag.Step(dock, frame, 1280.0f, 720.0f, 900.0f, 300.0f, false);
+
+    // A press on the splitter released without moving past the threshold is a click: no gesture at all.
+    drag.Step(dock, frame, 1280.0f, 720.0f, leftEdge + 1.0f, 300.0f, true);
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, leftEdge + 2.0f, 300.0f, false);
+    EXPECT_FALSE(step.commit);
+    EXPECT_FALSE(step.preview);
+
+    // A press in the middle of the viewport is the world's.
+    step = drag.Step(dock, frame, 1280.0f, 720.0f, 640.0f, 300.0f, true);
+    EXPECT_FALSE(step.captured);
+    drag.Step(dock, frame, 1280.0f, 720.0f, 640.0f, 300.0f, false);
+}
+
+TEST(PanelDockHostDrag, PreviewMovesTheDockLiveWithoutSavingAndCommitIsTheVerbToEmit) {
+    NullView view;
+    PanelDockHost host;
+    for (PanelDecl decl : {Decl("left", DockRegion::Left), Decl("picker", DockRegion::Floating)}) {
+        decl.view = &view;
+        decl.transient = decl.id == "picker";
+        host.Dock().Declare(decl);
+    }
+    RecordingHost node;
+    host.Attach(node);
+    ASSERT_TRUE(host.Update());
+    ASSERT_EQ(host.Dock().Float("picker", {600.0f, 100.0f, 300.0f, 360.0f}), DockResult::Ok);
+    ASSERT_TRUE(host.Update());
+    const uint64_t persisted = host.Dock().PersistedRevision();
+    host.StepDrag(700.0f, 110.0f, true);
+    auto step = host.StepDrag(760.0f, 150.0f, true);
+    ASSERT_EQ(step.preview.kind, DockGesture::Kind::MovePanel);
+    PanelRow row;
+    for (const auto& candidate : host.Dock().Rows().panels) if (candidate.panel == "picker") row = candidate;
+    EXPECT_FLOAT_EQ(row.floatRect.x, 660.0f) << "applied live";
+    EXPECT_EQ(host.Dock().PersistedRevision(), persisted) << "a transient panel's drag never dirties the layout";
+    step = host.StepDrag(760.0f, 150.0f, false);
+    EXPECT_EQ(step.commit.kind, DockGesture::Kind::MovePanel);
 }

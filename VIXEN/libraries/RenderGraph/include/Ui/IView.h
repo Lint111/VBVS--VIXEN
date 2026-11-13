@@ -4,6 +4,7 @@
 // (typically by calling its schema-generated Bind<Name>Model) and owns its storage. Renderer-
 // agnostic view contract, Inc-2 (see Renderer-Agnostic-View-Contract-Design-2026-07.md).
 #include <cstdint>
+#include <string>
 
 #include "Ui/PanelDock.h"  // PanelRect
 
@@ -72,6 +73,10 @@ public:
     /// Dirty a bound variable on a mounted fragment's data model (forwards to its DataModelHandle),
     /// so a pushed value re-renders. No-op if the handle isn't mounted.
     virtual void MarkMountedDirty(MountHandle handle, const char* field) = 0;
+
+    /// The border box of the element with `elementId` in any mounted document (window pixels), for anchoring a
+    /// flyout beside the control that opened it. False when no such element is laid out. Default: not available.
+    virtual bool ElementRect(const std::string& elementId, PanelRect& out) const { (void)elementId; (void)out; return false; }
 
     /// True iff `handle` names a live mounted fragment with an alive document (the spike's
     /// hudDocAlive-style liveness check, for the M-ui gate + a mount/unmount test).

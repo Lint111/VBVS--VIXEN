@@ -65,6 +65,10 @@ public:
     /// The pointer is over a UI element, or a press that began on one is still held.
     [[nodiscard]] bool WantsPointer() const;
 
+    /// True once per Escape press that no focused text control consumed (the control's own Escape cancels its edit
+    /// first), so a host can close a dismissible panel. Draining clears it.
+    [[nodiscard]] bool DrainCancel() { const bool pending = cancelPressed_; cancelPressed_ = false; return pending; }
+
     /// Commits queued since the last drain (oldest first). Draining schedules the resync that the next
     /// Forward() performs.
     [[nodiscard]] std::vector<Commit> DrainCommits();
@@ -82,6 +86,7 @@ private:
     // compares against so an unedited blur commits nothing).
     std::string valueAtFocus_;
     bool cancelOnBlur_ = false;
+    bool cancelPressed_ = false;
     bool pointerPressedOnUi_ = false;
     bool pointerPressedOnWorld_ = false;
     int lastX_ = -1;

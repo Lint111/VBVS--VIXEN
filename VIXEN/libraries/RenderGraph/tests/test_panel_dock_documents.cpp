@@ -335,6 +335,48 @@ TEST_F(PanelDockDocumentsTest, InspectorShapeFieldsShowCatalogueLabelsRangesAndA
     EXPECT_TRUE(Shown(doc, "layer-0-field-b-x-0.5"));
 }
 
+// sn-editordock2: a field's reset button stays on the field's own row at the inspector's default and minimum width
+// (it used to wrap under the field and push the range text and the +/- buttons around).
+TEST_F(PanelDockDocumentsTest, ResetButtonsStayOnTheirFieldsRowAtDefaultAndMinimumInspectorWidth) {
+    const Vixen::SVO::Recipe::SdfOpArgument* halfExtents = nullptr;
+    for (const auto& argument : Vixen::SVO::Recipe::SdfOpArgumentTable) {
+        if (argument.opcode == static_cast<std::uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Box) &&
+            std::string(argument.name) == "b") halfExtents = &argument;
+    }
+    ASSERT_NE(halfExtents, nullptr);
+    Vixen::App::EditorShapeData shape;
+    shape.primitive = "Box";
+    shape.opChoices = {{"Union", true}};
+    shape.fields = {{"b.x", std::string(halfExtents->label) + " x", 2.0f, true, 0.0f, 100.0f, halfExtents->defaultValue[0], false},
+                    {"b.y", std::string(halfExtents->label) + " y", 0.5f, true, 0.0f, 100.0f, halfExtents->defaultValue[1], false}};
+    layers_.PopulateFromDocument(0b01u, {{"body", "Union", true, 0.0f}},
+                                 {{"lump_radius", "voxels", 9.25f, 4.0f, 12.0f}}, {}, shape);
+    for (const float width : {320.0f, 220.0f}) {
+        ASSERT_EQ(dock_.Resize(DockRegion::Right, width), DockResult::Ok);
+        const DockFrame frame = Layout();
+        EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
+        Rml::ElementDocument* doc = panelDocs_.at("inspector");
+        const float panelRight = frame.viewport.x + frame.viewport.width + width;
+        const char* resets[] = {"parameter-0-reset", "layer-0-field-b-x-0.5", "layer-0-field-b-y-0.5"};
+        for (const char* id : resets) {
+            Rml::Element* reset = doc->GetElementById(id);
+            ASSERT_NE(reset, nullptr) << id << " at width " << width;
+            ASSERT_TRUE(reset->IsVisible()) << id;
+            Rml::Element* row = reset->GetParentNode();
+            Rml::ElementList inputs;
+            row->GetElementsByTagName(inputs, "input");
+            ASSERT_FALSE(inputs.empty()) << id;
+            const float resetTop = reset->GetAbsoluteOffset(Rml::BoxArea::Border).y;
+            const float fieldTop = inputs.front()->GetAbsoluteOffset(Rml::BoxArea::Border).y;
+            EXPECT_NEAR(resetTop, fieldTop, 8.0f) << id << " wrapped off its field's row at width " << width;
+            const float resetRight = reset->GetAbsoluteOffset(Rml::BoxArea::Border).x + reset->GetBox().GetSize(Rml::BoxArea::Border).x;
+            EXPECT_LE(resetRight, panelRight + 0.5f) << id << " sticks out of the panel at width " << width;
+            // The row is one line: the row's own height is a single control line, not two.
+            EXPECT_LT(row->GetBox().GetSize(Rml::BoxArea::Border).y, 34.0f) << id << " at width " << width;
+        }
+    }
+}
+
 TEST_F(PanelDockDocumentsTest, RearrangedLayoutMovesTheDocumentsAndTheChrome) {
     Layout();
     ASSERT_EQ(dock_.Move("inspector", DockRegion::Left), DockResult::Ok);

@@ -160,6 +160,13 @@ private:
     bool PickerOpen() const;
     void ClosePicker();
     void StepPicker();
+    // sn-editordock2: the dock's pointer gestures and the generic cancel, stepped once per Update. A drag emits the
+    // FloatPanel / ResizeRegion verbs on release; an Escape no text field consumed closes the dismissible panel
+    // through ClosePanel.
+    void StepDock();
+    bool dockPointerCaptured_ = false;
+    // The element the last UI click came from (cleared after its dispatch): where an OpenPanel anchors a flyout.
+    std::string clickAnchorElementId_;
     std::string publishedPickerFilter_;
     // R766: the status-line panel (document, flow state, undo depth, last message).
     void RefreshStatusView();

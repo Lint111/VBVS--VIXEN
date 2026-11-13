@@ -347,4 +347,24 @@ TEST_F(UiInputForwarderTest, FlyoutFilterFieldTakesFocusOnShowFiltersLiveAndEnte
     EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
 }
 
+// sn-editordock2: the generic cancel. Escape that no focused text control consumed is reported once so a host can
+// close its dismissible panel; the field's own Escape (revert + blur) takes precedence and is not a cancel.
+TEST_F(UiInputForwarderTest, EscapeIsAGenericCancelOnlyWhenNoTextControlTookIt) {
+    LoadInline();
+    EXPECT_FALSE(forwarder_.DrainCancel());
+    FocusField();
+    Run(Frame{}.Key(GLFW_KEY_ESCAPE));
+    EXPECT_FALSE(forwarder_.WantsKeyboard()) << "the first Escape blurred the field";
+    EXPECT_FALSE(forwarder_.DrainCancel()) << "the field consumed it: that was its revert, not a cancel";
+    Run(Frame{}.Key(GLFW_KEY_ESCAPE, GLFW_RELEASE));
+    Run(Frame{}.Key(GLFW_KEY_ESCAPE));
+    EXPECT_TRUE(forwarder_.DrainCancel()) << "the second Escape had no field to consume it";
+    EXPECT_FALSE(forwarder_.DrainCancel()) << "draining clears it";
+    // Escape pressed and released inside one frame (a tap) still counts: the press edge is in the frame's events.
+    Frame tap;
+    tap.Key(GLFW_KEY_ESCAPE).Key(GLFW_KEY_ESCAPE, GLFW_RELEASE);
+    Run(tap);
+    EXPECT_TRUE(forwarder_.DrainCancel());
+}
+
 }  // namespace
