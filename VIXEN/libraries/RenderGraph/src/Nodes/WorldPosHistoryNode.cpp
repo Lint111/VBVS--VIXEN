@@ -61,11 +61,17 @@ void WorldPosHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[WorldPosHistoryNode] COMMAND_POOL is null");
     }
 
-    width_  = ctx.In(WorldPosHistoryNodeConfig::WIDTH);
-    height_ = ctx.In(WorldPosHistoryNodeConfig::HEIGHT);
-    if (width_ == 0 || height_ == 0) {
+    const uint32_t requestedWidth = ctx.In(WorldPosHistoryNodeConfig::WIDTH);
+    const uint32_t requestedHeight = ctx.In(WorldPosHistoryNodeConfig::HEIGHT);
+    if (requestedWidth == 0 || requestedHeight == 0) {
         throw std::runtime_error("[WorldPosHistoryNode] WIDTH/HEIGHT must be > 0 (got " +
-                                 std::to_string(width_) + "x" + std::to_string(height_) + ")");
+                                 std::to_string(requestedWidth) + "x" + std::to_string(requestedHeight) + ")");
+    }
+    const bool extentEnabled = GetParameterValue<bool>(WorldPosHistoryNodeConfig::PARAM_EXTENT_ENABLED, true);
+    width_ = extentEnabled ? requestedWidth : 1u;
+    height_ = extentEnabled ? requestedHeight : 1u;
+    if (!extentEnabled) {
+        NODE_LOG_INFO("[WorldPosHistoryNode] Extent admission disabled; using 1x1 placeholder");
     }
 
     if (images_[0] == VK_NULL_HANDLE || images_[1] == VK_NULL_HANDLE) {

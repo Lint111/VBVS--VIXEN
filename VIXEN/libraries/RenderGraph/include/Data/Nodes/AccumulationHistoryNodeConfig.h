@@ -105,6 +105,8 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
     // VkFormat stored as uint32_t; defaults to the scene-linear HDR R16G16B16A16_SFLOAT. A
     // generated system's history pair (manifest `allocations`, slots 2) sets its declared format.
     static constexpr const char* PARAM_FORMAT = "format";
+    // False allocates a one-pixel placeholder with the same storage-image descriptor type.
+    static constexpr const char* PARAM_EXTENT_ENABLED = "extentEnabled";
 
     // ----- Constructor: runtime descriptor initialization -----
     AccumulationHistoryNodeConfig() {
