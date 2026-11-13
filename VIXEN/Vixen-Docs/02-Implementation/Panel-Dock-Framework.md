@@ -108,3 +108,7 @@ Source files: the editor loads `assets/ui/...` from the staged copy next to the 
 tree laid out like `libraries/RenderGraph/assets` (it maps `assets/ui/x.rml` to `<dir>/ui/x.rml`); set it to
 `<repo>/VIXEN/libraries/RenderGraph/assets` and the watched files are the source files. Channel verbs: `ui.reload`, `appflow.reload`
 (`AppFlow-Agent-Channel.md`). Not tracked: images an `.rcss` references (loaded by the render interface, not the file interface).
+
+## UI kit (R874)
+
+Panel content is built from the shared kit elements (`ut-button`, `ut-number-field`, ...), registered once in `UIRenderNode`: see [[UI-Kit]]. The dock stays the panel framework; the kit supplies the controls inside the panels and the dock chrome's tab/tool buttons.
