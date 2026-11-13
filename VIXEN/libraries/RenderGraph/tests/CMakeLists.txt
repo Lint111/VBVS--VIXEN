@@ -742,6 +742,12 @@ if(TARGET GTest::gtest_main)
     vixen_stage_assets(test_ui_document_reloader ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
     set_target_properties(test_ui_document_reloader PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_ui_document_reloader)
+    # R874: the UI kit (number rule, override contract, real fragments instanced headless).
+    add_executable(test_ui_kit test_ui_kit.cpp)
+    target_link_libraries(test_ui_kit PRIVATE GTest::gtest_main RenderGraph)
+    vixen_stage_assets(test_ui_kit ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
+    set_target_properties(test_ui_kit PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_ui_kit)
     message(STATUS "✓ test_panel_dock + test_panel_dock_documents configured (R766 panel dock)")
 endif()
 

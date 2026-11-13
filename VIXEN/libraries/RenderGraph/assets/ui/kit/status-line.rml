@@ -1,0 +1,8 @@
+<!-- ut-status-line: structure. Required parts: doc, state, history, message-sep, message. -->
+<span part="doc" class="ut-status-doc"></span>
+<span class="ut-status-sep">·</span>
+<span part="state"></span>
+<span class="ut-status-sep">·</span>
+<span part="history"></span>
+<span part="message-sep" class="ut-status-sep">·</span>
+<span part="message" class="ut-status-message"></span>

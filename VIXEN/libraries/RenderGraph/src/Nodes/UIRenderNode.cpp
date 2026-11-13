@@ -274,6 +274,10 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         Rml::Initialise();
         textElementRegistry_ = std::make_unique<Vixen::Text::RmlTextElementRegistry>(textResolver_);
         textElementRegistry_->Register();
+        // R874: the kit elements; their fragments are dependencies of every document (reloader prelude).
+        uiKit_ = std::make_unique<UiKit::Registry>([](const std::string& asset) { return ResolveUiAsset(asset); });
+        uiKit_->Register();
+        reloader_.SetLoadPrelude([this] { if (uiKit_) uiKit_->TouchFragments(); });
         const std::string fontPath = ResolveUiAsset(GetParameterValue<std::string>(UIRenderNodeConfig::FONT_PATH, "assets/ui/LatoLatin-Regular.ttf"));
         // R766: an app whose panels are all mounted documents (the editor) has no primary document —
         // no view and an empty RML_DOCUMENT_PATH load nothing here.
@@ -982,8 +986,10 @@ void UIRenderNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
         }
         if (textElementRegistry_)
             textElementRegistry_->Unregister();
+        if (uiKit_) uiKit_->Unregister();
         Rml::Shutdown();              // RmlUi drops its references to renderInterface_ / systemInterface_
         textElementRegistry_.reset();
+        uiKit_.reset();
         renderInterface_.Shutdown(); // destroy our GPU objects AFTER RmlUi no longer references the interface
         initialized_ = false;
     }

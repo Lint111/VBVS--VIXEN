@@ -17,7 +17,7 @@ bool IsTextControl(const Rml::Element* element) {
     if (element == nullptr) return false;
     const Rml::String& tag = element->GetTagName();
     if (tag == "textarea") return true;
-    if (tag != "input") return false;
+    if (tag != "input" && tag != "ut-text-field") return false;
     const Rml::String type = element->GetAttribute<Rml::String>("type", "text");
     return type == "text" || type == "password" || type == "number";
 }
@@ -118,6 +118,7 @@ void UiInputForwarder::Attach(Rml::Context* context) {
     context_->AddEventListener("focus", this, true);
     context_->AddEventListener("blur", this, true);
     context_->AddEventListener("change", this, true);
+    context_->AddEventListener("ut-commit", this, true);
 }
 
 void UiInputForwarder::Detach() {
@@ -125,6 +126,7 @@ void UiInputForwarder::Detach() {
         context_->RemoveEventListener("focus", this, true);
         context_->RemoveEventListener("blur", this, true);
         context_->RemoveEventListener("change", this, true);
+        context_->RemoveEventListener("ut-commit", this, true);
     }
     context_ = nullptr;
 }
@@ -153,6 +155,13 @@ void UiInputForwarder::QueueCommit(Rml::Element& element) {
 }
 
 void UiInputForwarder::ProcessEvent(Rml::Event& event) {
+    if (event.GetType() == "ut-commit") {
+        // A kit element (number field nudge / scrub) commits a value without a focused control: same queue, same path.
+        const std::string id = event.GetParameter<Rml::String>("id", "");
+        const std::string text = event.GetParameter<Rml::String>("text", "");
+        if (!id.empty()) commits_.push_back({id, SelectorFromCommittedId(id, text), text});
+        return;
+    }
     Rml::Element* target = event.GetTargetElement();
     if (!IsTextControl(target)) return;
     switch (event.GetId()) {

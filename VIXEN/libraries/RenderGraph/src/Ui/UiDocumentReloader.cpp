@@ -39,6 +39,7 @@ Rml::ElementDocument* UiDocumentReloader::Load(Rml::Context& context, const std:
                                                UiDocumentWatch& watch, std::vector<std::string>& errors) {
     system_.BeginCapture();
     files_.BeginTrack();
+    if (prelude_) prelude_();
     Rml::ElementDocument* document = context.LoadDocument(path);
     const std::vector<std::string> opened = files_.EndTrack();
     errors = system_.EndCapture();

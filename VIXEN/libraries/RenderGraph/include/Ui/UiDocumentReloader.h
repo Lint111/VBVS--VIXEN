@@ -12,6 +12,7 @@
 #include "Ui/VixenRmlSystemInterface.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -56,6 +57,10 @@ class UiDocumentReloader {
 public:
     explicit UiDocumentReloader(Vixen::Ui::VixenRmlSystemInterface& system) : system_(system) {}
 
+    /// Runs inside every tracked load, before the document is read: the UI kit uses it to open its fragment files so
+    /// they are dependencies of every document (a fragment edit reloads them all).
+    void SetLoadPrelude(std::function<void()> prelude) { prelude_ = std::move(prelude); }
+
     /// Install with Rml::SetFileInterface before Rml::Initialise.
     Rml::FileInterface* FileInterface() { return &files_; }
 
@@ -84,6 +89,7 @@ public:
 private:
     static void Stamp(UiDocumentWatch& watch);
 
+    std::function<void()> prelude_;
     Vixen::Ui::VixenRmlSystemInterface& system_;
     Vixen::Ui::UiTrackingFileInterface files_;
 };

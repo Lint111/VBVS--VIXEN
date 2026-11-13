@@ -7,6 +7,7 @@
 #include "Ui/BlobView.h"
 #include "Ui/IView.h"
 #include "Ui/UiDocumentReloader.h"
+#include "Ui/UiKit.h"
 #include "Ui/UiInputForwarder.h"
 #include "Ui/ViewBlobFile.h"
 #include "Ui/VixenRmlRenderInterface.h"
@@ -172,6 +173,7 @@ private:
     std::unique_ptr<Vixen::Text::RmlFontEngine> fontEngine_;
     std::shared_ptr<const Vixen::Text::TextResolver> textResolver_;
     std::unique_ptr<Vixen::Text::RmlTextElementRegistry> textElementRegistry_;
+    std::unique_ptr<UiKit::Registry> uiKit_;  // R874: the foundation elements, registered once for every app
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
 

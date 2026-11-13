@@ -1,0 +1,2 @@
+<!-- ut-choice-group: structure. Required part: label. The group's choices are its children (ut-button rows). -->
+<span part="label" class="ut-label"></span>
