@@ -1,6 +1,7 @@
 <rml>
 <head>
     <title>Undertow HUD</title>
+    <link type="text/rcss" href="kit/kit.rcss"/>
     <link type="text/rcss" href="hud.rcss"/>
 </head>
 <body>
@@ -53,17 +54,17 @@
     </div>
     <!-- Demo interactive widget: an ELLIPSE hit-mask proves hit vs pass-through. A click on the disc
          is a UI hit; a click in the square's transparent corners falls through to the voxel pick.
-         pointer-events:auto (in hud.rcss) opts it back into picking; the hit-mask attribute then
-         drives the per-pixel shape test. No action is wired yet (a later S4 step). -->
-    <div id="demo-btn" hit-mask="ellipse">●</div>
+         The kit's round variant opts the button into picking and stamps the ellipse hit-mask. No
+         action is wired yet (a later S4 step). -->
+    <ut-button id="demo-btn" variant="round" label="●"/>
     <!-- Focus widget: clicking ▸ fires view:focus (bound in hud.utdl), which walks the player's focus
-         cursor down the faction list. Same ellipse hit-mask / pointer-events:auto pattern as #demo-btn. -->
-    <div id="focus-btn" hit-mask="ellipse">▸</div>
+         cursor down the faction list. Same kit-provided ellipse hit-mask as #demo-btn. -->
+    <ut-button id="focus-btn" variant="round" label="▸"/>
     <!-- Investigate widget: clicking 🔍 fires player:investigate (bound in hud.utdl), which investigates
-         the focused faction (raises the player's knowledge of it to Known). Same hit-mask pattern. -->
-    <div id="investigate-btn" hit-mask="ellipse">🔍</div>
+         the focused faction (raises the player's knowledge of it to Known). Same kit-provided hit-mask. -->
+    <ut-button id="investigate-btn" variant="round" label="🔍"/>
     <!-- Lens widget: clicking ◉ fires view:lens (bound in hud.utdl), which cycles the active map lens
-         (None→Intel→Logistics→Threat). Same ellipse hit-mask / pointer-events:auto pattern. -->
-    <div id="lens-btn" hit-mask="ellipse">◉</div>
+         (None→Intel→Logistics→Threat). The kit owns the ellipse hit-mask. -->
+    <ut-button id="lens-btn" variant="round" label="◉"/>
 </body>
 </rml>

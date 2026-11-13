@@ -26,8 +26,20 @@ ut-button.tool:hover { color: #ffffff; background-color: #3a4a6c; }
 ut-button.tool.close { color: #c09090; }
 ut-button.tab { display: block; position: absolute; margin-left: 0; padding: 4px 6px 0px 8px; text-align: left; color: #c8d0e0; background-color: #1c2334; border-width: 0; border-right-width: 1px; border-color: #34405a; overflow: hidden; white-space: nowrap; }
 ut-button.tab.active { background-color: #26324c; color: #e8eeff; border-top-width: 2px; border-top-color: #5a8ae0; }
-/* the round variant (HUD): hit-mask ellipse is forced by the element; the shape is the author's size + colour */
-ut-button.round { width: 48px; height: 48px; padding: 0; margin-left: 0; border-radius: 24px; line-height: 48px; }
+/* the round variant (HUD): hit-mask ellipse is forced by the element; the HUD's document owns placement */
+ut-button.round {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    margin-left: 0;
+    color: #e0f0ff;
+    font-size: 28px;
+    text-align: center;
+    background-color: #4060a0cc;
+    border-color: #80a0e0;
+    border-radius: 24px;
+    line-height: 48px;
+}
 
 /* ---- toggle ---- */
 ut-toggle {
@@ -92,3 +104,50 @@ ut-status-line .ut-status-message { color: #a0b0d0; }
 
 ut-panel.fill > ut-toolbar { margin-top: 0; margin-bottom: 4px; }
 .picker-rows { margin-top: 6px; }
+
+/* ---- HUD panel and key/value rows ---- */
+body.building-inspector {
+    font-family: LatoLatin;
+    font-size: 14px;
+    color: #d0d0d0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+ut-panel.hud {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    width: 240px;
+    padding: 8px 12px;
+    color: #d0d0d0;
+    font-family: LatoLatin;
+    font-size: 14px;
+    background-color: #101c2edd;
+    border-width: 1px;
+    border-color: #4080a0;
+    border-radius: 4px;
+    pointer-events: none;
+}
+ut-panel.hud .ut-hud-title { color: #80c0ff; font-size: 15px; margin-bottom: 4px; }
+ut-panel.hud .ut-hud-group-label {
+    display: block;
+    color: #607090;
+    font-size: 11px;
+    margin-top: 6px;
+    margin-bottom: 2px;
+    border-bottom-width: 1px;
+    border-color: #283048;
+    padding-bottom: 1px;
+}
+ut-panel.hud .ut-row { display: block; margin-top: 1px; }
+ut-panel.hud .ut-field-label { display: inline-block; width: 96px; color: #8090a8; }
+ut-panel.hud .ut-field-value { display: inline-block; color: #d8e0f0; }
+ut-panel.hud .ut-hud-owned { display: block; margin-top: 6px; color: #80e0a0; }
+ut-panel.hud .impact-ok { color: #80e0a0; }
+ut-panel.hud .impact-throttled { color: #f0c060; }
+ut-panel.hud .impact-halted { color: #f07060; }
