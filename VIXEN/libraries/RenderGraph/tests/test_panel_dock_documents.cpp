@@ -315,7 +315,7 @@ TEST_F(PanelDockDocumentsTest, FlyoutPanelOpensFloatingAndListsOneRowPerPublishe
     // data-for leaves its source element in the tree (hidden, no id): count the rows that carry a primitive id.
     const auto rowsOf = [&] {
         Rml::ElementList found, rows;
-        doc->GetElementsByClassName(found, "picker-row");
+        doc->GetElementsByTagName(found, "ut-button");  // the kit button rows (was .picker-row)
         for (Rml::Element* element : found) if (element->GetId().rfind("primitive-", 0) == 0) rows.push_back(element);
         return rows;
     };

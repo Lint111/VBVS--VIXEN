@@ -84,53 +84,6 @@ body.picker {
     overflow: hidden;
 }
 
-.picker-panel {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    box-sizing: border-box;
-}
-
-input.filter-field {
-    flex: none;
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    height: 24px;
-    padding: 3px 6px;
-    color: #e8f0ff;
-    font-size: 14px;
-    background-color: #20263c;
-    border-width: 1px;
-    border-color: #50609a;
-    pointer-events: auto;
-    cursor: text;
-}
-
-input.filter-field:focus {
-    background-color: #2a3350;
-    border-color: #a0c0ff;
-}
-
-input.filter-field selection {
-    background-color: #50609a;
-}
-
-.picker-rows {
-    flex: 1 1 0;
-    min-height: 0;
-    margin-top: 6px;
-    overflow-y: auto;
-    pointer-events: auto;
-}
-
-.picker-rows .picker-row {
-    display: block;
-    margin-left: 0;
-    margin-bottom: 2px;
-    text-align: left;
-}
-
 .picker-hint {
     flex: none;
     margin-top: 4px;
@@ -158,10 +111,6 @@ input.filter-field selection {
 .recipe-row {
     display: block;
     margin-bottom: 2dp;
-}
-
-.recipe-row .button.open {
-    background-color: #3a6ea5;
 }
 
 /* The panel documents scroll (body overflow: auto). Without a declared scrollbar size RmlUi gives the vertical

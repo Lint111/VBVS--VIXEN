@@ -2,6 +2,7 @@
 <head>
     <title>Add primitive</title>
     <link type="text/rcss" href="editor.rcss"/>
+    <link type="text/rcss" href="kit/kit.rcss"/>
 </head>
 <body class="picker">
     <!-- sn-editorpicker1: the Add flyout (a declared Floating panel). The filter field takes focus when the panel
@@ -9,13 +10,13 @@
          catalogue primitives that match, best match first. Enter commits the field: its id is the ChoosePrimitive
          selector with a value slot ("picker-filter-{filter}"), which adds the first match and closes the flyout.
          Clicking a row adds that primitive (CreatePrimitiveLayer, selector "primitive-<name>-add"); Escape closes. -->
-    <div data-model="editor_layers" class="panel picker-panel">
-        <input type="text" class="filter-field" autofocus="autofocus" id="picker-filter-{filter}" data-value="pickerFilter"/>
+    <ut-flyout data-model="editor_layers">
+        <ut-text-field autofocus="autofocus" id="picker-filter-{filter}" data-value="pickerFilter"/>
         <div class="hint picker-hint" data-if="primitives.size == 0">No primitive matches "{{pickerFilter}}".</div>
-        <div class="picker-rows">
-            <div class="button picker-row" data-for="item : primitives" data-attr-id="item.elementId" hit-mask="none">{{item.display}}</div>
-        </div>
+        <ut-list class="fill picker-rows">
+            <ut-button variant="row" data-for="item : primitives" data-attr-id="item.elementId" data-attr-label="item.display"> </ut-button>
+        </ut-list>
         <div class="hint picker-hint">Type to filter, Enter adds the first match, Esc closes.</div>
-    </div>
+    </ut-flyout>
 </body>
 </rml>
