@@ -274,30 +274,42 @@ input.value-field selection, input.name-field selection {
     font-size: 11px;
 }
 
-/* sn-editordock2: one line per field: name | value | -/+ | reset | range. The name and the range shrink (clip)
-   before anything wraps, so a reset button stays on its field's row down to the inspector's minimum width. */
 .parameter-row {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: center;
+    display: block;
     margin-top: 5px;
 }
 
 .parameter-name {
-    display: block;
-    flex: 0 1 110px;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
+    display: inline-block;
+    width: 110px;
     color: #e0d0b0;
 }
 
-.parameter-row input.value-field, .parameter-row input.name-field, .parameter-row .button {
+/* sn-editordock2: a field that carries a reset button is two lines: the name (and unit) above, then one nowrap
+   controls line: value | -/+ | reset | range. The controls line is about 180 px before the range text, so the
+   reset button stays on its field's row down to the inspector's minimum width; only the range text clips. */
+.parameter-row.stacked .parameter-name {
+    width: auto;
+    margin-right: 8px;
+}
+
+.parameter-line {
+    display: block;
+}
+
+.controls {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.controls input.value-field, .controls .button {
     flex: none;
 }
 
-.parameter-row .range, .parameter-row .parameter-value {
+.controls .range {
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -306,7 +318,7 @@ input.value-field selection, input.name-field selection {
 
 .parameter-range {
     display: block;
-    margin-left: 110px;
+    margin-left: 0px;
     color: #707090;
 }
 

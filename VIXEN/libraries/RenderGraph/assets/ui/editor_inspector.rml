@@ -11,13 +11,17 @@
          (ScrubParameter, "parameter-<index>-value") and "reset" is ResetParameter. -->
     <div data-model="editor_layers" class="panel">
         <div class="subtitle">Recipe parameters</div>
-        <div class="parameter-row" data-for="param : parameters">
-            <span class="parameter-name">{{param.name}}</span>
-            <input type="text" class="value-field" data-attr-id="param.setId" data-attr-value="param.value"/>
-            <span class="parameter-value scrub" data-attr-id="'parameter-' + it_index + '-value'" hit-mask="none">{{param.unit}} (drag)</span>
-            <div class="button" data-attr-id="param.downId" hit-mask="none">−</div>
-            <div class="button" data-attr-id="param.upId" hit-mask="none">+</div>
-            <div class="button" data-attr-id="'parameter-' + it_index + '-reset'" hit-mask="none">reset</div>
+        <div class="parameter-row stacked" data-for="param : parameters">
+            <div class="parameter-line">
+                <span class="parameter-name">{{param.name}}</span>
+                <span class="parameter-value scrub" data-attr-id="'parameter-' + it_index + '-value'" hit-mask="none">{{param.unit}} (drag)</span>
+            </div>
+            <div class="controls">
+                <input type="text" class="value-field" data-attr-id="param.setId" data-attr-value="param.value"/>
+                <div class="button" data-attr-id="param.downId" hit-mask="none">−</div>
+                <div class="button" data-attr-id="param.upId" hit-mask="none">+</div>
+                <div class="button" data-attr-id="'parameter-' + it_index + '-reset'" hit-mask="none">reset</div>
+            </div>
             <div class="parameter-range">range {{param.minimum}}–{{param.maximum}}</div>
         </div>
         <div class="hint" data-if="parameters.size == 0">This document declares no parameters.</div>
@@ -37,13 +41,15 @@
             <span class="parameter-name">combine op</span>
             <div class="button" data-for="choice : opChoices" data-attr-id="choice.elementId" data-class-selected="choice.isCurrent" hit-mask="none">{{choice.name}}</div>
         </div>
-        <div class="parameter-row" data-for="field : shape">
-            <span class="parameter-name">{{field.label}}</span>
-            <input type="text" class="value-field" data-attr-id="field.valueId" data-attr-value="field.value"/>
-            <div class="button" data-attr-id="field.downId" hit-mask="none">−</div>
-            <div class="button" data-attr-id="field.upId" hit-mask="none">+</div>
-            <div class="button" data-if="!field.isDefault" data-attr-id="field.resetId" hit-mask="none">reset {{field.defaultValue}}</div>
-            <span class="range" data-if="field.hasRange">{{field.minimum}}..{{field.maximum}}</span>
+        <div class="parameter-row stacked" data-for="field : shape">
+            <div class="parameter-line"><span class="parameter-name">{{field.label}}</span></div>
+            <div class="controls">
+                <input type="text" class="value-field" data-attr-id="field.valueId" data-attr-value="field.value"/>
+                <div class="button" data-attr-id="field.downId" hit-mask="none">−</div>
+                <div class="button" data-attr-id="field.upId" hit-mask="none">+</div>
+                <div class="button" data-if="!field.isDefault" data-attr-id="field.resetId" hit-mask="none">reset {{field.defaultValue}}</div>
+                <span class="range" data-if="field.hasRange">{{field.minimum}}..{{field.maximum}}</span>
+            </div>
         </div>
         <div class="subtitle">Placement of {{selectedLayerName}} (layer {{selectedLayer}})</div>
         <div class="parameter-row" data-for="field : transform">
