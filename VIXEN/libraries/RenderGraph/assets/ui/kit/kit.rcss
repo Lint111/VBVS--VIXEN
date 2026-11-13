@@ -89,3 +89,5 @@ ut-status-line .ut-status-message { color: #a0b0d0; }
 
 /* a plain label beside a text field (the layer name row) */
 .ut-field-label { display: inline-block; width: 110px; color: #e0d0b0; }
+
+ut-panel.fill > ut-toolbar { margin-top: 0; margin-bottom: 4px; }

@@ -279,7 +279,7 @@ TEST_F(PanelDockDocumentsTest, LayersToolbarStaysPinnedInsideThePanelWithEightLa
             lowest = std::max(lowest, at.y + size.y);
         }
         // The rows are below the toolbar, inside the panel, and scroll (8 two-line rows outgrow a ~346 px panel).
-        Rml::Element* rowsBox = doc->QuerySelector(".layer-rows");
+        Rml::Element* rowsBox = doc->QuerySelector("ut-list");  // the kit list element (was .layer-rows)
         ASSERT_NE(rowsBox, nullptr);
         const Rml::Vector2f rowsAt = rowsBox->GetAbsoluteOffset(Rml::BoxArea::Border);
         EXPECT_GE(rowsAt.y, lowest) << "the rows start below the toolbar at width " << width;

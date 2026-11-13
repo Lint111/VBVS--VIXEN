@@ -49,38 +49,6 @@ body {
     padding-bottom: 4px;
 }
 
-.row {
-    display: block;
-    margin-top: 6px;
-}
-
-.checkbox {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    margin-right: 8px;
-    vertical-align: middle;
-    background-color: #303050;
-    border-width: 1px;
-    border-color: #6080c0;
-    pointer-events: auto;  /* interactive — clicks reach UISelectionProviderNode's hit-test */
-}
-
-.checkbox.checked {
-    background-color: #60a0ff;
-}
-
-.col-name {
-    display: inline-block;
-    width: 70px;
-    color: #e0d0b0;
-}
-
-.col-name.selected {
-    color: #ffffff;
-    text-decoration: underline;
-}
-
 .col-op {
     display: inline-block;
     color: #90c0ff;
@@ -109,26 +77,6 @@ body {
 /* sn-editorpicker1: the Layers panel pins its toolbar above scrolling rows (the body does not scroll). */
 body.layers {
     overflow: hidden;
-}
-
-.layers-panel {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    box-sizing: border-box;
-}
-
-.layers-panel .toolbar {
-    flex: none;
-    margin-top: 0;
-    margin-bottom: 4px;
-}
-
-.layer-rows {
-    flex: 1 1 0;
-    min-height: 0;
-    overflow-y: auto;
-    pointer-events: auto;  /* the wheel scrolls the rows, not the world */
 }
 
 /* The Add flyout: a filter field above the matching catalogue primitives (R872.1 rows, ranked by match). */
@@ -194,11 +142,6 @@ input.filter-field selection {
     margin-left: 24px;
     color: #a0a0c0;
     font-size: 12px;
-}
-
-.toolbar {
-    display: block;
-    margin-top: 8px;
 }
 
 .hint {

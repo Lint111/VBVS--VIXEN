@@ -2,37 +2,38 @@
 <head>
     <title>Layers</title>
     <link type="text/rcss" href="editor.rcss"/>
+    <link type="text/rcss" href="kit/kit.rcss"/>
 </head>
 <body class="layers">
     <!-- R766 "layers" panel (left region): the rule layers of the open document, bound to the generated
-         EditorLayers View. Each row's ids are AppFlow selectors ("layer-<index>-toggle", "-select", "-nudge-blend-up", ...), resolved
+         EditorLayers View. Each row's ids are AppFlow selectors ("layer-<index>-toggle", "-select", ...), resolved
          by AppFlowRuntime::DispatchBySelector; the panel names no action itself. The dock places this
-         document; this file styles only its content. -->
-    <div data-model="editor_layers" class="panel layers-panel">
+         document; this file styles only its content, and every control is a kit element. -->
+    <ut-panel class="fill" data-model="editor_layers">
         <!-- sn-editorpicker1: the toolbar is pinned above the scrolling rows, so it never clips however many layers
              there are. Add opens the declared "picker" flyout panel (OpenPanel, selector "panel-picker-open"). -->
-        <div class="toolbar">
-            <div class="button" id="panel-picker-open" hit-mask="none">Add</div>
-            <div class="button" id="undo-button" hit-mask="none">Undo</div>
-            <div class="button" id="redo-button" hit-mask="none">Redo</div>
-            <div class="button" id="save-button" hit-mask="none">Save</div>
-            <div class="button" id="reopen-button" hit-mask="none">Reopen saved</div>
-        </div>
-        <div class="layer-rows">
-            <div class="row" data-for="row : layers">
-                <div data-attr-id="row.elementId" class="checkbox" data-class-checked="row.isChecked" hit-mask="none"></div>
-                <div class="col-name" data-attr-id="row.selectId" data-class-selected="row.isSelected" hit-mask="none">{{row.name}}</div>
+        <ut-toolbar>
+            <ut-button id="panel-picker-open" label="Add"/>
+            <ut-button id="undo-button" label="Undo"/>
+            <ut-button id="redo-button" label="Redo"/>
+            <ut-button id="save-button" label="Save"/>
+            <ut-button id="reopen-button" label="Reopen saved"/>
+        </ut-toolbar>
+        <ut-list class="fill">
+            <div class="ut-row" data-for="row : layers">
+                <ut-toggle data-attr-id="row.elementId" data-attr-checked="row.isChecked"> </ut-toggle>
+                <ut-button variant="name" data-attr-id="row.selectId" data-attr-label="row.name" data-class-selected="row.isSelected"> </ut-button>
                 <span class="col-op">{{row.op}}</span>
-                <div class="button" data-attr-id="row.moveUpId" hit-mask="none">ˆ</div>
-                <div class="button" data-attr-id="row.moveDownId" hit-mask="none">ˇ</div>
-                <div class="button" data-attr-id="row.deleteId" hit-mask="none">×</div>
+                <ut-button data-attr-id="row.moveUpId" label="ˆ"> </ut-button>
+                <ut-button data-attr-id="row.moveDownId" label="ˇ"> </ut-button>
+                <ut-button data-attr-id="row.deleteId" label="×"> </ut-button>
                 <div class="program-controls">
                     <span class="value">blend radius: {{row.blendRadius}}</span>
-                    <div class="button" data-attr-id="row.blendDownId" hit-mask="none">−</div>
-                    <div class="button" data-attr-id="row.blendUpId" hit-mask="none">+</div>
+                    <ut-button data-attr-id="row.blendDownId" label="−"> </ut-button>
+                    <ut-button data-attr-id="row.blendUpId" label="+"> </ut-button>
                 </div>
             </div>
-        </div>
-    </div>
+        </ut-list>
+    </ut-panel>
 </body>
 </rml>
