@@ -138,7 +138,14 @@ bool UiDocumentReloader::Reload(Rml::Context& context, Rml::ElementDocument*& do
     if (!next || !errors.empty()) {
         if (next) context.UnloadDocument(next);
         Stamp(watch);  // consume the broken mtimes: reported once, retried on the next edit
-        for (const auto& error : errors) results.push_back(ParseLocatedError(error, watch.path));
+        for (const auto& error : errors) {
+            UiReloadFileResult located = ParseLocatedError(error, watch.path);
+            // A kit fragment that fails to parse fails once per instance of its element: report each distinct error once.
+            const bool seen = std::any_of(results.begin(), results.end(), [&](const UiReloadFileResult& r) {
+                return r.file == located.file && r.line == located.line && r.message == located.message;
+            });
+            if (!seen) results.push_back(std::move(located));
+        }
         // Lead with the most useful entry: a located one, then the longest message (RmlUi logs a terse
         // "XML parse error on line N" and then the descriptive line).
         std::stable_sort(results.begin(), results.end(), [](const UiReloadFileResult& a, const UiReloadFileResult& b) {

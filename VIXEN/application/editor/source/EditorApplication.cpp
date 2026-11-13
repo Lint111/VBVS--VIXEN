@@ -2289,8 +2289,11 @@ void EditorApplication::ReportUiReloads() {
             // ui.reload result carry the full path).
             ReportEditorError(std::filesystem::path(error.file).filename().string() + ":" + std::to_string(error.line) +
                               ": " + error.message, "UiReload");
+            uiReloadFailedDocument_ = reload.document;
             RefreshStatusView();
-        } else if (lastEditorDiagnosticCode_ == "UiReload") {
+        } else if (lastEditorDiagnosticCode_ == "UiReload" && reload.document == uiReloadFailedDocument_) {
+            // Only the document that failed clears the error: a kit fragment error fails every document that uses the
+            // element, and another document reloading fine in the same pass must not hide it.
             ClearEditorError();  // the document that failed reloaded: the located error is stale
             RefreshStatusView();
         }

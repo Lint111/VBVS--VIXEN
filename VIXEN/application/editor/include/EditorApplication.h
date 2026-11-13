@@ -268,6 +268,7 @@ private:
     // The last good reloaded AppFlow data file, kept only so `appflow.list` reports the triggers and chords the
     // running runtime actually uses (the runtime deep-owns what it needs; the compiled-in tables are the fallback).
     std::optional<Vixen::AppFlow::AppFlowBlobFile> appFlowBlob_;
+    std::string uiReloadFailedDocument_;  // the document whose failed reload set the UiReload diagnostic
     std::filesystem::file_time_type appFlowMtime_{};
     bool appFlowMtimeInitialized_ = false;
 
