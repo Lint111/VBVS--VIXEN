@@ -31,7 +31,7 @@
                 <div class="node-row">
                     <ut-disclosure class="node-toggle" variant="row" data-attr-id="node.toggleId"
                                    data-attr-label="node.nodeIndex + '  ' + node.name + '  (' + node.category + ')'"
-                                   data-attr-open="node.isExpanded" data-attr-title="node.summary"> </ut-disclosure>
+                                   data-attr-open="node.isExpanded" data-attr-title="node.summary" tabindex="0"> </ut-disclosure>
                     <div class="node-summary">{{node.summary}}</div>
                     <ut-button class="node-action" data-attr-id="node.addId" label="+ node"
                                data-attr-disabled="node.addOp == ''"

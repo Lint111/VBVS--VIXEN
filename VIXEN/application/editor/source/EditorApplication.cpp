@@ -1799,11 +1799,14 @@ void EditorApplication::BuildRenderGraph() {
         // Camera control goes through the AppFlow camera actions (TranslateCameraInput), not InputState.
         cameraInst->SetParameter(CC::PARAM_INPUT_DRIVEN, false);
         // The capture test asks for a top-down view so the layer toggle changes visible pixels.
-        // Leave the editor's default side view untouched for interactive sessions.
+        // Interactive sessions use a stable three-quarter angle so depth and transforms read clearly.
         if (const char* captureCamera = std::getenv("VIXEN_EDITOR_TEST_CAMERA");
             captureCamera && std::string(captureCamera) == "top-down") {
             cameraInst->SetParameter(CC::PARAM_YAW, 0.0f);
             cameraInst->SetParameter(CC::PARAM_PITCH, 1.45f);
+        } else {
+            cameraInst->SetParameter(CC::PARAM_YAW, 0.65f);
+            cameraInst->SetParameter(CC::PARAM_PITCH, 0.55f);
         }
     }
 
@@ -1838,7 +1841,54 @@ void EditorApplication::CommitParameter(Vixen::AppFlow::Generated::FlowActionId 
 
 void EditorApplication::ApplyCameraFrame() {
     if (!hasFrame_) return;
-    if (auto* camera = EditorCamera()) camera->SetOrbit(framedCenter_, framedDistance_);
+    auto* camera = EditorCamera();
+    if (!camera) return;
+
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+    if (GLFWwindow* window = GetWindowHandle()) glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+    const float windowWidth = std::max(1.0f, static_cast<float>(framebufferWidth));
+    const float windowHeight = std::max(1.0f, static_cast<float>(framebufferHeight));
+    const auto viewport = Panels().Frame().viewport;
+    const bool hasViewport = viewport.width > 1.0f && viewport.height > 1.0f;
+    const float viewportX = hasViewport ? viewport.x : 0.0f;
+    const float viewportY = hasViewport ? viewport.y : 0.0f;
+    const float viewportWidth = hasViewport ? viewport.width : windowWidth;
+    const float viewportHeight = hasViewport ? viewport.height : windowHeight;
+
+    // The original document fit is conservative for the full swapchain. Scale it by the tighter
+    // viewport dimension and leave a visible margin so the derived bound never meets a panel edge.
+    constexpr float kViewportMargin = 24.0f;
+    const float usableWidth = std::max(1.0f, viewportWidth - 2.0f * kViewportMargin);
+    const float usableHeight = std::max(1.0f, viewportHeight - 2.0f * kViewportMargin);
+    const float viewportScale = std::max(windowWidth / usableWidth, windowHeight / usableHeight);
+    const float distance = std::clamp(framedFitDistance_ * viewportScale, 0.1f, 120.0f);
+
+    // CameraNode's orbit basis at the editor's default three-quarter view. Keeping the target
+    // offset in this basis moves the document into the viewport without moving the document body.
+    constexpr float kDefaultYaw = 0.65f;
+    constexpr float kDefaultPitch = 0.55f;
+    const glm::vec3 forward{
+        -std::cos(kDefaultPitch) * std::sin(kDefaultYaw),
+        -std::sin(kDefaultPitch),
+        -std::cos(kDefaultPitch) * std::cos(kDefaultYaw)};
+    const glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 up = glm::normalize(glm::cross(right, forward));
+    constexpr float kHalfFovRadians = 45.0f * (3.14159265358979323846f / 360.0f);
+    const float aspect = windowWidth / windowHeight;
+    const float targetPixelX = viewportX + viewportWidth * 0.5f;
+    const float targetPixelY = viewportY + viewportHeight * 0.5f;
+    const float ndcX = 2.0f * (targetPixelX - windowWidth * 0.5f) / windowWidth;
+    const float ndcY = 2.0f * (targetPixelY - windowHeight * 0.5f) / windowHeight;
+    const float worldRight = ndcX * distance * std::tan(kHalfFovRadians) * aspect;
+    const float worldUp = ndcY * distance * std::tan(kHalfFovRadians);
+    framedCenter_ = framedBoundsCenter_ - right * worldRight - up * worldUp;
+    framedDistance_ = distance;
+    camera->SetOrbit(framedCenter_, framedDistance_);
+    lastFramedDockRevision_ = Panels().Dock().Revision();
+    lastFramedWindowWidth_ = windowWidth;
+    lastFramedWindowHeight_ = windowHeight;
+    lastFramedViewport_ = viewport;
 }
 
 void EditorApplication::SetViewAngle(uint32_t index) {
@@ -2044,22 +2094,18 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     logger_->Info(values.str());
 
     if (reframeCamera) {
-        if (auto* cameraInst = GetRenderGraph()
-                ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
-            using CC = Vixen::RenderGraph::CameraNodeConfig;
+        if (EditorCamera() != nullptr) {
             // Virtual recipe coordinates are world units. The helper's one-voxel-to-world
             // factor is normalized to 1.0 here so arbitrary recipe bounds map directly.
             const auto frame = Vixen::Editor::FitEditorCameraToBounds(
                 entry.boundCenter, entry.boundRadius, glm::vec3(0.0f), 64,
                 /*worldGridSize=*/10.0f, /*renderScale=*/6.4f,
                 /*verticalFovDegrees=*/45.0f, /*padding=*/1.15f);
-            cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_X, frame.center.x);
-            cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Y, frame.center.y);
-            cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Z, frame.center.z);
-            cameraInst->SetParameter(CC::PARAM_ORBIT_DISTANCE, frame.distance);
-            framedCenter_ = frame.center;
-            framedDistance_ = frame.distance;
+            framedBoundsCenter_ = frame.center;
+            framedBoundsRadius_ = frame.worldRadius;
+            framedFitDistance_ = frame.distance;
             hasFrame_ = true;
+            ApplyCameraFrame();
         }
     }
 
@@ -2557,6 +2603,16 @@ void EditorApplication::Update() {
     StartPendingReadbacks();
     if (channelPaused_ && channelStepBudget_ == 0) return;
     VulkanGraphApplication::Update();
+
+    // PanelDockHost has already placed the current layout in the base update. Reframe once when
+    // that placement changes (including ResizeRegion and window resize), never on a steady frame.
+    if (hasFrame_) {
+        const auto viewport = Panels().Frame().viewport;
+        if (Panels().Dock().Revision() != lastFramedDockRevision_ ||
+            viewport != lastFramedViewport_) {
+            ApplyCameraFrame();
+        }
+    }
 
     // Inc-2b M3 (carried over from the M2 validator): the base VulkanGraphApplication::Update's
     // try/catch (VulkanGraphApplication.cpp) is scoped to that method's OWN body -- it returns

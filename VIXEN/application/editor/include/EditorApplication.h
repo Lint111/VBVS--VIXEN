@@ -270,7 +270,14 @@ private:
     void StepParameterScrub();         // ScrubParameter drag: SetParameter per frame inside one undo group
     glm::vec3 framedCenter_{0.0f};
     float framedDistance_ = 0.0f;
+    float framedFitDistance_ = 0.0f;
+    glm::vec3 framedBoundsCenter_{0.0f};
+    float framedBoundsRadius_ = 0.0f;
     bool hasFrame_ = false;
+    uint64_t lastFramedDockRevision_ = ~uint64_t{0};
+    float lastFramedWindowWidth_ = -1.0f;
+    float lastFramedWindowHeight_ = -1.0f;
+    Vixen::RenderGraph::PanelRect lastFramedViewport_{};
     struct ParameterScrub {
         bool active = false;
         uint32_t index = 0;

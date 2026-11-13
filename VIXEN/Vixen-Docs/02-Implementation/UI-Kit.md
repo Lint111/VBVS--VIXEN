@@ -26,7 +26,7 @@ contract`); `hit-mask` is the kit's (a button/toggle always stamps `none`, the `
 | Element | Attributes | Notes |
 |---|---|---|
 | `ut-button` | `label`, `variant`, `disabled`, `reason` | id = the AppFlow selector it clicks; a disabled `reason` is visible inline below the label and becomes the title; variants (space separated, each is a class): `row`, `name`, `tool`, `tab`, `round`, `selected`/`open`/`active` come from `data-class-*` |
-| `ut-disclosure` | `label`, `open`, `disabled`, `reason` | compact tree-row control; `open` adds the open marker/class, and a disabled `reason` is visible inline below the row and becomes the title; its id is the AppFlow selector for click/Enter expansion |
+| `ut-disclosure` | `label`, `open`, `disabled`, `reason`, `tabindex` | compact tree-row control; `open` adds the open marker/class, and click/Enter activates its generated selector. A disabled `reason` is visible inline below the row and becomes the title |
 | `ut-toggle` | `checked`, `variant` | id = selector |
 | `ut-text-field` | `value`, `autofocus`, `variant` (`class="wide"`) | a real form control: `data-value` binds two-way; id = selector pattern with a value slot (`picker-filter-{filter}`) |
 | `ut-number-field` | `label`, `value`, `value-id`, `reset-id`, `default`, `min`, `max`, `unit`, `step`, `variant` (`inline`) | `value-id` = the declared typed-value selector (`parameter-0-set-{value}`); reset is shown only when a declared `default` exists and differs (label `reset`, title `reset to <default>`); `min`/`max` give the range (both finite = range text + nudge clamp) |

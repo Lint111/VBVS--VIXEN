@@ -57,6 +57,7 @@ TEST(UiKitContract, InstancesMayOnlyCarryTheOverrideContract) {
     EXPECT_EQ(UiKit::RefusedAttributes("ut-button", {"label", "bogus", "id", "hit-mask"}),
               (std::vector<std::string>{"bogus", "hit-mask"}));
     EXPECT_TRUE(UiKit::AttributeAllowed("ut-disclosure", "reason"));
+    EXPECT_TRUE(UiKit::AttributeAllowed("ut-disclosure", "tabindex"));
     EXPECT_EQ(UiKit::Tags().size(), 11u);
 }
 
@@ -202,7 +203,11 @@ TEST_F(UiKitTest, DisabledReasonIsVisibleAndDisclosurePublishesOpenState) {
     auto* disclosure = doc_->GetElementById("node");
     ASSERT_NE(disclosure, nullptr);
     EXPECT_TRUE(disclosure->IsClassSet("open"));
-    EXPECT_NE(Part(disclosure, "marker"), nullptr);
+    ASSERT_NE(Part(disclosure, "marker"), nullptr);
+    EXPECT_EQ(Part(disclosure, "marker")->GetInnerRML(), "▾");
+    Rml::Dictionary key;
+    key["key_identifier"] = static_cast<int>(Rml::Input::KI_RETURN);
+    disclosure->DispatchEvent("keydown", key);
 }
 
 TEST_F(UiKitTest, NudgeCommitsThroughTheValueSlotWithTheOneRule) {

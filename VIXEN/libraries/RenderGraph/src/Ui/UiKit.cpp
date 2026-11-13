@@ -83,7 +83,7 @@ struct KindInfo {
 const std::vector<KindInfo>& Kinds() {
     static const std::vector<KindInfo> kinds = {
         {Kind::Button, "ut-button", "button", {"label", "variant", "disabled", "reason"}, {"label", "reason"}},
-        {Kind::Disclosure, "ut-disclosure", "disclosure", {"label", "open", "disabled", "reason"},
+        {Kind::Disclosure, "ut-disclosure", "disclosure", {"label", "open", "disabled", "reason", "tabindex"},
          {"marker", "label", "reason"}},
         {Kind::Toggle, "ut-toggle", "toggle", {"checked", "variant"}, {"mark"}},
         {Kind::TextField, "ut-text-field", nullptr, {"value", "autofocus", "variant", "type"}, {}},
@@ -286,6 +286,7 @@ public:
             if (auto* down = Part("down")) down->AddEventListener("click", this);
             if (auto* label = Part("label")) label->AddEventListener("mousedown", this);
         }
+        if (info_.kind == Kind::Disclosure) AddEventListener("keydown", this);
         built_ = true;
         Refresh();
     }
@@ -309,6 +310,14 @@ public:
 
     void ProcessEvent(Rml::Event& event) override {
         const Rml::String& type = event.GetType();
+        if (info_.kind == Kind::Disclosure) {
+            const int key = event.GetParameter<int>("key_identifier", 0);
+            if (type == "keydown" && (key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER)) {
+                DispatchEvent("click", {});
+                event.StopPropagation();
+            }
+            return;
+        }
         if (info_.kind != Kind::NumberField) return;
         if (type == "change" && event.GetTargetElement() == Part("input")) {
             // Mirror what is typed into our own value attribute: after a refused commit the data binding then sees
@@ -363,10 +372,14 @@ private:
                 RefreshActionState();
                 break;
             case Kind::Disclosure:
+            {
                 SetText(Part("label"), Attr("label"));
-                SetClass("open", Truthy(Attr("open")));
+                const bool open = Truthy(Attr("open"));
+                SetText(Part("marker"), open ? "▾" : "▸");
+                SetClass("open", open);
                 RefreshActionState();
                 break;
+            }
             case Kind::ChoiceGroup: SetText(Part("label"), Attr("label")); break;
             case Kind::Toggle: SetClass("checked", Truthy(Attr("checked"))); break;
             case Kind::StatusLine: RefreshStatus(); break;
