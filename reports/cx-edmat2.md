@@ -71,6 +71,7 @@ For the game path, the exact renderer seam is `VulkanGraphApplication::SetMateri
 
 ## STOPs
 
+- Recovery record for the required scope: base `9cb6ea18b4b9720ad5443516f7df59ab91f2705e`; `bash tools/check-vixen-codegen.sh` failed 127 (`baseline-codegen.log`), the wrong absolute retry failed 127 (`baseline-codegen-retry.log`), and the correct-root script with the old `VIXEN/build/wsl` directory failed exit 2 (`baseline-codegen-final.log`). Recovery A configured the documented `build/wsl` tree with detached kernel `41c...` and Undertow `a8c...`; recovery B ran `view_noun_enum_regen` after the full build exposed stale generated `ViewNounId.g.h`; fresh checks/build then passed. The guessed `test_lookdev_capture` target was corrected to the actual `vixen_lookdev_capture` target. Recovery C was the final scoped material/editor test set plus the fresh full CPU suite.
 - No baseline-unobtainable STOP: the scoped generation, build, and material/editor tests are green on fresh binaries.
 - Native GPU visual judgement: NOT RUN. Only the WSL/Dozen correctness job was admitted in this lane; no native capture is claimed.
 - Full CPU suite findings, outside the material dependency scope:
