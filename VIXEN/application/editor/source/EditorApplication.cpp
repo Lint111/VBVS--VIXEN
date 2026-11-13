@@ -154,6 +154,38 @@ std::vector<Vixen::App::EditorPrimitiveData> PickerPrimitives(const std::string&
     return out;
 }
 
+std::vector<Vixen::App::EditorPackRecipeData> PickerPackRecipes(
+    const Vixen::Editor::PackRecipeSource& pack, const std::string& openRecipe,
+    const std::string& filter) {
+    std::vector<Vixen::App::EditorPackRecipeData> out;
+    const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe);
+    bool hasRecipeCallee = false;
+    if (info != nullptr) {
+        const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(*info);
+        for (uint32_t i = 0; i < info->argumentCount; ++i) {
+            if (std::string_view(arguments[i].name) == "callee" &&
+                std::string_view(arguments[i].type) == "recipe") {
+                hasRecipeCallee = true;
+                break;
+            }
+        }
+    }
+    if (!pack.Configured() || !hasRecipeCallee) return out;
+    struct Ranked { int rank; std::string id; };
+    std::vector<Ranked> ranked;
+    for (const auto& recipe : pack.Recipes()) {
+        if (recipe.id == openRecipe) continue;
+        const int rank = Vixen::Editor::EditorDocumentModel::FilterRank(recipe.id, filter);
+        if (rank >= 0) ranked.push_back({rank, recipe.id});
+    }
+    std::sort(ranked.begin(), ranked.end(), [](const Ranked& a, const Ranked& b) {
+        return a.rank != b.rank ? a.rank < b.rank : a.id < b.id;
+    });
+    out.reserve(ranked.size());
+    for (auto& recipe : ranked) out.push_back({std::move(recipe.id)});
+    return out;
+}
+
 bool ParseTextParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const char* name, std::string& out) {
     for (const auto& [n, v] : params) {
         if (n != name) continue;
@@ -388,6 +420,8 @@ void EditorApplication::RefreshLayersView() {
 void EditorApplication::PublishPickerPrimitives() {
     publishedPickerFilter_ = Vixen::App::EditorPickerFilter(*layersView_);
     Vixen::App::RefreshEditorPrimitivesView(*layersView_, PickerPrimitives(publishedPickerFilter_));
+    Vixen::App::RefreshEditorPackRecipesView(
+        *layersView_, PickerPackRecipes(pack_, openRecipeId_, publishedPickerFilter_));
 }
 
 bool EditorApplication::PickerOpen() const {
@@ -493,7 +527,7 @@ bool EditorApplication::LoadDocument(const std::string& path) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
-    rt_.SetDeclarationSource("AppFlow.g.h (compiled in)");
+    RegisterPackRecipeReferences(candidate);
     if (rt_.Load(nullptr, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
         ReportEditorError("AppFlowRuntime initial load failed");
         return false;
@@ -512,6 +546,9 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     doc_ = std::move(candidate);
     documentPath_ = path;
     ClearEditorError();
+    if (!pendingReferenceDiagnostic_.empty()) {
+        ReportEditorError(pendingReferenceDiagnostic_, "RecipeReference");
+    }
 
     // Inc-A2: initial model->view population -- the editor layer view's bound "layers" array now
     // reflects the ACTUAL mask/names/ops of the freshly loaded document (was static markup with 3
@@ -628,6 +665,75 @@ void EditorApplication::RegisterAppFlowHandlers() {
             return;
         }
         if (createPrimitiveLayer(FlowActionId::CreatePrimitiveLayer, primitive) && PickerOpen()) ClosePicker();
+    });
+
+    // R872.6: insert one pack recipe as a reference layer. The reference row and its InvokeRecipe
+    // layer are one undo entry; an absent row is removed again by undo after the layer is deleted.
+    rt_.RegisterHandler(FlowActionId::InsertRecipeReference, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        std::string recipeId;
+        if (!ParseTextParam(p, "recipe", recipeId) || recipeId.empty()) {
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::InvalidReferenceId,
+                                    "InsertRecipeReference: recipe id is required"});
+            return;
+        }
+        if (!pack_.Configured()) {
+            ReportEditorError("InsertRecipeReference: recipe '" + recipeId + "' needs a pack",
+                              "NeedsPack");
+            return;
+        }
+        std::string recipePath;
+        if (!pack_.TryResolve(recipeId, recipePath)) {
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::ReferenceNotFound,
+                                    "InsertRecipeReference: pack has no recipe '" + recipeId + "'"});
+            return;
+        }
+        (void)recipePath;
+        const bool existed = std::find(doc_.References().begin(), doc_.References().end(), recipeId) !=
+                             doc_.References().end();
+        if (!existed && doc_.References().size() >= 32u) {
+            ReportEditorDiagnostic({Vixen::Editor::DocumentDiagnosticCode::TooManyReferences,
+                                    "InsertRecipeReference: the document already has 32 references"});
+            return;
+        }
+        const uint32_t previousSelection = selectedLayer_;
+        const std::string layerName = "Recipe " + recipeId.substr(0, 24u);
+        const uint32_t index = doc_.LayerCount();
+        rt_.Stack().Dispatch(FlowActionId::InsertRecipeReference,
+                             [this, recipeId, existed, previousSelection, layerName, index](bool forward) {
+            Vixen::Editor::DocumentDiagnostic diagnostic;
+            if (forward && !existed &&
+                !doc_.AddReference(recipeId, diagnostic)) {
+                ReportEditorDiagnostic(diagnostic);
+                return;
+            }
+            if (!forward) {
+                if (!doc_.DeleteLayer(index, nullptr, diagnostic)) {
+                    ReportEditorDiagnostic(diagnostic);
+                    return;
+                }
+                if (!existed && !doc_.RemoveReference(recipeId, diagnostic)) {
+                    ReportEditorDiagnostic(diagnostic);
+                    return;
+                }
+                selectedLayer_ = previousSelection;
+                SyncAfterDocumentMutation();
+                return;
+            }
+            Vixen::Editor::EditableDocumentLayer layer;
+            if (!doc_.MakeRecipeReferenceLayer(recipeId, layerName, layer, diagnostic) ||
+                !doc_.PlaceNewPrimitive(layer, previousSelection, diagnostic) ||
+                !doc_.InsertLayer(index, layer, diagnostic)) {
+                if (!existed) {
+                    Vixen::Editor::DocumentDiagnostic ignored;
+                    doc_.RemoveReference(recipeId, ignored);
+                }
+                ReportEditorDiagnostic(diagnostic);
+                return;
+            }
+            selectedLayer_ = index;
+            SyncAfterDocumentMutation();
+        });
+        if (PickerOpen()) ClosePicker();
     });
 
     rt_.RegisterHandler(FlowActionId::DeleteLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
@@ -798,6 +904,29 @@ void EditorApplication::RegisterAppFlowHandlers() {
     const auto refuse = [this](const char* label, const std::string& why) {
         ReportEditorError(std::string(label) + ": " + why, "RefusedEdit");
     };
+    rt_.RegisterHandler(FlowActionId::SetDocumentMaterials,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        const uint32_t major = ParseParam(p, "major");
+        const uint32_t minor = ParseParam(p, "minor");
+        float percent = 0.0f;
+        if (!ParseFloatParam(p, "majorPercent", percent) || !std::isfinite(percent) ||
+            percent < 0.0f || std::floor(percent) != percent || percent > 99.0f) {
+            refuse("SetDocumentMaterials", "majorPercent must be a finite integer from 0 to 99");
+            return;
+        }
+        const uint32_t nextPercent = static_cast<uint32_t>(percent);
+        const uint32_t oldMajor = doc_.MajorMaterialId();
+        const uint32_t oldMinor = doc_.MinorMaterialId();
+        const uint32_t oldPercent = doc_.MajorMaterialPercent();
+        if (major == oldMajor && minor == oldMinor && nextPercent == oldPercent) return;
+        recordEdit(FlowActionId::SetDocumentMaterials, "SetDocumentMaterials",
+                   [this, major, minor, nextPercent](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetDocumentMaterials(major, minor, nextPercent, d);
+                   },
+                   [this, oldMajor, oldMinor, oldPercent](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetDocumentMaterials(oldMajor, oldMinor, oldPercent, d);
+                   });
+    });
     const auto setBlend = [this, recordEdit, refuse](FlowActionId actionId, uint32_t index, float radius) {
         Vixen::Editor::DocumentDiagnostic diagnostic;
         if (index >= doc_.LayerCount()) { refuse("SetLayerBlend", "layer index " + std::to_string(index) + " is outside the document"); return; }
@@ -1141,12 +1270,6 @@ void EditorApplication::RegisterAppFlowHandlers() {
         Panels().Dock().ResetToDefaults();
         AfterPanelVerb("reset", DockResult::Ok);
     });
-
-    // R874.3: an action declared in the loaded data with nothing registered above is visible but inert; say so once per
-    // (re)registration, located at the declaring file, on the channel and the status line. Never a load failure.
-    rt_.SetActionNamer([](FlowActionId id) { return std::string(magic_enum::enum_name(id)); });
-    rt_.SetUnimplementedHandler([this](FlowActionId, const std::string& message) { ReportEditorError(message, "NotImplemented"); });
-    rt_.ReportUnimplemented();
 }
 
 namespace {
@@ -1218,7 +1341,6 @@ bool EditorApplication::ReloadAppFlowData(std::string& error) {
         error = "AppFlow reload rejected: validation failure; keeping the running state";
         return false;
     }
-    rt_.SetDeclarationSource(std::filesystem::path(appFlowPath_).filename().string());
     RegisterAppFlowHandlers();
     appFlowBlob_ = std::move(*blob);
     // Consume this file's mtime: a forced reload must not be followed by a redundant watched one.
@@ -1238,6 +1360,12 @@ void EditorApplication::BuildRenderGraph() {
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
+    // The initial document is loaded before Prepare(); now that the graph owns the registry,
+    // register every pack callee before flattening the open document below.
+    if (!RegisterPackRecipeReferences(doc_) && !pendingReferenceDiagnostic_.empty()) {
+        ReportEditorError(pendingReferenceDiagnostic_, "RecipeReference");
+    }
+
     // The base graph's shader builder reads the procedural registry at first Compile(). Register
     // the document's field before building it so the editor uses the same shared virtual-recipe
     // path as other VIXEN consumers.
@@ -1245,7 +1373,7 @@ void EditorApplication::BuildRenderGraph() {
         const auto snapshot = doc_.CaptureBakeSnapshot();
         Vixen::SVO::RecipeRegistry::RecipeEntry entry;
         Vixen::Editor::DocumentDiagnostic diagnostic;
-        if (doc_.FlattenToRecipeEntry(entry, snapshot, diagnostic)) {
+        if (doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), true, diagnostic)) {
             ApplyEditorPreviewBounds(entry, doc_);
             const auto result = RegisterProceduralRecipe(kEditorProceduralRecipeId, entry);
             if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
@@ -1391,7 +1519,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
     Vixen::Editor::DocumentDiagnostic diagnostic;
     const Vixen::Editor::DocumentBakeSnapshot snapshot = doc_.CaptureBakeSnapshot();
-    if (!doc_.FlattenToRecipeEntry(entry, snapshot, diagnostic)) {
+    if (!doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), true, diagnostic)) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
@@ -1578,7 +1706,7 @@ bool EditorApplication::SaveDocument() {
     const auto snapshot = doc_.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
     Vixen::Editor::DocumentDiagnostic diagnostic;
-    if (!doc_.FlattenToRecipeEntry(canonical, snapshot, diagnostic)) {
+    if (!doc_.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), true, diagnostic)) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
@@ -1635,10 +1763,11 @@ bool EditorApplication::ReopenSavedDocument() {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
+    RegisterPackRecipeReferences(candidate);
 
     const auto snapshot = candidate.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
-    if (!candidate.FlattenToRecipeEntry(canonical, snapshot, diagnostic)) {
+    if (!candidate.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), true, diagnostic)) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
@@ -1653,6 +1782,9 @@ bool EditorApplication::ReopenSavedDocument() {
     }
 
     if (!AdoptDocument(std::move(candidate))) return false;
+    if (!pendingReferenceDiagnostic_.empty()) {
+        ReportEditorError(pendingReferenceDiagnostic_, "RecipeReference");
+    }
     logger_->Info("[EDITOR/state] reopen revision=" + std::to_string(doc_.Revision()) +
                   " programMatch=1 parametersMatch=1 maskMatch=1");
     return true;
@@ -1661,7 +1793,6 @@ bool EditorApplication::ReopenSavedDocument() {
 bool EditorApplication::AdoptDocument(Vixen::Editor::EditorDocumentModel candidate) {
     auto blob = Vixen::AppFlow::AppFlowBlobFile::Load(appFlowPath_);
     const Vixen::AppFlow::Generated::AppFlowContainerView* view = blob ? &blob->View() : nullptr;
-    rt_.SetDeclarationSource(blob ? std::filesystem::path(appFlowPath_).filename().string() : std::string("AppFlow.g.h (compiled in)"));
     if (rt_.Load(view, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
         ReportEditorError("AppFlowRuntime reload failed while adopting a document");
         return false;
@@ -1682,6 +1813,141 @@ void EditorApplication::RefreshRecipesView() {
     recipes.reserve(pack_.Recipes().size());
     for (const auto& recipe : pack_.Recipes()) recipes.push_back({recipe.id, recipe.id == openRecipeId_});
     Vixen::App::RefreshEditorRecipesView(*layersView_, recipes);
+}
+
+bool EditorApplication::RegisterPackRecipeRecursive(
+    const std::string& id, std::unordered_map<std::string, uint8_t>& state,
+    std::string& diagnostic, uint32_t depth) {
+    constexpr uint32_t kMaximumReferenceDepth = 4u;
+    if (depth > kMaximumReferenceDepth) {
+        diagnostic = "recipe reference depth exceeds 4 at '" + id + "'";
+        unavailablePackReferences_.insert(id);
+        state[id] = 3u;
+        return false;
+    }
+    const auto stateIt = state.find(id);
+    if (stateIt != state.end()) {
+        if (stateIt->second == 2u) return true;
+        if (stateIt->second == 1u) {
+            diagnostic = "recipe reference cycle at '" + id + "'";
+            return false;
+        }
+        diagnostic = "recipe reference is unavailable: '" + id + "'";
+        return false;
+    }
+    state[id] = 1u;
+    uint32_t registryId = 0xC0000000u + static_cast<uint32_t>(packRecipeRegistryIds_.size());
+    const auto [idIt, inserted] = packRecipeRegistryIds_.emplace(id, registryId);
+    registryId = idIt->second;
+
+    if (!pack_.Configured()) {
+        diagnostic = "recipe '" + id + "' needs a pack";
+        state[id] = 3u;
+        unavailablePackReferences_.insert(id);
+        return false;
+    }
+    std::string path;
+    if (!pack_.TryResolve(id, path)) {
+        diagnostic = "pack has no recipe '" + id + "'";
+        state[id] = 3u;
+        unavailablePackReferences_.insert(id);
+        return false;
+    }
+    Vixen::Editor::EditorDocumentModel child;
+    Vixen::Editor::DocumentDiagnostic childDiagnostic;
+    if (!child.Load(path, childDiagnostic)) {
+        diagnostic = childDiagnostic.message;
+        state[id] = 3u;
+        unavailablePackReferences_.insert(id);
+        return false;
+    }
+    bool dependenciesReady = true;
+    for (const auto& dependency : child.References()) {
+        std::string dependencyDiagnostic;
+        if (!RegisterPackRecipeRecursive(dependency, state, dependencyDiagnostic, depth + 1u)) {
+            dependenciesReady = false;
+            if (diagnostic.empty()) diagnostic = dependencyDiagnostic;
+        }
+    }
+    if (!dependenciesReady) {
+        state[id] = 3u;
+        unavailablePackReferences_.insert(id);
+        return false;
+    }
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    const auto resolver = [this, &state](const std::string& reference, uint32_t& resolved) {
+        const auto found = packRecipeRegistryIds_.find(reference);
+        if (found == packRecipeRegistryIds_.end()) return false;
+        const auto status = state.find(reference);
+        if (status == state.end() || status->second != 2u) return false;
+        resolved = found->second;
+        return true;
+    };
+    if (!child.FlattenToRecipeEntry(entry, child.CaptureBakeSnapshot(), resolver, false, childDiagnostic)) {
+        diagnostic = childDiagnostic.message;
+        state[id] = 3u;
+        unavailablePackReferences_.insert(id);
+        return false;
+    }
+    std::array<float, 3> center{};
+    float radius = 0.0f;
+    child.DeriveBoundsOf(entry, center, radius);
+    entry.boundCenter = glm::vec3(center[0], center[1], center[2]);
+    entry.boundRadius = radius;
+    // The first document is admitted before Prepare(), when the render graph (and its recipe
+    // registry/cache owner) does not exist yet. Keep the dependency graph proven in the model;
+    // BuildRenderGraph repeats this registration pass once the owner is live.
+    if (GetRenderGraph() == nullptr) {
+        state[id] = 2u;
+        return true;
+    }
+    const auto result = inserted ? RegisterProceduralRecipe(registryId, entry)
+                                 : ReplaceProceduralRecipe(registryId, entry);
+    if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+        diagnostic = "could not register pack recipe '" + id + "' (code " +
+                     std::to_string(static_cast<int>(result)) + ")";
+        state[id] = 3u;
+        unavailablePackReferences_.insert(id);
+        return false;
+    }
+    state[id] = 2u;
+    unavailablePackReferences_.erase(id);
+    return true;
+}
+
+bool EditorApplication::RegisterPackRecipeReferences(Vixen::Editor::EditorDocumentModel& document) {
+    pendingReferenceDiagnostic_.clear();
+    unavailablePackReferences_.clear();
+    std::unordered_map<std::string, uint8_t> state;
+    bool allReady = true;
+    for (const auto& reference : document.References()) {
+        std::string diagnostic;
+        if (!RegisterPackRecipeRecursive(reference, state, diagnostic, 0u)) {
+            allReady = false;
+            for (uint32_t layerIndex = 0; layerIndex < document.LayerCount(); ++layerIndex) {
+                std::string layerReference;
+                Vixen::Editor::DocumentDiagnostic layerDiagnostic;
+                if (document.IsRecipeReferenceLayer(layerIndex, &layerReference, layerDiagnostic) &&
+                    layerReference == reference) {
+                    diagnostic = "layer " + std::to_string(layerIndex) + ": " + diagnostic;
+                    break;
+                }
+            }
+            if (pendingReferenceDiagnostic_.empty()) pendingReferenceDiagnostic_ = diagnostic;
+        }
+    }
+    return allReady;
+}
+
+Vixen::Editor::EditorDocumentModel::RecipeReferenceResolver EditorApplication::RecipeResolver() const {
+    return [this](const std::string& reference, uint32_t& resolved) {
+        if (unavailablePackReferences_.count(reference) != 0u) return false;
+        const auto found = packRecipeRegistryIds_.find(reference);
+        if (found == packRecipeRegistryIds_.end()) return false;
+        resolved = found->second;
+        return true;
+    };
 }
 
 void EditorApplication::RefreshStatusView() {
@@ -1763,6 +2029,7 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
                   " assets=" + pack_.AssetDirectory() + "/*" + pack_.AssetExtension() +
                   " recipes=" + std::to_string(pack_.Recipes().size()));
     RefreshRecipesView();
+    if (layersView_ != nullptr) PublishPickerPrimitives();
     return true;
 }
 
@@ -1782,12 +2049,17 @@ bool EditorApplication::OpenPackRecipe(const std::string& recipeId) {
             ReportEditorDiagnostic(diagnostic);
             return false;
         }
+        RegisterPackRecipeReferences(candidate);
         if (!AdoptDocument(std::move(candidate))) return false;
         documentPath_ = path;
         reframePending_ = true;
+        if (!pendingReferenceDiagnostic_.empty()) {
+            ReportEditorError(pendingReferenceDiagnostic_, "RecipeReference");
+        }
     }
     openRecipeId_ = recipeId;
     RefreshRecipesView();
+    if (layersView_ != nullptr) PublishPickerPrimitives();
     std::ostringstream state;
     state << "[EDITOR/state] open recipe=" << recipeId << " path=" << path
           << " layers=" << doc_.LayerCount() << " mask=" << doc_.EnabledMask() << " parameters=[";
@@ -2153,7 +2425,7 @@ void EditorApplication::StartPendingReadbacks() {
                 }
                 Vixen::SVO::RecipeRegistry::RecipeEntry recipe;
                 Vixen::Editor::DocumentDiagnostic diagnostic;
-                if (!doc_.FlattenToRecipeEntry(recipe, doc_.CaptureBakeSnapshot(), diagnostic)) {
+                if (!doc_.FlattenToRecipeEntry(recipe, doc_.CaptureBakeSnapshot(), RecipeResolver(), true, diagnostic)) {
                     throw std::runtime_error("could not derive scene instance bounds: " + diagnostic.message);
                 }
                 ApplyEditorPreviewBounds(recipe, doc_);
@@ -2289,11 +2561,8 @@ void EditorApplication::ReportUiReloads() {
             // ui.reload result carry the full path).
             ReportEditorError(std::filesystem::path(error.file).filename().string() + ":" + std::to_string(error.line) +
                               ": " + error.message, "UiReload");
-            uiReloadFailedDocument_ = reload.document;
             RefreshStatusView();
-        } else if (lastEditorDiagnosticCode_ == "UiReload" && reload.document == uiReloadFailedDocument_) {
-            // Only the document that failed clears the error: a kit fragment error fails every document that uses the
-            // element, and another document reloading fine in the same pass must not hide it.
+        } else if (lastEditorDiagnosticCode_ == "UiReload") {
             ClearEditorError();  // the document that failed reloaded: the located error is stale
             RefreshStatusView();
         }
@@ -2380,17 +2649,15 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
     if (!params.is_object()) throw std::runtime_error("params must be an object");
 
     if (method == "appflow.list") {
-        // R874.3: the catalogue is the runtime's LOADED declarations (a reload that changed an action row shows here), and
-        // `implemented` says whether any code is registered behind each action.
         nlohmann::json actions = nlohmann::json::array();
-        for (const auto& declaration : rt_.CatalogActions()) {
+        for (const auto& declaration : kActionDecls) {
             nlohmann::json paramList = nlohmann::json::array();
-            for (const auto& [name, type] : declaration.params) {
-                paramList.push_back({{"name", name}, {"type", ParamTypeName(type)}});
+            for (uint32_t i = 0; i < declaration.paramCount; ++i) {
+                paramList.push_back({{"name", declaration.params[i].name},
+                                     {"type", ParamTypeName(declaration.params[i].type)}});
             }
             actions.push_back({{"id", static_cast<uint16_t>(declaration.id)},
                                {"name", std::string(magic_enum::enum_name(declaration.id))},
-                               {"implemented", rt_.IsImplemented(declaration.id)},
                                {"params", std::move(paramList)}});
         }
         nlohmann::json selectors = nlohmann::json::array();
@@ -2411,7 +2678,7 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
                             {"scope", EnumRecord(key.scope)}, {"state", EnumRecord(key.state)}});
         }
         nlohmann::json transitions = nlohmann::json::array();
-        for (const auto& edge : rt_.CatalogTransitions()) {
+        for (const auto& edge : kTransitions) {
             transitions.push_back({{"id", edge.id}, {"from", EnumRecord(edge.from)},
                                    {"to", EnumRecord(edge.to)},
                                    {"guard", std::string(magic_enum::enum_name(edge.guard))}});
@@ -2419,10 +2686,9 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         nlohmann::json nouns = nlohmann::json::array();
         for (const auto noun : magic_enum::enum_values<ViewNounId>()) nouns.push_back(EnumRecord(noun));
         nlohmann::json dataTargets = nlohmann::json::array();
-        std::vector<std::pair<uint16_t, ViewNounId>> sortedTargets(rt_.DataTargets().begin(), rt_.DataTargets().end());
-        std::sort(sortedTargets.begin(), sortedTargets.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-        for (const auto& [action, noun] : sortedTargets) {
-            dataTargets.push_back({{"actionId", action}, {"viewNoun", EnumRecord(noun)}});
+        for (const auto& target : kDataTargets) {
+            dataTargets.push_back({{"actionId", static_cast<uint16_t>(target.action)},
+                                   {"viewNoun", EnumRecord(target.viewNoun)}});
         }
         nlohmann::json states = nlohmann::json::array();
         for (const auto state : kStateIds) states.push_back(EnumRecord(state));

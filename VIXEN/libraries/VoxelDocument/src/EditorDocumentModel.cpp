@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <utility>
 
@@ -19,6 +20,9 @@
 namespace Vixen::Editor {
 
 namespace {
+
+using Yeroket::Sdf::Generated::SdfInstruction;
+using Vixen::SVO::Recipe::SdfOpCode;
 
 template <size_t N>
 std::string DecodeFixedText(const uint8_t (&bytes)[N]) {
@@ -39,8 +43,35 @@ bool IsByteValue(float value) {
            std::floor(value) == value;
 }
 
-using Yeroket::Sdf::Generated::SdfInstruction;
-using Vixen::SVO::Recipe::SdfOpCode;
+constexpr uint32_t kVdc1LegacyVersion = 1u;
+constexpr uint32_t kVdc1ParameterVersion = 2u;
+constexpr uint32_t kVdc1MaterialVersion = 3u;
+constexpr uint32_t kVdc1ReferenceVersion = 4u;
+constexpr uint32_t kMaximumReferences = 32u;
+constexpr size_t kReferenceIdBytes = 64u;
+
+bool IsValidMaterialTriple(uint32_t major, uint32_t minor, uint32_t majorPercent) {
+    if (major == 0u && minor == 0u && majorPercent == 0u) return true;
+    return major != 0u && minor != 0u && majorPercent >= 1u && majorPercent <= 99u;
+}
+
+bool HasTransformWrapper(const std::vector<SdfInstruction>& program);
+
+bool IsRecipeInstruction(const std::vector<SdfInstruction>& program, uint32_t& tableIndex) {
+    size_t instructionIndex = 0u;
+    if (program.size() == 3u && HasTransformWrapper(program)) {
+        instructionIndex = 1u;
+    } else if (program.size() != 1u) {
+        return false;
+    }
+    if (program[instructionIndex].opCode != static_cast<uint8_t>(SdfOpCode::InvokeRecipe)) return false;
+    const float rawIndex = program[instructionIndex].data[0];
+    if (!std::isfinite(rawIndex) || rawIndex < 0.0f ||
+        rawIndex >= static_cast<float>(std::numeric_limits<uint32_t>::max()) ||
+        std::floor(rawIndex) != rawIndex) return false;
+    tableIndex = static_cast<uint32_t>(rawIndex);
+    return true;
+}
 
 constexpr float kDegreesToRadians = 0.017453292519943295f;
 constexpr float kRadiansToDegrees = 57.29577951308232f;
@@ -523,6 +554,31 @@ bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diag
                           std::to_string(kMaximumLayerCount)};
         return false;
     }
+    if (!IsValidMaterialTriple(candidateView.header.majorMaterialId,
+                               candidateView.header.minorMaterialId,
+                               candidateView.header.majorWeightPercent)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidDocumentMaterial,
+                      "VoxelDocument contains an invalid document material triple"};
+        return false;
+    }
+    if (candidateView.referenceCount > kMaximumReferences) {
+        diagnostic = {DocumentDiagnosticCode::TooManyReferences,
+                      "VoxelDocument contains more than 32 recipe references"};
+        return false;
+    }
+    std::vector<std::string> candidateReferences;
+    candidateReferences.reserve(candidateView.referenceCount);
+    for (uint32_t i = 0; i < candidateView.referenceCount; ++i) {
+        const std::string id = DecodeFixedText(candidateView.references[i].id);
+        if (!ValidateReferenceId(id, diagnostic)) return false;
+        if (std::find(candidateReferences.begin(), candidateReferences.end(), id) !=
+            candidateReferences.end()) {
+            diagnostic = {DocumentDiagnosticCode::DuplicateReference,
+                          "VoxelDocument contains duplicate recipe reference: " + id};
+            return false;
+        }
+        candidateReferences.push_back(id);
+    }
 
     uint32_t candidateMask = 0u;
     for (uint32_t i = 0; i < candidateView.header.layerCount; ++i) {
@@ -537,6 +593,12 @@ bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diag
     view_ = candidateView;
     sourcePath_ = path;
     enabledMask_ = candidateMask;
+    authoredFormatVersion_ = view_.header.formatVersion;
+    majorMaterialId_ = view_.header.majorMaterialId;
+    minorMaterialId_ = view_.header.minorMaterialId;
+    majorMaterialPercent_ = view_.header.majorWeightPercent;
+    references_ = std::move(candidateReferences);
+    serializationDirty_ = false;
     ++revision_;
     return true;
 }
@@ -561,8 +623,12 @@ uint64_t EditorDocumentModel::Revision() const {
     return revision_;
 }
 
+uint32_t EditorDocumentModel::FormatVersion() const {
+    return view_.header.formatVersion;
+}
+
 uint32_t EditorDocumentModel::ParameterCount() const {
-    return view_.header.formatVersion == 2u ? view_.header.reserved0 : 0u;
+    return view_.header.formatVersion == kVdc1LegacyVersion ? 0u : view_.header.parameterCount;
 }
 
 std::string EditorDocumentModel::ParameterName(uint32_t index) const {
@@ -608,6 +674,146 @@ DocumentBakeSnapshot EditorDocumentModel::CaptureBakeSnapshot() const {
     return DocumentBakeSnapshot{revision_, EffectiveParameterValues()};
 }
 
+bool EditorDocumentModel::SetDocumentMaterials(uint32_t major, uint32_t minor,
+                                               uint32_t majorPercent,
+                                               DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (!IsValidMaterialTriple(major, minor, majorPercent)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidDocumentMaterial,
+                      "document materials require two nonzero ids and a major percent from 1 to 99"};
+        return false;
+    }
+    if (major == majorMaterialId_ && minor == minorMaterialId_ && majorPercent == majorMaterialPercent_) {
+        return true;
+    }
+    const uint32_t oldMajor = majorMaterialId_;
+    const uint32_t oldMinor = minorMaterialId_;
+    const uint32_t oldPercent = majorMaterialPercent_;
+    majorMaterialId_ = major;
+    minorMaterialId_ = minor;
+    majorMaterialPercent_ = majorPercent;
+    if (Rebuild(CopyLayers(), CopyParameters(), enabledMask_, diagnostic)) return true;
+    majorMaterialId_ = oldMajor;
+    minorMaterialId_ = oldMinor;
+    majorMaterialPercent_ = oldPercent;
+    return false;
+}
+
+bool EditorDocumentModel::ValidateReferenceId(const std::string& id,
+                                              DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const size_t colon = id.find(':');
+    if (colon == std::string::npos || colon == 0u || colon + 1u >= id.size() ||
+        id.find(':', colon + 1u) != std::string::npos || id.size() >= kReferenceIdBytes ||
+        id.find('\0') != std::string::npos) {
+        diagnostic = {DocumentDiagnosticCode::InvalidReferenceId,
+                      "reference id must be <pack>:<recipe> with one colon and at most 63 bytes"};
+        return false;
+    }
+    for (const unsigned char byte : id) {
+        if (byte < 0x20u || byte == 0x7Fu) {
+            diagnostic = {DocumentDiagnosticCode::InvalidReferenceId,
+                          "reference id contains a control character"};
+            return false;
+        }
+    }
+    return true;
+}
+
+bool EditorDocumentModel::AddReference(const std::string& id, DocumentDiagnostic& diagnostic) {
+    if (!ValidateReferenceId(id, diagnostic)) return false;
+    if (references_.size() >= kMaximumReferences) {
+        diagnostic = {DocumentDiagnosticCode::TooManyReferences,
+                      "a document supports at most 32 recipe references"};
+        return false;
+    }
+    if (std::find(references_.begin(), references_.end(), id) != references_.end()) {
+        diagnostic = {DocumentDiagnosticCode::DuplicateReference,
+                      "recipe reference already exists: " + id};
+        return false;
+    }
+    references_.push_back(id);
+    if (Rebuild(CopyLayers(), CopyParameters(), enabledMask_, diagnostic)) return true;
+    references_.pop_back();
+    return false;
+}
+
+bool EditorDocumentModel::RemoveReference(const std::string& id, DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const auto found = std::find(references_.begin(), references_.end(), id);
+    if (found == references_.end()) {
+        diagnostic = {DocumentDiagnosticCode::ReferenceNotFound,
+                      "recipe reference does not exist: " + id};
+        return false;
+    }
+    const uint32_t referenceIndex = static_cast<uint32_t>(found - references_.begin());
+    for (uint32_t layerIndex = 0; layerIndex < LayerCount(); ++layerIndex) {
+        const auto& layer = view_.layers[layerIndex];
+        for (uint32_t instructionIndex = 0; instructionIndex < layer.header->instructionCount;
+             ++instructionIndex) {
+            const auto& instruction = layer.instructions[instructionIndex];
+            if (instruction.opCode != static_cast<uint8_t>(SdfOpCode::InvokeRecipe)) continue;
+            const float rawIndex = instruction.data[0];
+            if (std::isfinite(rawIndex) && rawIndex >= 0.0f &&
+                rawIndex < static_cast<float>(std::numeric_limits<uint32_t>::max()) &&
+                std::floor(rawIndex) == rawIndex &&
+                static_cast<uint32_t>(rawIndex) == referenceIndex) {
+                diagnostic = {DocumentDiagnosticCode::ReferenceInUse,
+                              "cannot remove recipe reference used by layer " +
+                                  std::to_string(layerIndex)};
+                return false;
+            }
+        }
+    }
+    const std::string saved = *found;
+    references_.erase(found);
+    if (Rebuild(CopyLayers(), CopyParameters(), enabledMask_, diagnostic)) return true;
+    references_.insert(references_.begin() + referenceIndex, saved);
+    return false;
+}
+
+bool EditorDocumentModel::MakeRecipeReferenceLayer(const std::string& id, const std::string& name,
+                                                   EditableDocumentLayer& out,
+                                                   DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    const auto found = std::find(references_.begin(), references_.end(), id);
+    if (found == references_.end()) {
+        diagnostic = {DocumentDiagnosticCode::ReferenceNotFound,
+                      "recipe reference does not exist: " + id};
+        return false;
+    }
+    if (!ValidateLayerName(name, diagnostic)) return false;
+    const size_t index = static_cast<size_t>(found - references_.begin());
+    SdfInstruction instruction{};
+    instruction.opCode = static_cast<uint8_t>(SdfOpCode::InvokeRecipe);
+    instruction.data[0] = static_cast<float>(index);
+    out = EditableDocumentLayer{};
+    out.name = name;
+    out.program.push_back(instruction);
+    return true;
+}
+
+bool EditorDocumentModel::IsRecipeReferenceLayer(uint32_t index, std::string* id,
+                                                 DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+    const auto& layer = view_.layers[index];
+    std::vector<SdfInstruction> program(layer.instructions,
+                                         layer.instructions + layer.header->instructionCount);
+    uint32_t tableIndex = 0u;
+    if (!IsRecipeInstruction(program, tableIndex) || tableIndex >= references_.size()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidReferenceLayer,
+                      "layer " + std::to_string(index) + " is not a valid recipe reference layer"};
+        return false;
+    }
+    if (id != nullptr) *id = references_[tableIndex];
+    return true;
+}
+
 bool EditorDocumentModel::SetLayerEnabled(uint32_t index, bool enabled,
                                           DocumentDiagnostic& diagnostic) {
     diagnostic.Clear();
@@ -624,7 +830,10 @@ bool EditorDocumentModel::SetLayerEnabled(uint32_t index, bool enabled,
     } else {
         enabledMask_ &= ~bit;
     }
-    if (wasEnabled != enabled) ++revision_;
+    if (wasEnabled != enabled) {
+        serializationDirty_ = true;
+        ++revision_;
+    }
     return true;
 }
 
@@ -637,6 +846,7 @@ bool EditorDocumentModel::SetEnabledMask(uint32_t mask, DocumentDiagnostic& diag
     }
     if (enabledMask_ != mask) {
         enabledMask_ = mask;
+        serializationDirty_ = true;
         ++revision_;
     }
     return true;
@@ -666,6 +876,15 @@ EditorDocumentModel::CopyParameters() const {
     if (count == 0u) return {};
     return std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader>(
         view_.parameters, view_.parameters + count);
+}
+
+std::vector<Yeroket::Sdf::Generated::VoxelDocReference>
+EditorDocumentModel::CopyReferences() const {
+    std::vector<Yeroket::Sdf::Generated::VoxelDocReference> references(references_.size());
+    for (size_t i = 0; i < references_.size(); ++i) {
+        EncodeFixedText(references_[i], references[i].id);
+    }
+    return references;
 }
 
 bool EditorDocumentModel::Rebuild(
@@ -706,22 +925,42 @@ bool EditorDocumentModel::Rebuild(
         writes[i].instructions = source.program.data();
     }
 
+    const auto referenceRows = CopyReferences();
     size_t required = 0;
     WriteVoxelDocument(view_.channels, view_.header.channelCount,
                        parameters.data(), static_cast<uint32_t>(parameters.size()),
                        writes.data(), static_cast<uint32_t>(writes.size()),
+                       referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                       majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
                        nullptr, 0, required);
     std::vector<uint8_t> candidateBytes(required);
     size_t written = 0;
     if (!WriteVoxelDocument(view_.channels, view_.header.channelCount,
                             parameters.data(), static_cast<uint32_t>(parameters.size()),
                             writes.data(), static_cast<uint32_t>(writes.size()),
+                            referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                            majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
                             candidateBytes.data(), candidateBytes.size(), written)) {
         diagnostic = {DocumentDiagnosticCode::WriteError,
                       "WriteVoxelDocument failed to rebuild the candidate document"};
         return false;
     }
     candidateBytes.resize(written);
+
+    // The generated kernel writer emits the current feature version (v3/v4). Existing v1/v2
+    // documents retain their authored format until a v3 material or v4 reference is required;
+    // the byte layout is identical, so only the version word needs restoring here.
+    const bool needsMaterialVersion = majorMaterialId_ != 0u || minorMaterialId_ != 0u || majorMaterialPercent_ != 0u;
+    const uint32_t targetVersion = referenceRows.empty()
+        ? (needsMaterialVersion ? kVdc1MaterialVersion
+                                : (authoredFormatVersion_ <= kVdc1ParameterVersion
+                                       ? authoredFormatVersion_ : kVdc1MaterialVersion))
+        : kVdc1ReferenceVersion;
+    if (targetVersion != kVdc1MaterialVersion && targetVersion != kVdc1ReferenceVersion &&
+        candidateBytes.size() >= sizeof(VoxelDocumentHeader)) {
+        std::memcpy(candidateBytes.data() + offsetof(VoxelDocumentHeader, formatVersion),
+                    &targetVersion, sizeof(targetVersion));
+    }
 
     VoxelDocumentView candidateView{};
     if (!ReadVoxelDocument(candidateBytes.data(), candidateBytes.size(), candidateView)) {
@@ -732,6 +971,7 @@ bool EditorDocumentModel::Rebuild(
     rawBytes_.swap(candidateBytes);
     view_ = candidateView;
     enabledMask_ = enabledMask;
+    serializationDirty_ = true;
     ++revision_;
     return true;
 }
@@ -1086,6 +1326,15 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
     Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
     const DocumentBakeSnapshot& snapshot,
     DocumentDiagnostic& diagnostic) const {
+    return FlattenToRecipeEntry(outEntry, snapshot, RecipeReferenceResolver{}, false, diagnostic);
+}
+
+bool EditorDocumentModel::FlattenToRecipeEntry(
+    Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+    const DocumentBakeSnapshot& snapshot,
+    const RecipeReferenceResolver& resolver,
+    bool skipUnresolvedReferences,
+    DocumentDiagnostic& diagnostic) const {
     using Yeroket::Sdf::Generated::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
 
@@ -1108,15 +1357,50 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
         if (enabledOverride[layerIndex] == 0) continue;
         const auto& layer = view_.layers[layerIndex];
         const uint32_t count = layer.header->instructionCount;
+        std::vector<SdfInstruction> layerProgram(layer.instructions, layer.instructions + count);
+        bool skipLayer = false;
+        if (view_.header.formatVersion >= kVdc1ReferenceVersion) {
+            for (uint32_t instructionIndex = 0; instructionIndex < layerProgram.size(); ++instructionIndex) {
+                auto& instruction = layerProgram[instructionIndex];
+                if (static_cast<SdfOpCode>(instruction.opCode) != SdfOpCode::InvokeRecipe) continue;
+                const float rawIndex = instruction.data[0];
+                if (!std::isfinite(rawIndex) || rawIndex < 0.0f ||
+                    rawIndex >= static_cast<float>(std::numeric_limits<uint32_t>::max()) ||
+                    std::floor(rawIndex) != rawIndex ||
+                    static_cast<uint32_t>(rawIndex) >= references_.size()) {
+                    diagnostic = {DocumentDiagnosticCode::FlattenError,
+                                  "layer " + std::to_string(layerIndex) + " instruction " +
+                                      std::to_string(instructionIndex) + ": invalid recipe reference index"};
+                    return false;
+                }
+                const std::string& reference = references_[static_cast<uint32_t>(rawIndex)];
+                uint32_t recipeId = 0u;
+                if (!resolver || !resolver(reference, recipeId)) {
+                    uint32_t recipeTableIndex = 0u;
+                    if (skipUnresolvedReferences && IsRecipeInstruction(layerProgram, recipeTableIndex)) {
+                        diagnostic = {DocumentDiagnosticCode::FlattenError,
+                                      "layer " + std::to_string(layerIndex) + ": recipe '" + reference +
+                                          "' is inert until its pack is available"};
+                        skipLayer = true;
+                        break;
+                    }
+                    diagnostic = {DocumentDiagnosticCode::FlattenError,
+                                  "layer " + std::to_string(layerIndex) + " instruction " +
+                                      std::to_string(instructionIndex) + ": unknown recipe '" + reference + "'"};
+                    return false;
+                }
+                instruction.data[0] = static_cast<float>(recipeId);
+            }
+        }
+        if (skipLayer) continue;
         std::string error;
         if (!Vixen::SVO::GeneratedRecipePipelineDetail::ValidateProgram(
-                layer.instructions, count, sp, psp, error)) {
+                layerProgram.data(), static_cast<uint32_t>(layerProgram.size()), sp, psp, error)) {
             diagnostic = {DocumentDiagnosticCode::FlattenError, std::move(error)};
             return false;
         }
         if (!haveBase) {
-            instructions.insert(instructions.end(), layer.instructions,
-                                layer.instructions + count);
+            instructions.insert(instructions.end(), layerProgram.begin(), layerProgram.end());
             haveBase = true;
             continue;
         }
@@ -1130,8 +1414,7 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
                     " on layer index " + std::to_string(layerIndex)};
             return false;
         }
-        instructions.insert(instructions.end(), layer.instructions,
-                            layer.instructions + count);
+        instructions.insert(instructions.end(), layerProgram.begin(), layerProgram.end());
         SdfInstruction combine{};
         combine.opCode = static_cast<uint8_t>(combineOpcode);
         combine.inputMask = 3;
@@ -1164,6 +1447,10 @@ bool EditorDocumentModel::Serialize(std::vector<uint8_t>& bytes,
     using namespace Yeroket::Sdf::Generated;
 
     diagnostic.Clear();
+    if (!serializationDirty_ && !rawBytes_.empty()) {
+        bytes = rawBytes_;
+        return true;
+    }
     std::vector<VoxelDocLayerHeader> headers(LayerCount());
     std::vector<VoxelDocLayerWrite> writes(LayerCount());
     for (uint32_t i = 0; i < LayerCount(); ++i) {
@@ -1173,21 +1460,40 @@ bool EditorDocumentModel::Serialize(std::vector<uint8_t>& bytes,
         writes[i].instructions = view_.layers[i].instructions;
     }
     const auto parameters = CopyParameters();
+    const auto referenceRows = CopyReferences();
 
     size_t required = 0;
     WriteVoxelDocument(view_.channels, view_.header.channelCount,
                        parameters.data(), static_cast<uint32_t>(parameters.size()),
-                       writes.data(), LayerCount(), nullptr, 0, required);
+                       writes.data(), LayerCount(),
+                       referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                       majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                       nullptr, 0, required);
     bytes.assign(required, 0u);
     size_t written = 0;
     if (!WriteVoxelDocument(view_.channels, view_.header.channelCount,
                             parameters.data(), static_cast<uint32_t>(parameters.size()),
-                            writes.data(), LayerCount(), bytes.data(), bytes.size(), written)) {
+                            writes.data(), LayerCount(),
+                            referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                            majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                            bytes.data(), bytes.size(), written)) {
         diagnostic = {DocumentDiagnosticCode::WriteError,
                       "WriteVoxelDocument failed sizing/writing the document"};
         return false;
     }
     bytes.resize(written);
+    const bool needsMaterialVersion = majorMaterialId_ != 0u || minorMaterialId_ != 0u ||
+                                      majorMaterialPercent_ != 0u;
+    const uint32_t targetVersion = referenceRows.empty()
+        ? (needsMaterialVersion ? kVdc1MaterialVersion
+                                : (authoredFormatVersion_ <= kVdc1ParameterVersion
+                                       ? authoredFormatVersion_ : kVdc1MaterialVersion))
+        : kVdc1ReferenceVersion;
+    if (targetVersion != kVdc1MaterialVersion && targetVersion != kVdc1ReferenceVersion &&
+        bytes.size() >= sizeof(VoxelDocumentHeader)) {
+        std::memcpy(bytes.data() + offsetof(VoxelDocumentHeader, formatVersion),
+                    &targetVersion, sizeof(targetVersion));
+    }
     return true;
 }
 

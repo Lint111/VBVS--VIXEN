@@ -41,6 +41,11 @@ void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRe
     view.PopulateRecipes(recipes);
 }
 
+void RefreshEditorPackRecipesView(EditorLayersView& view,
+                                  const std::vector<EditorPackRecipeData>& recipes) {
+    view.PopulatePackRecipes(recipes);
+}
+
 void RefreshEditorStatusView(EditorLayersView& view, const EditorStatusData& status) {
     view.PopulateStatus(status);
 }

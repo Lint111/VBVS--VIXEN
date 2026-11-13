@@ -54,6 +54,7 @@ public:
             Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
                                             &selectedLayer_, &primitives_, &opChoices_, &shape_,
                                             &selectedShape_, &shapeNote_, &pickerFilter_, &activeLayerCountRaw_, &recipes_,
+                                            &packRecipes_,
                                             &statusDocument_, &statusMessage_, &flowState_,
                                             &undoDepth_, &redoDepth_ });
         model_ = c.GetModelHandle();
@@ -215,6 +216,19 @@ public:
         if (model_) model_.DirtyVariable("recipes");
     }
 
+    // R872.6: the Add flyout's second section, using the same filter publication cadence as primitives.
+    void PopulatePackRecipes(const std::vector<EditorPackRecipeData>& recipeData) {
+        packRecipes_.clear();
+        packRecipes_.reserve(recipeData.size());
+        for (const auto& recipe : recipeData) {
+            Vixen::Views::EditorPackRecipeRow row;
+            row.id = Rml::String(recipe.id);
+            row.elementId = "recipe-ref-" + recipe.id + "-add";
+            packRecipes_.push_back(std::move(row));
+        }
+        if (model_) model_.DirtyVariable("packRecipes");
+    }
+
     // R766: the status-line panel's fields.
     void PopulateStatus(const EditorStatusData& status) {
         statusDocument_ = Rml::String(status.document);
@@ -278,6 +292,7 @@ private:
     Rml::String pickerFilter_;
     int activeLayerCountRaw_ = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes_;
+    std::vector<Vixen::Views::EditorPackRecipeRow> packRecipes_;
     Rml::String statusDocument_;
     Rml::String statusMessage_;
     Rml::String flowState_;

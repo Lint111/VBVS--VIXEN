@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <array>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -37,6 +38,13 @@ enum class DocumentDiagnosticCode : uint8_t {
     InvalidLayerOp,
     FieldNotEditable,
     InvalidPrimitiveField,
+    InvalidDocumentMaterial,
+    InvalidReferenceId,
+    TooManyReferences,
+    DuplicateReference,
+    ReferenceInUse,
+    ReferenceNotFound,
+    InvalidReferenceLayer,
 };
 
 struct DocumentDiagnostic {
@@ -110,6 +118,7 @@ public:
     uint32_t LayerCount() const;
     uint32_t EnabledMask() const;
     uint64_t Revision() const;
+    uint32_t FormatVersion() const;
 
     uint32_t ParameterCount() const;
     std::string ParameterName(uint32_t index) const;
@@ -121,6 +130,25 @@ public:
     float ParameterMax(uint32_t index) const;
     std::array<float, 6> EffectiveParameterValues() const;
     DocumentBakeSnapshot CaptureBakeSnapshot() const;
+
+    // VDC1 v3 document-level material regions. A zero triple means no material assignment;
+    // otherwise ids are nonzero and majorPercent is 1..99, matching the generated writer.
+    uint32_t MajorMaterialId() const { return majorMaterialId_; }
+    uint32_t MinorMaterialId() const { return minorMaterialId_; }
+    uint32_t MajorMaterialPercent() const { return majorMaterialPercent_; }
+    bool SetDocumentMaterials(uint32_t major, uint32_t minor, uint32_t majorPercent,
+                              DocumentDiagnostic& diagnostic);
+
+    // VDC1 v4 recipe-reference table. Ids are the authored <pack>:<recipe> strings; layers carry
+    // one InvokeRecipe instruction whose data[0] is the table index.
+    const std::vector<std::string>& References() const { return references_; }
+    bool AddReference(const std::string& id, DocumentDiagnostic& diagnostic);
+    bool RemoveReference(const std::string& id, DocumentDiagnostic& diagnostic);
+    bool MakeRecipeReferenceLayer(const std::string& id, const std::string& name,
+                                  EditableDocumentLayer& out, DocumentDiagnostic& diagnostic) const;
+    static bool ValidateReferenceId(const std::string& id, DocumentDiagnostic& diagnostic);
+    bool IsRecipeReferenceLayer(uint32_t index, std::string* id,
+                                DocumentDiagnostic& diagnostic) const;
 
     // All document layer-state mutations pass through these validated operations. The mask
     // accepts only bits corresponding to layers admitted by Load().
@@ -246,6 +274,13 @@ public:
     bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
                               const DocumentBakeSnapshot& snapshot,
                               DocumentDiagnostic& diagnostic) const;
+    using RecipeReferenceResolver = std::function<bool(const std::string& reference,
+                                                       uint32_t& recipeId)>;
+    bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+                              const DocumentBakeSnapshot& snapshot,
+                              const RecipeReferenceResolver& resolver,
+                              bool skipUnresolvedReferences,
+                              DocumentDiagnostic& diagnostic) const;
 
     // Encodes the accepted document (layers, enabled state, parameter values) as VDC1 bytes.
     bool Serialize(std::vector<uint8_t>& bytes, DocumentDiagnostic& diagnostic) const;
@@ -257,6 +292,7 @@ private:
     static uint32_t ValidMaskForLayerCount(uint32_t count);
     std::vector<EditableDocumentLayer> CopyLayers() const;
     std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader> CopyParameters() const;
+    std::vector<Yeroket::Sdf::Generated::VoxelDocReference> CopyReferences() const;
     bool Rebuild(std::vector<EditableDocumentLayer> layers,
                  std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader> parameters,
                  uint32_t enabledMask, DocumentDiagnostic& diagnostic);
@@ -266,6 +302,12 @@ private:
     std::string sourcePath_;
     uint32_t enabledMask_ = 0;
     uint64_t revision_ = 0;
+    uint32_t authoredFormatVersion_ = 1;
+    uint32_t majorMaterialId_ = 0;
+    uint32_t minorMaterialId_ = 0;
+    uint32_t majorMaterialPercent_ = 0;
+    std::vector<std::string> references_;
+    bool serializationDirty_ = false;
 };
 
 }  // namespace Vixen::Editor

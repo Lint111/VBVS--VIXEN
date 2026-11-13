@@ -16,6 +16,15 @@
         <ut-list class="fill picker-rows">
             <ut-button variant="row" data-for="item : primitives" data-attr-id="item.elementId" data-attr-label="item.display"> </ut-button>
         </ut-list>
+        <!-- R872.6: the same filter drives the second, pack-recipe section. Each row dispatches
+             InsertRecipeReference and is omitted for the open recipe by the editor publisher. -->
+        <div class="picker-section">
+            <div class="picker-section-title">Pack recipes</div>
+            <div class="hint picker-hint" data-if="packRecipes.size == 0">No pack recipes match "{{pickerFilter}}".</div>
+            <div class="picker-rows">
+                <ut-button variant="row" data-for="item : packRecipes" data-attr-id="item.elementId" data-attr-label="item.id"> </ut-button>
+            </div>
+        </div>
         <div class="hint picker-hint">Type to filter, Enter adds the first match, Esc closes.</div>
     </ut-flyout>
 </body>
