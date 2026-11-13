@@ -110,6 +110,7 @@ void DynamicInstanceBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     if (mapped) {
         std::memcpy(mapped, transforms.data(),
                     static_cast<size_t>(instanceCount_) * sizeof(glm::mat4));
+        VIXEN_LEDGER_WRITTEN(mapped, static_cast<size_t>(instanceCount_) * sizeof(glm::mat4));
     }
 
     // Emit THIS frame's buffer so the descriptor binds the freshly written data.

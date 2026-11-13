@@ -6,6 +6,10 @@
 # ninja and cl.exe and releases the Global\Vixen* mutexes (a following build takes the abandoned
 # mutex over, see NamedMutex.ps1).
 #
+# The same root PID is also written to UT_QUEUE_WINROOT_FILE when the queue wrapper set it (forwarded through WSLENV as a path): that is
+# the job's registration with the box-queue host sampler, which measures this Windows tree's CPU for the job's tokens (sn-wincpu1). The
+# queue file is written even when the launcher passed no VIXEN_NATIVE_PIDFILE.
+#
 # Usage (dot-source): . "$PSScriptRoot\Register-NativeRunRoot.ps1"
 # No-op when VIXEN_NATIVE_PIDFILE is unset (a hand-run build.bat). Never fails the build.
 function Get-NativeRunRootPid {
@@ -21,16 +25,25 @@ function Get-NativeRunRootPid {
     return $rootPid
 }
 
+function Write-NativeRunRoot([string]$Path, [int]$RootPid) {
+    $tmp = "$Path.tmp"
+    Set-Content -Path $tmp -Value $RootPid -Encoding ascii
+    Move-Item -Path $tmp -Destination $Path -Force
+}
 function Register-NativeRunRoot {
-    if (-not $env:VIXEN_NATIVE_PIDFILE) { return }
+    if (-not $env:VIXEN_NATIVE_PIDFILE -and -not $env:UT_QUEUE_WINROOT_FILE) { return }
     try {
         $rootPid = Get-NativeRunRootPid
-        $tmp = "$($env:VIXEN_NATIVE_PIDFILE).tmp"
-        Set-Content -Path $tmp -Value $rootPid -Encoding ascii
-        Move-Item -Path $tmp -Destination $env:VIXEN_NATIVE_PIDFILE -Force
-        Write-Host "[native] Registered process tree root PID $rootPid for queue cancellation."
+        if ($env:VIXEN_NATIVE_PIDFILE) {
+            Write-NativeRunRoot $env:VIXEN_NATIVE_PIDFILE $rootPid
+            Write-Host "[native] Registered process tree root PID $rootPid for queue cancellation."
+        }
+        if ($env:UT_QUEUE_WINROOT_FILE) {
+            Write-NativeRunRoot $env:UT_QUEUE_WINROOT_FILE $rootPid
+            Write-Host "[native] Registered process tree root PID $rootPid for queue CPU attribution."
+        }
     } catch {
-        Write-Host "[native] WARNING: could not register the process tree for cancellation ($_). A queue cancel will not stop this build; see tools/vixen-native.sh."
+        Write-Host "[native] WARNING: could not register the process tree ($_). A queue cancel will not stop this build and the queue cannot attribute its CPU; see tools/vixen-native.sh."
     }
 }
 Register-NativeRunRoot
