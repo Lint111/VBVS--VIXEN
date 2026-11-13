@@ -16,12 +16,6 @@ body {
     pointer-events: auto;  /* the panel owns its pointer: wheel scrolls it, a click or drag on it is not a world pick or camera drag */
 }
 
-.panel {
-    display: block;
-    padding: 8px 10px;
-    pointer-events: none;
-}
-
 .subtitle {
     display: block;
     color: #90c0ff;
@@ -53,25 +47,6 @@ body {
     display: inline-block;
     color: #90c0ff;
     font-size: 13px;
-}
-
-.button {
-    display: inline-block;
-    min-width: 16px;
-    margin-left: 3px;
-    padding: 1px 4px;
-    color: #d0e0ff;
-    text-align: center;
-    background-color: #303050;
-    border-width: 1px;
-    border-color: #6080c0;
-    pointer-events: auto;
-}
-
-.button.selected {
-    color: #ffffff;
-    background-color: #50609a;
-    border-color: #a0c0ff;
 }
 
 /* sn-editorpicker1: the Layers panel pins its toolbar above scrolling rows (the body does not scroll). */

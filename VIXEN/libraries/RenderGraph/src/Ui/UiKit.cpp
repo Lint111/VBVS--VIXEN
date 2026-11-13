@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <set>
 #include <sstream>
@@ -328,10 +329,18 @@ private:
 
     void ApplyVariant() {
         const std::string variant = Attr("variant");
-        if (!appliedVariant_.empty()) SetClass(appliedVariant_, false);
-        if (!variant.empty()) SetClass(variant, true);
+        const auto each = [](const std::string& list, const std::function<void(const std::string&)>& fn) {
+            std::istringstream words(list);
+            for (std::string w; words >> w;) fn(w);
+        };
+        each(appliedVariant_, [this](const std::string& w) { SetClass(w, false); });
+        each(variant, [this](const std::string& w) { SetClass(w, true); });  // "tool close": every word is a class
         appliedVariant_ = variant;
-        if (info_.kind == Kind::Button) SetAttribute("hit-mask", variant == "round" ? "ellipse" : "none");
+        if (info_.kind == Kind::Button) {
+            bool round = false;
+            each(variant, [&](const std::string& w) { round = round || w == "round"; });
+            SetAttribute("hit-mask", round ? "ellipse" : "none");
+        }
     }
 
     struct Range { bool has = false; float min = 0.0f; float max = 0.0f; };
