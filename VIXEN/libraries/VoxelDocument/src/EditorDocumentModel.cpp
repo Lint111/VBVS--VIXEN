@@ -1376,7 +1376,8 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
                 const std::string& reference = references_[static_cast<uint32_t>(rawIndex)];
                 uint32_t recipeId = 0u;
                 if (!resolver || !resolver(reference, recipeId)) {
-                    if (skipUnresolvedReferences && layerProgram.size() == 1u) {
+                    uint32_t recipeTableIndex = 0u;
+                    if (skipUnresolvedReferences && IsRecipeInstruction(layerProgram, recipeTableIndex)) {
                         diagnostic = {DocumentDiagnosticCode::FlattenError,
                                       "layer " + std::to_string(layerIndex) + ": recipe '" + reference +
                                           "' is inert until its pack is available"};
