@@ -241,18 +241,31 @@ private:
     uint64_t channelEventSequence_ = 0;
     std::vector<std::string> channelEvents_;
     std::unordered_map<std::string, uint64_t> channelActionFrames_;
+    uint64_t channelMutationGeneration_ = 0;
     uint32_t channelObservedMask_ = 0;
     uint64_t channelPresentedFrame_ = 0;
     struct PendingReadback {
         std::string spec;
         uint64_t frame = 0;
+        uint64_t recipeSerial = 0;
         std::chrono::steady_clock::time_point requestedAt{};
+        std::chrono::steady_clock::time_point deadline{};
         bool enqueued = false;
+    };
+    struct DeferredRecipeDispatch {
+        uint64_t beforeSerial = 0;
+        std::chrono::steady_clock::time_point deadline{};
+    };
+    struct PendingPreviewWait {
+        uint64_t serial = 0;
+        std::chrono::steady_clock::time_point deadline{};
     };
     std::unique_ptr<AppFlowReadbackRing> appFlowReadback_;
     std::unordered_map<std::string, PendingReadback> channelReadbacks_;
     std::unordered_map<std::string, std::string> channelReadbackResults_;
     std::unordered_map<std::string, std::string> channelDeferredDispatchResults_;
+    std::unordered_map<std::string, DeferredRecipeDispatch> channelDeferredRecipeDispatches_;
+    std::unordered_map<std::string, PendingPreviewWait> channelPreviewWaits_;
 
     std::shared_ptr<Vixen::Log::Logger> logger_ = std::make_shared<Vixen::Log::Logger>("editor", true);
 };

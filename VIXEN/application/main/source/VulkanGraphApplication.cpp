@@ -177,6 +177,7 @@ bool VulkanGraphApplication::Render() {
             // the rebuild fails terminally — report it and stop (the host reads GetLastError()).
             mainLogger->Warning("[VulkanGraphApplication::Render] GPU device lost — attempting recovery (rebuild on a fresh device)");
             if (renderGraph->RecoverFromDeviceLoss()) {
+                PublishRecipeCompileFailure();
                 mainLogger->Info("[VulkanGraphApplication::Render] Device recovery succeeded — resuming rendering");
                 currentFrame++;
                 return true;  // keep the render loop alive
@@ -186,6 +187,7 @@ bool VulkanGraphApplication::Render() {
             return false;
         }
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+            PublishRecipeCompileFailure();
             mainLogger->Error("Frame rendering failed with result: " + std::to_string(result));
             return false;
         }
@@ -197,13 +199,16 @@ bool VulkanGraphApplication::Render() {
                 renderGraph->GetInstanceByName("render_path/reconstruction_history/state"));
             if (state) state->CommitHistoryFrame();
         }
+        StampRecipePreviewFrame();
         currentFrame++;
         return true;
     } catch (const std::exception& e) {
+        PublishRecipeCompileFailure();
         lastError_ = std::string("Render failed: ") + e.what();
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Render] " + lastError_);
         return false;  // stop the loop; the host reads GetLastError()
     } catch (...) {
+        PublishRecipeCompileFailure();
         lastError_ = "Render failed: unknown (non-std) exception";
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Render] " + lastError_);
         return false;
@@ -545,6 +550,7 @@ void VulkanGraphApplication::RunB1OcclusionCullPreTick() {
 }
 
 void VulkanGraphApplication::PostTick() {
+    PollRecipePreviewFences();
     {
         VIXEN_FRAME_TRACE_SCOPE("post", "poll-captures");
         PollPendingCaptures();
@@ -772,6 +778,15 @@ void VulkanGraphApplication::Update() {
 
     // Phase 2c: like Render(), the Update tick must not throw to a C# host. ProcessEvents() runs event
     // handlers and RecompileDirtyNodes() already catches per-node compile failures; this guards the rest.
+    const uint64_t updateEditSerial = recipeEditSerial_;
+    PollRecipePreviewFences();
+    if (recipeCompileFailureForced_) {
+        // The editor may append its body-instance row delta after the recipe request returns.
+        // Publish on the next update so the failed serial includes that same mutation's final
+        // serial and cannot leave the channel waiting on an unrecorded row delta.
+        PublishRecipeCompileFailure();
+        recipeCompileFailureForced_ = false;
+    }
     try {
         // Application time (legacy - kept for compatibility)
         time.Update();
@@ -2618,6 +2633,17 @@ void VulkanGraphApplication::Update() {
                 VIXEN_FRAME_TRACE_SCOPE("update", "recompile-dirty");
                 renderGraph->RecompileDirtyNodes();
             }
+            if (recipeCompilePendingSerial_ != 0 && !renderGraph->IsCompiled()) {
+                // RecompileDirtyNodes contains per-node failure handling and therefore does not
+                // throw into this method.  Keep a recipe serial from being reported as a good
+                // preview when the shader-library wave stayed dirty after a compile error.
+                PublishRecipeCompileFailure();
+            } else {
+                recipeCompilePendingSerial_ = 0;
+                if (pendingRecipeAnalyses_.empty() && !recompileAfterAnalysis_ && !proceduralSwapPending_) {
+                    recipeEditCoveredSerial_ = updateEditSerial;
+                }
+            }
         }
 
         // Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger + re-sort
@@ -2649,10 +2675,12 @@ void VulkanGraphApplication::Update() {
         }
         ++hudUpdateTick_;
     } catch (const std::exception& e) {
+        PublishRecipeCompileFailure();
         // Record + continue: a fatal condition also surfaces via the next Render() (which returns false).
         lastError_ = std::string("Update failed: ") + e.what();
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Update] " + lastError_);
     } catch (...) {
+        PublishRecipeCompileFailure();
         lastError_ = "Update failed: unknown (non-std) exception";
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::Update] " + lastError_);
     }
@@ -2715,6 +2743,78 @@ void VulkanGraphApplication::MarkVoxelSceneDirty() {
     renderGraph->MarkNodeNeedsRecompile(voxelGridNode_);
 }
 
+void VulkanGraphApplication::AdvanceRecipeEditSerial() {
+    ++recipeEditSerial_;
+}
+
+void VulkanGraphApplication::PollRecipePreviewFences() {
+    const uint64_t published = RecipePreviewSerial();
+    for (auto it = pendingRecipePreviewFrames_.begin(); it != pendingRecipePreviewFrames_.end();) {
+        if (it->serial <= published) {
+            it = pendingRecipePreviewFrames_.erase(it);
+            continue;
+        }
+        if (!it->device || it->device->device == VK_NULL_HANDLE || it->fence == VK_NULL_HANDLE) {
+            recipePreviewFence_.Publish(it->serial, false);
+            it = pendingRecipePreviewFrames_.erase(it);
+            continue;
+        }
+        const VkResult status = vkGetFenceStatus(it->device->device, it->fence);
+        if (status == VK_SUCCESS) {
+            recipePreviewFence_.Publish(it->serial, true);
+            const uint64_t oldFrame = recipePreviewFrame_.load(std::memory_order_relaxed);
+            if (oldFrame < it->frame) recipePreviewFrame_.store(it->frame, std::memory_order_release);
+            it = pendingRecipePreviewFrames_.erase(it);
+        } else if (status == VK_ERROR_DEVICE_LOST) {
+            recipePreviewFence_.Publish(it->serial, false);
+            it = pendingRecipePreviewFrames_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void VulkanGraphApplication::StampRecipePreviewFrame() {
+    const uint64_t serial = recipeEditCoveredSerial_;
+    if (serial == 0 || serial <= RecipePreviewSerial() || recipeCompilePendingSerial_ != 0) return;
+    for (const auto& pending : pendingRecipePreviewFrames_) {
+        if (pending.serial == serial) return;
+    }
+
+    auto* frameSync = static_cast<FrameSyncNode*>(
+        renderGraph->GetInstanceByName("frame_sync"));
+    auto* deviceNode = static_cast<DeviceNode*>(
+        renderGraph->GetInstanceByName("main_device"));
+    VulkanDevice* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
+    const VkFence fence = frameSync ? frameSync->GetCurrentInFlightFence() : VK_NULL_HANDLE;
+    if (!device || fence == VK_NULL_HANDLE) {
+        // A graph without the ordinary frame-sync owner cannot provide the GPU-fence contract.
+        // Complete the serial as failed so an editor waiter still terminates deterministically.
+        recipePreviewFence_.Publish(serial, false);
+        return;
+    }
+    pendingRecipePreviewFrames_.push_back(
+        PendingRecipePreviewFrame{device, fence, serial, frameCounter_ + 1});
+}
+
+void VulkanGraphApplication::PublishRecipeCompileFailure() {
+    uint64_t serial = recipeCompilePendingSerial_;
+    const bool compileWasPending = serial != 0 || !pendingRecipeAnalyses_.empty() || recompileAfterAnalysis_;
+    if (serial == 0 && compileWasPending) serial = recipeEditSerial_;
+    // Body/data edits can advance the shared serial after the shader request starts (the editor
+    // publishes its new instance row in the same mutation).  A failed compile leaves all edits
+    // since that request unready, so advance through the latest serial rather than stranding the
+    // channel on the later row delta.
+    if (compileWasPending) serial = std::max(serial, recipeEditSerial_);
+    if (serial == 0 && recipeEditCoveredSerial_ > RecipePreviewSerial()) serial = recipeEditCoveredSerial_;
+    if (serial != 0 && serial > RecipePreviewSerial()) {
+        recipePreviewFence_.Publish(serial, false);
+        recipePreviewFrame_.store(frameCounter_, std::memory_order_release);
+        recipeEditCoveredSerial_ = serial;
+    }
+    recipeCompilePendingSerial_ = 0;
+}
+
 void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances) {
     // M-wire Task 8: forward the host-side instance list to BodyOctreeSceneNode, which will
     // re-upload the instance SSBO (binding 10) on the next compile tick.
@@ -2723,6 +2823,7 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
         renderGraph->GetInstance(bodyOctreeSceneNode_));
     if (node) {
         node->SetInstances(std::move(instances));
+        AdvanceRecipeEditSerial();
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::SetBodyInstances] bodyOctreeSceneNode_ not found — bodies not updated");
     }
@@ -2737,7 +2838,9 @@ uint64_t VulkanGraphApplication::BodyInstanceEpoch() const {
 bool VulkanGraphApplication::UpdateBodyInstanceRows(std::span<const Vixen::SVO::BodyInstanceRowDelta> rows) {
     auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
         renderGraph->GetInstance(bodyOctreeSceneNode_));
-    return node && node->UpdateInstanceRows(rows);
+    const bool updated = node && node->UpdateInstanceRows(rows);
+    if (updated) AdvanceRecipeEditSerial();
+    return updated;
 }
 
 void VulkanGraphApplication::SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up,

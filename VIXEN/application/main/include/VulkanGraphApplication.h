@@ -16,10 +16,12 @@
 #include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Push/BuildingInspectorAsView seam (gaia-free)
 #include "Ui/PanelDockHost.h"  // R766: the app's docked panels (RmlUi-free header)
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
+#include "RecipePreviewFence.h"  // editor recipe-edit serial -> GPU-fence completion
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
 #include "Nodes/GeneratedSystemStage.h"  // renderbridge S1: generated GPU systems instantiated from the composition manifest
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <future>
@@ -433,6 +435,27 @@ private:
     void MarkProceduralShaderLibsDirty();            // drain GPU, then mark the libraries for recompile
     void PollProceduralShaderSwap();                 // per update tick: swap when every precompile finished
 
+    // Ready-fence state: an edit serial is covered only after analysis and the worker-side shader
+    // swap have settled. The serial is then attached to the next submitted frame and published
+    // when that frame's ordinary in-flight fence signals.
+    struct PendingRecipePreviewFrame {
+        VulkanDevice* device = nullptr;
+        VkFence fence = VK_NULL_HANDLE;
+        uint64_t serial = 0;
+        uint64_t frame = 0;
+    };
+    uint64_t recipeEditSerial_ = 0;
+    uint64_t recipeEditCoveredSerial_ = 0;
+    uint64_t recipeCompilePendingSerial_ = 0;
+    bool recipeCompileFailureForced_ = false;
+    std::vector<PendingRecipePreviewFrame> pendingRecipePreviewFrames_;
+    RecipePreviewFence recipePreviewFence_;
+    std::atomic<uint64_t> recipePreviewFrame_{0};
+    void AdvanceRecipeEditSerial();
+    void PollRecipePreviewFences();
+    void StampRecipePreviewFrame();
+    void PublishRecipeCompileFailure();
+
     // RE8: bound/occupancy analysis of a runtime recipe edit runs on a worker. The registry holds a
     // provisional entry (old analysis fields) at once; the analysed entry is published on the frame
     // thread when ready, and the shader precompile starts only after the last publish.
@@ -726,6 +749,19 @@ public:
     void SetLockstepProceduralRecompile(bool lockstep) { lockstepProceduralRecompile_ = lockstep; }
     // True while an off-thread procedural shader compile is running and its swap has not happened yet.
     [[nodiscard]] bool IsProceduralShaderSwapPending() const { return proceduralSwapPending_; }
+    // Ready-fence channel API. Wait is bounded and may be called by non-frame hosts; the editor
+    // channel itself uses the same serial as a non-blocking request so it never stalls rendering.
+    [[nodiscard]] uint64_t RecipeEditSerial() const noexcept { return recipeEditSerial_; }
+    [[nodiscard]] uint64_t RecipePreviewSerial() const noexcept { return recipePreviewFence_.PublishedSerial(); }
+    [[nodiscard]] uint64_t RecipePreviewFrame() const noexcept {
+        return recipePreviewFrame_.load(std::memory_order_acquire);
+    }
+    [[nodiscard]] bool WaitRecipePreview(uint64_t serial, std::chrono::milliseconds timeout) const {
+        return recipePreviewFence_.Wait(serial, timeout);
+    }
+    [[nodiscard]] bool RecipePreviewSucceeded(uint64_t serial) const noexcept {
+        return recipePreviewFence_.Succeeded(serial);
+    }
     // Editor Brick-Residency Fix: forwards to BodyOctreeSceneNode::RequestBrickResidency (stash-only,
     // dirty-flag pattern -- safe to call any time, including right after SetRecipePool/SetBodyInstances;
     // ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool's passthrough above --

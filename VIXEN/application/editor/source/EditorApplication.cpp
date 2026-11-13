@@ -365,6 +365,7 @@ void EditorApplication::SyncAfterDocumentMutation() {
     layerProvider_.WriteU32(ViewNounKey{ViewNounId::EditorNouns_layerMask}, mask);
     rt_.Layers().SetLayerCount(doc_.LayerCount());
     rt_.Layers().SetMask(mask);
+    ++channelMutationGeneration_;
     dirty_ = true;
     RefreshLayersView();
 }
@@ -1584,11 +1585,28 @@ void EditorApplication::StartPendingReadbacks() {
 
     for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
         PendingReadback& pending = it->second;
+        const auto now = std::chrono::steady_clock::now();
+        if (pending.recipeSerial != 0 && RecipePreviewSerial() < pending.recipeSerial) {
+            if (pending.deadline != std::chrono::steady_clock::time_point{} && now >= pending.deadline) {
+                channelReadbackResults_[it->first] = nlohmann::json{
+                    {"error", "recipe preview wait timed out"},
+                    {"recipePreviewSerial", pending.recipeSerial},
+                    {"publishedRecipePreviewSerial", RecipePreviewSerial()}
+                }.dump();
+                it = channelReadbacks_.erase(it);
+            } else {
+                ++it;
+            }
+            continue;
+        }
+        if (pending.recipeSerial != 0 && pending.frame < channelPresentedFrame_) {
+            pending.frame = channelPresentedFrame_;
+        }
         if (pending.enqueued || pending.frame > channelPresentedFrame_) { ++it; continue; }
         const std::string key = it->first;
         try {
             if (pending.frame < channelPresentedFrame_) {
-                throw std::runtime_error("selected frame passed before its readback was staged");
+                pending.frame = channelPresentedFrame_;
             }
             const nlohmann::json spec = nlohmann::json::parse(pending.spec);
             const nlohmann::json selection = spec.contains("selection")
@@ -1755,6 +1773,10 @@ void EditorApplication::StartPendingReadbacks() {
                 response["frameTimeImpactUs"] = completed.enqueueCpuUs + completed.completionCpuUs + encodeHashCpuUs;
             }
         }
+        if (pendingIt->second.recipeSerial != 0) {
+            response["recipePreviewSerial"] = pendingIt->second.recipeSerial;
+            response["recipePreviewOk"] = RecipePreviewSucceeded(pendingIt->second.recipeSerial);
+        }
         channelReadbackResults_[completed.key] = response.dump();
         channelReadbacks_.erase(pendingIt);
     }
@@ -1840,13 +1862,86 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             {"flow", {{"states", std::move(states)}, {"initial", EnumRecord(kInitialState)},
                        {"current", EnumRecord(rt_.Current())}}},
             {"undo", {{"depth", rt_.Stack().UndoDepth()}, {"redoDepth", rt_.Stack().RedoDepth()}}},
-            {"frame", channelPresentedFrame_}
+            {"frame", channelPresentedFrame_},
+            {"recipePreviewSerial", RecipePreviewSerial()}
         }.dump();
+    }
+
+    if (method == "appflow.wait_recipe_preview") {
+        if (!params.contains("serial") || !params.at("serial").is_number_integer() ||
+            params.at("serial").is_boolean()) {
+            throw std::runtime_error("wait_recipe_preview requires an integer serial");
+        }
+        const int64_t rawSerial = params.at("serial").get<int64_t>();
+        if (rawSerial <= 0) throw std::runtime_error("wait_recipe_preview serial must be positive");
+        const uint64_t serial = static_cast<uint64_t>(rawSerial);
+        const uint32_t timeoutMs = params.value("timeoutMs", params.value("timeout_ms", uint32_t{30000}));
+        if (timeoutMs == 0 || timeoutMs > 60000) {
+            throw std::runtime_error("wait_recipe_preview timeoutMs must be between 1 and 60000");
+        }
+        const std::string waitKey = RequestKey(request.value("id", nlohmann::json(nullptr)));
+        const auto now = std::chrono::steady_clock::now();
+        auto [waitIt, inserted] = channelPreviewWaits_.try_emplace(
+            waitKey, PendingPreviewWait{serial, now + std::chrono::milliseconds(timeoutMs)});
+        if (!inserted && waitIt->second.serial != serial) {
+            waitIt->second = PendingPreviewWait{serial, now + std::chrono::milliseconds(timeoutMs)};
+        }
+        const uint64_t published = RecipePreviewSerial();
+        if (published >= serial) {
+            const bool succeeded = RecipePreviewSucceeded(serial);
+            channelPreviewWaits_.erase(waitIt);
+            nlohmann::json response{
+                {"ready", true}, {"ok", succeeded}, {"serial", serial},
+                {"publishedSerial", published}, {"frame", RecipePreviewFrame()}
+            };
+            if (!succeeded) response["error"] = "recipe preview compilation failed";
+            return response.dump();
+        }
+        if (now >= waitIt->second.deadline) {
+            channelPreviewWaits_.erase(waitIt);
+            return nlohmann::json{
+                {"ready", false}, {"ok", false}, {"timedOut", true},
+                {"serial", serial}, {"publishedSerial", published}
+            }.dump();
+        }
+        return std::nullopt;
     }
 
     if (method == "appflow.dispatch") {
         const nlohmann::json actionRequestId = request.value("id", nlohmann::json(nullptr));
         const std::string actionKey = RequestKey(actionRequestId);
+        if (const auto deferredEdit = channelDeferredRecipeDispatches_.find(actionKey);
+            deferredEdit != channelDeferredRecipeDispatches_.end()) {
+            const auto now = std::chrono::steady_clock::now();
+            const uint64_t currentSerial = RecipeEditSerial();
+            if (currentSerial <= deferredEdit->second.beforeSerial) {
+                if (now >= deferredEdit->second.deadline) {
+                    channelDeferredRecipeDispatches_.erase(deferredEdit);
+                    channelDeferredDispatchResults_.erase(actionKey);
+                    channelReadbacks_.erase(actionKey);
+                    throw std::runtime_error("recipe edit did not advance the preview serial");
+                }
+                return std::nullopt;
+            }
+            if (auto pending = channelReadbacks_.find(actionKey); pending != channelReadbacks_.end()) {
+                pending->second.recipeSerial = currentSerial;
+                pending->second.deadline = deferredEdit->second.deadline;
+            } else if (!channelReadbackResults_.contains(actionKey)) {
+                const auto deferred = channelDeferredDispatchResults_.find(actionKey);
+                if (deferred == channelDeferredDispatchResults_.end()) {
+                    throw std::runtime_error("recipe edit response was lost before its serial advanced");
+                }
+                nlohmann::json response = nlohmann::json::parse(deferred->second);
+                response["recipePreviewSerial"] = currentSerial;
+                response["recipePreviewOk"] = RecipePreviewSucceeded(currentSerial);
+                channelDeferredDispatchResults_.erase(deferred);
+                channelDeferredRecipeDispatches_.erase(actionKey);
+                if (!response["recipePreviewOk"].get<bool>()) {
+                    response["recipePreviewError"] = "recipe preview compilation failed";
+                }
+                return response.dump();
+            }
+        }
         if (const auto deferred = channelDeferredDispatchResults_.find(actionKey);
             deferred != channelDeferredDispatchResults_.end()) {
             const auto pixels = channelReadbackResults_.find(actionKey);
@@ -1855,9 +1950,14 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             const nlohmann::json image = nlohmann::json::parse(pixels->second);
             channelReadbackResults_.erase(pixels);
             channelDeferredDispatchResults_.erase(deferred);
+            channelDeferredRecipeDispatches_.erase(actionKey);
             if (image.contains("error")) throw std::runtime_error(image.at("error").get<std::string>());
             nlohmann::json response = nlohmann::json::parse(deferredJson);
             response["readback"] = image;
+            if (image.contains("recipePreviewSerial")) {
+                response["recipePreviewSerial"] = image.at("recipePreviewSerial");
+                response["recipePreviewOk"] = image.value("recipePreviewOk", true);
+            }
             return response.dump();
         }
         if (params.contains("readback")) {
@@ -1872,6 +1972,8 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         if (static_cast<int>(hasId) + static_cast<int>(hasSelector) + static_cast<int>(hasChord) != 1) {
             throw std::runtime_error("dispatch requires exactly one of actionId, selector, or chord");
         }
+        const uint64_t beforeEditSerial = RecipeEditSerial();
+        const uint64_t beforeMutation = channelMutationGeneration_;
         DispatchResult result = DispatchResult::RejectedByState;
         FlowActionId actionId{};
         if (hasId) {
@@ -1917,22 +2019,31 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         }
         channelActionFrames_[actionKey] = channelPresentedFrame_ + 1;
         RecordAppFlowEvent("dispatch");
-        const nlohmann::json response{
+        nlohmann::json response{
             {"dispatchResult", {{"code", static_cast<int>(result)},
                                  {"name", std::string(magic_enum::enum_name(result))}}},
             {"actionId", actionRequestId},
             {"frame", channelPresentedFrame_ + 1},
             {"flowState", EnumRecord(rt_.Current())},
             {"undoDepth", rt_.Stack().UndoDepth()},
-            {"redoDepth", rt_.Stack().RedoDepth()}
+            {"redoDepth", rt_.Stack().RedoDepth()},
+            {"recipePreviewSerial", beforeEditSerial}
         };
+        const bool edited = channelMutationGeneration_ != beforeMutation;
+        if (edited) {
+            channelDeferredRecipeDispatches_[actionKey] = DeferredRecipeDispatch{
+                beforeEditSerial, std::chrono::steady_clock::now() + std::chrono::seconds(60)};
+            channelDeferredDispatchResults_[actionKey] = response.dump();
+        }
         if (params.contains("readback")) {
             const auto& visual = params.at("readback");
             channelReadbacks_[actionKey] = PendingReadback{
-                visual.dump(), channelPresentedFrame_ + 1, std::chrono::steady_clock::now(), false};
+                visual.dump(), channelPresentedFrame_ + 1, 0, std::chrono::steady_clock::now(),
+                std::chrono::steady_clock::now() + std::chrono::seconds(60), false};
             channelDeferredDispatchResults_[actionKey] = response.dump();
             return std::nullopt;
         }
+        if (edited) return std::nullopt;
         return response.dump();
     }
 
@@ -2068,11 +2179,26 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             if (!params.at("frame").is_number_integer()) throw std::runtime_error("frame must be an integer");
             targetFrame = params.at("frame").get<uint64_t>();
         }
+        uint64_t recipeSerial = 0;
+        if (params.contains("recipePreviewSerial")) {
+            if (!params.at("recipePreviewSerial").is_number_integer() ||
+                params.at("recipePreviewSerial").is_boolean()) {
+                throw std::runtime_error("recipePreviewSerial must be an integer");
+            }
+            const int64_t rawSerial = params.at("recipePreviewSerial").get<int64_t>();
+            if (rawSerial <= 0) throw std::runtime_error("recipePreviewSerial must be positive");
+            recipeSerial = static_cast<uint64_t>(rawSerial);
+        }
+        const uint32_t timeoutMs = params.value("timeoutMs", params.value("timeout_ms", uint32_t{30000}));
+        if (timeoutMs == 0 || timeoutMs > 60000) {
+            throw std::runtime_error("readback timeoutMs must be between 1 and 60000");
+        }
         if (targetFrame < channelPresentedFrame_) {
-            throw std::runtime_error("requested frame has already passed; attach readback to dispatch or request the next frame");
+            targetFrame = channelPresentedFrame_;
         }
         channelReadbacks_[requestKey] = PendingReadback{
-            params.dump(), targetFrame, std::chrono::steady_clock::now(), false};
+            params.dump(), targetFrame, recipeSerial, std::chrono::steady_clock::now(),
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs), false};
         return std::nullopt;
     }
 

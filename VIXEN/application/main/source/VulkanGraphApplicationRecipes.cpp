@@ -851,7 +851,11 @@ void VulkanGraphApplication::PublishReadyRecipeAnalyses(bool wait) {
 Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProceduralRecipe(
     uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
     // Before the graph compiles, the first Compile() reads the registry: derive in place.
-    if (graphCompiled) return SubmitRecipeMutation(recipeId, std::move(entry), /*replace=*/false);
+    if (graphCompiled) {
+        const auto result = SubmitRecipeMutation(recipeId, std::move(entry), /*replace=*/false);
+        if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) AdvanceRecipeEditSerial();
+        return result;
+    }
 
     const auto analysis = AnalyzeEntry(entry);
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -875,17 +879,27 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
                           std::string("none (unavailable from the kernel analysis service)")));
     }
     const auto result = proceduralRecipes_.Register(recipeId, entry);
-    if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) RegisterRecipeContent(recipeId, entry);
+    if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+        RegisterRecipeContent(recipeId, entry);
+        AdvanceRecipeEditSerial();
+    }
     return result;
 }
 
 Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::ReplaceProceduralRecipe(
     uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
-    if (graphCompiled) return SubmitRecipeMutation(recipeId, std::move(entry), /*replace=*/true);
+    if (graphCompiled) {
+        const auto result = SubmitRecipeMutation(recipeId, std::move(entry), /*replace=*/true);
+        if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) AdvanceRecipeEditSerial();
+        return result;
+    }
 
     (void)AnalyzeEntry(entry);
     const auto result = proceduralRecipes_.Replace(recipeId, entry);
-    if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) RegisterRecipeContent(recipeId, entry);
+    if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+        RegisterRecipeContent(recipeId, entry);
+        AdvanceRecipeEditSerial();
+    }
     return result;
 }
 
@@ -919,6 +933,20 @@ void VulkanGraphApplication::RecompileProceduralShader() {
     }
     if (!computeShaderLibNode_.IsValid()) {
         if (mainLogger) mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");
+        recipeCompilePendingSerial_ = recipeEditSerial_;
+        PublishRecipeCompileFailure();
+        return;
+    }
+    // The editor's failure witness must exercise the same serial/failure contract without
+    // launching the expensive worker precompile first.  A real compiler exception is reported
+    // through this same publication path; the hook only selects that outcome deterministically.
+    if (const char* forcedFailure = std::getenv("VIXEN_EDITOR_FORCE_RECIPE_COMPILE_FAILURE");
+        forcedFailure && std::strcmp(forcedFailure, "1") == 0) {
+        recipeCompilePendingSerial_ = recipeEditSerial_;
+        recipeCompileFailureForced_ = true;
+        if (mainLogger) {
+            mainLogger->Error("[VulkanGraphApplication::RecompileProceduralShader] forced recipe preview compile failure");
+        }
         return;
     }
     if (!pendingRecipeAnalyses_.empty()) {
@@ -982,6 +1010,7 @@ void VulkanGraphApplication::FlushProceduralShaderSwap() {
 
 void VulkanGraphApplication::MarkProceduralShaderLibsDirty() {
     VIXEN_FRAME_TRACE_SCOPE("update", "procedural-swap-mark");
+    recipeCompilePendingSerial_ = recipeEditSerial_;
     // Replacing editor rule layers rebuilds the shader library and every dependent pipeline.
     // Drain prior frame submissions first: those pipelines may still be referenced by GPU work
     // even though the graph's ordinary recompile path does not wait device-wide.

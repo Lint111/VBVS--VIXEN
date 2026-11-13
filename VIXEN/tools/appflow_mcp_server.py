@@ -63,6 +63,19 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "appflow.wait_recipe_preview",
+        "description": "Wait until the editor has published a compiled recipe preview and its GPU frame fence.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "serial": {"type": "integer", "minimum": 1},
+                "timeoutMs": {"type": "integer", "minimum": 1, "maximum": 60000},
+            },
+            "required": ["serial"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "appflow.readback",
         "description": "Read native-resolution pixels for a screen rectangle, selector, scene instance, entity, or full frame.",
         "inputSchema": {
@@ -72,6 +85,8 @@ TOOLS: list[dict[str, Any]] = [
                 "format": {"type": "string", "enum": ["png", "raw"]},
                 "actionId": {"oneOf": [{"type": "integer"}, {"type": "string"}]},
                 "frame": {"type": "integer", "minimum": 0},
+                "recipePreviewSerial": {"type": "integer", "minimum": 1},
+                "timeoutMs": {"type": "integer", "minimum": 1, "maximum": 60000},
             },
             "required": ["selection"],
             "additionalProperties": False,
@@ -106,12 +121,16 @@ def tool_content(name: str, arguments: dict[str, Any], client: AppFlowClient) ->
         result = client.subscribe(arguments.get("after", 0))
     elif name == "appflow.await_frame":
         result = client.await_frame(action_id=arguments.get("actionId"), after_frame=arguments.get("afterFrame"))
+    elif name == "appflow.wait_recipe_preview":
+        result = client.wait_recipe_preview(arguments["serial"], arguments.get("timeoutMs", 30000))
     elif name == "appflow.readback":
         result = client.readback(
             arguments["selection"],
             format=arguments.get("format", "png"),
             action_id=arguments.get("actionId"),
             frame=arguments.get("frame"),
+            recipe_preview_serial=arguments.get("recipePreviewSerial"),
+            timeout_ms=arguments.get("timeoutMs", 30000),
         )
     elif name == "appflow.pause":
         result = client.pause()
@@ -204,7 +223,10 @@ def response(request: dict[str, Any], client: AppFlowClient, legacy_version: str
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--descriptor", default=os.environ.get("VIXEN_APPFLOW_DESCRIPTOR"))
-    parser.add_argument("--timeout", type=float, default=45.0)
+    # The editor channel's bounded preview wait accepts up to 60 seconds.  Keep the
+    # transport timeout above that application-level bound so a valid wait can return
+    # ready/timedOut instead of being converted into an MCP parse error first.
+    parser.add_argument("--timeout", type=float, default=75.0)
     args = parser.parse_args()
     if not args.descriptor:
         parser.error("--descriptor or VIXEN_APPFLOW_DESCRIPTOR is required")
