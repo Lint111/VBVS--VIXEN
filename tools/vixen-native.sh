@@ -329,6 +329,14 @@ run_bat() {
     rm -f "$pid_file"
     export VIXEN_NATIVE_PIDFILE="$pid_file"
     say "running: cmd.exe /c $win_arg ${cmd_args[*]:-} (log: $log_file)"
+    # Attribution: the queue core registers the Windows tree whose root the build writes to $pid_file, so the job's
+    # CPU, memory and VRAM are attributed (docs/job-tokens.md in box-queue). The core no-ops outside a queue job; a failure only
+    # leaves the job unattributed (heuristic), never fails the build.
+    local registrar_pid=""
+    if [[ -r "${UT_QUEUE_CORE_DIR:-}/box-queue-core.dll" ]]; then
+        "${UT_QUEUE_DOTNET:-dotnet}" "$UT_QUEUE_CORE_DIR/box-queue-core.dll" winroot-register --from "$pid_file" >&2 &
+        registrar_pid=$!
+    fi
     # The last link/stage step of a native build is silent and uses almost no WSL-side CPU, which
     # the queue's idle watchdog reads as a stall (T-6207). Say that the Windows process is alive.
     local heartbeat_pid started=$SECONDS
@@ -351,8 +359,8 @@ run_bat() {
     if [[ -n "$cancelled" ]]; then wait "$run_pid" 2>/dev/null; rc=$((128 + cancelled_signo)); fi
     set -e
     trap - TERM INT HUP
-    kill "$heartbeat_pid" 2>/dev/null || true
-    wait "$heartbeat_pid" 2>/dev/null || true
+    kill "$heartbeat_pid" $registrar_pid 2>/dev/null || true
+    wait "$heartbeat_pid" $registrar_pid 2>/dev/null || true
     nw_claim_release
     rm -f "$pid_file"
     say "exit code $rc"
