@@ -119,7 +119,7 @@ body.building-inspector {
 }
 
 ut-panel.hud,
-body.building-inspector > #building {
+body.building-inspector > #building > .ut-hud-panel {
     position: absolute;
     left: 12px;
     bottom: 12px;
@@ -134,7 +134,7 @@ body.building-inspector > #building {
     border-radius: 4px;
     pointer-events: none;
 }
-body.building-inspector > #building > ut-panel.hud {
+body.building-inspector > #building > .ut-hud-panel > ut-panel.hud {
     position: static;
     left: auto;
     bottom: auto;
