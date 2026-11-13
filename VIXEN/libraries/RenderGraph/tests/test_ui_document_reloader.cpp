@@ -256,6 +256,11 @@ TEST_F(UiDocumentReloaderTest, KitFragmentsAreDependenciesOfEveryDocumentAndABro
     Write("t.rml", Document("<ut-button id=\"kit-button\" label=\"x\"/>"));
     ASSERT_TRUE(Reload());
     ASSERT_NE(doc_->GetElementById("kit-button"), nullptr);
+    EXPECT_EQ(doc_->GetElementById("kit-button")->GetInnerRML().find("PRE"), std::string::npos);
+    Write("kit/button.rml", "<span class=\"pre\">PRE</span><span part=\"label\" class=\"ut-label\"></span>\n");
+    ASSERT_TRUE(UiDocumentReloader::Changed(watch_));
+    ASSERT_TRUE(Reload());
+    EXPECT_NE(doc_->GetElementById("kit-button")->GetInnerRML().find("PRE"), std::string::npos) << "a fragment edit reaches the reloaded instance";
     before = doc_;
     Write("kit/button.rml", "<span part=\"label\" class=\"ut-label\">\n<b>\n");   // never closed
     EXPECT_FALSE(Reload());
