@@ -199,6 +199,11 @@ bool UIRenderNode::RebindPrimaryView(const std::shared_ptr<IView>& candidate) {
     return true;
 }
 
+std::vector<std::string> UIRenderNode::UnfedViewFields() const {
+    const auto blob = std::dynamic_pointer_cast<BlobView>(view_);
+    return blob ? blob->UnfedFields() : std::vector<std::string>{};
+}
+
 void UIRenderNode::PollHudHotReload() {
     if (!hudHotReloadEnabled_ || !initialized_ || !context_ || !configuredView_) return;
     if (++hotReloadPollTicks_ % 15u != 0u) return;  // low-cadence mtime poll; no watcher thread

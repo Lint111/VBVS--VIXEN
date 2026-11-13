@@ -32,6 +32,19 @@ public:
     using Params = std::vector<std::pair<std::string, std::string>>;
     using Handler = std::function<void(const Params&)>;
 
+    // R874.3: the runtime's OWN copy of the loaded declarations (nothing points into the parsed file, which the caller may
+    // destroy). `appflow.list` reads these, not the compiled-in tables; `implemented` is whether a handler is registered.
+    struct CatalogAction {
+        Generated::FlowActionId id{};
+        std::vector<std::pair<std::string, Generated::FlowParamType>> params;
+    };
+    struct CatalogTransition {
+        std::string id;
+        Generated::FlowStateId from{};
+        Generated::FlowStateId to{};
+        Generated::FlowGuardId guard{};
+    };
+
     AppFlowRuntime(Vixen::EventBus::MessageBus* bus, Vixen::EventBus::SenderID sender);
 
     // Builds the generated AppFlowContainerView and loads it into the fsm/stack/bindings (+ M2c
@@ -51,6 +64,27 @@ public:
         sender_ = sender;
     }
 
+    // The loaded declarations (replaced by Load and Reload).
+    const std::vector<CatalogAction>& CatalogActions() const { return catalogActions_; }
+    const std::vector<CatalogTransition>& CatalogTransitions() const { return catalogTransitions_; }
+    const DataTargetTable& DataTargets() const { return dataTargets_; }
+    // True iff a handler is registered for `id`. False for a declared action with no code behind it, and for an unknown id.
+    bool IsImplemented(Generated::FlowActionId id) const { return handlers_.contains(uint16_t(id)); }
+    // Declared in the loaded data, no handler registered: visible but inert (R874.3), never a load failure.
+    std::vector<Generated::FlowActionId> UnimplementedActions() const;
+    // Names the file the loaded declarations came from, so a diagnostic is located ("AppFlow.appflow: action X ...").
+    void SetDeclarationSource(std::string source) { declarationSource_ = std::move(source); }
+    const std::string& DeclarationSource() const { return declarationSource_; }
+    // Publishes ONE located diagnostic per unimplemented action (handler, bus event). Call after handlers are registered
+    // (load) and after a reload that changed the declarations. Returns the number reported.
+    size_t ReportUnimplemented();
+    // How a diagnostic names an action (the generated enum's names; the library itself carries no name table).
+    using ActionNamer = std::function<std::string(Generated::FlowActionId)>;
+    // Also called (with the located message) for every unimplemented-action report, so a host can show it on its status line.
+    using UnimplementedHandler = std::function<void(Generated::FlowActionId, const std::string&)>;
+    void SetUnimplementedHandler(UnimplementedHandler handler) { unimplementedHandler_ = std::move(handler); }
+    void SetActionNamer(ActionNamer namer) { actionNamer_ = std::move(namer); }
+
     // Pass-through for the externally-set guard stub. Initial state always comes from Load().
     void SetGuardResult(Generated::FlowGuardId g, bool pass) { fsm_.SetGuardResult(g, pass); }
     Generated::FlowStateId Current() const { return fsm_.Current(); }
@@ -68,8 +102,8 @@ public:
     void SetDiagnosticHandler(DiagnosticHandler handler) { diagnosticHandler_ = std::move(handler); }
 
     // The registry (design §4.2): the entire router. No categories, no action-name literals,
-    // no undo knowledge — a declared-but-unwired id is RejectedByState, caught rather than
-    // silently no-op'd. Handlers are self-contained (design §4.3): each decides for itself
+    // no undo knowledge — a declared-but-unwired id is NoHandler (R874.3) with one located
+    // diagnostic, an undeclared id RejectedByState, never silently no-op'd. Handlers are self-contained (design §4.3): each decides for itself
     // whether to go through Stack() (undoable), call a service, or run a bare side effect.
     void RegisterHandler(Generated::FlowActionId id, Handler fn);
     DispatchResult Dispatch(Generated::FlowActionId id, const Params& params);
@@ -141,6 +175,14 @@ private:
     // than FlowActionId itself, since std::unordered_map has no default hash for a plain
     // enum class without <cstdint>-adjacent boilerplate.
     std::unordered_map<uint16_t, Handler> handlers_;
+    std::vector<CatalogAction> catalogActions_;
+    std::vector<CatalogTransition> catalogTransitions_;
+    std::string declarationSource_ = "the AppFlow data";
+    void CaptureCatalog(const AppFlowContainerView& view);
+    std::string ActionName(Generated::FlowActionId id) const;
+    ActionNamer actionNamer_;
+    UnimplementedHandler unimplementedHandler_;
+    void ReportUnimplementedAction(Generated::FlowActionId id, const std::string& what);
     // Seam M2c: the (Data action -> View noun) map seeded at Load() + the wired provider (both
     // nullable/empty until a consumer wires them). Non-owning provider pointer.
     DataTargetTable dataTargets_;

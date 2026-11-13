@@ -225,3 +225,60 @@ TEST(AppFlowBlob, ShapeHashMismatchRejectsAndRuntimeFallsBack) {
     EXPECT_EQ(runtime.Load(blob ? &blob->View() : nullptr), LoadResult::Ok);
     EXPECT_EQ(runtime.Current(), FlowStateId::Editing);
 }
+
+// R874.3: a declared action with no handler is visible but inert. It is listed `implemented: false`, dispatching it returns
+// the distinct NoHandler result (not RejectedByState) with one located diagnostic, and a reload never fails for it.
+TEST(AppFlowBlob, DeclaredActionWithNoHandlerIsNoHandlerNotRejectedAndLocated) {
+    AppFlowRuntime runtime(nullptr, 1);
+    ASSERT_EQ(runtime.Load(), LoadResult::Ok);
+    runtime.SetDeclarationSource("AppFlow.appflow");
+    runtime.SetActionNamer([](FlowActionId id) { return id == FlowActionId::Save ? std::string("Save") : std::string("Other"); });
+    std::vector<std::string> diagnostics;
+    runtime.SetDiagnosticHandler([&](const std::string& message) { diagnostics.push_back(message); });
+    std::vector<FlowActionId> unimplementedSeen;
+    runtime.SetUnimplementedHandler([&](FlowActionId id, const std::string&) { unimplementedSeen.push_back(id); });
+
+    const size_t declared = runtime.CatalogActions().size();
+    ASSERT_GT(declared, 3u);
+    EXPECT_EQ(runtime.UnimplementedActions().size(), declared) << "no handler registered yet";
+    runtime.RegisterHandler(FlowActionId::ToggleLayer, [](const AppFlowRuntime::Params&) {});
+    EXPECT_TRUE(runtime.IsImplemented(FlowActionId::ToggleLayer));
+    EXPECT_FALSE(runtime.IsImplemented(FlowActionId::Save));
+    EXPECT_EQ(runtime.UnimplementedActions().size(), declared - 1);
+
+    EXPECT_EQ(runtime.DispatchById(FlowActionId::Save), DispatchResult::NoHandler);
+    ASSERT_EQ(diagnostics.size(), 1u) << "one diagnostic per dispatch";
+    EXPECT_NE(diagnostics[0].find("AppFlow.appflow: action 'Save'"), std::string::npos) << diagnostics[0];
+    EXPECT_NE(diagnostics[0].find("no handler is registered"), std::string::npos);
+    ASSERT_EQ(unimplementedSeen.size(), 1u);
+    EXPECT_EQ(unimplementedSeen[0], FlowActionId::Save);
+
+    // An id outside the loaded declarations stays RejectedByState (undeclared is not unimplemented).
+    const AppFlowContainerView one(std::span<const AppFlowActionDecl>(kActionDecls, 1), std::span<const AppFlowTransition>(kTransitions));
+    ASSERT_EQ(runtime.Reload(&one), LoadResult::Ok) << "a reload never fails because an action has no handler";
+    ASSERT_EQ(runtime.CatalogActions().size(), 1u) << "the catalogue follows the loaded data";
+    diagnostics.clear();
+    EXPECT_EQ(runtime.DispatchById(FlowActionId::Save), DispatchResult::RejectedByState);
+    EXPECT_TRUE(diagnostics.empty());
+
+    diagnostics.clear();
+    EXPECT_EQ(runtime.ReportUnimplemented(), 0u) << "the one declared action (ToggleLayer) has its handler";
+    runtime.Reload(nullptr);
+    EXPECT_EQ(runtime.ReportUnimplemented(), declared - 1) << "back to the full table: every unhandled declaration reported once";
+    EXPECT_EQ(diagnostics.size(), declared - 1);
+}
+
+TEST(AppFlowBlob, CatalogueIsTheLoadedDataNotTheCompiledTables) {
+    // A hand-edited action row (here: one extra parameterless action the compiled table does not know is NOT possible
+    // without a new id), so edit a transition id in the data: the catalogue must report the loaded name.
+    auto blob = AppFlowBlobFile::Parse(ReadGeneratedBlob());
+    ASSERT_TRUE(blob.has_value());
+    AppFlowRuntime runtime(nullptr, 1);
+    ASSERT_EQ(runtime.Load(&blob->View()), LoadResult::Ok);
+    blob.reset();   // the catalogue must own its strings
+    ASSERT_FALSE(runtime.CatalogTransitions().empty());
+    EXPECT_FALSE(runtime.CatalogTransitions().front().id.empty());
+    bool sawParams = false;
+    for (const auto& action : runtime.CatalogActions()) sawParams = sawParams || !action.params.empty();
+    EXPECT_TRUE(sawParams);
+}

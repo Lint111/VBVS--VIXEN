@@ -57,6 +57,11 @@ public:
     /// without knowing any field. Call before the first compile.
     void SetView(std::shared_ptr<IView> view);
 
+    /// R874.3: "<model>.<field>" for every field the active described (blob) view DECLARES that no producer has written.
+    /// Those fields are inert (type default). The host reports them once as `view.unfed` after its producers had a frame.
+    /// Empty for a typed (generated) view, which cannot declare a field without its bind function.
+    std::vector<std::string> UnfedViewFields() const;
+
     /// Poll the opt-in HUD .viewblob source and transactionally re-register its RmlUi model.
     /// Hosts call this once at the top of their update tick, before rendering begins.
     void PollHudHotReload();

@@ -493,6 +493,7 @@ bool EditorApplication::LoadDocument(const std::string& path) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
+    rt_.SetDeclarationSource("AppFlow.g.h (compiled in)");
     if (rt_.Load(nullptr, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
         ReportEditorError("AppFlowRuntime initial load failed");
         return false;
@@ -1140,6 +1141,12 @@ void EditorApplication::RegisterAppFlowHandlers() {
         Panels().Dock().ResetToDefaults();
         AfterPanelVerb("reset", DockResult::Ok);
     });
+
+    // R874.3: an action declared in the loaded data with nothing registered above is visible but inert; say so once per
+    // (re)registration, located at the declaring file, on the channel and the status line. Never a load failure.
+    rt_.SetActionNamer([](FlowActionId id) { return std::string(magic_enum::enum_name(id)); });
+    rt_.SetUnimplementedHandler([this](FlowActionId, const std::string& message) { ReportEditorError(message, "NotImplemented"); });
+    rt_.ReportUnimplemented();
 }
 
 namespace {
@@ -1211,6 +1218,7 @@ bool EditorApplication::ReloadAppFlowData(std::string& error) {
         error = "AppFlow reload rejected: validation failure; keeping the running state";
         return false;
     }
+    rt_.SetDeclarationSource(std::filesystem::path(appFlowPath_).filename().string());
     RegisterAppFlowHandlers();
     appFlowBlob_ = std::move(*blob);
     // Consume this file's mtime: a forced reload must not be followed by a redundant watched one.
@@ -1653,6 +1661,7 @@ bool EditorApplication::ReopenSavedDocument() {
 bool EditorApplication::AdoptDocument(Vixen::Editor::EditorDocumentModel candidate) {
     auto blob = Vixen::AppFlow::AppFlowBlobFile::Load(appFlowPath_);
     const Vixen::AppFlow::Generated::AppFlowContainerView* view = blob ? &blob->View() : nullptr;
+    rt_.SetDeclarationSource(blob ? std::filesystem::path(appFlowPath_).filename().string() : std::string("AppFlow.g.h (compiled in)"));
     if (rt_.Load(view, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
         ReportEditorError("AppFlowRuntime reload failed while adopting a document");
         return false;
@@ -2368,15 +2377,17 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
     if (!params.is_object()) throw std::runtime_error("params must be an object");
 
     if (method == "appflow.list") {
+        // R874.3: the catalogue is the runtime's LOADED declarations (a reload that changed an action row shows here), and
+        // `implemented` says whether any code is registered behind each action.
         nlohmann::json actions = nlohmann::json::array();
-        for (const auto& declaration : kActionDecls) {
+        for (const auto& declaration : rt_.CatalogActions()) {
             nlohmann::json paramList = nlohmann::json::array();
-            for (uint32_t i = 0; i < declaration.paramCount; ++i) {
-                paramList.push_back({{"name", declaration.params[i].name},
-                                     {"type", ParamTypeName(declaration.params[i].type)}});
+            for (const auto& [name, type] : declaration.params) {
+                paramList.push_back({{"name", name}, {"type", ParamTypeName(type)}});
             }
             actions.push_back({{"id", static_cast<uint16_t>(declaration.id)},
                                {"name", std::string(magic_enum::enum_name(declaration.id))},
+                               {"implemented", rt_.IsImplemented(declaration.id)},
                                {"params", std::move(paramList)}});
         }
         nlohmann::json selectors = nlohmann::json::array();
@@ -2397,7 +2408,7 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
                             {"scope", EnumRecord(key.scope)}, {"state", EnumRecord(key.state)}});
         }
         nlohmann::json transitions = nlohmann::json::array();
-        for (const auto& edge : kTransitions) {
+        for (const auto& edge : rt_.CatalogTransitions()) {
             transitions.push_back({{"id", edge.id}, {"from", EnumRecord(edge.from)},
                                    {"to", EnumRecord(edge.to)},
                                    {"guard", std::string(magic_enum::enum_name(edge.guard))}});
@@ -2405,9 +2416,10 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         nlohmann::json nouns = nlohmann::json::array();
         for (const auto noun : magic_enum::enum_values<ViewNounId>()) nouns.push_back(EnumRecord(noun));
         nlohmann::json dataTargets = nlohmann::json::array();
-        for (const auto& target : kDataTargets) {
-            dataTargets.push_back({{"actionId", static_cast<uint16_t>(target.action)},
-                                   {"viewNoun", EnumRecord(target.viewNoun)}});
+        std::vector<std::pair<uint16_t, ViewNounId>> sortedTargets(rt_.DataTargets().begin(), rt_.DataTargets().end());
+        std::sort(sortedTargets.begin(), sortedTargets.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [action, noun] : sortedTargets) {
+            dataTargets.push_back({{"actionId", action}, {"viewNoun", EnumRecord(noun)}});
         }
         nlohmann::json states = nlohmann::json::array();
         for (const auto state : kStateIds) states.push_back(EnumRecord(state));
