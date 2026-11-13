@@ -55,11 +55,11 @@ Contact sheets committed with the lane are `reports/cx-edmat2w-visual/editor-mat
 - Made the look-dev stored fixture route only its hull recipe through the stored provider and apply the matching grid-to-world scale; the other look-dev recipes remain procedural.
 - Added the loose-document witness and semantic viewport-hash capture tooling under the evidence root.
 
-Commits: to be filled with the landable commit SHA before landing.
+Commit: `c0d715c20` (`witness material edits in editor and lookdev pixels`).
 
 ## LANDABLE NOW
 
-The lane tip after the commit below contains the source fixes, SPT inbox entry, contact sheets, and this report. The required target build passed, the editor and Dozen GPU witnesses passed, and the semantic A→undo-3 image round-trip passed.
+The lane tip contains the source fixes, SPT inbox entry, contact sheets, and this report. The required target build passed, the editor and Dozen GPU witnesses passed, and the semantic A→undo-3 image round-trip passed.
 
 ## REDS
 
