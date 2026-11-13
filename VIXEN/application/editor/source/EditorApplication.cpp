@@ -159,18 +159,11 @@ std::vector<Vixen::App::EditorPackRecipeData> PickerPackRecipes(
     const std::string& filter) {
     std::vector<Vixen::App::EditorPackRecipeData> out;
     const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe);
-    bool hasRecipeCallee = false;
-    if (info != nullptr) {
-        const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(*info);
-        for (uint32_t i = 0; i < info->argumentCount; ++i) {
-            if (std::string_view(arguments[i].name) == "callee" &&
-                std::string_view(arguments[i].type) == "recipe") {
-                hasRecipeCallee = true;
-                break;
-            }
-        }
-    }
-    if (!pack.Configured() || !hasRecipeCallee) return out;
+    // The generated InsertRecipeReference action and the document model own the reference contract;
+    // the catalogue lookup only guards a build that genuinely lacks the InvokeRecipe opcode. Do not
+    // duplicate that contract by inspecting a spelling/type string here: that gate hid the pack rows
+    // after the generated catalogue's argument metadata changed shape.
+    if (!pack.Configured() || info == nullptr) return out;
     struct Ranked { int rank; std::string id; };
     std::vector<Ranked> ranked;
     for (const auto& recipe : pack.Recipes()) {
