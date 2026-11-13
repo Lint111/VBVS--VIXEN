@@ -85,12 +85,14 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
     int activeLayerCount = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes;
     std::vector<Vixen::Views::EditorPackRecipeRow> packRecipes;
+    std::vector<Vixen::Views::EditorMaterialRow> materials;
     Rml::String statusDocument, statusMessage, flowState;
     int undoDepth = 0, redoDepth = 0;
     Vixen::Views::EditorLayersBind bind{ &layers, &parameters, &transform, &selectedLayerName, &selectedLayer,
                                          &primitives, &opChoices, &shape, &selectedShape, &shapeNote, &pickerFilter,
                                          &activeLayerCount, &recipes,
                                          &packRecipes,
+                                         &materials,
                                          &statusDocument, &statusMessage, &flowState, &undoDepth, &redoDepth };
 
     Rml::DataModelConstructor c = ctx->CreateDataModel("editor_layers");

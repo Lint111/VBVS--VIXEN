@@ -1307,8 +1307,28 @@ public:
     }
 
     void BuildRenderGraphTimed() {
-        const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(scenarios_.front().lighting);
+        const char* packRoot = std::getenv("VIXEN_LOOKDEV_PACK_ROOT");
+        const Vixen::SVO::RuntimeMaterialTable materialTable = packRoot != nullptr
+            ? Vixen::SVO::RuntimeMaterialTable::LoadFromPackRoot(packRoot)
+            : Vixen::SVO::RuntimeMaterialTable::Neutral(
+                "material table unavailable: VIXEN_LOOKDEV_PACK_ROOT is unset");
+        if (!materialTable.Loaded()) {
+            std::fprintf(stderr, "[LOOKDEV_MATERIALS] %s\n", materialTable.Diagnostic().c_str());
+        }
+        const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(
+            scenarios_.front().lighting, &materialTable);
+        Vixen::SVO::RecipeBakeResult storedHullBake;
+        bool haveStoredHull = false;
         for (const auto& recipe : recipes) {
+            if (recipe.material == Vixen::App::Lookdev::Material::Hull) {
+                storedHullBake = Vixen::App::Lookdev::BakeStoredHull(recipe);
+                if (!storedHullBake.ok) {
+                    captureError_ = "could not bake look-dev hull: " + storedHullBake.err;
+                    return;
+                }
+                haveStoredHull = true;
+                continue;
+            }
             const auto result = RegisterProceduralRecipe(recipe.recipeId, recipe.entry);
             if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
                 captureError_ = "could not register look-dev material recipe " +
@@ -1366,6 +1386,24 @@ public:
         if (!camera_ || !lighting_) {
             captureError_ = "production graph is missing raymarch_camera or lighting_config";
             return;
+        }
+        SetMaterialTable(materialTable.BuildGpuBuffer());
+        if (haveStoredHull) {
+            SetRecipePool(std::move(storedHullBake.pool));
+            const auto hullRecipe = std::find_if(recipes.begin(), recipes.end(), [](const auto& recipe) {
+                return recipe.material == Vixen::App::Lookdev::Material::Hull;
+            });
+            if (hullRecipe != recipes.end()) {
+                const auto coverage = Vixen::App::Lookdev::MeasureHullMaterialCoverage(
+                    storedHullBake.owned.front().recipeOutputSet,
+                    Vixen::App::Lookdev::MaterialReference(
+                        &materialTable, Vixen::App::Lookdev::Material::Hull),
+                    Vixen::App::Lookdev::MaterialReference(
+                        &materialTable, Vixen::App::Lookdev::Material::HullAccent));
+                std::fprintf(stderr, "[LOOKDEV_MATERIAL_COVERAGE] major=%.6f minor=%.6f major_voxels=%u minor_voxels=%u\n",
+                    coverage.majorFraction, coverage.minorFraction,
+                    coverage.majorVoxels, coverage.minorVoxels);
+            }
         }
 
         // The ordinary look-dev capture below is procedural-only, so it cannot
@@ -1428,14 +1466,15 @@ public:
                 SetRecipePool(std::move(glyphScene.pool));
             SetBodyInstances(std::move(glyphScene.instances));
         } else if (!storedSdfScene) {
-            auto instances = Vixen::App::Lookdev::BodyInstances(recipes, scenarios_.front().lighting);
+            auto instances = Vixen::App::Lookdev::BodyInstances(
+                recipes, scenarios_.front().lighting, &materialTable, haveStoredHull);
             if (exposureRoom) {
                 using Vixen::App::Lookdev::Material;
                 for (const auto& [recipeId, material] : {std::pair{kExposureRoomRecipeId, Material::Hull},
                                                          std::pair{kExposureRoomPadRecipeId, Material::Rock}}) {
                     Vixen::SVO::BodyInstanceGpu instance{};
                     Vixen::SVO::SetInstanceTransform(instance, glm::mat4(1.0f));
-                    const glm::vec3 color = Vixen::App::Lookdev::MaterialColor(material);
+                    const glm::vec3 color = Vixen::App::Lookdev::MaterialColor(material, &materialTable);
                     instance.material.color[0] = color.r;
                     instance.material.color[1] = color.g;
                     instance.material.color[2] = color.b;

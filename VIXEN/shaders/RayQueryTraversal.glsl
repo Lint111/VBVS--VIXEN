@@ -499,7 +499,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 g_lastFootprintRegime = 1u;
                 // Fix 4 (prior version): populate hitColor/hitRoughness via the SAME
                 // channel-sample helper the DDA twin calls.
-                sampleHitShadingChannels(gridEntry + gridDirN * sHit, vec3(1.0), 0.5, hitColor, hitRoughness, hitEmission);
+                sampleHitShadingChannels(gridEntry + gridDirN * sHit, vec3(0.5), 0.5, hitColor, hitRoughness, hitEmission);
                 // GENERATE-MIN-TRACKING: the rayQuery's own interval is WORLD-space
                 // (see the initialize call above), so generate this same tWorld --
                 // the quantity bestT just tracked -- as the precondition requires.

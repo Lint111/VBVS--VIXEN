@@ -16,6 +16,7 @@ struct EditorLayerOpRow { Rml::String name; Rml::String elementId; bool isCurren
 struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool isDefault; Rml::String resetId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorPackRecipeRow { Rml::String id; Rml::String elementId; };
+struct EditorMaterialRow { Rml::String id; Rml::String name; };
 struct EditorLayersBind {
     std::vector<EditorLayerRow>* layers;
     std::vector<EditorParameterRow>* parameters;
@@ -31,6 +32,7 @@ struct EditorLayersBind {
     int* activeLayerCount;
     std::vector<EditorRecipeRow>* recipes;
     std::vector<EditorPackRecipeRow>* packRecipes;
+    std::vector<EditorMaterialRow>* materials;
     Rml::String* statusDocument;
     Rml::String* statusMessage;
     Rml::String* flowState;
@@ -106,6 +108,10 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("id", &EditorPackRecipeRow::id);
         sh.RegisterMember("elementId", &EditorPackRecipeRow::elementId);
     }
+    if (auto sh = c.RegisterStruct<EditorMaterialRow>()) {
+        sh.RegisterMember("id", &EditorMaterialRow::id);
+        sh.RegisterMember("name", &EditorMaterialRow::name);
+    }
     c.RegisterArray<std::vector<EditorLayerRow>>();
     c.RegisterArray<std::vector<EditorParameterRow>>();
     c.RegisterArray<std::vector<EditorTransformRow>>();
@@ -114,6 +120,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.RegisterArray<std::vector<EditorShapeFieldRow>>();
     c.RegisterArray<std::vector<EditorRecipeRow>>();
     c.RegisterArray<std::vector<EditorPackRecipeRow>>();
+    c.RegisterArray<std::vector<EditorMaterialRow>>();
     c.Bind("layers", b.layers);
     c.Bind("parameters", b.parameters);
     c.Bind("transform", b.transform);
@@ -128,6 +135,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
     c.Bind("recipes", b.recipes);
     c.Bind("packRecipes", b.packRecipes);
+    c.Bind("materials", b.materials);
     c.Bind("statusDocument", b.statusDocument);
     c.Bind("statusMessage", b.statusMessage);
     c.Bind("flowState", b.flowState);

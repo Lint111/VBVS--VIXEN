@@ -180,6 +180,11 @@ public:
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
     void SetRecipePoolProducer(std::function<Vixen::SVO::ConcatenatedOctrees()> producer);
 
+    // Runtime material-table seam: replaces only the persistent slot-indexed MaterialBuffer.
+    // The setter is safe before or after Compile; a post-Compile change is refreshed at the next
+    // Execute safe point and never marks a shader pipeline dirty.
+    void SetMaterialTable(std::vector<std::uint8_t> tableBytes);
+
     /**
      * @brief Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — upload the concatenated
      * per-recipe coarse occupancy grid blob (binding 16) built by
@@ -349,6 +354,7 @@ private:
     void CreateOctreeBuffers(Vixen::Vulkan::Resources::VulkanDevice* device,
                              bool publishingShellGeneration = false);  // complete pool generation
     void RefreshGlyphOutlineBuffer();                                  // replace the shader-build payload only
+    void RefreshMaterialTableBuffer();                                 // replace the runtime material table only
     void RefreshRecipeChunkBuffer();
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize transformCapacity,
@@ -511,6 +517,8 @@ private:
     std::vector<float> occupancyGrid_;
     std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphOutlineInstances_;
     std::vector<std::uint32_t> glyphOutlineFlatWords_;
+    std::vector<std::uint8_t> materialTableBytes_;
+    bool materialTableBufferDirty_ = false;
 
     // R502.2 emitter table (CPU only in S0). Rebuilt by GetEmitterTable() when dirty or when
     // the concatenated mip stream it read the sparse power lanes from has been replaced.

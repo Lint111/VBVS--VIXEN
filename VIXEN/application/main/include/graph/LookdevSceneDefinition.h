@@ -1,6 +1,8 @@
 #pragma once
 
 #include "graph/SceneLook.h"
+#include "RuntimeMaterialTable.h"
+#include "Recipe/RecipeBaker.h"
 #include "Recipe/RecipeRegistry.h"
 #include "ShellOctreeGpu.h"
 #include "Generated/LightingConfig.g.h"
@@ -12,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -194,25 +197,44 @@ inline glm::vec3 Srgb8ToLinear(uint32_t rgb) {
     return {decode((rgb >> 16) & 0xffu), decode((rgb >> 8) & 0xffu), decode(rgb & 0xffu)};
 }
 
-inline glm::vec3 MaterialColor(Material material) {
+inline std::size_t MaterialDeclarationIndex(Material material) {
     switch (material) {
-        case Material::Hull:       return Srgb8ToLinear(0xe8e1da); // bible §3: hull off-white
-        case Material::HullAccent: return Srgb8ToLinear(0xfa9f4e); // bible §3: accent orange
-        case Material::Structure:  return Srgb8ToLinear(0x707276); // bible §3: structure grey
-        case Material::DarkMetal:  return Srgb8ToLinear(0x3c4045); // bible §3: machinery dark
-        case Material::Glass:      return Srgb8ToLinear(0x5e768c); // bible §3: glass
-        case Material::Rock:       return Srgb8ToLinear(0xeac794); // C26: sunlit stone
-        case Material::Bark:       return Srgb8ToLinear(0x6c4a37); // C26: bark
-        case Material::Soil:       return Srgb8ToLinear(0x6c4a37); // C26: bark/earth brown
-        case Material::Leaf:       return Srgb8ToLinear(0x7f945b); // C22: leaf green
-        case Material::DeepLeaf:   return Srgb8ToLinear(0x2e5234); // G2: deep foliage
-        case Material::Water:      return Srgb8ToLinear(0x62ade0); // C26: river blue
-        case Material::Figure:     return Srgb8ToLinear(0xfcca5b); // safety yellow scale cue
-        case Material::Lamp:       return Srgb8ToLinear(0xf9b55c); // lighting track: sodium pool
-        case Material::Window:     return Srgb8ToLinear(0xe9bf6b); // bible: warm service windows
-        case Material::Worklight:  return Srgb8ToLinear(0xf9b55c); // bible: sodium task lighting
+        // These are declaration-order roles in the runtime pack table, not content ids.
+        case Material::Hull:       return 4u;
+        case Material::HullAccent: return 5u;
+        case Material::Structure:  return 6u;
+        case Material::DarkMetal:  return 4u;
+        case Material::Glass:      return 2u;
+        case Material::Rock:       return 0u;
+        case Material::Bark:       return 1u;
+        case Material::Soil:       return 1u;
+        case Material::Leaf:       return 3u;
+        case Material::DeepLeaf:   return 3u;
+        case Material::Water:      return 2u;
+        case Material::Figure:     return 5u;
+        case Material::Lamp:       return 7u;
+        case Material::Window:     return 7u;
+        case Material::Worklight:  return 7u;
+        case Material::Count:      return 0u;
     }
-    return Srgb8ToLinear(0x808080);
+    return 0u;
+}
+
+inline std::uint32_t MaterialReference(const Vixen::SVO::RuntimeMaterialTable* table, Material material) {
+    return table == nullptr ? Vixen::SVO::kMaterialRefNone
+                            : table->RefAt(MaterialDeclarationIndex(material));
+}
+
+inline glm::vec3 MaterialColor(Material material,
+                               const Vixen::SVO::RuntimeMaterialTable* table = nullptr) {
+    if (table != nullptr) {
+        const std::uint32_t ref = MaterialReference(table, material);
+        if (ref != Vixen::SVO::kMaterialRefNone && ref <= table->Rows().size()) {
+            const auto& row = table->Rows()[ref - 1u];
+            return {row.linearAlbedo[0], row.linearAlbedo[1], row.linearAlbedo[2]};
+        }
+    }
+    return glm::vec3(0.5f);
 }
 
 inline glm::vec3 GridToWorld(const glm::vec3& p) {
@@ -223,6 +245,7 @@ struct MaterialRecipe {
     Material material;
     uint32_t recipeId;
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    float edgeSmoothness = 0.0f;
 };
 
 inline uint32_t RecipeId(Material material) {
@@ -239,13 +262,14 @@ inline float SmoothBlend(Group group) {
 }
 
 inline Vixen::SVO::Recipe::SdfInstruction PrimitiveInstruction(
-    const Primitive& primitive, const glm::vec3& recipeOriginGrid = glm::vec3(0.0f)) {
+    const Primitive& primitive, bool gridUnits = false,
+    const glm::vec3& recipeOriginGrid = glm::vec3(0.0f)) {
     using Vixen::SVO::Recipe::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
 
-    const float scale = kWorldSpan / static_cast<float>(kResolution);
-    const glm::vec3 center = GridToWorld(primitive.center - recipeOriginGrid);
-    const glm::vec3 extent = GridToWorld(primitive.extent);
+    const float scale = gridUnits ? 1.0f : kWorldSpan / static_cast<float>(kResolution);
+    const glm::vec3 center = gridUnits ? primitive.center : GridToWorld(primitive.center - recipeOriginGrid);
+    const glm::vec3 extent = gridUnits ? primitive.extent : GridToWorld(primitive.extent);
     SdfInstruction instruction{};
     instruction.opCode = static_cast<uint8_t>(primitive.shape == Shape::Box
         ? SdfOpCode::RoundedBox : SdfOpCode::Ellipsoid);
@@ -281,7 +305,9 @@ inline Primitive PrimitiveForLighting(Primitive primitive, const LightingPreset&
     return primitive;
 }
 
-inline std::vector<MaterialRecipe> BuildMaterialRecipes(const LightingPreset& preset) {
+inline std::vector<MaterialRecipe> BuildMaterialRecipes(
+    const LightingPreset& preset,
+    const Vixen::SVO::RuntimeMaterialTable* materialTable = nullptr) {
     using Vixen::SVO::Recipe::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
     const bool serviceLightsEnabled = ServiceLightsEnabled(preset);
@@ -289,7 +315,9 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes(const LightingPreset& pr
     std::array<std::vector<Primitive>, static_cast<size_t>(Material::Count)> primitivesByMaterial;
     auto gather = [&](const Primitive& sourcePrimitive) {
         const Primitive primitive = PrimitiveForLighting(sourcePrimitive, preset);
-        primitivesByMaterial[static_cast<size_t>(primitive.material)].push_back(primitive);
+        const Material recipeMaterial = primitive.material == Material::HullAccent
+            ? Material::Hull : primitive.material;
+        primitivesByMaterial[static_cast<size_t>(recipeMaterial)].push_back(primitive);
     };
     for (const Primitive& primitive : Primitives()) gather(primitive);
     for (const Primitive& primitive : FigureAppendages()) gather(primitive);
@@ -305,33 +333,146 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes(const LightingPreset& pr
             ? EmitterOrigin(material, serviceLightsEnabled) : glm::vec3(0.0f);
 
         Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
-        entry.boundCenter = glm::vec3(5.0f);
-        entry.boundRadius = 9.0f;
+        const bool hullRecipe = material == Material::Hull;
+        entry.boundCenter = hullRecipe ? glm::vec3(static_cast<float>(kResolution) * 0.5f)
+                                       : glm::vec3(5.0f);
+        entry.boundRadius = hullRecipe ? 26.0f : 9.0f;
         entry.stepRelaxation = 0.9f;
         entry.bytecode.reserve(primitives.size() * 2 - 1);
-        entry.bytecode.push_back(PrimitiveInstruction(primitives.front(), recipeOrigin));
-        for (size_t i = 1; i < primitives.size(); ++i) {
-            entry.bytecode.push_back(PrimitiveInstruction(primitives[i], recipeOrigin));
-            SdfInstruction combine{};
-            const float blend = SmoothBlend(primitives[i].group);
-            combine.opCode = static_cast<uint8_t>(blend > 0.0f
-                ? SdfOpCode::SmoothUnion : SdfOpCode::Union);
-            combine.data[2] = blend * (kWorldSpan / static_cast<float>(kResolution));
-            entry.bytecode.push_back(combine);
+        auto appendUnion = [&](const std::vector<Primitive>& unionParts) {
+            if (unionParts.empty()) return;
+            entry.bytecode.push_back(PrimitiveInstruction(unionParts.front(), hullRecipe, recipeOrigin));
+            for (size_t i = 1; i < unionParts.size(); ++i) {
+                entry.bytecode.push_back(PrimitiveInstruction(unionParts[i], hullRecipe, recipeOrigin));
+                SdfInstruction combine{};
+                const float blend = SmoothBlend(unionParts[i].group);
+                combine.opCode = static_cast<uint8_t>(blend > 0.0f
+                    ? SdfOpCode::SmoothUnion : SdfOpCode::Union);
+                combine.data[2] = blend * (hullRecipe ? 1.0f
+                    : kWorldSpan / static_cast<float>(kResolution));
+                entry.bytecode.push_back(combine);
+            }
+        };
+        appendUnion(primitives);
+
+        float edgeSmoothness = 0.0f;
+        if (hullRecipe) {
+            edgeSmoothness = 0.5f;
+            entry.parameterValues = {
+                edgeSmoothness,
+                static_cast<float>(MaterialReference(materialTable, Material::Hull)),
+                static_cast<float>(MaterialReference(materialTable, Material::HullAccent)),
+            };
+
+            SdfInstruction distanceOutput{};
+            distanceOutput.opCode = static_cast<uint8_t>(SdfOpCode::Output);
+            distanceOutput.data[1] = 1.0f;
+            entry.bytecode.push_back(distanceOutput);
+
+            std::vector<Primitive> accentParts;
+            std::copy_if(primitives.begin(), primitives.end(), std::back_inserter(accentParts),
+                [](const Primitive& part) { return part.material == Material::HullAccent; });
+            appendUnion(accentParts);
+
+            auto readParameter = [](uint32_t parameterIndex) {
+                SdfInstruction read{};
+                read.opCode = static_cast<uint8_t>(SdfOpCode::ReadParam);
+                read.paramMask = 1u;
+                read.data[0] = static_cast<float>(parameterIndex);
+                return read;
+            };
+            entry.bytecode.push_back(readParameter(1u));
+            entry.bytecode.push_back(readParameter(2u));
+            SdfInstruction selectMaterial{};
+            selectMaterial.opCode = static_cast<uint8_t>(SdfOpCode::Select);
+            entry.bytecode.push_back(selectMaterial);
+
+            SdfInstruction materialOutput{};
+            materialOutput.opCode = static_cast<uint8_t>(SdfOpCode::Output);
+            materialOutput.data[0] = static_cast<float>(
+                Vixen::SVO::RecipeOutputSlotFor(Vixen::SVO::SEM_MATERIAL_ID));
+            materialOutput.data[1] = 1.0f;
+            entry.bytecode.push_back(materialOutput);
+
+            entry.bytecode.push_back(readParameter(0u));
+            SdfInstruction smoothnessOutput{};
+            smoothnessOutput.opCode = static_cast<uint8_t>(SdfOpCode::Output);
+            smoothnessOutput.data[0] = static_cast<float>(
+                Vixen::SVO::RecipeOutputSlotFor(Vixen::SVO::SEM_EDGE_SMOOTHNESS));
+            smoothnessOutput.data[1] = 1.0f;
+            entry.bytecode.push_back(smoothnessOutput);
         }
 
-        recipes.push_back({material, RecipeId(material), std::move(entry)});
+        recipes.push_back({material, RecipeId(material), std::move(entry), edgeSmoothness});
     }
     return recipes;
 }
 
+inline Vixen::SVO::RecipeBakeResult BakeStoredHull(const MaterialRecipe& recipe) {
+    Vixen::SVO::RecipeRegistry registry;
+    const auto registration = registry.Register(recipe.recipeId, recipe.entry);
+    if (registration != Vixen::SVO::RecipeRegistry::RegisterResult::Ok)
+        throw std::runtime_error("could not register the look-dev hull bake recipe");
+
+    Vixen::SVO::RecipeBakeConfig config;
+    config.center = glm::vec3(0.0f);
+    config.defaultResolution = kResolution;
+    config.defaultBand = 2.5f;
+    config.defaultBrickDepth = kBrickDepth;
+    return Vixen::SVO::BakeRegistryToPool(registry, config);
+}
+
+struct HullCoverageMeasurement {
+    std::uint32_t majorVoxels = 0u;
+    std::uint32_t minorVoxels = 0u;
+    float majorFraction = 0.0f;
+    float minorFraction = 0.0f;
+};
+
+inline HullCoverageMeasurement MeasureHullMaterialCoverage(
+    const Vixen::SVO::BakedRecipeOutputSet& outputSet,
+    std::uint32_t majorRef, std::uint32_t minorRef, float surfaceHalfWidth = 0.5f) {
+    std::uint8_t distanceOffset = std::numeric_limits<std::uint8_t>::max();
+    std::uint8_t materialOffset = std::numeric_limits<std::uint8_t>::max();
+    for (const auto& output : outputSet.outputs) {
+        const auto* channel = Vixen::SVO::FindRecipeOutputChannel(output.channel);
+        if (channel == nullptr) continue;
+        if (channel->semantic == Vixen::SVO::SEM_SDF) distanceOffset = output.valueOffset;
+        if (channel->semantic == Vixen::SVO::SEM_MATERIAL_ID) materialOffset = output.valueOffset;
+    }
+    if (distanceOffset == std::numeric_limits<std::uint8_t>::max() ||
+        materialOffset == std::numeric_limits<std::uint8_t>::max()) return {};
+
+    HullCoverageMeasurement result;
+    for (int z = 0; z < outputSet.resolution; ++z) {
+        for (int y = 0; y < outputSet.resolution; ++y) {
+            for (int x = 0; x < outputSet.resolution; ++x) {
+                const float* values = outputSet.sample(glm::ivec3(x, y, z));
+                if (values == nullptr || std::abs(values[distanceOffset]) > surfaceHalfWidth) continue;
+                const auto materialRef = static_cast<std::uint32_t>(std::lround(values[materialOffset]));
+                if (materialRef == majorRef) ++result.majorVoxels;
+                else if (materialRef == minorRef) ++result.minorVoxels;
+            }
+        }
+    }
+    const std::uint32_t total = result.majorVoxels + result.minorVoxels;
+    if (total != 0u) {
+        result.majorFraction = static_cast<float>(result.majorVoxels) / static_cast<float>(total);
+        result.minorFraction = static_cast<float>(result.minorVoxels) / static_cast<float>(total);
+    }
+    return result;
+}
+
 inline std::vector<Vixen::SVO::BodyInstanceGpu> BodyInstances(
-    const std::vector<MaterialRecipe>& recipes, const LightingPreset& preset) {
+    const std::vector<MaterialRecipe>& recipes, const LightingPreset& preset,
+    const Vixen::SVO::RuntimeMaterialTable* materialTable = nullptr,
+    bool storedHull = false) {
     const bool serviceLightsEnabled = ServiceLightsEnabled(preset);
     std::vector<Vixen::SVO::BodyInstanceGpu> instances;
     instances.reserve(recipes.size());
     for (const MaterialRecipe& recipe : recipes) {
-        const glm::vec3 color = MaterialColor(recipe.material);
+        const glm::vec3 color = storedHull ? glm::vec3(1.0f)
+                                            : MaterialColor(recipe.material, materialTable);
         const glm::vec3 instanceOrigin = recipe.material == Material::Lamp ||
                 (serviceLightsEnabled && IsServiceEmitter(recipe.material))
             ? GridToWorld(EmitterOrigin(recipe.material, serviceLightsEnabled)) : glm::vec3(0.0f);
@@ -348,8 +489,10 @@ inline std::vector<Vixen::SVO::BodyInstanceGpu> BodyInstances(
         materialData.color[0] = color.r;
         materialData.color[1] = color.g;
         materialData.color[2] = color.b;
-        materialData.providerKind = 1u;
+        materialData.providerKind = storedHull ? 0u : 1u;
+        materialData.octreeIndex = 0u;
         materialData.recipeId = recipe.recipeId;
+        if (storedHull) materialData.recipeParams[0] = recipe.edgeSmoothness;
         if (recipe.material == Material::Lamp) materialData.recipeParams[3] = serviceLightsEnabled ? 0.25f : 2.0f;
         if (recipe.material == Material::Window || recipe.material == Material::Worklight)
             materialData.recipeParams[3] = 0.25f;

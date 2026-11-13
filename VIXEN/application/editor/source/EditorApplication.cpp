@@ -6,6 +6,7 @@
 // them, or robin_hood's Table<> instantiations fail with "std::hash<T> has no operator()".
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
+#include "RuntimeMaterialTable.h"
 #include "Recipe/RecipeBounds.h"
 #include "SdfRecipes.h"
 #include "EditorDocumentFraming.h"
@@ -1402,6 +1403,15 @@ void EditorApplication::BuildRenderGraph() {
     // R766: the editor's panels (DeclarePanels) were mounted on the UI node by the base graph build's
     // panel dock; there is no hard-wired editor document to re-point any more.
 
+    const Vixen::SVO::RuntimeMaterialTable materialTable = pack_.PackRoot().empty()
+        ? Vixen::SVO::RuntimeMaterialTable::Neutral(
+            "material table unavailable: the editor is rendering a loose document")
+        : Vixen::SVO::RuntimeMaterialTable::LoadFromPackRoot(pack_.PackRoot());
+    SetMaterialTable(materialTable.BuildGpuBuffer());
+    if (!materialTable.Loaded()) {
+        ReportEditorError(materialTable.Diagnostic(), "MaterialTable");
+    }
+
     if (auto* cameraInst = GetRenderGraph() ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
         using CC = Vixen::RenderGraph::CameraNodeConfig;
         // Camera control goes through the AppFlow camera actions (TranslateCameraInput), not InputState.
@@ -1527,6 +1537,15 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     TraceEditorLatency("flatten", "end", updateTick_);
     TraceEditorLatency("registry", "begin", updateTick_);
 
+    // VDC1 material fields are data carried by the stored material channel. Once a
+    // document has a material assignment, keep the already-spliced procedural
+    // program and publish the newly baked stored channel instead. This makes
+    // SetDocumentMaterials a data edit: the bake/pool and instance binding are
+    // refreshed, while the procedural shader program remains untouched.
+    const bool hasDocumentMaterials = doc_.MajorMaterialId() != 0u ||
+                                      doc_.MinorMaterialId() != 0u ||
+                                      doc_.MajorMaterialPercent() != 0u;
+
     // Runtime parameter values remain per-instance data. Only a changed canonical bytecode
     // program replaces the registry entry and triggers a shader splice rebuild.
     if (!proceduralPreviewRegistered_) {
@@ -1541,7 +1560,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         TraceEditorLatency("shader_request", "begin", updateTick_);
         RecompileProceduralShader();
         TraceEditorLatency("shader_request", "end", updateTick_);
-    } else if (!SameProgram(entry.bytecode, lastProceduralProgram_)) {
+    } else if (!hasDocumentMaterials && !SameProgram(entry.bytecode, lastProceduralProgram_)) {
         const auto result = ReplaceProceduralRecipe(kEditorProceduralRecipeId, entry);
         if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
             ReportEditorError("ReplaceProceduralRecipe failed (code " +
@@ -1582,24 +1601,27 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     });
     TraceEditorLatency("bake", "end", updateTick_);
 
-    // One virtual provider body evaluates the exact same registered bytecode used by the CPU
-    // bake. Its six runtime values are copied from that bake snapshot; the CPU octree remains
-    // available as the explicit baked result, while the editor's visible body uses the virtual
-    // recipe path for immediate parameter feedback.
+    // A material-bearing document uses the freshly produced stored octree so its generic
+    // material-id channel is visible immediately without changing the procedural shader.
+    // Documents without material fields retain the virtual provider's parameter-edit behavior.
     Vixen::SVO::BodyInstanceGpu inst{};
     Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f), 1.0f);
     inst.material.color[0] = 1.0f; inst.material.color[1] = 1.0f; inst.material.color[2] = 1.0f;
     inst.material.octreeIndex = 0u;
-    inst.material.providerKind = Vixen::SVO::PROVIDER_PROCEDURAL;
-    inst.material.recipeId = kEditorProceduralRecipeId;
-    for (size_t i = 0; i < snapshot.parameterValues.size(); ++i)
-        inst.material.recipeParams[i] = snapshot.parameterValues[i];
+    inst.material.providerKind = hasDocumentMaterials ? Vixen::SVO::PROVIDER_STORED
+                                                      : Vixen::SVO::PROVIDER_PROCEDURAL;
+    inst.material.recipeId = hasDocumentMaterials ? 0u : kEditorProceduralRecipeId;
+    if (!hasDocumentMaterials) {
+        for (size_t i = 0; i < snapshot.parameterValues.size(); ++i)
+            inst.material.recipeParams[i] = snapshot.parameterValues[i];
+    }
     SetBodyInstances({inst});
     TraceEditorLatency("publish", "end", updateTick_);
 
-    if (entry.parameterValues.size() != snapshot.parameterValues.size() ||
-        !std::equal(snapshot.parameterValues.begin(), snapshot.parameterValues.end(),
-                    entry.parameterValues.begin())) {
+    if (!hasDocumentMaterials &&
+        (entry.parameterValues.size() != snapshot.parameterValues.size() ||
+         !std::equal(snapshot.parameterValues.begin(), snapshot.parameterValues.end(),
+                     entry.parameterValues.begin()))) {
         ReportEditorError("CPU bake and virtual preview parameter snapshots diverged");
         return false;
     }
@@ -1615,7 +1637,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         if (i) values << ',';
         values << lastPreviewParameterValues_[i];
     }
-    values << "] programInstructions=" << entry.bytecode.size();
+    values << "] programInstructions=" << entry.bytecode.size()
+           << " materialProvider=" << (hasDocumentMaterials ? "stored" : "procedural");
     logger_->Info(values.str());
 
     if (reframeCamera) {
@@ -2028,6 +2051,18 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
     logger_->Info("[EDITOR/state] pack root=" + pack_.PackRoot() + " id=" + pack_.PackId() +
                   " assets=" + pack_.AssetDirectory() + "/*" + pack_.AssetExtension() +
                   " recipes=" + std::to_string(pack_.Recipes().size()));
+    const auto materialTable = Vixen::SVO::RuntimeMaterialTable::LoadFromPackRoot(packRoot);
+    if (!materialTable.Loaded()) {
+        logger_->Warning("[EDITOR/materials] " + materialTable.Diagnostic());
+    }
+    if (layersView_ != nullptr) {
+        std::vector<Vixen::App::EditorMaterialData> materials;
+        materials.reserve(materialTable.Rows().size());
+        for (const auto& row : materialTable.Rows()) {
+            materials.push_back({row.name != nullptr ? row.name : "", row.name != nullptr ? row.name : ""});
+        }
+        Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
+    }
     RefreshRecipesView();
     if (layersView_ != nullptr) PublishPickerPrimitives();
     return true;

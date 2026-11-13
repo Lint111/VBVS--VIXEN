@@ -94,6 +94,13 @@ struct EditorPackRecipeData {
     std::string id;
 };
 
+// R872.10: pack-owned material rows for the future material panel. The current
+// lane only publishes data; it intentionally adds no editor control surface.
+struct EditorMaterialData {
+    std::string id;
+    std::string name;
+};
+
 // R766: the status-line panel's content.
 struct EditorStatusData {
     std::string document;
@@ -129,6 +136,8 @@ void ClearEditorPickerFilter(EditorLayersView& view);
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
 void RefreshEditorPackRecipesView(EditorLayersView& view,
                                   const std::vector<EditorPackRecipeData>& recipes);
+void RefreshEditorMaterialsView(EditorLayersView& view,
+                                const std::vector<EditorMaterialData>& materials);
 
 void RefreshEditorStatusView(EditorLayersView& view, const EditorStatusData& status);
 

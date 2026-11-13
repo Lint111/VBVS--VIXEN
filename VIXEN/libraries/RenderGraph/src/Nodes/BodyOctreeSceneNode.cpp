@@ -405,6 +405,21 @@ void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
                   std::to_string(providedPool_->count) + " octrees staged");
 }
 
+void BodyOctreeSceneNode::SetMaterialTable(std::vector<std::uint8_t> tableBytes) {
+    if (tableBytes.empty()) return;
+    materialTableBytes_ = std::move(tableBytes);
+    if (nodesBuffer_ == VK_NULL_HANDLE) {
+        concatenated_.materials = materialTableBytes_;
+        if (providedPool_) providedPool_->materials = materialTableBytes_;
+        materialTableBufferDirty_ = false;
+    } else {
+        concatenated_.materials = materialTableBytes_;
+        materialTableBufferDirty_ = true;
+    }
+    NODE_LOG_INFO("[BodyOctreeSceneNode] material table staged (" +
+                  std::to_string(materialTableBytes_.size()) + "B, shader pipelines unchanged)");
+}
+
 void BodyOctreeSceneNode::SetRecipePoolProducer(
     std::function<Vixen::SVO::ConcatenatedOctrees()> producer) {
     if (!producer) {
@@ -614,6 +629,31 @@ void BodyOctreeSceneNode::RefreshGlyphOutlineBuffer() {
     RecordWholeBufferUpload(static_cast<uint64_t>(flatSize));
     NODE_LOG_INFO("[BodyOctreeSceneNode] Refreshed glyph outline buffer (" +
                   std::to_string(static_cast<uint64_t>(size)) + "B)");
+}
+
+void BodyOctreeSceneNode::RefreshMaterialTableBuffer() {
+    VulkanDevice* device = GetDevice();
+    if (!device || materialTableBytes_.empty()) return;
+
+    VkBuffer replacement = VK_NULL_HANDLE;
+    VkDeviceMemory replacementMemory = VK_NULL_HANDLE;
+    CreateHostBuffer(device, std::max<VkDeviceSize>(materialTableBytes_.size(), 1),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        materialTableBytes_.data(), replacement, replacementMemory, "runtime material table SSBO refresh");
+
+    if (materialsBuffer_ != VK_NULL_HANDLE || materialsMemory_ != VK_NULL_HANDLE) {
+        RetiredBufferGeneration retired;
+        retired.retiredAtFrame = executeFrameCounter_;
+        retired.buffers.emplace_back(materialsBuffer_, materialsMemory_);
+        pendingRetire_.push_back(std::move(retired));
+    }
+    materialsBuffer_ = replacement;
+    materialsMemory_ = replacementMemory;
+    if (Resource* output = GetOutput(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER.index, 0))
+        output->SetHandle<VkBuffer>(VkBuffer(materialsBuffer_));
+    RecordWholeBufferUpload(static_cast<uint64_t>(materialTableBytes_.size()));
+    NODE_LOG_INFO("[BodyOctreeSceneNode] refreshed runtime material table (" +
+                  std::to_string(materialTableBytes_.size()) + "B)");
 }
 
 void BodyOctreeSceneNode::SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes shapes) {
@@ -889,6 +929,10 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // complete shell/config generation after its future becomes ready; the published
     // VkBuffers are never mapped or overwritten by a later producer.
     VulkanDevice* device = GetDevice();
+    if (materialTableBufferDirty_ && device != nullptr) {
+        RefreshMaterialTableBuffer();
+        materialTableBufferDirty_ = false;
+    }
     if (shellDataBuffer_ != VK_NULL_HANDLE) {
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, shellDataBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, shellLookupBuffer_);
@@ -1311,6 +1355,7 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
 
 void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
                                                bool publishingShellGeneration) {
+    if (!materialTableBytes_.empty()) concatenated_.materials = materialTableBytes_;
     // nodes / bricks / materials SSBOs from the concatenated byte buffers.
     // Each buffer must be non-empty for a valid VkBuffer; pad to a minimum if a
     // table happened to be empty (defensive — shell octrees produce real data).

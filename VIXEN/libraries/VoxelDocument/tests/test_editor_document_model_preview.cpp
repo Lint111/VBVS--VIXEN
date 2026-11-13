@@ -3,6 +3,7 @@
 #include "ActionStack.h"
 #include "EditorDocumentFraming.h"
 #include "EditorDocumentModel.h"
+#include "VoxelChannelFormat.h"
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/generated/RecipeSimd.g.hpp"
 #include "Recipe/RecipeBounds.h"
@@ -1003,6 +1004,15 @@ TEST(EditorDocumentModelVdc1, MaterialsAndRecipeReferencesRoundTripWithValidatio
     EXPECT_EQ(model.MajorMaterialId(), 7u);
     EXPECT_EQ(model.MinorMaterialId(), 9u);
     EXPECT_EQ(model.MajorMaterialPercent(), 75u);
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry materialEntry;
+    ASSERT_TRUE(model.FlattenToRecipeEntry(materialEntry, model.CaptureBakeSnapshot(), diagnostic))
+        << diagnostic.message;
+    ASSERT_GE(materialEntry.bytecode.size(), 6u);
+    EXPECT_EQ(materialEntry.bytecode[materialEntry.bytecode.size() - 1u].opCode,
+              static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Output));
+    EXPECT_FLOAT_EQ(materialEntry.bytecode[materialEntry.bytecode.size() - 1u].data[0],
+                    static_cast<float>(Vixen::SVO::RecipeOutputSlotFor(Vixen::SVO::SEM_MATERIAL_ID)));
 
     EXPECT_FALSE(model.AddReference("invalid", diagnostic));
     EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidReferenceId);
