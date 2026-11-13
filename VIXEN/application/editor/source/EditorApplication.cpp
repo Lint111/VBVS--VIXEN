@@ -1919,7 +1919,6 @@ bool EditorApplication::RegisterPackRecipeRecursive(
 bool EditorApplication::RegisterPackRecipeReferences(Vixen::Editor::EditorDocumentModel& document) {
     pendingReferenceDiagnostic_.clear();
     unavailablePackReferences_.clear();
-    packRecipeRegistryIds_.clear();
     std::unordered_map<std::string, uint8_t> state;
     bool allReady = true;
     for (const auto& reference : document.References()) {
