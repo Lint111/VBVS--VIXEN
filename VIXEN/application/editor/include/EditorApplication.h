@@ -201,6 +201,7 @@ private:
     std::optional<std::string> pendingOpenRecipe_;  // OpenRecipe request, applied in Update()
     bool pendingReopenSaved_ = false;               // ReopenSaved request, applied in Update() (reloads the runtime)
     uint32_t selectedLayer_ = 0;                    // SelectLayer: whose placement the inspector shows (view state)
+    uint32_t expandedNode_ = 0;                     // ExpandNode: the one visible graph row body (view state)
     bool reframePending_ = false;                    // next re-apply reframes the camera (new document)
     // Inc-2b: the editor owns an AppFlowRuntime (bus=nullptr — Publish no-ops; the editor
     // doesn't consume the events yet) so toggle/undo/redo route through the ActionStack. The

@@ -43,7 +43,7 @@ namespace Vixen.AppFlow.Reference
         InsertRecipeReference = 46,
         SetDocumentMaterials = 47,
         // R876 LM-V1: graph-node argument and structural edits. Keep append-only ids.
-        SetNodeArgument = 48, InsertNodeAfter = 49, RemoveNode = 50, WrapNodes = 51,
+        SetNodeArgument = 48, InsertNodeAfter = 49, RemoveNode = 50, WrapNodes = 51, ExpandNode = 52,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -316,6 +316,15 @@ namespace Vixen.AppFlow.Reference
         public const int Param2Type = (int)FlowParamType.Int;
         public const string Param3Name = "op";
         public const int Param3Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.ExpandNode))]
+    public static class ExpandNodeParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "node";
+        public const int Param1Type = (int)FlowParamType.Int;
     }
 
     // R766: panel ids are the declared PanelDecl ids; regions are left | right | bottom | overlay | floating.
@@ -719,6 +728,14 @@ namespace Vixen.AppFlow.Reference
     public static class WrapNodesTrigger
     {
         public const string Element = "layer-{index}-nodes-{first}-{last}-wrap-{op}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.ExpandNode))]
+    public static class ExpandNodeTrigger
+    {
+        public const string Element = "layer-{index}-node-{node}-expand";
         public const string ParamName = "layerIndex";
         public const string On = "click";
     }

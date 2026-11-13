@@ -404,7 +404,8 @@ void EditorApplication::RefreshLayersView() {
                                             field.width > 1u ? std::string(field.label) + " " + kComponents[c]
                                                              : std::string(field.label),
                                             field.value[c], field.hasRange, field.minimum, field.maximum,
-                                            field.defaultValue[c], field.hasDefault && field.value[c] == field.defaultValue[c]});
+                                            field.defaultValue[c], field.hasDefault,
+                                            field.hasDefault && field.value[c] == field.defaultValue[c]});
                 }
             }
         } else {
@@ -458,6 +459,11 @@ void EditorApplication::RefreshLayersView() {
                 const auto& layer = doc_.View().layers[selectedLayer_];
                 const std::span<const Vixen::SVO::Recipe::SdfInstruction> program(
                     layer.instructions, layer.header->instructionCount);
+                if (graph->view.nodeCount == 0u) {
+                    expandedNode_ = 0u;
+                } else if (expandedNode_ >= graph->view.nodeCount) {
+                    expandedNode_ = graph->view.nodeCount - 1u;
+                }
                 for (uint32_t nodeIndex = 0; nodeIndex < graph->view.nodeCount; ++nodeIndex) {
                     const auto& node = graph->view.nodes[nodeIndex];
                     std::vector<Vixen::SVO::Recipe::SdfInstruction> candidate(
@@ -468,11 +474,12 @@ void EditorApplication::RefreshLayersView() {
                         program, node.instructionIndex,
                         std::span<Vixen::SVO::Recipe::SdfInstruction>(candidate.data(), candidate.size()),
                         candidateCount, removeDiagnostic);
-                    std::string removeTitle = canRemove
-                        ? "Remove node"
-                        : "Remove refused: " +
-                              Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(removeDiagnostic);
+                    const std::string removeReason = canRemove
+                        ? std::string()
+                        : Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(removeDiagnostic);
+                    const std::string removeTitle = canRemove ? "Remove node" : removeReason;
                     std::string addOp;
+                    std::string addReason;
                     for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
                         std::vector<Vixen::SVO::Recipe::SdfInstruction> inserted(program.size() + 1u);
                         uint32_t insertedCount = 0u;
@@ -484,6 +491,7 @@ void EditorApplication::RefreshLayersView() {
                             addOp = info.name;
                             break;
                         }
+                        addReason = Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(insertDiagnostic);
                     }
                     std::string displayName = node.opcodeInfo->name;
                     std::string recipeId;
@@ -492,9 +500,7 @@ void EditorApplication::RefreshLayersView() {
                         doc_.IsRecipeReferenceLayer(selectedLayer_, &recipeId, recipeDiagnostic)) {
                         displayName = "Recipe " + recipeId;
                     }
-                    graphData.nodes.push_back({static_cast<int>(nodeIndex), std::move(displayName),
-                                               categoryName(node.opcodeInfo->category), std::move(addOp), canRemove,
-                                               std::move(removeTitle), indentFor(node)});
+                    std::vector<std::string> summaryParts;
 
                     const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(*node.opcodeInfo);
                     for (uint32_t argumentIndex = 0;
@@ -502,21 +508,56 @@ void EditorApplication::RefreshLayersView() {
                         const auto& argument = arguments[argumentIndex];
                         if (argument.source != Vixen::SVO::Recipe::SdfArgumentSource::InstructionData) continue;
                         static constexpr const char* kComponents[4] = {"x", "y", "z", "w"};
+                        const bool isTransform = node.opcodeInfo->name == "Transform";
+                        std::string summary = argument.label;
+                        if (argument.width > 1u) summary += " (";
                         for (uint32_t component = 0; component < argument.width && component < 4u; ++component) {
                             const std::string field = argument.name;
                             const std::string componentName = kComponents[component];
                             const float value = layer.instructions[node.instructionIndex]
                                 .data[argument.offset + static_cast<int16_t>(component)];
-                            graphData.arguments.push_back({static_cast<int>(nodeIndex), field, componentName,
-                                                           argument.width > 1u
-                                                               ? std::string(argument.label) + " " + kComponents[component]
-                                                               : std::string(argument.label),
-                                                           value, argument.hasRange != 0u, argument.minValue,
-                                                           argument.maxValue, argument.defaultValue[component],
-                                                           argument.hasDefault != 0u &&
-                                                               value == argument.defaultValue[component]});
+                            if (argument.width > 1u) {
+                                if (component != 0u) summary += ", ";
+                                summary += FloatParamText(value);
+                            } else {
+                                summary += " " + FloatParamText(value);
+                            }
+                            if (!isTransform) {
+                                graphData.arguments.push_back({static_cast<int>(nodeIndex), field, componentName,
+                                                               argument.width > 1u
+                                                                   ? std::string(argument.label) + " " + kComponents[component]
+                                                                   : std::string(argument.label),
+                                                               value, argument.hasRange != 0u, argument.minValue,
+                                                               argument.maxValue, argument.defaultValue[component],
+                                                               argument.hasDefault != 0u,
+                                                               argument.hasDefault != 0u &&
+                                                                   value == argument.defaultValue[component]});
+                            }
                         }
+                        if (argument.width > 1u) summary += ")";
+                        summaryParts.push_back(std::move(summary));
                     }
+                    std::string summary;
+                    if (node.opcodeInfo->name == "Transform") {
+                        const auto vec = [](const std::array<float, 9>& values, size_t offset, const char* suffix) {
+                            return std::string(suffix) + " (" + FloatParamText(values[offset]) + ", " +
+                                   FloatParamText(values[offset + 1u]) + ", " + FloatParamText(values[offset + 2u]) + ")";
+                        };
+                        summary = vec(placement.values, 0u, "position") + " · " +
+                                  vec(placement.values, 3u, "rotation") + "° · " +
+                                  vec(placement.values, 6u, "scale");
+                    } else {
+                        for (const auto& part : summaryParts) {
+                            if (!summary.empty()) summary += " · ";
+                            summary += part;
+                        }
+                        if (summary.empty()) summary = categoryName(node.opcodeInfo->category);
+                    }
+                    graphData.nodes.push_back({static_cast<int>(nodeIndex), std::move(displayName),
+                                               categoryName(node.opcodeInfo->category), std::move(addOp),
+                                               std::move(summary), canRemove, nodeIndex == expandedNode_,
+                                               std::move(addReason), std::move(removeReason), std::move(removeTitle),
+                                               indentFor(node)});
                 }
                 // The catalogue is the only source for domain choices. The generated rewrite is
                 // tried for every contiguous pair; only candidates accepted by its validation are published.
@@ -1286,6 +1327,31 @@ void EditorApplication::RegisterAppFlowHandlers() {
             return;
         }
         registerNodeStructuralEdit(FlowActionId::WrapNodes, "WrapNodes", layerIndex, first, last, std::move(op));
+    });
+    rt_.RegisterHandler(FlowActionId::ExpandNode,
+                        [this, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerIndex = 0;
+        uint32_t nodeIndex = 0;
+        if (!ParseIndexParam(p, "layerIndex", layerIndex) || !ParseIndexParam(p, "node", nodeIndex)) {
+            refuse("ExpandNode", "needs layerIndex and node");
+            return;
+        }
+        if (layerIndex >= doc_.LayerCount()) {
+            refuse("ExpandNode", "layer index " + std::to_string(layerIndex) + " is outside the document");
+            return;
+        }
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        const auto* graph = doc_.GetLayerGraph(layerIndex, diagnostic);
+        if (!graph || graph->raw || nodeIndex >= graph->view.nodeCount) {
+            refuse("ExpandNode", graph && graph->raw
+                                      ? Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(graph->diagnostic)
+                                      : diagnostic.message);
+            return;
+        }
+        selectedLayer_ = layerIndex;
+        expandedNode_ = nodeIndex;
+        lastEditorError_.clear();
+        RefreshLayersView();
     });
 
     rt_.RegisterHandler(FlowActionId::RenameLayer, [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {

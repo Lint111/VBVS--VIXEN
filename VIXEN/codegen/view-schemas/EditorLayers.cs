@@ -72,6 +72,7 @@ namespace Vixen.ViewSchemas
         // sn-editorpicker1: the catalogue default of this component and its reset button, which is the
         // SetLayerPrimitiveField selector with the default filled in ("layer-<i>-field-<argument>-<component>-<default>").
         public float defaultValue;
+        public bool hasDefault;
         public bool isDefault;
         public string resetId;
     }
@@ -111,10 +112,15 @@ namespace Vixen.ViewSchemas
         public string name;
         public string category;
         public string addOp;
+        public string summary;
         public string elementId;
         public string addId;
         public string removeId;
+        public string toggleId;
         public bool canRemove;
+        public bool isExpanded;
+        public string addReason;
+        public string removeReason;
         public string removeTitle;
         public int indent;
     }
@@ -129,6 +135,7 @@ namespace Vixen.ViewSchemas
         public float minimum;
         public float maximum;
         public float defaultValue;
+        public bool hasDefault;
         public bool isDefault;
         public string valueId;
         public string upId;

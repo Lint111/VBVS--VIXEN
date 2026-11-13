@@ -1,0 +1,4 @@
+<!-- ut-disclosure: one compact tree-row control. Behaviour: UiKit.cpp; look: kit.rcss. -->
+<span part="marker" class="ut-marker">▸</span>
+<span part="label" class="ut-label"></span>
+<span part="reason" class="ut-reason"></span>

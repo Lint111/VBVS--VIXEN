@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0x6CF3C4ED
+shape 0xF45200E4
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -59,6 +59,7 @@ action SetNodeArgument 48
 action InsertNodeAfter 49
 action RemoveNode 50
 action WrapNodes 51
+action ExpandNode 52
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -183,6 +184,7 @@ decl 48 sizeof(LayerState) 1
 decl 49 sizeof(LayerState) 1
 decl 50 sizeof(LayerState) 1
 decl 51 sizeof(LayerState) 1
+decl 52 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -239,6 +241,8 @@ param 51 layerIndex 1
 param 51 first 1
 param 51 last 1
 param 51 op 0
+param 52 layerIndex 1
+param 52 node 1
 param 16 panelId 0
 param 17 panelId 0
 param 18 panelId 0
@@ -297,6 +301,7 @@ trigger SetNodeArgumentWTrigger layer-{index}-node-{node}-field-{field}-w-{w} 48
 trigger InsertNodeAfterTrigger layer-{index}-node-{afterNode}-add-{op} 49 layerIndex click
 trigger RemoveNodeTrigger layer-{index}-node-{node}-remove 50 layerIndex click
 trigger WrapNodesTrigger layer-{index}-nodes-{first}-{last}-wrap-{op} 51 layerIndex click
+trigger ExpandNodeTrigger layer-{index}-node-{node}-expand 52 layerIndex click
 trigger SetLayerTransformPXTrigger layer-{index}-placement-px-{px} 26 layerIndex click
 trigger SetLayerTransformPYTrigger layer-{index}-placement-py-{py} 26 layerIndex click
 trigger SetLayerTransformPZTrigger layer-{index}-placement-pz-{pz} 26 layerIndex click

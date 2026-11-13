@@ -54,6 +54,7 @@ struct EditorShapeFieldData {
     float minimum = 0.0f;
     float maximum = 0.0f;
     float defaultValue = 0.0f;   // the catalogue default of this component
+    bool hasDefault = false;
     bool isDefault = false;
 };
 
@@ -69,7 +70,11 @@ struct EditorNodeData {
     std::string name;
     std::string category;
     std::string addOp;
+    std::string summary;
     bool canRemove = false;
+    bool isExpanded = false;
+    std::string addReason;
+    std::string removeReason;
     std::string removeTitle;
     int indent = 0;
 };
@@ -84,6 +89,7 @@ struct EditorNodeArgumentData {
     float minimum = 0.0f;
     float maximum = 0.0f;
     float defaultValue = 0.0f;
+    bool hasDefault = false;
     bool isDefault = false;
 };
 

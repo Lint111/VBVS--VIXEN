@@ -56,7 +56,8 @@ TEST(UiKitContract, InstancesMayOnlyCarryTheOverrideContract) {
     EXPECT_TRUE(UiKit::AttributeAllowed("div", "anything")) << "non-kit tags are not the kit's business";
     EXPECT_EQ(UiKit::RefusedAttributes("ut-button", {"label", "bogus", "id", "hit-mask"}),
               (std::vector<std::string>{"bogus", "hit-mask"}));
-    EXPECT_EQ(UiKit::Tags().size(), 10u);
+    EXPECT_TRUE(UiKit::AttributeAllowed("ut-disclosure", "reason"));
+    EXPECT_EQ(UiKit::Tags().size(), 11u);
 }
 
 namespace {
@@ -159,7 +160,8 @@ TEST_F(UiKitTest, FragmentsBuildTheStructureAndAttributesFillIt) {
     EXPECT_NE(Part(nf, "label")->GetInnerRML().find("radius (m)"), std::string::npos);
     EXPECT_NE(Part(nf, "range")->GetInnerRML().find("range 0"), std::string::npos) << "the one range format";
     EXPECT_EQ(Part(nf, "reset")->GetId(), "p-reset");
-    EXPECT_NE(Part(nf, "reset")->GetInnerRML().find("reset 2"), std::string::npos);
+    EXPECT_NE(Part(nf, "reset")->GetInnerRML().find("reset"), std::string::npos);
+    EXPECT_EQ(Part(nf, "reset")->GetAttribute<Rml::String>("title", ""), "reset to 2");
     EXPECT_TRUE(doc_->GetElementById("t")->IsClassSet("checked"));
     auto* status = doc_->GetElementById("s");
     EXPECT_NE(Part(status, "history")->GetInnerRML().find("undo 1 / redo 0"), std::string::npos);
@@ -186,6 +188,21 @@ TEST_F(UiKitTest, DisabledButtonIsVisibleButDoesNotTakePointerInput) {
     ctx_->Update();
     EXPECT_FALSE(button->IsClassSet("disabled"));
     EXPECT_EQ(button->GetProperty("pointer-events")->ToString(), "auto");
+}
+
+TEST_F(UiKitTest, DisabledReasonIsVisibleAndDisclosurePublishesOpenState) {
+    Load(R"(<rml><body>
+<ut-button id="disabled" label="Remove" disabled="true" reason="dangling socket"/>
+<ut-disclosure id="node" label="0 Sphere" open="true"/>
+</body></rml>)");
+    auto* button = doc_->GetElementById("disabled");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(Part(button, "reason")->GetInnerRML(), "dangling socket");
+    EXPECT_EQ(button->GetAttribute<Rml::String>("title", ""), "dangling socket");
+    auto* disclosure = doc_->GetElementById("node");
+    ASSERT_NE(disclosure, nullptr);
+    EXPECT_TRUE(disclosure->IsClassSet("open"));
+    EXPECT_NE(Part(disclosure, "marker"), nullptr);
 }
 
 TEST_F(UiKitTest, NudgeCommitsThroughTheValueSlotWithTheOneRule) {

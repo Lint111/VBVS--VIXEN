@@ -1,6 +1,6 @@
 # UI Kit (R874): foundation elements declared once
 
-Buttons, toggles, text and number fields, lists, toolbars, status line, panels and flyouts exist **once**. Every panel of
+Buttons, disclosures, toggles, text and number fields, lists, toolbars, status line, panels and flyouts exist **once**. Every panel of
 every app (editor, game HUD, loader UI) instances them; a capability added to an element reaches every instance on the
 next build, and a change to the kit's markup or style reaches every instance on the **running app**, with no build.
 
@@ -25,10 +25,11 @@ contract`); `hit-mask` is the kit's (a button/toggle always stamps `none`, the `
 
 | Element | Attributes | Notes |
 |---|---|---|
-| `ut-button` | `label`, `variant` | id = the AppFlow selector it clicks; variants (space separated, each is a class): `row`, `name`, `tool`, `tab`, `round`, `selected`/`open`/`active` come from `data-class-*` |
+| `ut-button` | `label`, `variant`, `disabled`, `reason` | id = the AppFlow selector it clicks; a disabled `reason` is visible inline below the label and becomes the title; variants (space separated, each is a class): `row`, `name`, `tool`, `tab`, `round`, `selected`/`open`/`active` come from `data-class-*` |
+| `ut-disclosure` | `label`, `open`, `disabled`, `reason` | compact tree-row control; `open` adds the open marker/class, and a disabled `reason` is visible inline below the row and becomes the title; its id is the AppFlow selector for click/Enter expansion |
 | `ut-toggle` | `checked`, `variant` | id = selector |
 | `ut-text-field` | `value`, `autofocus`, `variant` (`class="wide"`) | a real form control: `data-value` binds two-way; id = selector pattern with a value slot (`picker-filter-{filter}`) |
-| `ut-number-field` | `label`, `value`, `value-id`, `reset-id`, `default`, `min`, `max`, `unit`, `step`, `variant` (`inline`) | `value-id` = the declared typed-value selector (`parameter-0-set-{value}`); `reset-id` = an action selector; `min`/`max` give the range (both finite = range text + nudge clamp) |
+| `ut-number-field` | `label`, `value`, `value-id`, `reset-id`, `default`, `min`, `max`, `unit`, `step`, `variant` (`inline`) | `value-id` = the declared typed-value selector (`parameter-0-set-{value}`); reset is shown only when a declared `default` exists and differs (label `reset`, title `reset to <default>`); `min`/`max` give the range (both finite = range text + nudge clamp) |
 | `ut-choice-group` | `label`, `variant` | children are `ut-button` rows |
 | `ut-list` | `variant` (`fill`) | scroll area |
 | `ut-toolbar`, `ut-panel`, `ut-flyout` | `variant` | kit styling over the existing dock (the dock stays the panel framework, R766) |
@@ -47,7 +48,8 @@ from the element's inner RML, and a self-closing element has none.
   `kShiftStepMultiplier`). Pointer modifiers persist across frames in `UiInputForwarder`.
 * **Scrub**: press the field's label and drag; one range per 200 px (40 steps when unbounded); the input previews, one commit
   on release (one undo entry).
-* **Reset**: the reset part dispatches `reset-id`; it shows when `reset-id` is set and the value differs from `default`.
+* **Reset**: the reset part dispatches `reset-id`; it shows only when `reset-id` and a declared `default` are present and the value differs from that default. Its visible label is `reset`; the default is in the title.
+* **Disabled reasons**: `ut-button` and `ut-disclosure` render the generated diagnostic supplied in `reason` inline under the control and as its title. The kit does not own a reason string table.
 * **Range**: `range a–b` (en dash), one format.
 * **Refusal**: the element mirrors typed text into its `value` attribute, so after a refused commit the data binding writes
   the model value back and the field snaps back.

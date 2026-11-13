@@ -70,7 +70,7 @@ std::string FormatRange(bool hasRange, float minimum, float maximum) {
 // ================================================================================================ the override contract
 namespace {
 
-enum class Kind { Button, Toggle, TextField, NumberField, ChoiceGroup, List, Toolbar, StatusLine, Panel, Flyout };
+enum class Kind { Button, Disclosure, Toggle, TextField, NumberField, ChoiceGroup, List, Toolbar, StatusLine, Panel, Flyout };
 
 struct KindInfo {
     Kind kind;
@@ -82,7 +82,9 @@ struct KindInfo {
 
 const std::vector<KindInfo>& Kinds() {
     static const std::vector<KindInfo> kinds = {
-        {Kind::Button, "ut-button", "button", {"label", "variant", "disabled"}, {"label"}},
+        {Kind::Button, "ut-button", "button", {"label", "variant", "disabled", "reason"}, {"label", "reason"}},
+        {Kind::Disclosure, "ut-disclosure", "disclosure", {"label", "open", "disabled", "reason"},
+         {"marker", "label", "reason"}},
         {Kind::Toggle, "ut-toggle", "toggle", {"checked", "variant"}, {"mark"}},
         {Kind::TextField, "ut-text-field", nullptr, {"value", "autofocus", "variant", "type"}, {}},
         {Kind::NumberField, "ut-number-field", "number-field",
@@ -276,7 +278,8 @@ public:
                 }
             }
         }
-        if (info_.kind == Kind::Button || info_.kind == Kind::Toggle) SetAttribute("hit-mask", "none");
+        if (info_.kind == Kind::Button || info_.kind == Kind::Disclosure || info_.kind == Kind::Toggle)
+            SetAttribute("hit-mask", "none");
         if (info_.kind == Kind::NumberField) {
             if (auto* input = Part("input")) input->AddEventListener("change", this);
             if (auto* up = Part("up")) up->AddEventListener("click", this);
@@ -357,8 +360,12 @@ private:
         switch (info_.kind) {
             case Kind::Button:
                 SetText(Part("label"), Attr("label"));
-                SetClass("disabled", Truthy(Attr("disabled")));
-                SetProperty("pointer-events", Truthy(Attr("disabled")) ? "none" : "auto");
+                RefreshActionState();
+                break;
+            case Kind::Disclosure:
+                SetText(Part("label"), Attr("label"));
+                SetClass("open", Truthy(Attr("open")));
+                RefreshActionState();
                 break;
             case Kind::ChoiceGroup: SetText(Part("label"), Attr("label")); break;
             case Kind::Toggle: SetClass("checked", Truthy(Attr("checked"))); break;
@@ -366,6 +373,17 @@ private:
             case Kind::NumberField: RefreshNumber(); break;
             default: break;
         }
+    }
+
+    void RefreshActionState() {
+        const bool disabled = Truthy(Attr("disabled"));
+        const std::string reason = Attr("reason");
+        SetClass("disabled", disabled);
+        SetProperty("pointer-events", disabled ? "none" : "auto");
+        SetText(Part("reason"), reason);
+        SetVisible(Part("reason"), disabled && !reason.empty());
+        if (disabled && !reason.empty() && GetAttribute<Rml::String>("title", "") != reason)
+            SetAttribute("title", reason);
     }
 
     void RefreshStatus() {
@@ -397,8 +415,9 @@ private:
         const bool atDefault = hasDefault && ParseNumber(Attr("value"), current) && current == def;
         if (reset) {
             if (reset->GetId() != resetId) reset->SetId(resetId);
-            SetVisible(reset, !resetId.empty() && !atDefault);
-            SetText(reset, hasDefault ? "reset " + FormatNumber(def) : std::string("reset"));
+            SetVisible(reset, !resetId.empty() && hasDefault && !atDefault);
+            SetText(reset, "reset");
+            if (hasDefault) reset->SetAttribute("title", "reset to " + FormatNumber(def));
         }
     }
 

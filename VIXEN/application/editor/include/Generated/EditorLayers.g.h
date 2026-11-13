@@ -13,11 +13,11 @@ struct EditorParameterRow { Rml::String name; Rml::String unit; Rml::String upId
 struct EditorTransformRow { Rml::String label; float value; Rml::String upId; Rml::String downId; Rml::String valueId; };
 struct EditorPrimitiveRow { Rml::String name; Rml::String display; Rml::String category; Rml::String elementId; };
 struct EditorLayerOpRow { Rml::String name; Rml::String elementId; bool isCurrent; };
-struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool isDefault; Rml::String resetId; };
+struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool hasDefault; bool isDefault; Rml::String resetId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorPackRecipeRow { Rml::String id; Rml::String elementId; };
-struct EditorNodeRow { int nodeIndex; Rml::String name; Rml::String category; Rml::String addOp; Rml::String elementId; Rml::String addId; Rml::String removeId; bool canRemove; Rml::String removeTitle; int indent; };
-struct EditorNodeArgumentRow { int nodeIndex; Rml::String field; Rml::String component; Rml::String label; float value; bool hasRange; float minimum; float maximum; float defaultValue; bool isDefault; Rml::String valueId; Rml::String upId; Rml::String downId; Rml::String resetId; };
+struct EditorNodeRow { int nodeIndex; Rml::String name; Rml::String category; Rml::String addOp; Rml::String summary; Rml::String elementId; Rml::String addId; Rml::String removeId; Rml::String toggleId; bool canRemove; bool isExpanded; Rml::String addReason; Rml::String removeReason; Rml::String removeTitle; int indent; };
+struct EditorNodeArgumentRow { int nodeIndex; Rml::String field; Rml::String component; Rml::String label; float value; bool hasRange; float minimum; float maximum; float defaultValue; bool hasDefault; bool isDefault; Rml::String valueId; Rml::String upId; Rml::String downId; Rml::String resetId; };
 struct EditorNodeWrapRow { int firstNode; int lastNode; Rml::String op; Rml::String label; Rml::String elementId; };
 struct EditorNodeChoiceRow { Rml::String name; Rml::String display; Rml::String category; Rml::String elementId; };
 struct EditorLayersBind {
@@ -105,6 +105,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("downId", &EditorShapeFieldRow::downId);
         sh.RegisterMember("valueId", &EditorShapeFieldRow::valueId);
         sh.RegisterMember("defaultValue", &EditorShapeFieldRow::defaultValue);
+        sh.RegisterMember("hasDefault", &EditorShapeFieldRow::hasDefault);
         sh.RegisterMember("isDefault", &EditorShapeFieldRow::isDefault);
         sh.RegisterMember("resetId", &EditorShapeFieldRow::resetId);
     }
@@ -122,10 +123,15 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("name", &EditorNodeRow::name);
         sh.RegisterMember("category", &EditorNodeRow::category);
         sh.RegisterMember("addOp", &EditorNodeRow::addOp);
+        sh.RegisterMember("summary", &EditorNodeRow::summary);
         sh.RegisterMember("elementId", &EditorNodeRow::elementId);
         sh.RegisterMember("addId", &EditorNodeRow::addId);
         sh.RegisterMember("removeId", &EditorNodeRow::removeId);
+        sh.RegisterMember("toggleId", &EditorNodeRow::toggleId);
         sh.RegisterMember("canRemove", &EditorNodeRow::canRemove);
+        sh.RegisterMember("isExpanded", &EditorNodeRow::isExpanded);
+        sh.RegisterMember("addReason", &EditorNodeRow::addReason);
+        sh.RegisterMember("removeReason", &EditorNodeRow::removeReason);
         sh.RegisterMember("removeTitle", &EditorNodeRow::removeTitle);
         sh.RegisterMember("indent", &EditorNodeRow::indent);
     }
@@ -139,6 +145,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("minimum", &EditorNodeArgumentRow::minimum);
         sh.RegisterMember("maximum", &EditorNodeArgumentRow::maximum);
         sh.RegisterMember("defaultValue", &EditorNodeArgumentRow::defaultValue);
+        sh.RegisterMember("hasDefault", &EditorNodeArgumentRow::hasDefault);
         sh.RegisterMember("isDefault", &EditorNodeArgumentRow::isDefault);
         sh.RegisterMember("valueId", &EditorNodeArgumentRow::valueId);
         sh.RegisterMember("upId", &EditorNodeArgumentRow::upId);

@@ -2,7 +2,7 @@
    behaviour). Editing this file on a running app restyles every instance in every panel. */
 
 /* ---- button ---- */
-ut-button, ut-number-field .ut-step, ut-number-field .ut-reset {
+ut-button, ut-disclosure, ut-number-field .ut-step, ut-number-field .ut-reset {
     display: inline-block;
     min-width: 16px;
     margin-left: 3px;
@@ -14,11 +14,19 @@ ut-button, ut-number-field .ut-step, ut-number-field .ut-reset {
     border-color: #6080c0;
     pointer-events: auto;
 }
-ut-button .ut-label { pointer-events: none; }
+ut-button .ut-label, ut-disclosure .ut-label, ut-disclosure .ut-marker { pointer-events: none; }
+ut-button .ut-reason, ut-disclosure .ut-reason { display: block; margin-top: 2px; color: #d09a9a; font-size: 11px; white-space: normal; pointer-events: none; }
+ut-disclosure { display: flex; flex-wrap: wrap; align-items: baseline; margin: 0; padding: 3px 4px; text-align: left; }
+ut-disclosure .ut-marker { width: 14px; color: #9fb0d0; }
+ut-disclosure .ut-label { flex: 1 1 auto; }
+ut-disclosure.open .ut-marker { color: #ffffff; }
+ut-disclosure .ut-reason { flex-basis: 100%; padding-left: 14px; }
 ut-button.selected, ut-button.open { color: #ffffff; background-color: #50609a; border-color: #a0c0ff; }
 ut-button.disabled { color: #707890; background-color: #25283a; border-color: #3d4660; opacity: 0.65; }
+ut-disclosure.disabled { color: #707890; background-color: #25283a; border-color: #3d4660; opacity: 0.65; }
 ut-button.open { background-color: #3a6ea5; }
 ut-button.row { display: block; margin-left: 0; margin-bottom: 2px; text-align: left; }
+ut-disclosure.row { display: flex; margin-left: 0; margin-bottom: 2px; }
 ut-button.name { display: inline-block; width: 70px; margin-left: 0; padding: 0; border-width: 0; background-color: transparent; color: #e0d0b0; text-align: left; }
 ut-button.name.selected { color: #ffffff; text-decoration: underline; }
 /* dock chrome variants */

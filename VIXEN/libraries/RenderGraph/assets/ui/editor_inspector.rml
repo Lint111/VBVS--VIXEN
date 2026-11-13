@@ -5,10 +5,7 @@
     <link type="text/rcss" href="kit/kit.rcss"/>
 </head>
 <body>
-    <!-- R766 "inspector" panel (right region): the open document's recipe parameters, the selected layer and its
-         shape and placement. Every numeric row is the kit's ut-number-field: value-id is the declared set selector with
-         its value slot ("parameter-<index>-set-{value}"), reset-id an action selector; nudge, scrub, range text and the
-         refusal snap-back are the element's (UiKit.cpp), not this document's. -->
+    <!-- R766 inspector: layer-level controls stay here; node fields have one home in the outline. -->
     <ut-panel data-model="editor_layers">
         <div class="subtitle">Recipe parameters</div>
         <ut-number-field data-for="param : parameters" data-attr-label="param.name" data-attr-unit="param.unit"
@@ -21,39 +18,45 @@
             <ut-text-field class="wide" data-attr-id="'layer-' + selectedLayer + '-name-{name}'" data-attr-value="selectedLayerName"/></div>
         <ut-number-field variant="inline" data-for="row : layers" data-if="row.isSelected" label="blend radius"
                          data-attr-value="row.blendRadius" data-attr-value-id="row.blendValueId"> </ut-number-field>
-        <div class="subtitle">Shape of {{selectedLayerName}}<span data-if="selectedShape != ''"> ({{selectedShape}})</span></div>
-        <div class="hint" data-if="selectedShape == ''">{{shapeNote}}</div>
-        <!-- R872.1: the combine op of the selected layer; rows come from the generated layer-op table. -->
+        <!-- R872.1: the combine op is layer-level; primitive values live only in the selected node row. -->
         <ut-choice-group label="combine op">
             <ut-button data-for="choice : opChoices" data-attr-id="choice.elementId" data-attr-label="choice.name"
                        data-class-selected="choice.isCurrent"> </ut-button>
         </ut-choice-group>
-        <ut-number-field data-for="field : shape" data-attr-label="field.label" data-attr-value="field.value"
-                         data-attr-value-id="field.valueId" data-attr-reset-id="field.resetId"
-                         data-attr-default="field.defaultValue"
-                         data-attr-min="field.hasRange ? field.minimum : ''" data-attr-max="field.hasRange ? field.maximum : ''"> </ut-number-field>
         <div class="subtitle">Nodes</div>
         <div class="hint" data-if="rawProgram">raw program: {{rawProgramDiagnostic}}</div>
         <ut-list class="node-outline" data-if="!rawProgram">
-            <ut-toolbar class="node-row" data-for="node : nodes"
-                        data-attr-style="'margin-left: ' + (node.indent * 16) + 'px'">
-                <ut-button variant="name" data-attr-label="node.name + ' (' + node.category + ')'"> </ut-button>
-                <ut-button variant="row" data-attr-id="node.addId" data-attr-label="'add ' + node.addOp"
-                            data-attr-disabled="node.addOp == ''"> </ut-button>
-                <ut-button variant="row" data-attr-id="node.removeId" label="×"
-                            data-attr-disabled="!node.canRemove" data-attr-title="node.removeTitle"> </ut-button>
-                <ut-number-field data-for="field : nodeArguments" data-if="field.nodeIndex == node.nodeIndex"
-                                 data-attr-label="field.label" data-attr-value="field.value"
-                                 data-attr-value-id="field.valueId" data-attr-reset-id="field.resetId"
-                                 data-attr-default="field.defaultValue"
-                                 data-attr-min="field.hasRange ? field.minimum : ''"
-                                 data-attr-max="field.hasRange ? field.maximum : ''"> </ut-number-field>
-            </ut-toolbar>
+            <div class="node-entry" data-for="node : nodes"
+                 data-attr-style="'padding-left: ' + (node.indent * 14) + 'px'">
+                <div class="node-row">
+                    <ut-disclosure class="node-toggle" variant="row" data-attr-id="node.toggleId"
+                                   data-attr-label="node.nodeIndex + '  ' + node.name + '  (' + node.category + ')'"
+                                   data-attr-open="node.isExpanded" data-attr-title="node.summary"> </ut-disclosure>
+                    <div class="node-summary">{{node.summary}}</div>
+                    <ut-button class="node-action" data-attr-id="node.addId" label="+ node"
+                               data-attr-disabled="node.addOp == ''"
+                               data-attr-title="node.addReason == '' ? 'add ' + node.addOp : node.addReason"
+                               data-attr-reason="node.addReason"> </ut-button>
+                    <ut-button class="node-action" data-attr-id="node.removeId" label="remove"
+                               data-attr-disabled="!node.canRemove" data-attr-title="node.removeTitle"
+                               data-attr-reason="node.removeReason"> </ut-button>
+                </div>
+                <div class="node-fields" data-if="node.isExpanded">
+                    <ut-number-field data-for="field : nodeArguments" data-if="field.nodeIndex == node.nodeIndex"
+                                     data-attr-label="field.label" data-attr-value="field.value"
+                                     data-attr-value-id="field.valueId" data-attr-reset-id="field.resetId"
+                                     data-attr-default="field.defaultValue"
+                                     data-attr-min="field.hasRange ? field.minimum : ''"
+                                     data-attr-max="field.hasRange ? field.maximum : ''"> </ut-number-field>
+                </div>
+            </div>
         </ut-list>
-        <ut-choice-group label="wrap in" data-if="!rawProgram">
+        <ut-choice-group label="wrap in…" data-if="!rawProgram">
             <ut-button data-for="choice : nodeWrapChoices" data-attr-id="choice.elementId"
-                       data-attr-label="choice.label"> </ut-button>
+                       data-attr-label="choice.label" data-attr-title="'wrap nodes in ' + choice.label"> </ut-button>
         </ut-choice-group>
+        <!-- Placement is the one layer-level transform shortcut. Transform node arguments are summarized above,
+             not repeated here, so position/rotation/scale have one editable representation. -->
         <div class="subtitle">Placement of {{selectedLayerName}} (layer {{selectedLayer}})</div>
         <ut-number-field variant="inline" data-for="field : transform" data-attr-label="field.label"
                          data-attr-value="field.value" data-attr-value-id="field.valueId"> </ut-number-field>

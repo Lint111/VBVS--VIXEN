@@ -164,9 +164,12 @@ public:
                 const std::string component = dot == std::string::npos ? std::string("x") : field.key.substr(dot + 1);
                 row.valueId = layerStem + "-field-" + argument + "-" + component + "-{" + component + "}";
                 row.defaultValue = field.defaultValue;
+                row.hasDefault = field.hasDefault;
                 row.isDefault = field.isDefault;
                 // The reset button is the typed-value selector with the default filled in (one SetLayerPrimitiveField).
-                row.resetId = layerStem + "-field-" + argument + "-" + component + "-" + FloatText(field.defaultValue);
+                row.resetId = field.hasDefault
+                    ? layerStem + "-field-" + argument + "-" + component + "-" + FloatText(field.defaultValue)
+                    : std::string();
                 shape_.push_back(std::move(row));
             }
         }
@@ -184,11 +187,16 @@ public:
                 row.name = Rml::String(node.name);
                 row.category = Rml::String(node.category);
                 row.addOp = Rml::String(node.addOp);
+                row.summary = Rml::String(node.summary);
                 row.elementId = layerStem + "-node-" + std::to_string(node.nodeIndex);
                 row.addId = "panel-node-picker-" + std::to_string(placement.selectedLayer) + "-" +
                             std::to_string(node.nodeIndex) + "-open";
                 row.removeId = row.elementId + "-remove";
+                row.toggleId = row.elementId + "-expand";
                 row.canRemove = node.canRemove;
+                row.isExpanded = node.isExpanded;
+                row.addReason = Rml::String(node.addReason);
+                row.removeReason = Rml::String(node.removeReason);
                 row.removeTitle = Rml::String(node.removeTitle);
                 row.indent = node.indent;
                 nodes_.push_back(std::move(row));
@@ -205,13 +213,16 @@ public:
                 row.minimum = argument.minimum;
                 row.maximum = argument.maximum;
                 row.defaultValue = argument.defaultValue;
+                row.hasDefault = argument.hasDefault;
                 row.isDefault = argument.isDefault;
                 const std::string stem = layerStem + "-node-" + std::to_string(argument.nodeIndex) +
                                          "-field-" + argument.field;
                 row.upId = stem + "-" + argument.component + "-up";
                 row.downId = stem + "-" + argument.component + "-down";
                 row.valueId = stem + "-" + argument.component + "-{" + argument.component + "}";
-                row.resetId = stem + "-" + argument.component + "-" + FloatText(argument.defaultValue);
+                row.resetId = argument.hasDefault
+                    ? stem + "-" + argument.component + "-" + FloatText(argument.defaultValue)
+                    : std::string();
                 nodeArguments_.push_back(std::move(row));
             }
             nodeWrapChoices_.reserve(graph.wrapChoices.size());
