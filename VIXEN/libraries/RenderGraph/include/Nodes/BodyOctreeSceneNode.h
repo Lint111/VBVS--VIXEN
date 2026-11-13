@@ -1,4 +1,6 @@
 #pragma once
+#include <span>
+#include <utility>
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
@@ -113,6 +115,18 @@ public:
      * on every frame — the per-tick recompile cascade is gone entirely.
      */
     void SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
+
+    /**
+     * Row delta (R864.4 / RE5): overwrite the listed rows of the staged list. Touches only those rows in the transform/material/motion streams, marks
+     * only that material row range dirty per ring slot, and bumps the RT-query TLAS epoch
+     * only when a row's transform, provider kind, octree index or recipe id changed.
+     * Returns false (nothing changed) if a row does not fit the current list; the
+     * caller then falls back to SetInstances.
+     */
+    bool UpdateInstanceRows(std::span<const Vixen::SVO::BodyInstanceRowDelta> rows);
+
+    // TLAS rebuild requests so far (diagnostic; the bench reads the delta around an edit).
+    uint64_t GetInstanceEpoch() const { return rtQueryInstanceEpoch_; }
     void SetMotionGuidesEnabled(bool enabled) { motionGuidesEnabled_ = enabled; RefreshInstanceStreams(); }
 
     /**
@@ -633,6 +647,9 @@ private:
     PerFrameResources materialPerFrame_;
     PerFrameResources motionPerFrame_;
     std::vector<bool> materialDirty_;
+    // Per ring slot: material rows [first, second) still to upload when the slot is not
+    // wholly dirty. Empty when first >= second.
+    std::vector<std::pair<uint32_t, uint32_t>> materialDirtyRows_;
     VkDeviceSize transformRingCapacity_ = 0;
     VkDeviceSize materialRingCapacity_ = 0;
     VkDeviceSize motionRingCapacity_ = 0;

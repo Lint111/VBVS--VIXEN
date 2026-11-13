@@ -2728,6 +2728,18 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
     }
 }
 
+uint64_t VulkanGraphApplication::BodyInstanceEpoch() const {
+    const auto* node = static_cast<const Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    return node ? node->GetInstanceEpoch() : 0u;
+}
+
+bool VulkanGraphApplication::UpdateBodyInstanceRows(std::span<const Vixen::SVO::BodyInstanceRowDelta> rows) {
+    auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    return node && node->UpdateInstanceRows(rows);
+}
+
 void VulkanGraphApplication::SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up,
                                               float verticalFov) {
     auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_));

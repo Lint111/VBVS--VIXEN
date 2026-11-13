@@ -540,6 +540,12 @@ struct alignas(16) BodyInstanceGpu {
     Vixen::Gpu::BodyInstanceMotion motion{};
 };
 static_assert(sizeof(BodyInstanceGpu) == 224);
+
+/** One edited row of the staged instance list (RE5 row delta). */
+struct BodyInstanceRowDelta {
+    uint32_t row = 0;
+    BodyInstanceGpu instance{};
+};
 static_assert(offsetof(BodyInstanceGpu, material) == sizeof(BodyInstanceTransformGpu));
 
 inline glm::mat4 ToMat4(const Affine3x4Gpu& affine) {
