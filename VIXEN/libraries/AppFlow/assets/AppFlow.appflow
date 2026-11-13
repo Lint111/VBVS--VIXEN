@@ -294,7 +294,7 @@ trigger SetNodeArgumentXTrigger layer-{index}-node-{node}-field-{field}-x-{x} 48
 trigger SetNodeArgumentYTrigger layer-{index}-node-{node}-field-{field}-y-{y} 48 layerIndex click
 trigger SetNodeArgumentZTrigger layer-{index}-node-{node}-field-{field}-z-{z} 48 layerIndex click
 trigger SetNodeArgumentWTrigger layer-{index}-node-{node}-field-{field}-w-{w} 48 layerIndex click
-trigger InsertNodeAfterTrigger layer-{index}-node-{node}-add-{op} 49 layerIndex click
+trigger InsertNodeAfterTrigger layer-{index}-node-{afterNode}-add-{op} 49 layerIndex click
 trigger RemoveNodeTrigger layer-{index}-node-{node}-remove 50 layerIndex click
 trigger WrapNodesTrigger layer-{index}-nodes-{first}-{last}-wrap-{op} 51 layerIndex click
 trigger SetLayerTransformPXTrigger layer-{index}-placement-px-{px} 26 layerIndex click

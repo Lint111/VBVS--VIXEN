@@ -258,7 +258,7 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::SetNodeArgumentYTrigger, "layer-{index}-node-{node}-field-{field}-y-{y}", FlowActionId::SetNodeArgument, "layerIndex", "click" },
     { FlowElementTriggerId::SetNodeArgumentZTrigger, "layer-{index}-node-{node}-field-{field}-z-{z}", FlowActionId::SetNodeArgument, "layerIndex", "click" },
     { FlowElementTriggerId::SetNodeArgumentWTrigger, "layer-{index}-node-{node}-field-{field}-w-{w}", FlowActionId::SetNodeArgument, "layerIndex", "click" },
-    { FlowElementTriggerId::InsertNodeAfterTrigger, "layer-{index}-node-{node}-add-{op}", FlowActionId::InsertNodeAfter, "layerIndex", "click" },
+    { FlowElementTriggerId::InsertNodeAfterTrigger, "layer-{index}-node-{afterNode}-add-{op}", FlowActionId::InsertNodeAfter, "layerIndex", "click" },
     { FlowElementTriggerId::RemoveNodeTrigger, "layer-{index}-node-{node}-remove", FlowActionId::RemoveNode, "layerIndex", "click" },
     { FlowElementTriggerId::WrapNodesTrigger, "layer-{index}-nodes-{first}-{last}-wrap-{op}", FlowActionId::WrapNodes, "layerIndex", "click" },
     { FlowElementTriggerId::SetLayerTransformPXTrigger, "layer-{index}-placement-px-{px}", FlowActionId::SetLayerTransform, "layerIndex", "click" },

@@ -1883,6 +1883,39 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     TraceEditorLatency("registry", "end", updateTick_);
     TraceEditorLatency("bake", "begin", updateTick_);
     Vixen::SVO::RecipeRegistry reg;
+    // The bake-local registry validates InvokeRecipe callees independently of the live render
+    // registry. Include the pack entries in dependency order so a reopened document containing a
+    // recipe-reference layer can pass the same local validation as its live preview.
+    std::vector<std::pair<uint32_t, const Vixen::SVO::RecipeRegistry::RecipeEntry*>> pendingPackRecipes;
+    pendingPackRecipes.reserve(packRecipeRegistryIds_.size());
+    for (const auto& [reference, registryId] : packRecipeRegistryIds_) {
+        (void)reference;
+        const auto packEntry = packRecipeEntries_.find(registryId);
+        if (packEntry != packRecipeEntries_.end()) {
+            pendingPackRecipes.emplace_back(registryId, &packEntry->second);
+        }
+    }
+    while (!pendingPackRecipes.empty()) {
+        std::vector<std::pair<uint32_t, const Vixen::SVO::RecipeRegistry::RecipeEntry*>> deferred;
+        bool registeredAny = false;
+        for (const auto& [registryId, packEntry] : pendingPackRecipes) {
+            const auto packResult = reg.Register(registryId, *packEntry);
+            if (packResult == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                registeredAny = true;
+            } else if (packResult == Vixen::SVO::RecipeRegistry::RegisterResult::UnknownCalleeRecipe) {
+                deferred.emplace_back(registryId, packEntry);
+            } else {
+                ReportEditorError("pack recipe registry copy failed (code " +
+                                  std::to_string(static_cast<int>(packResult)) + ")");
+                return false;
+            }
+        }
+        if (!registeredAny) {
+            ReportEditorError("pack recipe registry copy could not resolve a dependency");
+            return false;
+        }
+        pendingPackRecipes = std::move(deferred);
+    }
     static constexpr uint32_t kRecipeId = 1u;
     const auto result = reg.Register(kRecipeId, entry);
     if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
@@ -2029,6 +2062,11 @@ bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& 
 }
 
 bool EditorApplication::SaveDocument() {
+    // A newly inserted recipe-reference layer changes the document's reference table after the
+    // previous registration pass. Refresh the pack registry before taking the canonical snapshot;
+    // otherwise the authored VXD saves the reference while the saved canonical program silently
+    // skips it as unresolved, making the immediate reopen proof compare different programs.
+    RegisterPackRecipeReferences(doc_);
     const auto snapshot = doc_.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
     Vixen::Editor::DocumentDiagnostic diagnostic;
@@ -2103,7 +2141,28 @@ bool EditorApplication::ReopenSavedDocument() {
     const bool maskMatch = candidate.EnabledMask() == lastSavedMask_;
     if (!programMatch || !parametersMatch || !maskMatch) {
         ReportEditorError("reopened document differs from the saved canonical program, parameters, or layer mask");
-        logger_->Error("[EditorApplication] " + lastEditorError_);
+        std::ostringstream mismatch;
+        mismatch << "[EditorApplication] " << lastEditorError_
+                 << " program=" << (programMatch ? "match" : "mismatch")
+                 << "(" << canonical.bytecode.size() << "/" << lastSavedProgram_.size() << ")"
+                 << " parameters=" << (parametersMatch ? "match" : "mismatch")
+                 << "(" << snapshot.parameterValues.size() << "/" << lastSavedParameters_.size() << ")"
+                 << " mask=" << (maskMatch ? "match" : "mismatch")
+                 << "(" << candidate.EnabledMask() << "/" << lastSavedMask_ << ")";
+        if (!programMatch && canonical.bytecode.size() == lastSavedProgram_.size()) {
+            for (size_t i = 0; i < canonical.bytecode.size(); ++i) {
+                if (std::memcmp(&canonical.bytecode[i], &lastSavedProgram_[i],
+                                sizeof(canonical.bytecode[i])) != 0) {
+                    mismatch << " firstInstruction=" << i
+                             << " op=" << static_cast<unsigned>(canonical.bytecode[i].opCode)
+                             << "/" << static_cast<unsigned>(lastSavedProgram_[i].opCode)
+                             << " data0=" << canonical.bytecode[i].data[0]
+                             << "/" << lastSavedProgram_[i].data[0];
+                    break;
+                }
+            }
+        }
+        logger_->Error(mismatch.str());
         return false;
     }
 
@@ -2126,6 +2185,10 @@ bool EditorApplication::AdoptDocument(Vixen::Editor::EditorDocumentModel candida
     channelGroupOpen_ = false;  // the reloaded runtime starts with an empty undo history
     channelGroupLabel_.clear();
     doc_ = std::move(candidate);
+    // Re-establish the pack callees after the candidate becomes the live document. Reopen's
+    // comparison registers its temporary candidate, but the dirty re-apply below consumes the
+    // adopted document and must see the same reference table in the live recipe registry.
+    RegisterPackRecipeReferences(doc_);
     rt_.Layers().SetLayerCount(doc_.LayerCount());
     rt_.Layers().SetMask(doc_.EnabledMask());
     RegisterAppFlowHandlers();
@@ -2221,6 +2284,7 @@ bool EditorApplication::RegisterPackRecipeRecursive(
     child.DeriveBoundsOf(entry, center, radius);
     entry.boundCenter = glm::vec3(center[0], center[1], center[2]);
     entry.boundRadius = radius;
+    packRecipeEntries_[registryId] = entry;
     // The first document is admitted before Prepare(), when the render graph (and its recipe
     // registry/cache owner) does not exist yet. Keep the dependency graph proven in the model;
     // BuildRenderGraph repeats this registration pass once the owner is live.
@@ -2231,6 +2295,7 @@ bool EditorApplication::RegisterPackRecipeRecursive(
     const auto result = inserted ? RegisterProceduralRecipe(registryId, entry)
                                  : ReplaceProceduralRecipe(registryId, entry);
     if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+        if (inserted) packRecipeEntries_.erase(registryId);
         diagnostic = "could not register pack recipe '" + id + "' (code " +
                      std::to_string(static_cast<int>(result)) + ")";
         state[id] = 3u;
@@ -2441,11 +2506,20 @@ void EditorApplication::Update() {
     // Drain UI clicks (S4 pattern) and dispatch by selector -- carries no behavior itself; the
     // registered ToggleLayer/Return handlers decide what the click means (design §4.3). A
     // selector with no binding (a non-editor UI hit) resolves to RejectedByState and is ignored.
+    // Clicking a picker row is already the commit action for the focused filter. RmlUi also
+    // reports the filter's blur as a typed commit in the same frame; dispatching that second
+    // selector would run ChoosePrimitive as well (for a node or recipe row this can create an
+    // unrelated layer, or publish a false InvalidPrimitive status). Suppress only that paired
+    // picker-filter commit; ordinary text-field commits retain their existing path.
+    bool pickerRowClicked = false;
     if (auto* selection = GetUiSelectionProviderNode()) {
         const std::string clickedId = selection->DrainClickedElementId();
         // A text control's id is a selector pattern with a value slot, not a selector: clicking it focuses it
         // (the Rml context took the press); nothing dispatches until a value is committed.
         if (!clickedId.empty() && !Vixen::RenderGraph::HasValueSlot(clickedId)) {
+            pickerRowClicked = clickedId.rfind("primitive-", 0) == 0 ||
+                               clickedId.rfind("recipe-ref-", 0) == 0 ||
+                               (clickedId.rfind("layer-", 0) == 0 && clickedId.find("-node-") != std::string::npos);
             TraceEditorLatency("dispatch", "begin", updateTick_);
             clickAnchorElementId_ = clickedId;
             rt_.DispatchBySelector(clickedId);
@@ -2459,6 +2533,11 @@ void EditorApplication::Update() {
     // the field shows the accepted (or unchanged) value.
     if (auto* ui = GetUiRenderNode()) {
         for (const auto& commit : ui->DrainCommittedInputs()) {
+            // A picker row closes the floating panel before RmlUi delivers the filter blur
+            // commit. Treat that queued selector as stale even if it arrives on the next
+            // update, not as a second ChoosePrimitive action.
+            if (commit.selector.rfind("picker-filter-", 0) == 0 &&
+                (pickerRowClicked || !PickerOpen())) continue;
             TraceEditorLatency("dispatch", "begin", updateTick_);
             const auto result = rt_.DispatchBySelector(commit.selector);
             if (result == Vixen::AppFlow::DispatchResult::RejectedByState) {

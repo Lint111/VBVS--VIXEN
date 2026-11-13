@@ -252,6 +252,7 @@ private:
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastProceduralProgram_;
     bool proceduralPreviewRegistered_ = false;
     std::unordered_map<std::string, uint32_t> packRecipeRegistryIds_;
+    std::unordered_map<uint32_t, Vixen::SVO::RecipeRegistry::RecipeEntry> packRecipeEntries_;
     std::unordered_set<std::string> unavailablePackReferences_;
     std::string pendingReferenceDiagnostic_;
     // Rising-edge detector over every mapped key; each press resolves its chord through the runtime's

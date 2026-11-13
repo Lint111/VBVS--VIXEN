@@ -399,10 +399,11 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstructi
                                                       int brickDepth = 3,
                                                       std::span<const float> params = {},
                                                       std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
-                                                      std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {}) {
+                                                      std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
+                                                      const RecipeRegistry* recipeRegistry = nullptr) {
     return BakeSdfWorld(
         [&](const glm::vec3& p) {
-            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, nullptr, glyphInstances, pathInstances);
+            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, recipeRegistry, glyphInstances, pathInstances);
         },
         center, n, bandVoxels, brickDepth);
 }
@@ -423,10 +424,11 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorldWithEmission(const Recipe::
                                                                   EmitFn&& emit, int brickDepth = 3,
                                                                   std::span<const float> params = {},
                                                                   std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
-                                                      std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {}) {
+                                                      std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
+                                                      const RecipeRegistry* recipeRegistry = nullptr) {
     return BakeSdfWorld(
         [&](const glm::vec3& p) {
-            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, nullptr, glyphInstances, pathInstances);
+            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, recipeRegistry, glyphInstances, pathInstances);
         },
         center, n, bandVoxels, brickDepth,
         std::forward<EmitFn>(emit));

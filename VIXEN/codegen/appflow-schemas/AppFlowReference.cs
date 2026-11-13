@@ -698,7 +698,11 @@ namespace Vixen.AppFlow.Reference
     [FlowElementTrigger(nameof(FlowAction.InsertNodeAfter))]
     public static class InsertNodeAfterTrigger
     {
-        public const string Element = "layer-{index}-node-{node}-add-{op}";
+        // Keep the selector placeholder aligned with InsertNodeAfterParams.Param1Name.
+        // BindingStore uses the placeholder name as the generated action parameter; the
+        // previous {node} spelling made the real UI trigger inert because the action schema
+        // calls this value afterNode.
+        public const string Element = "layer-{index}-node-{afterNode}-add-{op}";
         public const string ParamName = "layerIndex";
         public const string On = "click";
     }
