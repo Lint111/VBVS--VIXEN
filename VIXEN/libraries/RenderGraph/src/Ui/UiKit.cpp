@@ -179,7 +179,15 @@ struct Registry::Impl {
     // Refuses an instance attribute outside the contract, naming the document file and the line of the element.
     void CheckAttributes(Rml::Element* parent, const std::string& tag, const Rml::XMLAttributes& attributes) {
         std::vector<std::string> names;
-        for (const auto& [name, value] : attributes) { (void)value; names.push_back(name); }
+        for (const auto& [name, value] : attributes) {
+            // The kit stamps its own hit-mask on buttons/toggles (a data-for row clone copies it back): only a value the kit
+            // itself would write passes; any other hit-mask is the instance trying to skip the hit rules.
+            if (name == "hit-mask") {
+                const Rml::String v = value.Get<Rml::String>();
+                if (v == "none" || v == "ellipse") continue;
+            }
+            names.push_back(name);
+        }
         const auto refused = RefusedAttributes(tag, names);
         if (refused.empty()) return;
         const Rml::ElementDocument* doc = parent ? parent->GetOwnerDocument() : nullptr;
@@ -258,6 +266,7 @@ public:
                 Rml::StreamMemory stream(reinterpret_cast<const Rml::byte*>(wrapped.data()), wrapped.size());
                 stream.SetSourceURL(path);
                 Rml::Factory::InstanceElementStream(this, &stream);
+                fragmentChildren_ = GetNumChildren(true);
                 for (const auto& part : info_.parts) {
                     if (!FindPart(*this, part))
                         host_.Report(path, 1, "kit fragment is missing the part '" + part + "' that <" + info_.tag + "> needs");
@@ -272,6 +281,13 @@ public:
             if (auto* label = Part("label")) label->AddEventListener("mousedown", this);
         }
         built_ = true;
+    }
+
+    // A data-for row clone (and any caller) replaces the instance's own contents with SetInnerRML; the kit's structure
+    // is not the instance's content, so only what follows the fragment's children is replaced.
+    void SetInnerRML(const Rml::String& rml) override {
+        while (GetNumChildren(true) > fragmentChildren_) RemoveChild(GetLastChild());
+        if (!rml.empty()) Rml::Factory::InstanceElementText(this, rml);
     }
 
     void OnAttributeChange(const Rml::ElementAttributes& changed) override {
@@ -439,6 +455,7 @@ private:
     const KindInfo& info_;
     Registry::Impl& host_;
     bool built_ = false;
+    int fragmentChildren_ = 0;
     std::string appliedVariant_;
     bool mirroring_ = false;
     bool scrubbing_ = false;

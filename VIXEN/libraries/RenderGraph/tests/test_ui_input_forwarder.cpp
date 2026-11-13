@@ -22,6 +22,7 @@
 
 #include "Ui/UiKit.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -390,3 +391,53 @@ TEST_F(UiInputForwarderTest, EscapeIsAGenericCancelUnlessAFieldHadEditsToRevert)
 }
 
 }  // namespace
+
+// R874: a nudge click on the kit number field reaches the host as the same typed commit a typed value does: one
+// selector, filled with the element's stepped and clamped value.
+TEST_F(UiInputForwarderTest, KitNudgeAndScrubCommitTheSameSelectorPathAsTyping) {
+    Vixen::App::EditorLayersView view;
+    Rml::DataModelConstructor constructor = ctx_->CreateDataModel(view.ModelName());
+    ASSERT_TRUE(static_cast<bool>(constructor));
+    view.Register(constructor);
+    view.PopulateFromDocument(0b01u, {{"body", "Union", true, 1.0f}}, {{"lump_radius", "m", 9.25f, 4.0f, 12.0f}});
+    doc_ = ctx_->LoadDocument("assets/ui/editor_inspector.rml");
+    ASSERT_NE(doc_, nullptr);
+    doc_->Show();
+    ctx_->Update();
+    Rml::ElementList fields;
+    doc_->GetElementsByTagName(fields, "ut-number-field");
+    ASSERT_FALSE(fields.empty());
+    const auto part = [&](const char* name) -> Rml::Element* {
+        std::function<Rml::Element*(Rml::Element*)> find = [&](Rml::Element* e) -> Rml::Element* {
+            for (int i = 0; i < e->GetNumChildren(true); ++i) {
+                Rml::Element* c = e->GetChild(i);
+                if (c->GetAttribute<Rml::String>("part", "") == name) return c;
+                if (Rml::Element* d = find(c)) return d;
+            }
+            return nullptr;
+        };
+        return find(fields[0]);
+    };
+    Rml::Element* up = part("up");
+    ASSERT_NE(up, nullptr);
+    const Rml::Vector2f at = up->GetAbsoluteOffset(Rml::BoxArea::Border) + Rml::Vector2f(3.0f, 3.0f);
+    Run(Frame{}.Press(at.x, at.y));
+    Run(Frame{}.Release(at.x, at.y));
+    auto commits = forwarder_.DrainCommits();
+    ASSERT_EQ(commits.size(), 1u);
+    EXPECT_EQ(commits[0].selector, "parameter-0-set-10.25") << "9.25 + an eighth of the 4..12 range";
+
+    // Scrub: press the label, drag 100 px right (half a range), release: ONE commit with the scrubbed value.
+    Rml::Element* label = part("label");
+    ASSERT_NE(label, nullptr);
+    const Rml::Vector2f from = label->GetAbsoluteOffset(Rml::BoxArea::Border) + Rml::Vector2f(3.0f, 3.0f);
+    Run(Frame{}.Press(from.x, from.y));
+    Run(Frame{}.MoveTo(from.x + 60.0f, from.y).Hold());
+    Run(Frame{}.MoveTo(from.x + 100.0f, from.y).Hold());
+    EXPECT_TRUE(forwarder_.DrainCommits().empty()) << "dragging previews; nothing commits until release";
+    Run(Frame{}.Release(from.x + 100.0f, from.y));
+    commits = forwarder_.DrainCommits();
+    ASSERT_EQ(commits.size(), 1u);
+    EXPECT_EQ(commits[0].selector, "parameter-0-set-12") << "9.25 + 100 px of a 200 px range, clamped to 12";
+}
+

@@ -106,11 +106,6 @@ body {
     border-color: #a0c0ff;
 }
 
-.op-choices {
-    display: block;
-    margin-top: 3px;
-}
-
 /* sn-editorpicker1: the Layers panel pins its toolbar above scrolling rows (the body does not scroll). */
 body.layers {
     overflow: hidden;
@@ -201,105 +196,9 @@ input.filter-field selection {
     font-size: 12px;
 }
 
-.value, .parameter-value, .parameter-range {
-    display: inline-block;
-    color: #a0b0d0;
-    font-size: 12px;
-}
-
-.parameter-value.scrub {
-    padding: 1px 4px;
-    color: #c0d8ff;
-    cursor: ew-resize;
-    pointer-events: auto;  /* press-drag on the value label scrubs the parameter */
-}
-
-/* Typed value fields (the id is an AppFlow selector with a value slot; see UiInputForwarder.h). */
-input.value-field, input.name-field {
-    display: inline-block;
-    width: 58px;
-    height: 18px;
-    padding: 1px 4px;
-    color: #e8f0ff;
-    font-size: 12px;
-    background-color: #20263c;
-    border-width: 1px;
-    border-color: #50609a;
-    pointer-events: auto;
-    cursor: text;
-}
-
-input.name-field {
-    width: 150px;
-}
-
-input.value-field:focus, input.name-field:focus {
-    background-color: #2a3350;
-    border-color: #a0c0ff;
-}
-
-input.value-field selection, input.name-field selection {
-    background-color: #50609a;
-}
-
 .toolbar {
     display: block;
     margin-top: 8px;
-}
-
-.range {
-    display: inline-block;
-    margin-left: 6px;
-    color: #707090;
-    font-size: 11px;
-}
-
-.parameter-row {
-    display: block;
-    margin-top: 5px;
-}
-
-.parameter-name {
-    display: inline-block;
-    width: 110px;
-    color: #e0d0b0;
-}
-
-/* sn-editordock2: a field that carries a reset button is two lines: the name (and unit) above, then one nowrap
-   controls line: value | -/+ | reset | range. The controls line is about 180 px before the range text, so the
-   reset button stays on its field's row down to the inspector's minimum width; only the range text clips. */
-.parameter-row.stacked .parameter-name {
-    width: auto;
-    margin-right: 8px;
-}
-
-.parameter-line {
-    display: block;
-}
-
-.controls {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: center;
-    margin-top: 2px;
-}
-
-.controls input.value-field, .controls .button {
-    flex: none;
-}
-
-.controls .range {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-}
-
-.parameter-range {
-    display: block;
-    margin-left: 0px;
-    color: #707090;
 }
 
 .hint {
@@ -343,4 +242,10 @@ scrollbarvertical sliderbar {
 scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
     width: 0px;
     height: 0px;
+}
+
+.value {
+    display: inline-block;
+    color: #a0b0d0;
+    font-size: 12px;
 }

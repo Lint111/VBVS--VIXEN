@@ -24,6 +24,7 @@
 #include <map>
 #include "Ui/UiKit.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -146,6 +147,26 @@ protected:
         return element && element->IsVisible();
     }
 
+    // R874: the inspector's numeric rows are kit elements; a row's controls are its named parts (UiKit.cpp).
+    static Rml::Element* NumberFieldPart(Rml::ElementDocument* doc, size_t index, const std::string& part) {
+        Rml::ElementList fields;
+        doc->GetElementsByTagName(fields, "ut-number-field");
+        if (index >= fields.size()) return nullptr;
+        std::function<Rml::Element*(Rml::Element*)> find = [&](Rml::Element* e) -> Rml::Element* {
+            for (int i = 0; i < e->GetNumChildren(true); ++i) {
+                Rml::Element* c = e->GetChild(i);
+                if (c->GetAttribute<Rml::String>("part", "") == part) return c;
+                if (Rml::Element* d = find(c)) return d;
+            }
+            return nullptr;
+        };
+        return find(fields[index]);
+    }
+    static Rml::Vector2f PartOffset(Rml::ElementDocument* doc, size_t index, const std::string& part) {
+        Rml::Element* e = NumberFieldPart(doc, index, part);
+        return e ? e->GetAbsoluteOffset(Rml::BoxArea::Border) : Rml::Vector2f(-1.0f, -1.0f);
+    }
+
     Rml::Vector2f Offset(Rml::ElementDocument* doc, const char* id) {
         Rml::Element* element = doc->GetElementById(id);
         EXPECT_NE(element, nullptr) << id;
@@ -174,13 +195,14 @@ TEST_F(PanelDockDocumentsTest, EditorPanelsShareOneModelAndLandInTheirRegions) {
     const auto layerToggle = Offset(panelDocs_.at("layers"), "layer-0-toggle");
     EXPECT_LT(layerToggle.x, frame.viewport.x);
     EXPECT_GE(layerToggle.y, (720.0f - 28.0f) / 2.0f);  // second split of the left region
-    const auto parameterUp = Offset(panelDocs_.at("inspector"), "parameter-0-up");
+    const auto parameterUp = PartOffset(panelDocs_.at("inspector"), 0, "up");
     EXPECT_GE(parameterUp.x, frame.viewport.x + frame.viewport.width);
-    // R765 typed parameters: each row's value label (the ScrubParameter selector) and reset button resolve to
-    // elements, with the row index spliced into the id by the data expression.
-    EXPECT_TRUE(panelDocs_.at("inspector")->GetElementById("parameter-0-value") != nullptr);
+    // R765 typed parameters: each row is a ut-number-field whose scrub handle (the label) and reset button resolve to
+    // parts, with the row index spliced into the reset selector by the data expression.
+    EXPECT_NE(NumberFieldPart(panelDocs_.at("inspector"), 0, "label"), nullptr);
+    EXPECT_NE(NumberFieldPart(panelDocs_.at("inspector"), 0, "down"), nullptr);
     EXPECT_TRUE(panelDocs_.at("inspector")->GetElementById("parameter-0-reset") != nullptr);
-    EXPECT_FALSE(panelDocs_.at("inspector")->GetElementById("parameter-0-value")->GetAttribute("hit-mask", Rml::String("x")) == Rml::String("x"));
+    EXPECT_EQ(NumberFieldPart(panelDocs_.at("inspector"), 0, "input")->GetId(), "parameter-0-set-{value}");
     // The status line is the kit element: the bound attributes reach its parts.
     Rml::ElementList statusLines;
     panelDocs_.at("status")->GetElementsByTagName(statusLines, "ut-status-line");
@@ -341,7 +363,7 @@ TEST_F(PanelDockDocumentsTest, InspectorShapeFieldsShowCatalogueLabelsRangesAndA
     EXPECT_NE(text.find("half extents x"), std::string::npos) << "the catalogue's label for Box.b, not the argument name";
     EXPECT_NE(text.find("half extents y"), std::string::npos);
     EXPECT_EQ(text.find(">b x<"), std::string::npos) << "no raw argument name as a label";
-    EXPECT_NE(text.find("0..100"), std::string::npos) << "the declared range, inline";
+    EXPECT_NE(text.find("range 0\xE2\x80\x93" "100"), std::string::npos) << "the declared range, in the kit's one range format (was \"0..100\" here and \"range a\xE2\x80\x93" "b\" on parameters)";
     EXPECT_NE(doc->GetElementById("layer-0-field-b-x-0.5"), nullptr) << "reset: the typed-value selector with the default filled in";
     EXPECT_FALSE(Shown(doc, "layer-0-field-b-y-0.5")) << "no reset while the value is the default";
     EXPECT_TRUE(Shown(doc, "layer-0-field-b-x-0.5"));
@@ -360,7 +382,7 @@ TEST_F(PanelDockDocumentsTest, ResetButtonsStayOnTheirFieldsRowAtDefaultAndMinim
     shape.primitive = "Box";
     shape.opChoices = {{"Union", true}};
     shape.fields = {{"b.x", std::string(halfExtents->label) + " x", 2.0f, true, 0.0f, 100.0f, halfExtents->defaultValue[0], false},
-                    {"b.y", std::string(halfExtents->label) + " y", 0.5f, true, 0.0f, 100.0f, halfExtents->defaultValue[1], false}};
+                    {"b.y", std::string(halfExtents->label) + " y", halfExtents->defaultValue[1] + 1.0f, true, 0.0f, 100.0f, halfExtents->defaultValue[1], false}};
     layers_.PopulateFromDocument(0b01u, {{"body", "Union", true, 0.0f}},
                                  {{"lump_radius", "voxels", 9.25f, 4.0f, 12.0f}}, {}, shape);
     for (const float width : {320.0f, 220.0f}) {
@@ -397,7 +419,7 @@ TEST_F(PanelDockDocumentsTest, RearrangedLayoutMovesTheDocumentsAndTheChrome) {
     EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
 
     // inspector is now the active tab of the left stack it joined; layers is hidden behind it.
-    const auto parameterUp = Offset(panelDocs_.at("inspector"), "parameter-0-up");
+    const auto parameterUp = PartOffset(panelDocs_.at("inspector"), 0, "up");
     EXPECT_LT(parameterUp.x, frame.viewport.x);
     EXPECT_FALSE(panelDocs_.at("layers")->IsVisible());
     // The floating outliner's tab is the floating frame's header.

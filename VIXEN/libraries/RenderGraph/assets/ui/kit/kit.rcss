@@ -86,3 +86,6 @@ ut-status-line { display: block; padding: 3px 10px; font-size: 13px; white-space
 ut-status-line .ut-status-doc { color: #e0d0b0; }
 ut-status-line .ut-status-sep { color: #505878; margin-left: 6px; margin-right: 6px; }
 ut-status-line .ut-status-message { color: #a0b0d0; }
+
+/* a plain label beside a text field (the layer name row) */
+.ut-field-label { display: inline-block; width: 110px; color: #e0d0b0; }
