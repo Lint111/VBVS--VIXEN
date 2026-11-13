@@ -87,3 +87,24 @@ A flyout is an ordinary declared panel (the editor's `picker`: Floating, closabl
   the committed `{slot}` id.
 - **Start closed.** `PanelDecl` has no initial-visibility flag, so the editor closes the flyout after the dock is built and
   never trusts the saved layout for it.
+
+## Live reload (sn-editorlive1)
+
+Every app that hosts RmlUi reloads its UI documents and stylesheets while running; there is no flag. `UIRenderNode` owns a
+`UiDocumentReloader` that learns which files a document pulled in from RmlUi itself (a tracking `Rml::FileInterface` records every
+open during the document's load: its `.rml`, each linked or `@import`ed `.rcss`), and `PollDocumentReload` (from Execute, every 15
+ticks, a stat per file, no allocation) reloads a document whose file changed:
+
+- the new document loads beside the old one, is shown without taking focus, and is checked: any error-level RmlUi log line or an
+  empty (0x0) layout rejects it. A rejected reload keeps the old document, consumes the broken mtimes (reported once; the next edit
+  retries) and reports `file:line` (status line, `diagnostic` code `UiReload`, `ui.reloaded` event);
+- on success the data model stays bound (it belongs to the context), the dock re-places the new document (placement and shown/hidden
+  state follow `Place`), the old document's scroll offsets, focused element id and caret are restored by element id after the next
+  `Context::Update` (data-bound rows exist by then), and the old document is unloaded;
+- `Rml::Factory::ClearStyleSheetCache()` runs before the load, so an edited stylesheet is re-read; a stylesheet-only change reloads
+  its dependent documents (RmlUi has no per-sheet reload).
+
+Source files: the editor loads `assets/ui/...` from the staged copy next to the binary unless `VIXEN_UI_SOURCE_DIR` points at a
+tree laid out like `libraries/RenderGraph/assets` (it maps `assets/ui/x.rml` to `<dir>/ui/x.rml`); set it to
+`<repo>/VIXEN/libraries/RenderGraph/assets` and the watched files are the source files. Channel verbs: `ui.reload`, `appflow.reload`
+(`AppFlow-Agent-Channel.md`). Not tracked: images an `.rcss` references (loaded by the render interface, not the file interface).
