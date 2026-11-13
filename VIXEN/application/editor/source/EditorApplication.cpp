@@ -2059,7 +2059,7 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
         std::vector<Vixen::App::EditorMaterialData> materials;
         materials.reserve(materialTable.Rows().size());
         for (const auto& row : materialTable.Rows()) {
-            materials.push_back({row.name != nullptr ? row.name : "", row.name != nullptr ? row.name : ""});
+            materials.push_back({std::to_string(row.id), row.name != nullptr ? row.name : ""});
         }
         Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     }
