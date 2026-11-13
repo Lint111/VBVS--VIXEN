@@ -238,9 +238,13 @@ void UiInputForwarder::Forward(const InputState& input, const std::function<void
         // Escape in a text control cancels the edit: put the value back, then drop focus.
         if (id == Rml::Input::KI_ESCAPE && key.action == GLFW_PRESS) {
             if (Rml::Element* field = FocusedTextControl()) {
+                // A field with uncommitted edits reverts first (the field takes the key). An unchanged field has
+                // nothing to revert, so the key is also the generic cancel: one press closes a dismissible panel.
+                const bool edited = ValueOf(*field) != valueAtFocus_;
                 static_cast<Rml::ElementFormControl*>(field)->SetValue(valueAtFocus_);
                 cancelOnBlur_ = true;
                 field->Blur();
+                if (!edited) cancelPressed_ = true;
                 continue;
             }
             cancelPressed_ = true;  // nothing owned the key: the generic cancel

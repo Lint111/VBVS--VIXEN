@@ -293,9 +293,30 @@ DockResult PanelDock::OpenAnchored(std::string_view panelId, const PanelRect& an
         return Open(panelId);
     }
     const DockFrame frame = Compute(windowWidth, windowHeight);
-    const PanelRect placed = PlaceBeside(anchor, row->floatRect.width, row->floatRect.height, windowWidth,
-                                         windowHeight, frame.viewport.x + frame.viewport.width * 0.5f,
-                                         frame.viewport.y + frame.viewport.height * 0.5f);
+    constexpr float kGap = 4.0f;
+    const float w = std::min(row->floatRect.width, windowWidth);
+    const float h = std::min(row->floatRect.height, windowHeight);
+    const float anchorX = anchor.x + anchor.width * 0.5f, anchorY = anchor.y + anchor.height * 0.5f;
+    // Prefer the viewport side of the anchor's own panel (to the right of a left-column panel, to the left of a
+    // right-column one, above a bottom one), top aligned with the anchor, so the flyout does not cover the panel
+    // it was opened from; clamped above the bottom region so it never runs over the status line.
+    const DockStackFrame* home = nullptr;
+    for (const auto& stack : frame.stacks) {
+        if (stack.region == DockRegion::Floating) continue;
+        const PanelRect& r = stack.frame;
+        if (anchorX >= r.x && anchorX < r.x + r.width && anchorY >= r.y && anchorY < r.y + r.height) home = &stack;
+    }
+    PanelRect placed;
+    if (home && home->region != DockRegion::Bottom) {
+        const float x = home->region == DockRegion::Left ? home->frame.x + home->frame.width + kGap
+                                                         : home->frame.x - w - kGap;
+        const float floor = frame.viewport.y + frame.viewport.height;   // the top of the bottom region
+        placed = {std::clamp(x, 0.0f, std::max(0.0f, windowWidth - w)),
+                  std::clamp(anchor.y, 0.0f, std::max(0.0f, floor - h)), w, h};
+    } else {
+        placed = PlaceBeside(anchor, row->floatRect.width, row->floatRect.height, windowWidth, windowHeight,
+                             frame.viewport.x + frame.viewport.width * 0.5f, frame.viewport.y + frame.viewport.height * 0.5f);
+    }
     return Float(panelId, placed);
 }
 

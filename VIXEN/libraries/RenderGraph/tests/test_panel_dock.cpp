@@ -326,10 +326,18 @@ TEST(PanelDockAnchored, SitsBesideTheAnchorClampedInsideTheWindowAndAwayFromTheV
     for (const auto& candidate : dock.Rows().panels) if (candidate.panel == "picker") row = candidate;
     EXPECT_TRUE(row.visible);
     EXPECT_EQ(row.region, DockRegion::Floating);
-    // Right of the button first; clamped so the 360-high panel stays inside the 720-high window.
-    EXPECT_FLOAT_EQ(row.floatRect.x, add.x + add.width + 4.0f);
-    EXPECT_FLOAT_EQ(row.floatRect.y, 720.0f - 360.0f);
+    // On the viewport side of the Layers panel (its right edge, 340), top aligned with the button, clamped so the
+    // flyout stays above the status region (the viewport's bottom edge, 692).
+    const DockFrame homeFrame = dock.Compute(1280.0f, 720.0f);
+    EXPECT_FLOAT_EQ(row.floatRect.x, 340.0f + 4.0f) << "beside the panel, not over its rows";
+    EXPECT_FLOAT_EQ(row.floatRect.y, homeFrame.viewport.y + homeFrame.viewport.height - 360.0f);
+    EXPECT_LE(row.floatRect.y + row.floatRect.height, homeFrame.viewport.y + homeFrame.viewport.height)
+        << "never over the status line";
     EXPECT_GE(row.floatRect.y, 0.0f);
+    // An anchor higher up keeps its top aligned with the button.
+    ASSERT_EQ(dock.OpenAnchored("picker", {12.0f, 100.0f, 40.0f, 22.0f}, 1280.0f, 720.0f), DockResult::Ok);
+    for (const auto& candidate : dock.Rows().panels) if (candidate.panel == "picker") row = candidate;
+    EXPECT_FLOAT_EQ(row.floatRect.y, 100.0f);
     const DockFrame frame = dock.Compute(1280.0f, 720.0f);
     const float centreX = frame.viewport.x + frame.viewport.width * 0.5f;
     const float centreY = frame.viewport.y + frame.viewport.height * 0.5f;

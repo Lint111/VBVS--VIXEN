@@ -347,19 +347,34 @@ TEST_F(UiInputForwarderTest, FlyoutFilterFieldTakesFocusOnShowFiltersLiveAndEnte
     EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
 }
 
-// sn-editordock2: the generic cancel. Escape that no focused text control consumed is reported once so a host can
-// close its dismissible panel; the field's own Escape (revert + blur) takes precedence and is not a cancel.
-TEST_F(UiInputForwarderTest, EscapeIsAGenericCancelOnlyWhenNoTextControlTookIt) {
+// sn-editordock2: the generic cancel. Escape reports once so a host can close a dismissible panel. A focused field
+// with uncommitted edits takes the key first (revert + blur, not a cancel); an unchanged field has nothing to revert,
+// so the same press is also the cancel.
+TEST_F(UiInputForwarderTest, EscapeIsAGenericCancelUnlessAFieldHadEditsToRevert) {
     LoadInline();
     EXPECT_FALSE(forwarder_.DrainCancel());
     FocusField();
+    Run(Frame{}.Key(GLFW_KEY_A, GLFW_PRESS, GLFW_MOD_CONTROL));
+    Run(Frame{}.Type(U"123"));
     Run(Frame{}.Key(GLFW_KEY_ESCAPE));
-    EXPECT_FALSE(forwarder_.WantsKeyboard()) << "the first Escape blurred the field";
+    EXPECT_EQ(Value(), "9.25");
+    EXPECT_FALSE(forwarder_.WantsKeyboard()) << "the first Escape reverted and blurred the edited field";
     EXPECT_FALSE(forwarder_.DrainCancel()) << "the field consumed it: that was its revert, not a cancel";
     Run(Frame{}.Key(GLFW_KEY_ESCAPE, GLFW_RELEASE));
     Run(Frame{}.Key(GLFW_KEY_ESCAPE));
     EXPECT_TRUE(forwarder_.DrainCancel()) << "the second Escape had no field to consume it";
     EXPECT_FALSE(forwarder_.DrainCancel()) << "draining clears it";
+    Run(Frame{}.Key(GLFW_KEY_ESCAPE, GLFW_RELEASE));
+
+    // A focused field nobody edited: one Escape both blurs it and cancels.
+    FocusField();
+    EXPECT_TRUE(forwarder_.WantsKeyboard());
+    Run(Frame{}.Key(GLFW_KEY_ESCAPE));
+    EXPECT_FALSE(forwarder_.WantsKeyboard());
+    EXPECT_TRUE(forwarder_.DrainCancel()) << "unchanged field: the first Escape is the cancel";
+    EXPECT_TRUE(forwarder_.DrainCommits().empty());
+    Run(Frame{}.Key(GLFW_KEY_ESCAPE, GLFW_RELEASE));
+
     // Escape pressed and released inside one frame (a tap) still counts: the press edge is in the frame's events.
     Frame tap;
     tap.Key(GLFW_KEY_ESCAPE).Key(GLFW_KEY_ESCAPE, GLFW_RELEASE);

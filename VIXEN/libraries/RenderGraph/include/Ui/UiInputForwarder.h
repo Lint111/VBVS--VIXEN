@@ -65,8 +65,9 @@ public:
     /// The pointer is over a UI element, or a press that began on one is still held.
     [[nodiscard]] bool WantsPointer() const;
 
-    /// True once per Escape press that no focused text control consumed (the control's own Escape cancels its edit
-    /// first), so a host can close a dismissible panel. Draining clears it.
+    /// True once per Escape press a focused text control did not need: no control had focus, or the focused one had
+    /// no uncommitted edits to revert (a control with edits reverts first and the press is not a cancel). A host
+    /// closes its dismissible panel on it. Draining clears it.
     [[nodiscard]] bool DrainCancel() { const bool pending = cancelPressed_; cancelPressed_ = false; return pending; }
 
     /// Commits queued since the last drain (oldest first). Draining schedules the resync that the next
