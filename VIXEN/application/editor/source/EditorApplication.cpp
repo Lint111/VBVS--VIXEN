@@ -1177,9 +1177,11 @@ void EditorApplication::PollAppFlowFile() {
     std::string error;
     if (!ReloadAppFlowData(error)) {
         logger_->Error("[EditorApplication] " + error);
+        RecordAppFlowEvent("appflow.reloaded", {{"ok", false}, {"forced", false}, {"file", appFlowPath_}, {"message", error}});
         return;
     }
     logger_->Info("[EditorApplication] AppFlow reloaded from '" + appFlowPath_ + "'");
+    RecordAppFlowEvent("appflow.reloaded", {{"ok", true}, {"forced", false}, {"file", appFlowPath_}});
 }
 
 bool EditorApplication::ReloadAppFlowData(std::string& error) {
@@ -2735,7 +2737,7 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
             appFlowMtime_ = mtime;  // the forced attempt consumed this file version either way
             appFlowMtimeInitialized_ = true;
         }
-        RecordAppFlowEvent("appflow.reloaded", {{"ok", ok}, {"file", appFlowPath_}, {"message", error}});
+        RecordAppFlowEvent("appflow.reloaded", {{"ok", ok}, {"forced", true}, {"file", appFlowPath_}, {"message", error}});
         nlohmann::json file{{"file", appFlowPath_}, {"ok", ok}};
         if (!ok) file["error"] = {{"line", 0}, {"column", 0}, {"message", error}};
         return nlohmann::json{{"ok", ok}, {"files", nlohmann::json::array({file})}, {"frame", channelPresentedFrame_ + 1}}.dump();

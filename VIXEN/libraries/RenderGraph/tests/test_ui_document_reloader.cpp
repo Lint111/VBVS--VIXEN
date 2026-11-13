@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -58,8 +59,8 @@ public:
 constexpr const char* kStyle =
     "body { position: absolute; left: 0; top: 0; right: 0; bottom: 0; font-family: LatoLatin; font-size: 14px; }\n"
     "#list { overflow-y: scroll; height: 60px; }\n"
-    "#list div { height: 20px; }\n"
-    ".tag { color: #ff0000; width: 40px; }\n";
+    "#list div { display: block; height: 20px; }\n"
+    ".tag { display: block; color: #ff0000; width: 40px; }\n";
 
 std::string Document(const std::string& extraBody = {}, const std::string& label = "label") {
     std::string rows;
@@ -202,8 +203,8 @@ TEST_F(UiDocumentReloaderTest, BrokenDocumentKeepsTheOldOneAndNamesFileAndLine) 
     ASSERT_FALSE(results_.empty());
     EXPECT_FALSE(results_[0].ok);
     EXPECT_NE(results_[0].file.find("t.rml"), std::string::npos) << results_[0].file;
-    EXPECT_GT(results_[0].line, 0) << results_[0].message;
-    EXPECT_FALSE(results_[0].message.empty());
+    EXPECT_EQ(results_[0].line, 4) << results_[0].message;   // the closing </div> that does not match <span>
+    EXPECT_NE(results_[0].message.find("expecting 'span'"), std::string::npos) << results_[0].message;
     EXPECT_FALSE(UiDocumentReloader::Changed(watch_));          // reported once; the next edit retries
     Write("t.rml", Document("<div id=\"fixed\">ok</div>"));      // fix the file: it recovers
     EXPECT_TRUE(Reload());
@@ -238,6 +239,11 @@ TEST_F(UiDocumentReloaderTest, SteadyStatePollAllocatesNothingAndReloadsNothing)
     bool any = false;
     for (int i = 0; i < 2000; ++i) any = UiDocumentReloader::Changed(watch_) || any;
     g_countAllocations = false;
+    // Steady-frame cost, MEASURED: one poll = a stat per watched file (2 here; the editor's panels watch 2 each).
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < 20000; ++i) any = UiDocumentReloader::Changed(watch_) || any;
+    const double nsPerPoll = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / 20000.0;
+    std::printf("[measured] UiDocumentReloader::Changed: %.0f ns per document (%zu files)\n", nsPerPoll, watch_.files.size());
     EXPECT_FALSE(any);
     EXPECT_EQ(g_allocations.load(), 0) << "the mtime poll must not allocate";
 }
@@ -251,6 +257,14 @@ TEST(UiDocumentReloaderParse, LocatedErrorSplitsFileLineMessage) {
     const auto windows = UiDocumentReloader::ParseLocatedError("C:/ui/p.rml:3: bad", "x");
     EXPECT_EQ(windows.file, "C:/ui/p.rml");
     EXPECT_EQ(windows.line, 3);
+    const auto xml = UiDocumentReloader::ParseLocatedError("XML parse error on line 5 of /a/p.rml.", "x");
+    EXPECT_EQ(xml.file, "/a/p.rml");
+    EXPECT_EQ(xml.line, 5);
+    const auto closing = UiDocumentReloader::ParseLocatedError(
+        "Closing tag 'div' mismatched on /a/p.rml:4 was expecting 'span'.", "x");
+    EXPECT_EQ(closing.file, "/a/p.rml");
+    EXPECT_EQ(closing.line, 4);
+    EXPECT_EQ(closing.message, "Closing tag 'div' mismatched, was expecting 'span'.");
     const auto plain = UiDocumentReloader::ParseLocatedError("no location here", "fallback.rml");
     EXPECT_EQ(plain.file, "fallback.rml");
     EXPECT_EQ(plain.line, 0);

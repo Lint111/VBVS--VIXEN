@@ -228,6 +228,7 @@ private:
         bool visible = true;
         int z = 0;
         bool dirty = true;
+        bool afterReload = false;   // re-applied because the document was reloaded in place: shown without taking focus
         Rml::ElementDocument* appliedTo = nullptr;  // re-apply when the document is (re)loaded
     };
     std::map<MountHandle, Placement_> placements_;

@@ -6,7 +6,9 @@
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <RmlUi/Core/Factory.h>
 
+#include <algorithm>
 #include <cctype>
+#include <cstdlib>
 
 namespace Vixen::RenderGraph {
 
@@ -63,16 +65,50 @@ UiReloadFileResult UiDocumentReloader::ParseLocatedError(const std::string& mess
     result.ok = false;
     result.file = fallbackFile;
     result.message = message;
-    // "<file>:<line>: <message>" (Rml::Log::ParseError). Find the first ':<digits>: ' so a drive-letter colon
-    // in the file part is not taken for the separator.
+    const auto parseInt = [&](size_t from, size_t& end) {
+        end = from;
+        while (end < message.size() && std::isdigit(static_cast<unsigned char>(message[end]))) ++end;
+        return end > from ? std::atoi(message.substr(from, end - from).c_str()) : -1;
+    };
+    // (1) "<file>:<line>: <message>" (Rml::Log::ParseError). The first ':<digits>: ' wins, so a drive-letter
+    //     colon in the file part is not taken for the separator.
     for (size_t colon = message.find(':'); colon != std::string::npos; colon = message.find(':', colon + 1)) {
-        size_t digits = colon + 1;
-        while (digits < message.size() && std::isdigit(static_cast<unsigned char>(message[digits]))) ++digits;
-        if (digits > colon + 1 && digits + 1 < message.size() && message[digits] == ':' && message[digits + 1] == ' ') {
+        size_t end = 0;
+        const int line = parseInt(colon + 1, end);
+        if (line >= 0 && end + 1 < message.size() && message[end] == ':' && message[end + 1] == ' ') {
             result.file = message.substr(0, colon);
-            result.line = std::atoi(message.substr(colon + 1, digits - colon - 1).c_str());
-            result.message = message.substr(digits + 2);
-            break;
+            result.line = line;
+            result.message = message.substr(end + 2);
+            return result;
+        }
+    }
+    // (2) "XML parse error on line <line> of <file>."
+    static const std::string kXml = "XML parse error on line ";
+    if (message.rfind(kXml, 0) == 0) {
+        size_t end = 0;
+        const int line = parseInt(kXml.size(), end);
+        static const std::string kOf = " of ";
+        if (line >= 0 && message.compare(end, kOf.size(), kOf) == 0) {
+            result.file = message.substr(end + kOf.size());
+            if (!result.file.empty() && result.file.back() == '.') result.file.pop_back();
+            result.line = line;
+            result.message = "XML parse error";
+            return result;
+        }
+    }
+    // (3) "<what> on <file>:<line> <rest>" (e.g. "Closing tag 'div' mismatched on f.rml:4 was expecting 'span'.").
+    static const std::string kOn = " on ";
+    for (size_t on = message.find(kOn); on != std::string::npos; on = message.find(kOn, on + 1)) {
+        const size_t fileStart = on + kOn.size();
+        for (size_t colon = message.find(':', fileStart); colon != std::string::npos;
+             colon = message.find(':', colon + 1)) {
+            size_t end = 0;
+            const int line = parseInt(colon + 1, end);
+            if (line < 0) continue;
+            result.file = message.substr(fileStart, colon - fileStart);
+            result.line = line;
+            result.message = message.substr(0, on) + (end < message.size() ? "," + message.substr(end) : std::string{});
+            return result;
         }
     }
     return result;
@@ -102,6 +138,12 @@ bool UiDocumentReloader::Reload(Rml::Context& context, Rml::ElementDocument*& do
         if (next) context.UnloadDocument(next);
         Stamp(watch);  // consume the broken mtimes: reported once, retried on the next edit
         for (const auto& error : errors) results.push_back(ParseLocatedError(error, watch.path));
+        // Lead with the most useful entry: a located one, then the longest message (RmlUi logs a terse
+        // "XML parse error on line N" and then the descriptive line).
+        std::stable_sort(results.begin(), results.end(), [](const UiReloadFileResult& a, const UiReloadFileResult& b) {
+            if ((a.line > 0) != (b.line > 0)) return a.line > 0;
+            return a.message.size() > b.message.size();
+        });
         return false;
     }
 

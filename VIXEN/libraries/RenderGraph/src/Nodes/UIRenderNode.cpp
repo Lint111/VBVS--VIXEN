@@ -758,6 +758,7 @@ bool UIRenderNode::ReloadOne(MountHandle handle, bool forced, std::vector<UiRelo
     report.ok = ok;
     report.forced = forced;
     report.files = results;
+    if (reloadReports_.size() >= 64) reloadReports_.erase(reloadReports_.begin());  // an app that never drains stays bounded
     reloadReports_.push_back(std::move(report));
     if (!ok) {
         for (const auto& error : results)
@@ -769,6 +770,7 @@ bool UIRenderNode::ReloadOne(MountHandle handle, bool forced, std::vector<UiRelo
     if (const auto placement = placements_.find(handle); placement != placements_.end()) {
         placement->second.appliedTo = nullptr;
         placement->second.dirty = true;
+        placement->second.afterReload = true;
     }
     if (state.framesLeft > 0) {
         pendingRestores_.erase(std::remove_if(pendingRestores_.begin(), pendingRestores_.end(),
@@ -878,7 +880,11 @@ void UIRenderNode::ApplyPlacements() {
         doc->SetProperty("right", "auto");
         doc->SetProperty("bottom", "auto");
         doc->SetProperty("z-index", std::to_string(placement.z));
-        if (placement.visible) doc->Show(); else doc->Hide();
+        // A reloaded document must not take focus from the field the user is typing in; its own focus (if it
+        // had one) is restored by id after the next Update.
+        if (placement.visible) doc->Show(Rml::ModalFlag::None, placement.afterReload ? Rml::FocusFlag::None : Rml::FocusFlag::Auto);
+        else doc->Hide();
+        placement.afterReload = false;
         placement.dirty = false;
         placement.appliedTo = doc;
     }
