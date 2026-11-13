@@ -288,6 +288,16 @@ quote_arg_list() {
     echo "${out% }"
 }
 
+# sn-winjob1: the Windows process that roots the build tree. box-winjob.exe (box-queue, managed/BoxQueue.WinJob) runs `cmd.exe /c ...` as the only
+# process of a Job Object with KILL_ON_JOB_CLOSE and holds its handle. When the queue SIGKILLs this wrapper the interop relay dies, then box-winjob.exe,
+# and Windows ends cl.exe/ninja/mspdbsrv itself; without it they are orphaned and run on (the SIGTERM path below still taskkills the registered root).
+# UT_QUEUE_WINJOB_EXE names it; the queue exports UT_QUEUE_CORE_DIR; UT_QUEUE_WINJOB=0 turns it off. Prints the exe path, or nothing.
+winjob_exe() {
+    local exe="${UT_QUEUE_WINJOB_EXE:-${UT_QUEUE_CORE_DIR:+$UT_QUEUE_CORE_DIR/box-winjob.exe}}"
+    [[ "${UT_QUEUE_WINJOB:-1}" != 0 && -n "$exe" && -x "$exe" ]] && printf '%s\n' "$exe"
+    return 0
+}
+
 # Runs a batch file with its own directory as the working directory, so the name carries no
 # Windows path (a path with spaces or backslashes is mangled by interop) and cmd.exe never
 # starts on a UNC directory. A UNC-only base falls back to the drive root and the full path.
@@ -337,9 +347,16 @@ run_bat() {
     # Background + wait so a SIGTERM/SIGINT/SIGHUP reaches the trap at once; bash defers traps
     # until a foreground pipeline ends, and the interop client exiting does not stop the
     # Windows children (T-4910).
+    local -a runner=("$cmd_exe") winjob
+    winjob="$(winjob_exe)"
+    if [[ -n "$winjob" ]]; then
+        runner=("$winjob" run -- cmd.exe)   # a bare name: the helper resolves it on Windows; a WSL path would not
+    elif [[ -n "${UT_QUEUE_CORE_DIR:-}" && "${UT_QUEUE_WINJOB:-1}" != 0 ]]; then
+        say "WARNING: no box-winjob.exe in $UT_QUEUE_CORE_DIR (queue/build-winjob.sh); a SIGKILL of this wrapper leaves cl.exe/ninja running on Windows"
+    fi
     cancelled=""
     cancelled_signo=0
-    ( "$cmd_exe" /c "$win_arg" "${cmd_args[@]}" 2>&1 | tee "$log_file"; exit "${PIPESTATUS[0]}" ) &
+    ( "${runner[@]}" /c "$win_arg" "${cmd_args[@]}" 2>&1 | tee "$log_file"; exit "${PIPESTATUS[0]}" ) &
     run_pid=$!
     trap 'cancel_native TERM' TERM
     trap 'cancel_native INT' INT
