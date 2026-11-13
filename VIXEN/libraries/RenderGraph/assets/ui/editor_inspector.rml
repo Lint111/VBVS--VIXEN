@@ -33,13 +33,15 @@
                                    data-attr-label="node.nodeIndex + '  ' + node.name + '  (' + node.category + ')'"
                                    data-attr-open="node.isExpanded" data-attr-title="node.summary" tabindex="0"> </ut-disclosure>
                     <div class="node-summary">{{node.summary}}</div>
-                    <ut-button class="node-action" data-attr-id="node.addId" label="+ node"
-                               data-attr-disabled="node.addOp == ''"
-                               data-attr-title="node.addReason == '' ? 'add ' + node.addOp : node.addReason"
-                               data-attr-reason="node.addReason"> </ut-button>
-                    <ut-button class="node-action" data-attr-id="node.removeId" label="remove"
-                               data-attr-disabled="!node.canRemove" data-attr-title="node.removeTitle"
-                               data-attr-reason="node.removeReason"> </ut-button>
+                    <div class="node-actions">
+                        <ut-button class="node-action" data-attr-id="node.addId" label="+ node"
+                                   data-attr-disabled="node.addOp == ''"
+                                   data-attr-title="node.addReason == '' ? 'add ' + node.addOp : node.addReason"
+                                   data-attr-reason="node.addReason"> </ut-button>
+                        <ut-button class="node-action" data-attr-id="node.removeId" label="remove"
+                                   data-attr-disabled="!node.canRemove" data-attr-title="node.removeTitle"
+                                   data-attr-reason="node.removeReason"> </ut-button>
+                    </div>
                 </div>
                 <div class="node-fields" data-if="node.isExpanded">
                     <ut-number-field data-for="field : nodeArguments" data-if="field.nodeIndex == node.nodeIndex"

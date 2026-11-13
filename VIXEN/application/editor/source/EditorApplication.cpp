@@ -1798,6 +1798,7 @@ void EditorApplication::BuildRenderGraph() {
         using CC = Vixen::RenderGraph::CameraNodeConfig;
         // Camera control goes through the AppFlow camera actions (TranslateCameraInput), not InputState.
         cameraInst->SetParameter(CC::PARAM_INPUT_DRIVEN, false);
+        cameraInst->SetParameter(CC::PARAM_FOV, 60.0f);
         // The capture test asks for a top-down view so the layer toggle changes visible pixels.
         // Interactive sessions use a stable three-quarter angle so depth and transforms read clearly.
         if (const char* captureCamera = std::getenv("VIXEN_EDITOR_TEST_CAMERA");
@@ -1874,7 +1875,7 @@ void EditorApplication::ApplyCameraFrame() {
         -std::cos(kDefaultPitch) * std::cos(kDefaultYaw)};
     const glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
     const glm::vec3 up = glm::normalize(glm::cross(right, forward));
-    constexpr float kHalfFovRadians = 45.0f * (3.14159265358979323846f / 360.0f);
+    constexpr float kHalfFovRadians = 60.0f * (3.14159265358979323846f / 360.0f);
     const float aspect = windowWidth / windowHeight;
     const float targetPixelX = viewportX + viewportWidth * 0.5f;
     const float targetPixelY = viewportY + viewportHeight * 0.5f;
@@ -1884,6 +1885,14 @@ void EditorApplication::ApplyCameraFrame() {
     const float worldUp = ndcY * distance * std::tan(kHalfFovRadians);
     framedCenter_ = framedBoundsCenter_ - right * worldRight - up * worldUp;
     framedDistance_ = distance;
+    // Keep the declarative pose request in sync with the live orbit. CameraNode reapplies present
+    // pose parameters during a graph recompile; without these writes a shader splice could restore
+    // the old origin-centered request after the viewport-aware frame had already been applied.
+    using CC = Vixen::RenderGraph::CameraNodeConfig;
+    camera->SetParameter(CC::PARAM_ORBIT_CENTER_X, framedCenter_.x);
+    camera->SetParameter(CC::PARAM_ORBIT_CENTER_Y, framedCenter_.y);
+    camera->SetParameter(CC::PARAM_ORBIT_CENTER_Z, framedCenter_.z);
+    camera->SetParameter(CC::PARAM_ORBIT_DISTANCE, framedDistance_);
     camera->SetOrbit(framedCenter_, framedDistance_);
     lastFramedDockRevision_ = Panels().Dock().Revision();
     lastFramedWindowWidth_ = windowWidth;
@@ -2100,7 +2109,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
             const auto frame = Vixen::Editor::FitEditorCameraToBounds(
                 entry.boundCenter, entry.boundRadius, glm::vec3(0.0f), 64,
                 /*worldGridSize=*/10.0f, /*renderScale=*/6.4f,
-                /*verticalFovDegrees=*/45.0f, /*padding=*/1.15f);
+                /*verticalFovDegrees=*/60.0f, /*padding=*/1.15f);
             framedBoundsCenter_ = frame.center;
             framedBoundsRadius_ = frame.worldRadius;
             framedFitDistance_ = frame.distance;

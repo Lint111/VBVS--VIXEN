@@ -93,13 +93,14 @@ body.picker {
 .node-row {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: flex-start;
     min-width: 0;
 }
 
 .node-toggle {
-    flex: 0 0 auto;
-    min-width: 180px;
+    flex: 1 1 180px;
+    min-width: 0;
     margin-right: 6px;
 }
 
@@ -117,6 +118,15 @@ body.picker {
     flex: 0 0 auto;
     margin-top: 2px;
     margin-left: 3px;
+}
+
+.node-actions {
+    display: flex;
+    flex: 0 0 100%;
+    flex-direction: row;
+    justify-content: flex-end;
+    min-width: 0;
+    margin-top: 1px;
 }
 
 .node-fields {
