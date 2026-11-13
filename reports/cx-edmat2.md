@@ -2,7 +2,7 @@
 
 ## LANDABLE NOW
 
-- VIXEN tip: `8c9542570` (`SPT: record VIXEN material consolidation gaps`); feature commits are `55b373082`, `b125eba8c`, and `663666647`.
+- VIXEN tip: `6c1377da6` (`SPT: clarify generated GLSL proposal`); feature commits are `55b373082`, `b125eba8c`, and `663666647`.
 - VIXEN merge base: `9cb6ea18b4b9720ad5443516f7df59ab91f2705e`.
 - Required kernel input: `41c23511cbc432a4fbb1a5a5f4e24d8bdf2bdd51`.
 - Required Undertow pack input: `a8c6b1731baf2cd8a7c8476604dedb98a1d34852`.
