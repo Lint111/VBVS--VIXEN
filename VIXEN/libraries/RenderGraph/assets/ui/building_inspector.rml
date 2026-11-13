@@ -31,7 +31,7 @@
 
         <!-- Ownership affordance line — shown only to the owning viewer (IsOwnerViewer, spec §5).
              It stays in the model wrapper so host-side selector queries see it across the kit boundary. -->
-        <div class="owned ut-hud-owned" data-if="isOwnerViewer">You own this.</div>
+        <div class="owned ut-hud-owned" data-style-display="isOwnerViewer ? 'block' : 'none'">You own this.</div>
     </div>
 </body>
 </rml>
