@@ -39,6 +39,7 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <optional>
 
@@ -182,6 +183,11 @@ private:
     // Replaces doc_ with an accepted candidate: AppFlow runtime reload (fresh undo history), handlers,
     // view and render resync. Shared by the reopen witness and OpenPackRecipe.
     bool AdoptDocument(Vixen::Editor::EditorDocumentModel candidate);
+    bool RegisterPackRecipeReferences(Vixen::Editor::EditorDocumentModel& document);
+    bool RegisterPackRecipeRecursive(const std::string& id,
+                                     std::unordered_map<std::string, uint8_t>& state,
+                                     std::string& diagnostic, uint32_t depth);
+    Vixen::Editor::EditorDocumentModel::RecipeReferenceResolver RecipeResolver() const;
 
 
     std::string documentPath_;
@@ -241,6 +247,9 @@ private:
     std::array<float, 6> lastPreviewParameterValues_{};
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastProceduralProgram_;
     bool proceduralPreviewRegistered_ = false;
+    std::unordered_map<std::string, uint32_t> packRecipeRegistryIds_;
+    std::unordered_set<std::string> unavailablePackReferences_;
+    std::string pendingReferenceDiagnostic_;
     // Rising-edge detector over every mapped key; each press resolves its chord through the runtime's
     // InputProfile, so the declared [FlowKeyDefault] table (not host code) decides what a key does.
     Vixen::Editor::KeyEdgeTracker keyEdges_;
