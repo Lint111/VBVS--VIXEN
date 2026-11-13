@@ -38,7 +38,6 @@ ut-button.round {
     background-color: #4060a0cc;
     border-color: #80a0e0;
     border-radius: 24px;
-    line-height: 48px;
 }
 
 /* ---- toggle ---- */
