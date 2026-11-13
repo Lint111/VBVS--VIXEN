@@ -735,6 +735,13 @@ if(TARGET GTest::gtest_main)
     vixen_stage_assets(test_ui_input_forwarder ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
     set_target_properties(test_ui_input_forwarder PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_ui_input_forwarder)
+    # sn-editorlive1: live reload of UI documents and stylesheets, headless (state restore, located errors,
+    # steady-state poll allocates nothing). Edits real files in a temp dir.
+    add_executable(test_ui_document_reloader test_ui_document_reloader.cpp)
+    target_link_libraries(test_ui_document_reloader PRIVATE GTest::gtest_main RenderGraph)
+    vixen_stage_assets(test_ui_document_reloader ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
+    set_target_properties(test_ui_document_reloader PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_ui_document_reloader)
     message(STATUS "✓ test_panel_dock + test_panel_dock_documents configured (R766 panel dock)")
 endif()
 

@@ -83,6 +83,16 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
+        "name": "ui.reload",
+        "description": "Force the live reload of the editor's UI documents and stylesheets now (they also reload on their own when a file changes). panel = a declared dock panel id; none reloads every document. Returns per-file results {file, ok, error{line,column,message}}; the first presented frame containing the reloaded document is readable with appflow.await_frame / appflow.readback using this request's id as actionId. A broken file keeps the old document and the error names file:line.",
+        "inputSchema": {"type": "object", "properties": {"panel": {"type": "string", "minLength": 1}, "readback": {"type": "object"}}, "additionalProperties": False},
+    },
+    {
+        "name": "appflow.reload",
+        "description": "Force the reload of the .appflow data (key defaults, triggers) now; shape-hash gated, the last good state stays on failure. Same result shape as ui.reload.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "appflow.navigate",
         "description": "Take a flow transition by its generated edge id (the ids appflow.list reports under transitions).",
         "inputSchema": {"type": "object", "properties": {"edge": {"type": "string", "minLength": 1}}, "required": ["edge"], "additionalProperties": False},
@@ -154,6 +164,10 @@ def tool_content(name: str, arguments: dict[str, Any], client: AppFlowClient) ->
         )
     elif name == "appflow.quit":
         result = client.quit()
+    elif name == "ui.reload":
+        result = client.ui_reload(arguments.get("panel"), readback=arguments.get("readback"))
+    elif name == "appflow.reload":
+        result = client.appflow_reload()
     elif name == "appflow.navigate":
         result = client.navigate(arguments["edge"])
     elif name == "appflow.input":

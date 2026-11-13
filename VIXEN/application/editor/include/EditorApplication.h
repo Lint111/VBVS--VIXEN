@@ -134,6 +134,11 @@ private:
     // Polls the external AppFlow artifact at a bounded cadence. The swap is called from Update()
     // before input dispatch, which is the editor's between-tick point.
     void PollAppFlowFile();
+    // Loads the external AppFlow artifact into the running runtime (shape-hash and validation gated; the last
+    // good state stays on any failure, `error` says why). Shared by the poll and the `appflow.reload` verb.
+    bool ReloadAppFlowData(std::string& error);
+    // Turns the UI node's document reloads since the last call into `ui.reloaded` events and the status line.
+    void ReportUiReloads();
 
     // Inc-A2: re-derives layersView_'s bound "layers" array from doc_'s per-layer name/op and
     // enabled mask. Shared by the initial population (LoadDocument)

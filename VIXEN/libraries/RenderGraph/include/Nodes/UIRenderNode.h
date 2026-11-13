@@ -6,6 +6,7 @@
 #include "Data/Nodes/UIRenderNodeConfig.h"
 #include "Ui/BlobView.h"
 #include "Ui/IView.h"
+#include "Ui/UiDocumentReloader.h"
 #include "Ui/UiInputForwarder.h"
 #include "Ui/ViewBlobFile.h"
 #include "Ui/VixenRmlRenderInterface.h"
@@ -59,6 +60,29 @@ public:
     /// Poll the opt-in HUD .viewblob source and transactionally re-register its RmlUi model.
     /// Hosts call this once at the top of their update tick, before rendering begins.
     void PollHudHotReload();
+
+    /// One document reload (watched edit or forced): which mount, the files involved, and the outcome. A failed
+    /// reload keeps the old document; its `files` hold the located error.
+    struct DocumentReloadReport {
+        MountHandle handle = 0;
+        std::string document;
+        bool ok = true;
+        bool forced = false;
+        std::vector<UiReloadFileResult> files;
+    };
+
+    /// Live reload of the UI documents (R772, R838.11): polls the mtime of every file each mounted (and the
+    /// primary) document pulled in, at a low cadence and without allocating, and reloads a changed document in
+    /// place. Runs from Execute for every app; no flag, because the steady state is a stat per file per 15 ticks.
+    void PollDocumentReload();
+
+    /// Forces a reload now. `handle` 0 reloads every document, otherwise that mount (kPrimaryDocument = the
+    /// primary). `results` gets one entry per file (ok) or the located error. Returns true when every
+    /// selected document reloaded (or none matched: `results` is then empty).
+    bool ReloadDocuments(MountHandle handle, std::vector<UiReloadFileResult>& results);
+
+    /// Reloads since the last drain, oldest first (the host turns them into status line + channel events).
+    [[nodiscard]] std::vector<DocumentReloadReport> DrainDocumentReloads() { return std::move(reloadReports_); }
 
     /// Supply the generated TextRef resolver before the first compile. The node registers the
     /// <ut-text> factory element with this resolver when RmlUi is initialised.
@@ -146,11 +170,10 @@ private:
     Rml::Context* context_ = nullptr;
     Rml::ElementDocument* document_ = nullptr;
 
-    // Live hot-reload (dev only; gated on VIXEN_UI_LIVE). Cache the resolved document path + the newest
-    // mtime across the RML and its sibling RCSS so CompileImpl's recompile branch can detect an on-disk
-    // edit and swap the document CPU-side (never touching the persistent GPU sync objects).
+    // Live document reload: the resolved primary document path (the mounts keep their own). The swap is
+    // CPU-side only (never touching the persistent GPU sync objects).
     std::string resolvedDocPath_;
-    std::filesystem::file_time_type lastUiWriteTime_{};
+    UiDocumentWatch primaryWatch_;   // files the primary document pulled in (live reload)
 
     // Renderer-agnostic view seam (Inc-2): the node hosts whatever IView the consumer sets, knowing
     // no field name. configuredView_ is the consumer's native/fallback view; view_ is the active view
@@ -179,6 +202,8 @@ private:
         IView*               view = nullptr;   // borrowed (owned by the caller, like the HUD view)
         Rml::ElementDocument* doc = nullptr;
         Rml::DataModelHandle  model;
+        std::string           documentPath;   // resolved path the document was loaded from (live reload)
+        UiDocumentWatch       watch;          // the files RmlUi opened to load it
     };
     std::map<MountHandle, Mount_> mounts_;
     MountHandle nextMountHandle_ = 1;   // 0 is the invalid sentinel
@@ -215,6 +240,16 @@ private:
 
     // Input forwarding (INPUT_STATE slot) + the text-control commit queue.
     UiInputForwarder inputForwarder_;
+
+    // Live document reload (UiDocumentReloader): the tracking file interface and log capture it needs are
+    // installed at RmlUi init; per-document watches live on the mounts and primaryWatch_.
+    UiDocumentReloader reloader_{systemInterface_};
+    struct PendingRestore_ { MountHandle handle = 0; UiDocumentState state; };
+    std::vector<PendingRestore_> pendingRestores_;   // state to re-apply after the next Context::Update
+    std::vector<DocumentReloadReport> reloadReports_;
+    uint32_t documentPollTicks_ = 0;
+    bool ReloadOne(MountHandle handle, bool forced, std::vector<UiReloadFileResult>& results);
+    void ApplyPendingRestores();
     void ForwardInput(const InputState& input);
     void DirtyAllViewVariables();  // re-evaluate every bound value so a refused edit snaps back to the model
 };

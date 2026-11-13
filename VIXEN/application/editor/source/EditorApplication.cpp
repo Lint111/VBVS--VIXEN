@@ -1142,6 +1142,14 @@ void EditorApplication::RegisterAppFlowHandlers() {
     });
 }
 
+namespace {
+nlohmann::json UiReloadFileJson(const Vixen::RenderGraph::UiReloadFileResult& file) {
+    nlohmann::json json{{"file", file.file}, {"ok", file.ok}};
+    if (!file.ok) json["error"] = {{"line", file.line}, {"column", file.column}, {"message", file.message}};
+    return json;
+}
+}  // namespace
+
 void EditorApplication::PollAppFlowFile() {
     constexpr long kPollIntervalTicks = 15;
     if ((updateTick_ % kPollIntervalTicks) != 0) return;
@@ -1166,34 +1174,47 @@ void EditorApplication::PollAppFlowFile() {
     // editor save produces a new mtime and a fresh candidate.
     appFlowMtime_ = mtime;
 
+    std::string error;
+    if (!ReloadAppFlowData(error)) {
+        logger_->Error("[EditorApplication] " + error);
+        return;
+    }
+    logger_->Info("[EditorApplication] AppFlow reloaded from '" + appFlowPath_ + "'");
+}
+
+bool EditorApplication::ReloadAppFlowData(std::string& error) {
     const auto declaredShape = Vixen::AppFlow::AppFlowBlobFile::ReadDeclaredShapeHash(appFlowPath_);
     if (declaredShape.has_value() && *declaredShape != Vixen::AppFlow::Generated::kAppFlowShapeHash) {
-        logger_->Error("[EditorApplication] facade change alters the interface/graph → rebuild required; "
-                       "keeping the running compiled-in state");
-        return;
+        error = "facade change alters the interface/graph → rebuild required; keeping the running compiled-in state";
+        return false;
     }
 
     auto blob = Vixen::AppFlow::AppFlowBlobFile::Load(appFlowPath_);
     if (!blob.has_value()) {
-        logger_->Error("[EditorApplication] AppFlow reload rejected: parse failure; keeping the running state");
-        return;
+        error = "AppFlow reload rejected: parse failure of '" + appFlowPath_ + "'; keeping the running state";
+        return false;
     }
     if (blob->ShapeHash() != Vixen::AppFlow::Generated::kAppFlowShapeHash) {
         // Defensive gate in addition to AppFlowBlobFile::Parse()'s fail-closed validation.
-        logger_->Error("[EditorApplication] facade change alters the interface/graph → rebuild required; "
-                       "keeping the running compiled-in state");
-        return;
+        error = "facade change alters the interface/graph → rebuild required; keeping the running compiled-in state";
+        return false;
     }
 
     // AppFlowRuntime::Load() validates and builds fresh primitives before committing them. The
     // parsed blob is a local candidate and may be destroyed immediately after this call: runtime
     // primitives deep-own the pointer-bearing generated fields they retain.
     if (rt_.Load(&blob->View(), &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
-        logger_->Error("[EditorApplication] AppFlow reload rejected: validation failure; keeping the running state");
-        return;
+        error = "AppFlow reload rejected: validation failure; keeping the running state";
+        return false;
     }
     RegisterAppFlowHandlers();
-    logger_->Info("[EditorApplication] AppFlow reloaded from '" + appFlowPath_ + "'");
+    // Consume this file's mtime: a forced reload must not be followed by a redundant watched one.
+    std::error_code ec;
+    if (const auto mtime = std::filesystem::last_write_time(appFlowPath_, ec); !ec) {
+        appFlowMtime_ = mtime;
+        appFlowMtimeInitialized_ = true;
+    }
+    return true;
 }
 
 void EditorApplication::BuildRenderGraph() {
@@ -1956,6 +1977,7 @@ void EditorApplication::PostTick() {
     }
     VulkanGraphApplication::PostTick();
     ++channelPresentedFrame_;
+    ReportUiReloads();
     for (auto pending = channelActionPending_.begin(); pending != channelActionPending_.end();) {
         if (channelUpdateSerial_ >= pending->second) {
             channelActionFrames_[pending->first] = channelPresentedFrame_;
@@ -2236,6 +2258,25 @@ void EditorApplication::StartPendingReadbacks() {
         }
         channelReadbackResults_[completed.key] = response.dump();
         channelReadbacks_.erase(pendingIt);
+    }
+}
+
+void EditorApplication::ReportUiReloads() {
+    auto* ui = GetUiRenderNode();
+    if (!ui) return;
+    for (const auto& reload : ui->DrainDocumentReloads()) {
+        nlohmann::json files = nlohmann::json::array();
+        for (const auto& file : reload.files) files.push_back(UiReloadFileJson(file));
+        RecordAppFlowEvent("ui.reloaded", {{"document", reload.document}, {"ok", reload.ok},
+                                           {"forced", reload.forced}, {"files", std::move(files)}});
+        if (!reload.ok) {
+            const auto& error = reload.files.front();
+            ReportEditorError(error.file + ":" + std::to_string(error.line) + ": " + error.message, "UiReload");
+            RefreshStatusView();
+        } else if (lastEditorDiagnosticCode_ == "UiReload") {
+            ClearEditorError();  // the document that failed reloaded: the located error is stale
+            RefreshStatusView();
+        }
     }
 }
 
@@ -2683,6 +2724,72 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         }
         RecordAppFlowEvent("input", {{"kind", kind}, {"queued", queued}});
         return nlohmann::json{{"queued", queued}, {"kind", kind}, {"frame", channelPresentedFrame_}}.dump();
+    }
+
+    if (method == "appflow.reload") {
+        // Forces the AppFlow artifact reload the mtime poll would do, now; same gates, same last-good rule.
+        std::string error;
+        const bool ok = ReloadAppFlowData(error);
+        std::error_code ec;
+        if (const auto mtime = std::filesystem::last_write_time(appFlowPath_, ec); !ec) {
+            appFlowMtime_ = mtime;  // the forced attempt consumed this file version either way
+            appFlowMtimeInitialized_ = true;
+        }
+        RecordAppFlowEvent("appflow.reloaded", {{"ok", ok}, {"file", appFlowPath_}, {"message", error}});
+        nlohmann::json file{{"file", appFlowPath_}, {"ok", ok}};
+        if (!ok) file["error"] = {{"line", 0}, {"column", 0}, {"message", error}};
+        return nlohmann::json{{"ok", ok}, {"files", nlohmann::json::array({file})}, {"frame", channelPresentedFrame_ + 1}}.dump();
+    }
+
+    if (method == "ui.reload") {
+        // R468: force the live document reload now. {panel?} names a declared panel (the dock id); with none,
+        // every document reloads. The reply lists each file; the request id then works as an actionId for
+        // await_frame / readback (the first presented frame that contains the reloaded document), or a
+        // `readback` selection attached here is answered with that frame, like dispatch.
+        const nlohmann::json reloadRequestId = request.value("id", nlohmann::json(nullptr));
+        const std::string reloadKey = RequestKey(reloadRequestId);
+        if (const auto deferred = channelDeferredDispatchResults_.find(reloadKey);
+            deferred != channelDeferredDispatchResults_.end()) {
+            const auto pixels = channelReadbackResults_.find(reloadKey);
+            if (pixels == channelReadbackResults_.end()) return std::nullopt;
+            const std::string deferredJson = deferred->second;
+            const nlohmann::json image = nlohmann::json::parse(pixels->second);
+            channelReadbackResults_.erase(pixels);
+            channelDeferredDispatchResults_.erase(deferred);
+            if (image.contains("error")) throw std::runtime_error(image.at("error").get<std::string>());
+            nlohmann::json response = nlohmann::json::parse(deferredJson);
+            response["readback"] = image;
+            return response.dump();
+        }
+        auto* ui = GetUiRenderNode();
+        if (!ui || !ui->GetUiContext()) throw std::runtime_error("UI context is unavailable in this session");
+        Vixen::RenderGraph::IUiCompositionHost::MountHandle handle = 0;
+        if (params.contains("panel")) {
+            if (!params.at("panel").is_string()) throw std::runtime_error("panel must be a string");
+            const std::string panel = params.at("panel").get<std::string>();
+            handle = Panels().HandleOf(panel);
+            if (handle == 0) throw std::runtime_error("unknown or unmounted panel: " + panel);
+        }
+        std::vector<Vixen::RenderGraph::UiReloadFileResult> results;
+        const bool ok = ui->ReloadDocuments(handle, results);
+        nlohmann::json files = nlohmann::json::array();
+        for (const auto& file : results) files.push_back(UiReloadFileJson(file));
+        const uint64_t requiredSerial = channelUpdateSerial_ + 1;
+        channelActionFrames_.erase(reloadKey);
+        channelActionPending_[reloadKey] = requiredSerial;
+        const nlohmann::json response{{"ok", ok}, {"files", std::move(files)}, {"frame", channelPresentedFrame_ + 1}};
+        if (params.contains("readback")) {
+            const auto& visual = params.at("readback");
+            if (!visual.is_object() || !visual.contains("selection") || !visual.at("selection").is_object()) {
+                throw std::runtime_error("reload readback requires a selection object");
+            }
+            channelReadbacks_[reloadKey] = PendingReadback{
+                visual.dump(), channelPresentedFrame_ + 1, requiredSerial,
+                std::chrono::steady_clock::now(), false};
+            channelDeferredDispatchResults_[reloadKey] = response.dump();
+            return std::nullopt;
+        }
+        return response.dump();
     }
 
     if (method == "appflow.quit") {

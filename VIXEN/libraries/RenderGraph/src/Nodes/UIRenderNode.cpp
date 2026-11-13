@@ -48,7 +48,7 @@ std::string ResolveUiAsset(const std::string& configured) {
     // Dev override (highest priority): point the UI loader at an authoritative content tree on disk
     // (e.g. <repo>/core/content/core) via VIXEN_UI_SOURCE_DIR, so the watched/loaded files are the
     // authored ones. The configured path is relative under "assets/" (e.g. "assets/ui/hud.rml"); strip
-    // that prefix and resolve against the source dir (→ <dir>/ui/hud.rml). Pairs with VIXEN_UI_LIVE.
+    // that prefix and resolve against the source dir (→ <dir>/ui/hud.rml). The live document reload (PollDocumentReload) then watches those source files.
     if (const char* srcDir = std::getenv("VIXEN_UI_SOURCE_DIR")) {
         std::string rel = configured;
         const std::string prefix = "assets/";
@@ -67,23 +67,6 @@ std::string ResolveUiAsset(const std::string& configured) {
     return configured;  // let RmlUi log the miss against the configured path
 }
 
-// Newest mtime across the RML document and every sibling *.rcss (the stylesheets it may @import or be
-// linked to). Used by the live hot-reload to detect an on-disk edit to either the doc or its styles.
-std::filesystem::file_time_type LatestUiMtime(const std::string& rmlPath) {
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    fs::file_time_type latest = fs::last_write_time(rmlPath, ec);
-    fs::path dir = fs::path(rmlPath).parent_path();
-    std::error_code dec;
-    for (fs::directory_iterator it(dir, dec), end; it != end; it.increment(dec)) {
-        if (it->path().extension() == ".rcss") {
-            std::error_code fec;
-            auto t = fs::last_write_time(it->path(), fec);
-            if (!fec && t > latest) latest = t;
-        }
-    }
-    return latest;
-}
 }  // namespace
 
 std::unique_ptr<NodeInstance> UIRenderNodeType::CreateInstance(const std::string& instanceName) const {
@@ -160,7 +143,7 @@ bool UIRenderNode::RestorePrimaryView(const std::shared_ptr<IView>& previous) {
     }
     previous->Register(constructor);
     viewModel_ = constructor.GetModelHandle();
-    document_ = context_->LoadDocument(resolvedDocPath_);
+    { std::vector<std::string> loadErrors; document_ = reloader_.Load(*context_, resolvedDocPath_, primaryWatch_, loadErrors); }
     if (!document_) {
         context_->RemoveDataModel(previous->ModelName());
         viewModel_ = {};
@@ -203,7 +186,7 @@ bool UIRenderNode::RebindPrimaryView(const std::shared_ptr<IView>& candidate) {
     }
 
     viewModel_ = constructor.GetModelHandle();
-    document_ = context_->LoadDocument(resolvedDocPath_);
+    { std::vector<std::string> loadErrors; document_ = reloader_.Load(*context_, resolvedDocPath_, primaryWatch_, loadErrors); }
     if (!document_) {
         context_->RemoveDataModel(candidate->ModelName());
         viewModel_ = {};
@@ -282,6 +265,7 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         Rml::SetSystemInterface(&systemInterface_);
         Rml::SetRenderInterface(&renderInterface_);
         Rml::SetFontEngineInterface(fontEngine_.get());
+        Rml::SetFileInterface(reloader_.FileInterface());  // records the files each document pulls in
         Rml::Initialise();
         textElementRegistry_ = std::make_unique<Vixen::Text::RmlTextElementRegistry>(textResolver_);
         textElementRegistry_->Register();
@@ -309,12 +293,10 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
                 }
             }
             if (!docPath.empty()) {
-                document_ = context_->LoadDocument(docPath);
+                std::vector<std::string> loadErrors;
+                document_ = reloader_.Load(*context_, docPath, primaryWatch_, loadErrors);
                 if (document_) document_->Show();
-                // Cache the resolved path + initial mtime so the recompile branch can detect on-disk edits
-                // (live hot-reload; dormant unless VIXEN_UI_LIVE is set).
                 resolvedDocPath_ = docPath;
-                lastUiWriteTime_ = LatestUiMtime(docPath);
             }
         }
         initialized_ = true;
@@ -340,23 +322,6 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // Recompile (window resize): RenderPassNode/FramebufferNode rebuilt the render pass +
         // framebuffers for the new extent; just re-fit the RmlUi document to the new size.
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
-
-        // Live hot-reload (dev only). CPU-SIDE DOCUMENT SWAP ONLY — never touch the persistent GPU sync
-        // objects (the destroy-while-in-flight race that kernel-panics WSL). Old document geometry routes
-        // through the render interface's frames-in-flight deferred-delete; UnloadDocument defers the C++
-        // destroy to the next Context::Update(). The data model is Context-level so it survives the
-        // reload — the new document re-binds via data-model=view_->ModelName(), and the consumer keeps
-        // feeding it. ClearStyleSheetCache() must precede LoadDocument so edited RCSS actually takes effect.
-        if (std::getenv("VIXEN_UI_LIVE") && !resolvedDocPath_.empty()) {
-            std::filesystem::file_time_type mtime = LatestUiMtime(resolvedDocPath_);
-            if (mtime > lastUiWriteTime_) {
-                Rml::Factory::ClearStyleSheetCache();
-                if (document_) context_->UnloadDocument(document_);
-                document_ = context_->LoadDocument(resolvedDocPath_);
-                if (document_) document_->Show();
-                lastUiWriteTime_ = mtime;
-            }
-        }
     }
 
     // (Re)build the per-image GPU sync objects (command buffers + composite present semaphores) ONLY
@@ -514,6 +479,7 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
         ApplyPlacements();
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         context_->Update();
+        ApplyPendingRestores();  // scroll / focus / caret of a just-reloaded document, once its rows exist
         context_->Render();
     }
     const char* textCapture = std::getenv("VIXEN_TEXT_SHADER_CAPTURE");
@@ -530,6 +496,7 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
 }
 
 void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
+    PollDocumentReload();  // an edited panel document or stylesheet swaps in before this frame's input and Update
     // Pointer, wheel, keys and text reach the Rml context before this frame's Update(); done ahead of
     // the early returns below so a skipped frame does not drop typed input.
     if (const InputStatePtr input = ctx.In(UIRenderNodeConfig::INPUT_STATE)) ForwardInput(*input);
@@ -707,7 +674,9 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
     }
 
     const std::string docPath = ResolveUiAsset(documentPath);
-    Rml::ElementDocument* doc = context_->LoadDocument(docPath);
+    UiDocumentWatch watch;
+    std::vector<std::string> loadErrors;
+    Rml::ElementDocument* doc = reloader_.Load(*context_, docPath, watch, loadErrors);
     if (!doc) {
         std::fprintf(stderr, "[ui-host] mount failed: LoadDocument('%s') returned null\n", docPath.c_str());
         if (!shared) context_->RemoveDataModel(modelName);   // undo the half-mount
@@ -732,7 +701,7 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
         return false;
     }
 
-    mounts_[handle] = Mount_{ &view, doc, model };
+    mounts_[handle] = Mount_{ &view, doc, model, docPath, std::move(watch) };
     std::fprintf(stderr, "[ui-host] mounted '%s' as '%s' (handle %u, %gx%g%s)\n", modelName, docPath.c_str(),
                  handle, w, h, shared ? ", shared model" : "");
     return true;
@@ -763,6 +732,94 @@ UIRenderNode::MountHandle UIRenderNode::Mount(IView& view, const char* documentP
         pendingMounts_.push_back({handle, &view, path});
     }
     return handle;
+}
+
+// --- live document reload ----------------------------------------------------------------------------------
+
+bool UIRenderNode::ReloadOne(MountHandle handle, bool forced, std::vector<UiReloadFileResult>& results) {
+    if (!context_) return true;
+    Rml::ElementDocument** doc = nullptr;
+    UiDocumentWatch* watch = nullptr;
+    if (handle == kPrimaryDocument) {
+        if (!document_) return true;
+        doc = &document_;
+        watch = &primaryWatch_;
+    } else if (const auto it = mounts_.find(handle); it != mounts_.end() && it->second.doc) {
+        doc = &it->second.doc;
+        watch = &it->second.watch;
+    } else {
+        return true;
+    }
+    UiDocumentState state;
+    const bool ok = reloader_.Reload(*context_, *doc, *watch, results, state);
+    DocumentReloadReport report;
+    report.handle = handle;
+    report.document = watch->path;
+    report.ok = ok;
+    report.forced = forced;
+    report.files = results;
+    reloadReports_.push_back(std::move(report));
+    if (!ok) {
+        for (const auto& error : results)
+            NODE_LOG_WARNING("[UIRenderNode] reload of '" + watch->path + "' rejected, keeping the previous document: " +
+                             error.file + ":" + std::to_string(error.line) + ": " + error.message);
+        return false;
+    }
+    // The swapped-in document gets the dock's box (and shown/hidden state) again on the next ApplyPlacements.
+    if (const auto placement = placements_.find(handle); placement != placements_.end()) {
+        placement->second.appliedTo = nullptr;
+        placement->second.dirty = true;
+    }
+    if (state.framesLeft > 0) {
+        pendingRestores_.erase(std::remove_if(pendingRestores_.begin(), pendingRestores_.end(),
+            [handle](const PendingRestore_& p) { return p.handle == handle; }), pendingRestores_.end());
+        pendingRestores_.push_back({handle, std::move(state)});
+    }
+    NODE_LOG_INFO("[UIRenderNode] reloaded '" + watch->path + "'");
+    return true;
+}
+
+bool UIRenderNode::ReloadDocuments(MountHandle handle, std::vector<UiReloadFileResult>& results) {
+    results.clear();
+    bool allOk = true;
+    std::vector<UiReloadFileResult> one;
+    const auto run = [&](MountHandle h) {
+        allOk = ReloadOne(h, /*forced*/ true, one) && allOk;
+        results.insert(results.end(), one.begin(), one.end());
+        one.clear();
+    };
+    if (handle != 0) {
+        run(handle);
+    } else {
+        run(kPrimaryDocument);
+        std::vector<MountHandle> handles;
+        for (const auto& [h, m] : mounts_) handles.push_back(h);
+        for (MountHandle h : handles) run(h);
+    }
+    return allOk;
+}
+
+void UIRenderNode::PollDocumentReload() {
+    if (!context_) return;
+    if (++documentPollTicks_ % 15u != 0u) return;  // low-cadence mtime poll; no watcher thread
+    std::vector<UiReloadFileResult> results;
+    // Primary first, then the mounts. Reloading a mount never adds or removes a mount, so iterating the map
+    // while reloading entries in place is safe.
+    if (document_ && UiDocumentReloader::Changed(primaryWatch_)) ReloadOne(kPrimaryDocument, false, results);
+    for (auto& [handle, mount] : mounts_) {
+        if (mount.doc && UiDocumentReloader::Changed(mount.watch)) ReloadOne(handle, false, results);
+    }
+}
+
+void UIRenderNode::ApplyPendingRestores() {
+    if (pendingRestores_.empty() || !context_) return;
+    for (auto it = pendingRestores_.begin(); it != pendingRestores_.end();) {
+        Rml::ElementDocument* doc = nullptr;
+        if (it->handle == kPrimaryDocument) doc = document_;
+        else if (const auto m = mounts_.find(it->handle); m != mounts_.end()) doc = m->second.doc;
+        if (!doc || UiDocumentReloader::Restore(*context_, *doc, it->state)) it = pendingRestores_.erase(it);
+        else ++it;
+    }
 }
 
 void UIRenderNode::BindPrimary(IView& view) {
@@ -906,6 +963,7 @@ void UIRenderNode::TypedDeviceReleaseImpl(TypedCleanupContext& ctx) {
         // M-ui: RemoveContext already destroyed every mounted document + data model; just drop the
         // dangling bookkeeping so a defensive second teardown / reuse sees no stale handles.
         mounts_.clear();
+        pendingRestores_.clear();
         pendingMounts_.clear();
         for (auto& [handle, placement] : placements_) {
             placement.appliedTo = nullptr;

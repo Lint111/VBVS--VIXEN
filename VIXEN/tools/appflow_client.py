@@ -106,6 +106,23 @@ class AppFlowClient:
         """
         return self.call("appflow.input", event)
 
+    def ui_reload(self, panel: str | None = None, *, readback: dict[str, Any] | None = None,
+                  request_id: Any = None) -> dict[str, Any]:
+        """Force the live reload of the UI documents now (R468); `panel` is a declared dock panel id, none = all.
+
+        Returns {ok, files: [{file, ok, error?: {line, column, message}}], frame}. The request id then works as an
+        `actionId` for await_frame / readback: the first presented frame that contains the reloaded document.
+        With `readback` (a {"selection": ...} spec) the reply also carries that frame's pixels, like dispatch.
+        """
+        params: dict[str, Any] = {} if panel is None else {"panel": panel}
+        if readback is not None:
+            params["readback"] = readback
+        return self.call("ui.reload", params, request_id=request_id)
+
+    def appflow_reload(self) -> dict[str, Any]:
+        """Force the AppFlow artifact (.appflow data) reload the mtime poll would do; same result shape as ui_reload."""
+        return self.call("appflow.reload")
+
     def quit(self) -> dict[str, Any]:
         return self.call("appflow.quit")
 
