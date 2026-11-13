@@ -2641,7 +2641,11 @@ void VulkanGraphApplication::Update() {
             } else {
                 recipeCompilePendingSerial_ = 0;
                 if (pendingRecipeAnalyses_.empty() && !recompileAfterAnalysis_ && !proceduralSwapPending_) {
-                    recipeEditCoveredSerial_ = updateEditSerial;
+                    // EditorApplication applies its dirty-tail mutation after this base update
+                    // snapshots updateEditSerial. A single action can advance the shared edit
+                    // ledger twice (shader replacement, then the instance-row publication), so
+                    // the settled path must carry the live highest serial into the next frame.
+                    recipeEditCoveredSerial_ = std::max(updateEditSerial, recipeEditSerial_);
                 }
             }
         }

@@ -44,3 +44,20 @@ TEST(RecipePreviewFence, FailedCompileAdvancesTheSerialWithoutReportingSuccess) 
     EXPECT_FALSE(fence.Succeeded(7u));
     EXPECT_TRUE(fence.Succeeded(8u));
 }
+
+TEST(RecipePreviewFence, HighestCompletedSerialCoversCoalescedEditRows) {
+    RecipePreviewFence fence;
+
+    // A program edit can publish serial 6 and then advance twice before its next frame is
+    // stamped: serial 7 for the replacement and serial 8 for the body-instance row. The frame
+    // fence publishes the highest completed serial, so waiting on either row must not strand.
+    fence.Publish(6u, true);
+    EXPECT_FALSE(fence.Wait(8u, std::chrono::milliseconds(0)));
+
+    fence.Publish(8u, true);
+    EXPECT_EQ(fence.PublishedSerial(), 8u);
+    EXPECT_TRUE(fence.Wait(7u, std::chrono::milliseconds(0)));
+    EXPECT_TRUE(fence.Wait(8u, std::chrono::milliseconds(0)));
+    EXPECT_TRUE(fence.Succeeded(7u));
+    EXPECT_TRUE(fence.Succeeded(8u));
+}
