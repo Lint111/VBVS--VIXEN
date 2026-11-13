@@ -81,12 +81,12 @@ bool WriteDocument(const Yeroket::Sdf::Generated::VoxelDocumentView& source,
 
     size_t required = 0;
     WriteVoxelDocument(source.channels, source.header.channelCount,
-                       source.parameters, source.header.reserved0,
+                       source.parameters, source.header.parameterCount,
                        layers.data(), layerCount, nullptr, 0, required);
     std::vector<std::uint8_t> bytes(required);
     size_t written = 0;
     if (!WriteVoxelDocument(source.channels, source.header.channelCount,
-                            source.parameters, source.header.reserved0,
+                            source.parameters, source.header.parameterCount,
                             layers.data(), layerCount,
                             bytes.data(), bytes.size(), written)) {
         return false;
@@ -972,6 +972,119 @@ TEST(EditorDocumentModelPlacement, WithNoSelectedLayerTheShapeSitsAtTheDocumentB
     Vixen::Editor::LayerTransform placed;
     ASSERT_TRUE(model.GetLayerTransform(index, placed, diagnostic));
     for (size_t axis = 0; axis < 3; ++axis) EXPECT_NEAR(placed.position[axis], docCenter[axis], 1e-3f);
+}
+
+TEST(EditorDocumentModelVdc1, MaterialsAndRecipeReferencesRoundTripWithValidation) {
+    const std::string recipeId = std::string("pack") + ":" + "recipe";
+    const auto original = ReadFile(VXD_GOLDEN_PATH);
+    ASSERT_FALSE(original.empty());
+
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    ASSERT_EQ(model.FormatVersion(), 2u);
+
+    std::vector<std::uint8_t> untouched;
+    ASSERT_TRUE(model.Serialize(untouched, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(untouched, original) << "an untouched v2 document must remain byte-identical";
+    ASSERT_TRUE(model.SetLayerEnabled(0u, false, diagnostic)) << diagnostic.message;
+    std::vector<std::uint8_t> toggled;
+    ASSERT_TRUE(model.Serialize(toggled, diagnostic)) << diagnostic.message;
+    Yeroket::Sdf::Generated::VoxelDocumentView toggledView{};
+    ASSERT_TRUE(Yeroket::Sdf::Generated::ReadVoxelDocument(
+        toggled.data(), toggled.size(), toggledView));
+    EXPECT_EQ(toggledView.header.formatVersion, 2u)
+        << "a v2 layer-state edit must not silently upgrade the authored format";
+
+    EXPECT_FALSE(model.SetDocumentMaterials(7u, 0u, 50u, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidDocumentMaterial);
+    ASSERT_TRUE(model.SetDocumentMaterials(7u, 9u, 75u, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(model.FormatVersion(), 3u);
+    EXPECT_EQ(model.MajorMaterialId(), 7u);
+    EXPECT_EQ(model.MinorMaterialId(), 9u);
+    EXPECT_EQ(model.MajorMaterialPercent(), 75u);
+
+    EXPECT_FALSE(model.AddReference("invalid", diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidReferenceId);
+    EXPECT_FALSE(model.AddReference("test-pack:test:too-many-colons", diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidReferenceId);
+    ASSERT_TRUE(model.AddReference(recipeId, diagnostic)) << diagnostic.message;
+    EXPECT_FALSE(model.AddReference(recipeId, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::DuplicateReference);
+
+    Vixen::Editor::EditableDocumentLayer layer;
+    ASSERT_TRUE(model.MakeRecipeReferenceLayer(recipeId, "Recipe test", layer, diagnostic))
+        << diagnostic.message;
+    ASSERT_EQ(layer.program.size(), 1u);
+    EXPECT_EQ(layer.program.front().opCode,
+              static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe));
+    EXPECT_FLOAT_EQ(layer.program.front().data[0], 0.0f);
+    ASSERT_TRUE(model.PlaceNewPrimitive(layer, std::nullopt, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.InsertLayer(model.LayerCount(), layer, diagnostic)) << diagnostic.message;
+    const uint32_t referenceLayer = model.LayerCount() - 1u;
+    std::string identified;
+    ASSERT_TRUE(model.IsRecipeReferenceLayer(referenceLayer, &identified, diagnostic))
+        << diagnostic.message;
+    EXPECT_EQ(identified, recipeId);
+    EXPECT_EQ(model.FormatVersion(), 4u);
+    EXPECT_EQ(model.View().referenceCount, 1u);
+    ASSERT_FALSE(model.RemoveReference(recipeId, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::ReferenceInUse);
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    ASSERT_TRUE(model.FlattenToRecipeEntry(
+        entry, model.CaptureBakeSnapshot(),
+        [&recipeId](const std::string& id, uint32_t& resolved) {
+            if (id != recipeId) return false;
+            resolved = 77u;
+            return true;
+        }, false, diagnostic)) << diagnostic.message;
+    bool foundResolvedInvoke = false;
+    for (const auto& instruction : entry.bytecode) {
+        if (instruction.opCode ==
+            static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe) &&
+            instruction.data[0] == 77.0f) {
+            foundResolvedInvoke = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundResolvedInvoke);
+
+    ASSERT_TRUE(model.DeleteLayer(referenceLayer, nullptr, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.RemoveReference(recipeId, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(model.References().empty());
+    EXPECT_EQ(model.FormatVersion(), 3u) << "material fields keep the authored feature version current";
+
+    auto saved = MakeTempDocumentPath("vdc1-v4");
+    ASSERT_TRUE(model.Save(saved.path, diagnostic)) << diagnostic.message;
+    EditorDocumentModel reopened;
+    ASSERT_TRUE(reopened.Load(saved.path, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(reopened.MajorMaterialId(), 7u);
+    EXPECT_EQ(reopened.MinorMaterialId(), 9u);
+    EXPECT_EQ(reopened.MajorMaterialPercent(), 75u);
+    EXPECT_EQ(reopened.FormatVersion(), 3u);
+}
+
+TEST(EditorDocumentModelVdc1, UnresolvedReferencesAreLocatedAndCanBeSkippedForPreview) {
+    const std::string recipeId = std::string("missing") + ":" + "recipe";
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.AddReference(recipeId, diagnostic)) << diagnostic.message;
+    Vixen::Editor::EditableDocumentLayer layer;
+    ASSERT_TRUE(model.MakeRecipeReferenceLayer(recipeId, "Missing recipe", layer, diagnostic));
+    ASSERT_TRUE(model.InsertLayer(model.LayerCount(), layer, diagnostic));
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    ASSERT_FALSE(model.FlattenToRecipeEntry(
+        entry, model.CaptureBakeSnapshot(), {}, false, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::FlattenError);
+    EXPECT_NE(diagnostic.message.find("layer"), std::string::npos);
+
+    ASSERT_TRUE(model.FlattenToRecipeEntry(
+        entry, model.CaptureBakeSnapshot(), {}, true, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::FlattenError);
+    EXPECT_NE(diagnostic.message.find(recipeId), std::string::npos);
 }
 
 }  // namespace
