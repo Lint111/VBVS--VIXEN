@@ -2276,7 +2276,10 @@ void EditorApplication::ReportUiReloads() {
                                            {"forced", reload.forced}, {"files", std::move(files)}});
         if (!reload.ok) {
             const auto& error = reload.files.front();
-            ReportEditorError(error.file + ":" + std::to_string(error.line) + ": " + error.message, "UiReload");
+            // The status line is narrow: the file's name and line, not its whole path (the channel event and the
+            // ui.reload result carry the full path).
+            ReportEditorError(std::filesystem::path(error.file).filename().string() + ":" + std::to_string(error.line) +
+                              ": " + error.message, "UiReload");
             RefreshStatusView();
         } else if (lastEditorDiagnosticCode_ == "UiReload") {
             ClearEditorError();  // the document that failed reloaded: the located error is stale
