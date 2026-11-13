@@ -28,7 +28,7 @@
         <div class="ut-row"><span class="ut-field-label">Met</span><span class="ut-field-value">{{laborNeedMet}}</span></div>
 
         <!-- Ownership affordance line — shown only to the owning viewer (IsOwnerViewer, spec §5). -->
-        <div class="ut-hud-owned" data-if="isOwnerViewer">You own this.</div>
+        <div class="owned ut-hud-owned" data-if="isOwnerViewer">You own this.</div>
     </ut-panel>
 </body>
 </rml>
