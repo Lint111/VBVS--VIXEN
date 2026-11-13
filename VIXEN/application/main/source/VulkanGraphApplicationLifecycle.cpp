@@ -302,6 +302,25 @@ void VulkanGraphApplication::PrepareWithUpscalerFallback() {
         }
     }
     catch (const std::exception& e) {
+        // A presentable surface is optional for frame-loop witnesses and captures. A minimized,
+        // disconnected, or locked Windows desktop reports a zero surface extent during the first
+        // SwapChainNode compile; retry the same graph on the RenderTargetNode path so the caller
+        // gets a running offscreen frame loop instead of a pre-loop failure. BuildRenderGraph's
+        // explicit VIXEN_HEADLESS/capture selection normally avoids this retry; this is the last
+        // recovery seam for a windowed caller that discovers the unavailable surface at compile.
+        const std::string_view failure(e.what());
+        if (presentationTarget_ == PresentationTarget::Window &&
+            failure.find("Surface reported zero extent") != std::string_view::npos) {
+            if (mainLogger) {
+                mainLogger->Warning(
+                    "[VulkanGraphApplication::Prepare] presentable surface unavailable; "
+                    "retrying on the offscreen target (set VIXEN_HEADLESS=1 to select it before compile)");
+            }
+            SetPresentationTarget(PresentationTarget::Offscreen);
+            ResetEngineContextForRetry();
+            PrepareWithUpscalerFallback();
+            return;
+        }
         // Phase 2b (AR#1): do NOT rethrow. Prepare() is host-facing -- the C# UNDERTOW host calls it,
         // and a C++ exception crossing that boundary is undefined behaviour; rethrowing also took the
         // standalone app down via main() -> exit -1. Record the failure and leave isPrepared=false so

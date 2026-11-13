@@ -415,10 +415,18 @@ void VulkanGraphApplication::SelectNativeUpscalerForModulelessGraph() {
 void VulkanGraphApplication::BuildRenderGraph() {
     upscalerPerfPasses_.clear();
     proceduralShaderLibNodes_.clear();
-    // The unattended HUD capture runner can exercise the production graph without DISPLAY or a
-    // swapchain. Keep ordinary app launches on the window presentation path.
-    if (envFlagEnabled("VIXEN_HUD_OFFSCREEN_CAPTURE")) {
+    // Frame-loop witnesses and captures do not need WSI. Select the same offscreen presentation
+    // target used by look-dev before any WindowNode/SwapChainNode is created, so a locked or
+    // disconnected desktop cannot turn a capture into a zero-extent surface failure. The explicit
+    // HUD flag remains supported for callers that do not set the capture frame list.
+    const bool hudCaptureRequested = std::getenv("VIXEN_HUD_CAPTURE_FRAMES") != nullptr;
+    const bool headlessPresentation = envFlagEnabled("VIXEN_HEADLESS") ||
+        envFlagEnabled("VIXEN_HUD_OFFSCREEN_CAPTURE") || hudCaptureRequested;
+    if (headlessPresentation) {
         SetPresentationTarget(PresentationTarget::Offscreen);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] Using offscreen presentation for headless/capture run");
+        }
     }
 
     const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
