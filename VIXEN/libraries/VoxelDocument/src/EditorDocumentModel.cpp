@@ -119,7 +119,7 @@ uint64_t EditorDocumentModel::Revision() const {
 }
 
 uint32_t EditorDocumentModel::ParameterCount() const {
-    return view_.header.formatVersion == 2u ? view_.header.reserved0 : 0u;
+    return view_.header.formatVersion >= 2u ? view_.header.parameterCount : 0u;
 }
 
 std::string EditorDocumentModel::ParameterName(uint32_t index) const {

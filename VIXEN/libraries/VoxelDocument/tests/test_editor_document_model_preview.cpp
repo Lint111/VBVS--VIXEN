@@ -72,12 +72,12 @@ bool WriteDocument(const Yeroket::Sdf::Generated::VoxelDocumentView& source,
 
     size_t required = 0;
     WriteVoxelDocument(source.channels, source.header.channelCount,
-                       source.parameters, source.header.reserved0,
+                       source.parameters, source.header.parameterCount,
                        layers.data(), layerCount, nullptr, 0, required);
     std::vector<std::uint8_t> bytes(required);
     size_t written = 0;
     if (!WriteVoxelDocument(source.channels, source.header.channelCount,
-                            source.parameters, source.header.reserved0,
+                            source.parameters, source.header.parameterCount,
                             layers.data(), layerCount,
                             bytes.data(), bytes.size(), written)) {
         return false;

@@ -114,7 +114,7 @@ TEST(VoxelDocumentDecode, SampleTriLayerGoldenDecodesToExpectedValues) {
     EXPECT_EQ(view.header.formatVersion, 2u);
     EXPECT_EQ(view.header.channelCount, 1u);
     EXPECT_EQ(view.header.layerCount, 3u);
-    EXPECT_EQ(view.header.reserved0, 1u);  // VDC v2 parameter count
+    EXPECT_EQ(view.header.parameterCount, 1u);  // VDC v2 parameter count
 
     ASSERT_NE(view.parameters, nullptr);
     const auto& radius = view.parameters[0];
