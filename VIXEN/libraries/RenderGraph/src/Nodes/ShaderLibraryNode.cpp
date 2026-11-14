@@ -7,9 +7,11 @@
 #include "error/VulkanError.h"
 #include "MainCacher.h"
 #include "ShaderModuleCacher.h"
+#include "FrameTrace.h"
 #include <ShaderBundleBuilder.h>
 #include <ShaderCompiler.h>
 #include <chrono>
+#include <exception>
 #include "Message.h"
 #include "MessageBus.h"
 
@@ -127,7 +129,7 @@ void ShaderLibraryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode complete");
 }
 
-void ShaderLibraryNode::BeginPrecompile() {
+void ShaderLibraryNode::BeginPrecompile(std::vector<PipelineWarmer> warmers) {
     if (shaderBuilderFuncs.empty()) {
         return;
     }
@@ -138,14 +140,36 @@ void ShaderLibraryNode::BeginPrecompile() {
         return job.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
     });
 
-    auto builder = std::make_shared<::ShaderManagement::ShaderBundleBuilder>(
-        shaderBuilderFuncs[0](deviceVulkanVersion, deviceSpirvVersion));
+    std::shared_ptr<::ShaderManagement::ShaderBundleBuilder> builder;
+    {
+        // Benchmark-only span: the builder callback splices the live recipe table into the source.
+        VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "emit:" + GetInstanceName());
+        builder = std::make_shared<::ShaderManagement::ShaderBundleBuilder>(
+            shaderBuilderFuncs[0](deviceVulkanVersion, deviceSpirvVersion));
+    }
     precompileVulkan_ = deviceVulkanVersion;
     precompileSpirv_ = deviceSpirvVersion;
-    precompile_ = std::async(std::launch::async, [builder]() -> PrecompileResult {
-        // A failed build yields null: the swap-time Compile builds again and reports the message.
-        auto result = builder->Build();
-        return result.success ? std::move(result.bundle) : nullptr;
+    precompile_ = std::async(std::launch::async, [builder, name = GetInstanceName(),
+                                                   warmers = std::move(warmers)]() -> PrecompileResult {
+        static_cast<void>(name);  // read only by the benchmark-build spans below
+        PrecompileResult bundle;
+        {
+            VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "spirv:" + name);
+            // A failed build yields null: the swap-time Compile builds again and reports the message.
+            auto result = builder->Build();
+            if (!result.success) return nullptr;
+            bundle = std::move(result.bundle);
+        }
+        for (const auto& warm : warmers) {
+            if (!warm) continue;
+            VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "precreate:" + name);
+            try {
+                warm(bundle);
+            } catch (const std::exception&) {
+                // The swap Compile creates this pipeline on the frame thread and reports the error.
+            }
+        }
+        return bundle;
     });
 }
 

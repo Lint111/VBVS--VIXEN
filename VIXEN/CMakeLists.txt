@@ -795,6 +795,11 @@ add_subdirectory(shaders)
 
 add_subdirectory(libraries)
 
+# sn-gpumem1: the GPU ledger layer (resident allocations, per-frame uploads), benchmark tooling on Windows only.
+if(UNDERSET_NATIVE_BENCHMARK AND WIN32)
+    add_subdirectory(tools/gpu-ledger-layer)
+endif()
+
 # Config-struct codegen golden gate (no-ops without dotnet). Opt-out with -DVIXEN_CODEGEN_GATE=OFF.
 option(VIXEN_CODEGEN_GATE "Run the config-struct codegen golden check" ON)
 if(VIXEN_CODEGEN_GATE)

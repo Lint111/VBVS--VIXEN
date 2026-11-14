@@ -34,23 +34,12 @@ body {
 }
 
 /* ---- Demo interactive widget (S-step proof of hit-mask hit vs pass-through) ----
-   A small round button with an ELLIPSE hit-mask: a click on the disc registers as a UI hit, while a
-   click in the transparent square corners passes through to the voxel pick. Opts back into picking
-   with pointer-events:auto (overriding the inherited none). No action wiring yet (later S4 step). */
+   The kit's round variant owns the circle geometry and ellipse hit-mask; this document owns only
+   the HUD-specific placement. */
 #demo-btn {
     position: absolute;
     bottom: 16px;
     left: 16px;
-    width: 48px;
-    height: 48px;
-    background-color: #4060a0cc;
-    color: #e0f0ff;
-    font-size: 28px;
-    text-align: center;
-    border-width: 1px;
-    border-color: #80a0e0;
-    border-radius: 24px;
-    pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
 }
 
 /* ---- Focus button (view:focus) ---- */
@@ -60,16 +49,6 @@ body {
     position: absolute;
     bottom: 16px;
     left: 72px;
-    width: 48px;
-    height: 48px;
-    background-color: #4060a0cc;
-    color: #e0f0ff;
-    font-size: 28px;
-    text-align: center;
-    border-width: 1px;
-    border-color: #80a0e0;
-    border-radius: 24px;
-    pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
 }
 
 /* ---- Investigate button (player:investigate) ---- */
@@ -79,16 +58,6 @@ body {
     position: absolute;
     bottom: 16px;
     left: 128px;
-    width: 48px;
-    height: 48px;
-    background-color: #4060a0cc;
-    color: #e0f0ff;
-    font-size: 28px;
-    text-align: center;
-    border-width: 1px;
-    border-color: #80a0e0;
-    border-radius: 24px;
-    pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
 }
 
 /* ---- Lens button (view:lens) ---- */
@@ -98,16 +67,6 @@ body {
     position: absolute;
     bottom: 16px;
     left: 184px;
-    width: 48px;
-    height: 48px;
-    background-color: #4060a0cc;
-    color: #e0f0ff;
-    font-size: 28px;
-    text-align: center;
-    border-width: 1px;
-    border-color: #80a0e0;
-    border-radius: 24px;
-    pointer-events: auto;  /* interactive — the provider then runs the hit-mask test */
 }
 
 /* ---- Clock row ---- */

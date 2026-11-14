@@ -104,6 +104,7 @@ void* PerFrameResources::GetUniformBufferMapped(uint32_t frameIndex) const {
     ValidateFrameIndex(frameIndex, "GetUniformBufferMapped");
     VIXEN_FRAME_COUNT(MappedBufferAccesses, 1);
     VIXEN_FRAME_COUNT(MappedBufferBytes, frames[frameIndex].uniformBufferSize);
+    VIXEN_LEDGER_TOUCH(frames[frameIndex].uniformMappedData, frames[frameIndex].uniformBufferSize);
     return frames[frameIndex].uniformMappedData;
 }
 

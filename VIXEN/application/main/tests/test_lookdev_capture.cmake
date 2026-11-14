@@ -15,7 +15,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_executable(vixen_lookdev_capture
         ${CMAKE_CURRENT_LIST_DIR}/test_lookdev_capture.cpp)
     vixen_whole_archive_link_vixen_app(vixen_lookdev_capture PRIVATE)
-    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text stb)
+    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text stb VoxelDocument)
     target_compile_definitions(vixen_lookdev_capture PRIVATE
         TEXT_LATO_FONT_PATH="${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/LatoLatin-Regular.ttf"
         TEXT_NOTO_ARABIC_FONT_PATH="${VIXEN_ROOT}/libraries/Text/tests/data/NotoSansArabic-VF.ttf")
@@ -306,9 +306,9 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         vixen_capture_command(_glyphsdf_cold_command
             COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_SOURCE_DIR}/../tools/measure-cold-pipeline.py"
                     --out "${_glyphsdf_cold_dir}/cold-bound" --cap 4G --timeout 1100
-                    --fresh "${_glyphsdf_cold_dir}" --payload-exe "$<TARGET_FILE:vixen_lookdev_capture>"
+                    "--fresh=${_glyphsdf_cold_dir}" --payload-exe "$<TARGET_FILE:vixen_lookdev_capture>"
                     --expect-file "${_glyphsdf_cold_dir}/glyphsdf-latin-carved.png"
-                    -- ctest --test-dir "${CMAKE_BINARY_DIR}" -R "^Application.LookdevCapture.GlyphSdf.latin-carved$"
+                    -- "${CMAKE_CTEST_COMMAND}" --test-dir "${CMAKE_BINARY_DIR}" -R "^Application.LookdevCapture.GlyphSdf.latin-carved$"
                     --output-log "${CMAKE_BINARY_DIR}/runtime-captures/glyphsdf/cold-bound-ctest.log")
         add_test(NAME "Application.LookdevCapture.GlyphSdf.latin-carved.ColdBound"
             COMMAND ${_glyphsdf_cold_command})

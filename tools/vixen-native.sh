@@ -288,6 +288,16 @@ quote_arg_list() {
     echo "${out% }"
 }
 
+# sn-winjob1: the Windows process that roots the build tree. box-winjob.exe (box-queue, managed/BoxQueue.WinJob) runs `cmd.exe /c ...` as the only
+# process of a Job Object with KILL_ON_JOB_CLOSE and holds its handle. When the queue SIGKILLs this wrapper the interop relay dies, then box-winjob.exe,
+# and Windows ends cl.exe/ninja/mspdbsrv itself; without it they are orphaned and run on (the SIGTERM path below still taskkills the registered root).
+# UT_QUEUE_WINJOB_EXE names it; the queue exports UT_QUEUE_CORE_DIR; UT_QUEUE_WINJOB=0 turns it off. Prints the exe path, or nothing.
+winjob_exe() {
+    local exe="${UT_QUEUE_WINJOB_EXE:-${UT_QUEUE_CORE_DIR:+$UT_QUEUE_CORE_DIR/box-winjob.exe}}"
+    [[ "${UT_QUEUE_WINJOB:-1}" != 0 && -n "$exe" && -x "$exe" ]] && printf '%s\n' "$exe"
+    return 0
+}
+
 # Runs a batch file with its own directory as the working directory, so the name carries no
 # Windows path (a path with spaces or backslashes is mangled by interop) and cmd.exe never
 # starts on a UNC directory. A UNC-only base falls back to the drive root and the full path.
@@ -320,7 +330,7 @@ run_bat() {
     resolve_build_jobs
     export VIXEN_FETCHCONTENT_CACHE="${VIXEN_FETCHCONTENT_CACHE:-$(base_dir)/.tmp/fetch}"
     mkdir -p "$VIXEN_FETCHCONTENT_CACHE"
-    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_MAX_BUILD_JOBS:UT_QUEUE_CREDITS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p"
+    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_LOOKDEV_RECIPE_PATH/p:VIXEN_LOOKDEV_PACK_ROOT/p:VIXEN_LOOKDEV_PACK_SCHEMA/p:VIXEN_LOOKDEV_CAPTURE_DIR/p:VIXEN_LOOKDEV_RECIPE_ID:VIXEN_LOOKDEV_RECIPE_PARAMS:VIXEN_LOOKDEV_RECIPE_SCALE:VIXEN_LOOKDEV_RECIPE_TEXT:VIXEN_LOOKDEV_EXPECT_UNKNOWN_RECIPE:VIXEN_LOOKDEV_CAPTURE_STATE:VIXEN_LOOKDEV_CAPTURE_ANGLE:VIXEN_LOOKDEV_CAPTURE_FRAMES:VIXEN_LOOKDEV_CAPTURE_BUDGET_MS:VIXEN_MAX_BUILD_JOBS:UT_QUEUE_CREDITS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p:UT_QUEUE_WINROOT_FILE/p"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     # The lock scripts write the Windows process-tree root here (Register-NativeRunRoot.ps1) so a
@@ -329,6 +339,14 @@ run_bat() {
     rm -f "$pid_file"
     export VIXEN_NATIVE_PIDFILE="$pid_file"
     say "running: cmd.exe /c $win_arg ${cmd_args[*]:-} (log: $log_file)"
+    # Attribution: the queue core registers the Windows tree whose root the build writes to $pid_file, so the job's
+    # CPU, memory and VRAM are attributed (docs/job-tokens.md in box-queue). The core no-ops outside a queue job; a failure only
+    # leaves the job unattributed (heuristic), never fails the build.
+    local registrar_pid=""
+    if [[ -r "${UT_QUEUE_CORE_DIR:-}/box-queue-core.dll" ]]; then
+        "${UT_QUEUE_DOTNET:-dotnet}" "$UT_QUEUE_CORE_DIR/box-queue-core.dll" winroot-register --from "$pid_file" >&2 &
+        registrar_pid=$!
+    fi
     # The last link/stage step of a native build is silent and uses almost no WSL-side CPU, which
     # the queue's idle watchdog reads as a stall (T-6207). Say that the Windows process is alive.
     local heartbeat_pid started=$SECONDS
@@ -337,9 +355,16 @@ run_bat() {
     # Background + wait so a SIGTERM/SIGINT/SIGHUP reaches the trap at once; bash defers traps
     # until a foreground pipeline ends, and the interop client exiting does not stop the
     # Windows children (T-4910).
+    local -a runner=("$cmd_exe") winjob
+    winjob="$(winjob_exe)"
+    if [[ -n "$winjob" ]]; then
+        runner=("$winjob" run -- cmd.exe)   # a bare name: the helper resolves it on Windows; a WSL path would not
+    elif [[ -n "${UT_QUEUE_CORE_DIR:-}" && "${UT_QUEUE_WINJOB:-1}" != 0 ]]; then
+        say "WARNING: no box-winjob.exe in $UT_QUEUE_CORE_DIR (queue/build-winjob.sh); a SIGKILL of this wrapper leaves cl.exe/ninja running on Windows"
+    fi
     cancelled=""
     cancelled_signo=0
-    ( "$cmd_exe" /c "$win_arg" "${cmd_args[@]}" 2>&1 | tee "$log_file"; exit "${PIPESTATUS[0]}" ) &
+    ( "${runner[@]}" /c "$win_arg" "${cmd_args[@]}" 2>&1 | tee "$log_file"; exit "${PIPESTATUS[0]}" ) &
     run_pid=$!
     trap 'cancel_native TERM' TERM
     trap 'cancel_native INT' INT
@@ -351,8 +376,8 @@ run_bat() {
     if [[ -n "$cancelled" ]]; then wait "$run_pid" 2>/dev/null; rc=$((128 + cancelled_signo)); fi
     set -e
     trap - TERM INT HUP
-    kill "$heartbeat_pid" 2>/dev/null || true
-    wait "$heartbeat_pid" 2>/dev/null || true
+    kill "$heartbeat_pid" $registrar_pid 2>/dev/null || true
+    wait "$heartbeat_pid" $registrar_pid 2>/dev/null || true
     nw_claim_release
     rm -f "$pid_file"
     say "exit code $rc"

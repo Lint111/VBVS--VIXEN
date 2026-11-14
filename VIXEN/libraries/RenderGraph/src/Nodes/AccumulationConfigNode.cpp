@@ -41,44 +41,31 @@ namespace {
 // +validates per-pixel instead of this node hard-resetting the whole frame on motion.
 Vixen::Gpu::AccumulationConfig MakeDefaultAccumulationConfig() {
     Vixen::Gpu::AccumulationConfig cfg{};
-    cfg.enabled             = 0u;      // disabled by default -- pure passthrough gate
+    cfg.enabled             = ResolveAccumulationEnabled() ? 1u : 0u;
     cfg.alpha               = 0.0f;    // sentinel: converging 1/N mode (the M2 default)
     cfg.maxFrames           = 256u;    // convergence cap
     cfg.resetOnMotion       = 1u;      // M2 default: hard reset on camera motion (no ghosting)
-    cfg.reprojectionEnabled = 0u;      // M4 default OFF: M1-M3 behavior unchanged
-
-    // Gate lever: VIXEN_ACCUMULATION_ENABLED=1 forces the enable path so a live gate can
-    // capture both the disabled (byte-identical-to-Inc1) and enabled renders from the SAME
-    // binary, no rebuild -- mirrors ShadowConfigNode's own VIXEN_SHADOW_CONFIG_ENABLED A/B
-    // convention.
-    if (const char* enabledEnv = std::getenv("VIXEN_ACCUMULATION_ENABLED")) {
-        cfg.enabled = (enabledEnv[0] == '1') ? 1u : 0u;
-    }
-
-    // Gate lever: VIXEN_ACCUMULATION_REPROJECT=1 turns on M4's per-pixel reprojection mode
-    // (implies continuing to accumulate through camera motion instead of M2's hard reset --
-    // see ExecuteImpl's use of cfg.reprojectionEnabled below).
-    if (const char* reprojectEnv = std::getenv("VIXEN_ACCUMULATION_REPROJECT")) {
-        cfg.reprojectionEnabled = (reprojectEnv[0] == '1') ? 1u : 0u;
-    }
-
-    // Sampled Lighting Inc3 M4: the equal-error-vs-brute-force live gate demo scene
-    // (VIXEN_RESTIR_GATE_DEMO) needs its OWN temporal reservoir reuse (DirectLighting.comp's
-    // RIS+Combine block) to actually fire every frame -- that block is itself gated on
-    // accumulationConfig.reprojectionEnabled (reusing the M2 worldPos/depth reproject
-    // infrastructure), so without this, the demo's reservoir never accumulates past a single
-    // frame's M=8 candidates and the readback measures high-variance single-frame noise
-    // instead of the converged multi-frame estimate the gate's own kReadbackTick design
-    // assumes. Explicit overrides (VIXEN_ACCUMULATION_ENABLED/_REPROJECT, above) still win if
-    // set, matching every other VIXEN_*_DEMO block's "explicit override wins" convention.
-    if (std::getenv("VIXEN_RESTIR_GATE_DEMO")) {
-        if (!std::getenv("VIXEN_ACCUMULATION_ENABLED"))  cfg.enabled = 1u;
-        if (!std::getenv("VIXEN_ACCUMULATION_REPROJECT")) cfg.reprojectionEnabled = 1u;
-    }
+    cfg.reprojectionEnabled = ResolveAccumulationReprojectionEnabled() ? 1u : 0u;
     return cfg;
 }
 
 }  // namespace
+
+bool ResolveAccumulationEnabled() {
+    // Explicit overrides win, including an explicit 0. The demo fallback is only
+    // applied when the corresponding live-gate knob is absent.
+    if (const char* enabledEnv = std::getenv("VIXEN_ACCUMULATION_ENABLED")) {
+        return enabledEnv[0] == '1';
+    }
+    return std::getenv("VIXEN_RESTIR_GATE_DEMO") != nullptr;
+}
+
+bool ResolveAccumulationReprojectionEnabled() {
+    if (const char* reprojectEnv = std::getenv("VIXEN_ACCUMULATION_REPROJECT")) {
+        return reprojectEnv[0] == '1';
+    }
+    return std::getenv("VIXEN_RESTIR_GATE_DEMO") != nullptr;
+}
 
 // ====== AccumulationConfigNodeType ======
 

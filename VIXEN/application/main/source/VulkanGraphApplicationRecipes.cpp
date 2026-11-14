@@ -1,8 +1,7 @@
 #include "VulkanGraphApplication.h"
 #include "FrameTrace.h"
 #include "MainCacher.h"
-#include "Recipe/RecipeBounds.h"
-#include "Recipe/RecipeOccupancy.h"
+#include "Recipe/RecipeServices.h"            // R841: kernel-owned recipe analysis/GPU services
 #include "Recipe/RecipeChunkBounds.h"
 #include "RecipeContentCacher.h"
 #include "RecipeBucketDataCacher.h"
@@ -21,6 +20,7 @@
 #include "Nodes/MultiDispatchNode.h"
 #include "Nodes/ConstantNode.h"
 #include "Nodes/ShaderLibraryNode.h"
+#include "Nodes/ComputePipelineNode.h"
 #include "Nodes/CommandPoolNode.h"
 #include "Recipe/SpecializedRecipeShaderGlsl.h"
 #include "ShaderCompiler.h"
@@ -29,6 +29,7 @@
 #include "ComputePipelineCacher.h"
 #include "DescriptorSetLayoutCacher.h"
 #include "Hash.h"
+#include "FrameTrace.h"
 
 #include <algorithm>
 #include <cmath>
@@ -359,9 +360,11 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             pipelineParams.entryPoint = "main";
             pipelineParams.descriptorSetLayout = setLayout;
             pipelineParams.pushConstantRanges = pcRanges;
-            pipelineParams.shaderKey = "RecipeSpecialized_" + std::to_string(recipeId) + ":" +
+            const std::string contentDigest = Vixen::SVO::Recipe::RecipeContentDigest(
+                entry->bytecode, entry->pathInstances);
+            pipelineParams.shaderKey = "RecipeSpecialized:" + contentDigest + ":" +
                                        ShaderManagement::ComputeSHA256HexFromUint32Vec(spirv);
-            pipelineParams.layoutKey = "RecipeSpecializedLayout_" + std::to_string(recipeId);
+            pipelineParams.layoutKey = "RecipeSpecializedLayout:" + contentDigest;
             pipelineParams.workgroupSizeX = 8;
             pipelineParams.workgroupSizeY = 8;
             pipelineParams.workgroupSizeZ = 1;
@@ -585,9 +588,11 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                                 pipelineParams.entryPoint = "main";
                                 pipelineParams.descriptorSetLayout = setLayout;
                                 pipelineParams.pushConstantRanges = pcRanges;
-                                pipelineParams.shaderKey = "RecipeShade_" + std::to_string(shadeRecipeId) + ":" +
+                                const std::string contentDigest = Vixen::SVO::Recipe::RecipeContentDigest(
+                                    entry->bytecode, entry->pathInstances);
+                                pipelineParams.shaderKey = "RecipeShade:" + contentDigest + ":" +
                                     ShaderManagement::ComputeSHA256HexFromUint32Vec(spirv);
-                                pipelineParams.layoutKey = "RecipeShadeLayout_" + std::to_string(shadeRecipeId);
+                                pipelineParams.layoutKey = "RecipeShadeLayout:" + contentDigest;
                                 pipelineParams.workgroupSizeX = 8;
                                 pipelineParams.workgroupSizeY = 8;
                                 pipelineParams.workgroupSizeZ = 1;
@@ -711,187 +716,213 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
 
 
 
+namespace {
+
+// Mirrors this file's own kResidencyBoundingRadius (anonymous namespace further down); an
+// authored-bound-free procedural recipe gets the same "reasonable default sphere" the Stored
+// path uses. If that constant changes, update this one to match.
+constexpr float kDefaultProceduralBoundRadius = 24.0f;
+
+bool HasRuntimeParameters(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
+    return std::any_of(entry.bytecode.begin(), entry.bytecode.end(), [](const auto& instruction) {
+        const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
+        return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
+               op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
+    });
+}
+
+bool DerivedBoundsEnabled() {
+    return std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr ||
+           std::getenv("VIXEN_RECIPE_CHUNK_CULL") != nullptr;
+}
+
+// The flag is intentionally opt-in until the native owner re-golden. Runtime-parameter recipes
+// remain on their authored/default bound because a zero-parameter derivation is not valid over
+// their parameter range, and never receive an occupancy grid: the grid samples one parameter
+// value, so its cells could incorrectly cull a changed field.
+Vixen::SVO::Recipe::RecipeRegistrationOptions RegistrationOptionsFor(
+    const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
+    const bool hasRuntimeParameters = HasRuntimeParameters(entry);
+    Vixen::SVO::Recipe::RecipeRegistrationOptions options;
+    options.preferDerivedBound = DerivedBoundsEnabled() && entry.boundRadius > 0.0f && !hasRuntimeParameters;
+    options.occupancy = !hasRuntimeParameters;
+    return options;
+}
+
+// M6 Task 13: the kernel recipe analysis service finalizes the bound (authored, derived or engine
+// default) and derives the coarse occupancy grid from that bound. A program the service cannot
+// prove leaves occupancyGridDim==0 (the splice emits a gridDim=0u case; the shader skips the
+// occupancy fast-path for it).
+Vixen::SVO::Recipe::RecipeRegistrationAnalysis AnalyzeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
+    return Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
+        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f, 64u, 16u,
+        RegistrationOptionsFor(entry));
+}
+
+}  // namespace
+
+void VulkanGraphApplication::RegisterRecipeContent(
+    uint32_t recipeId, const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
+    // Recipe Pipeline Cache Inc1 Task 4: RecipeRegistry (SVO) must not link CashSystem, so this is
+    // the lowest layer that can populate the content-hash cache.
+    auto& mainCacher = renderGraph->GetMainCacher();
+    const auto cacherType = std::type_index(typeid(CashSystem::RecipeFamilyRecord));
+    if (!mainCacher.IsRegistered(cacherType)) {
+        mainCacher.RegisterCacher<
+            CashSystem::RecipeContentCacher,
+            CashSystem::RecipeFamilyRecord,
+            CashSystem::RecipeContentCacheCreateInfo
+        >(cacherType, "RecipeContent", /*isDeviceDependent=*/false);
+    }
+    auto* recipeCacher = mainCacher.GetCacher<
+        CashSystem::RecipeContentCacher,
+        CashSystem::RecipeFamilyRecord,
+        CashSystem::RecipeContentCacheCreateInfo
+    >(cacherType);
+    if (recipeCacher) {
+        recipeCacher->RegisterRecipe(recipeId, entry.bytecode, entry.pathInstances);
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::RegisterRecipeContent] recipeId=" +
+                            std::to_string(recipeId) + " failed to get RecipeContentCacher — cache not populated");
+    }
+}
+
+Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::SubmitRecipeMutation(
+    uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry, bool replace) {
+    // Provisional entry: the previous analysis fields carry over (a replaced recipe keeps its old,
+    // conservative bound and grid until the new analysis is published; a new id gets the engine
+    // default bound and no grid). The shader sources are not rebuilt before the publish.
+    Vixen::SVO::RecipeRegistry::RecipeEntry provisional = entry;
+    const Vixen::SVO::RecipeRegistry::RecipeEntry* previous = proceduralRecipes_.Get(recipeId);
+    if (previous != nullptr) {
+        provisional.boundCenter = previous->boundCenter;
+        provisional.boundRadius = previous->boundRadius;
+        provisional.stepRelaxation = previous->stepRelaxation;
+        provisional.occupancyGridValues = previous->occupancyGridValues;
+        provisional.occupancyGridDim = previous->occupancyGridDim;
+        provisional.occupancyGridAabbMin = previous->occupancyGridAabbMin;
+        provisional.occupancyGridCellSize = previous->occupancyGridCellSize;
+    } else {
+        provisional.boundCenter = glm::vec3(0.0f);
+        provisional.boundRadius = kDefaultProceduralBoundRadius;
+        provisional.stepRelaxation = 0.9f;
+        provisional.occupancyGridValues.clear();
+        provisional.occupancyGridDim = 0u;
+    }
+    const auto result = replace ? proceduralRecipes_.Replace(recipeId, provisional)
+                                : proceduralRecipes_.Register(recipeId, provisional);
+    if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) return result;
+    RegisterRecipeContent(recipeId, provisional);
+
+    PendingRecipeAnalysis pending;
+    pending.generation = ++recipeAnalysisGeneration_;
+    pending.analysed = std::async(std::launch::async, [job = std::move(entry)]() mutable {
+        VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "analysis-worker");
+        (void)AnalyzeEntry(job);
+        return job;
+    });
+    // A newer edit of the same id supersedes the older analysis (its future still joins on destruction).
+    pendingRecipeAnalyses_[recipeId] = std::move(pending);
+    return result;
+}
+
+void VulkanGraphApplication::PublishReadyRecipeAnalyses(bool wait) {
+    for (auto it = pendingRecipeAnalyses_.begin(); it != pendingRecipeAnalyses_.end();) {
+        auto& pending = it->second;
+        if (!wait && pending.analysed.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            ++it;
+            continue;
+        }
+        Vixen::SVO::RecipeRegistry::RecipeEntry analysed = pending.analysed.get();
+        const uint32_t recipeId = it->first;
+        const auto result = proceduralRecipes_.Replace(recipeId, analysed);
+        if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok && mainLogger) {
+            mainLogger->Warning("[VulkanGraphApplication::PublishReadyRecipeAnalyses] recipeId=" +
+                                std::to_string(recipeId) + " analysed entry rejected; provisional entry kept");
+        } else if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::PublishReadyRecipeAnalyses] recipeId=" +
+                             std::to_string(recipeId) + " boundRadius=" + std::to_string(analysed.boundRadius) +
+                             " occupancyGrid=" + std::to_string(analysed.occupancyGridDim) + "^3");
+        }
+        it = pendingRecipeAnalyses_.erase(it);
+    }
+}
+
 Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProceduralRecipe(
     uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
-    const bool hasRuntimeParameters = std::any_of(entry.bytecode.begin(), entry.bytecode.end(),
-        [](const auto& instruction) {
-            const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
-            return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
-                   op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
-        });
-    const bool derivedBoundsEnabled = std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr ||
-        std::getenv("VIXEN_RECIPE_CHUNK_CULL") != nullptr;
-    const bool authoredBound = entry.boundRadius > 0.0f;
-    // kDefaultProceduralBoundRadius mirrors this file's own kResidencyBoundingRadius (defined
-    // further down, in the anonymous namespace above UpdateBodySceneResidency -- forward
-    // reference isn't possible here, so the value is duplicated with this comment as the
-    // cross-check) so an authored-bound-free procedural recipe gets the SAME "reasonable
-    // default sphere" the Stored path already uses, not a second independent magic number.
-    // If that constant ever changes, update this one to match.
-    constexpr float kDefaultProceduralBoundRadius = 24.0f;
-    auto boundsResult = Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
-        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f);
-
-    // The flag is intentionally opt-in until the native owner re-golden.  Once enabled,
-    // authored radius hints cannot make the hardware/software culling bound tighter than the
-    // program-derived result. Runtime-parameter recipes remain on their authored/default
-    // bound because a zero-parameter derivation is not valid over their parameter range.
-    Vixen::SVO::Recipe::RecipeBoundsResult derivedBound;
-    if (derivedBoundsEnabled && authoredBound && !hasRuntimeParameters) {
-        derivedBound = Vixen::SVO::Recipe::DeriveConservativeBounds(
-            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()));
-        if (derivedBound.ok && derivedBound.radius > 0.0f &&
-            std::isfinite(derivedBound.radius)) {
-            entry.boundCenter = derivedBound.center;
-            entry.boundRadius = derivedBound.radius;
-            boundsResult.boundSource = Vixen::SVO::Recipe::RecipeBoundsSource::Derived;
-        }
+    // Before the graph compiles, the first Compile() reads the registry: derive in place.
+    if (graphCompiled) {
+        const auto result = SubmitRecipeMutation(recipeId, std::move(entry), /*replace=*/false);
+        if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) AdvanceRecipeEditSerial();
+        return result;
     }
 
+    const auto analysis = AnalyzeEntry(entry);
     if (mainLogger && mainLogger->IsEnabled()) {
-        auto sourceName = [](Vixen::SVO::Recipe::RecipeBoundsSource s) {
+        auto sourceName = [](Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource s) {
             switch (s) {
-                case Vixen::SVO::Recipe::RecipeBoundsSource::Authored:      return "authored";
-                case Vixen::SVO::Recipe::RecipeBoundsSource::Derived:       return "derived";
-                case Vixen::SVO::Recipe::RecipeBoundsSource::EngineDefault: return "engine-default";
+                case Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource::Authored: return "authored";
+                case Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource::Derived: return "derived";
+                case Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource::EngineDefault: return "engine-default";
             }
             return "?";
         };
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
                          std::to_string(recipeId) + " boundRadius=" + std::to_string(entry.boundRadius) +
-                         " (" + sourceName(boundsResult.boundSource) + ") stepRelaxation=" +
-                         std::to_string(entry.stepRelaxation) + " (" + sourceName(boundsResult.relaxationSource) + ")" +
-                         " derivedBounds=" + (derivedBoundsEnabled ? "on" : "off") +
-                         (hasRuntimeParameters ? " runtimeParameters=range-bound-required" : ""));
-    }
-
-    // M6 Task 13 — derive the coarse occupancy grid from the SAME (now-finalized)
-    // boundCenter/boundRadius ApplyRecipeBoundsDefaults just established, whether that came
-    // from derivation or the engine-default fallback. A non-Lipschitz-whitelisted program
-    // (IsLipschitzSafeForOccupancyGrid declines) leaves occupancyGridDim==0 — the splice's
-    // getRecipeOccupancyGrid switch then emits a gridDim=0u case for this recipe and the
-    // shader skips the occupancy fast-path for it, exactly as if this call never ran.
-    Vixen::SVO::Recipe::OccupancyGridResult occGrid;
-    // This grid generator currently samples the zero-parameter field. A runtime-parameter
-    // recipe must not inherit that grid because its cells could incorrectly cull a changed
-    // field; use the correct ungridded sphere-trace path until parameter-aware derivation lands.
-    if (!hasRuntimeParameters) {
-        occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
-            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
-            entry.boundCenter, entry.boundRadius, 64u, 16u, &proceduralRecipes_);
-    }
-    if (occGrid.ok) {
-        entry.occupancyGridValues    = std::move(occGrid.values);
-        entry.occupancyGridDim       = occGrid.dim;
-        entry.occupancyGridAabbMin   = occGrid.aabbMin;
-        entry.occupancyGridCellSize  = occGrid.cellSize;
-    } else {
-        entry.occupancyGridValues.clear();
-        entry.occupancyGridDim = 0u;
-        entry.occupancyGridAabbMin = glm::vec3(0.0f);
-        entry.occupancyGridCellSize = 0.0f;
-    }
-    if (mainLogger && mainLogger->IsEnabled()) {
+                         " (" + sourceName(analysis.boundSource) + ") stepRelaxation=" +
+                         std::to_string(entry.stepRelaxation) + " (service-analysis)" +
+                         " derivedBounds=" + (DerivedBoundsEnabled() ? "on" : "off") +
+                         (HasRuntimeParameters(entry) ? " runtimeParameters=range-bound-required" : ""));
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
                          std::to_string(recipeId) + " occupancyGrid=" +
-                         (occGrid.ok ? (std::to_string(occGrid.dim) + "^3") : std::string("none (non-whitelisted opcode)")));
+                         (analysis.occupancyAvailable ? (std::to_string(entry.occupancyGridDim) + "^3") :
+                          std::string("none (unavailable from the kernel analysis service)")));
     }
-
-    auto result = proceduralRecipes_.Register(recipeId, entry);
-
-    // Recipe Pipeline Cache Inc1 Task 4 — real population call site. RecipeRegistry (SVO) does
-    // not and should not link CashSystem (confirmed by M1: SVO has zero Core references, and
-    // CashSystem->{Core,SVO} is one-directional), so this is the lowest layer that can populate
-    // the content-hash cache without an inverted dependency. Only populate on a successful
-    // registration — a rejected recipe (DuplicateId/BadOpCode/etc.) never enters the registry and
-    // has nothing to cache.
+    const auto result = proceduralRecipes_.Register(recipeId, entry);
     if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
-        auto& mainCacher = renderGraph->GetMainCacher();
-        const auto cacherType = std::type_index(typeid(CashSystem::RecipeFamilyRecord));
-        if (!mainCacher.IsRegistered(cacherType)) {
-            mainCacher.RegisterCacher<
-                CashSystem::RecipeContentCacher,
-                CashSystem::RecipeFamilyRecord,
-                CashSystem::RecipeContentCacheCreateInfo
-            >(cacherType, "RecipeContent", /*isDeviceDependent=*/false);
-        }
-        auto* recipeCacher = mainCacher.GetCacher<
-            CashSystem::RecipeContentCacher,
-            CashSystem::RecipeFamilyRecord,
-            CashSystem::RecipeContentCacheCreateInfo
-        >(cacherType);
-        if (recipeCacher) {
-            recipeCacher->RegisterRecipe(recipeId, entry.bytecode);
-        } else if (mainLogger) {
-            mainLogger->Warning("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
-                                std::to_string(recipeId) + " failed to get RecipeContentCacher — cache not populated");
-        }
+        RegisterRecipeContent(recipeId, entry);
+        AdvanceRecipeEditSerial();
     }
-
     return result;
 }
 
 Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::ReplaceProceduralRecipe(
     uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
-    const bool hasRuntimeParameters = std::any_of(entry.bytecode.begin(), entry.bytecode.end(),
-        [](const auto& instruction) {
-            const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
-            return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
-                   op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
-        });
-    const bool derivedBoundsEnabled = std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr ||
-        std::getenv("VIXEN_RECIPE_CHUNK_CULL") != nullptr;
-    const bool authoredBound = entry.boundRadius > 0.0f;
-    constexpr float kDefaultProceduralBoundRadius = 24.0f;
-    Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
-        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f);
-
-    if (derivedBoundsEnabled && authoredBound && !hasRuntimeParameters) {
-        const auto derived = Vixen::SVO::Recipe::DeriveConservativeBounds(
-            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()));
-        if (derived.ok && derived.radius > 0.0f && std::isfinite(derived.radius)) {
-            entry.boundCenter = derived.center;
-            entry.boundRadius = derived.radius;
-        }
+    if (graphCompiled) {
+        const auto result = SubmitRecipeMutation(recipeId, std::move(entry), /*replace=*/true);
+        if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) AdvanceRecipeEditSerial();
+        return result;
     }
 
-    Vixen::SVO::Recipe::OccupancyGridResult occGrid;
-    if (!hasRuntimeParameters) {
-        occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
-            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
-            entry.boundCenter, entry.boundRadius, 64u, 16u, &proceduralRecipes_);
-    }
-    if (occGrid.ok) {
-        entry.occupancyGridValues = std::move(occGrid.values);
-        entry.occupancyGridDim = occGrid.dim;
-        entry.occupancyGridAabbMin = occGrid.aabbMin;
-        entry.occupancyGridCellSize = occGrid.cellSize;
-    } else {
-        entry.occupancyGridValues.clear();
-        entry.occupancyGridDim = 0u;
-        entry.occupancyGridAabbMin = glm::vec3(0.0f);
-        entry.occupancyGridCellSize = 0.0f;
-    }
-
+    (void)AnalyzeEntry(entry);
     const auto result = proceduralRecipes_.Replace(recipeId, entry);
     if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
-        auto& mainCacher = renderGraph->GetMainCacher();
-        const auto cacherType = std::type_index(typeid(CashSystem::RecipeFamilyRecord));
-        if (!mainCacher.IsRegistered(cacherType)) {
-            mainCacher.RegisterCacher<
-                CashSystem::RecipeContentCacher,
-                CashSystem::RecipeFamilyRecord,
-                CashSystem::RecipeContentCacheCreateInfo
-            >(cacherType, "RecipeContent", /*isDeviceDependent=*/false);
-        }
-        auto* recipeCacher = mainCacher.GetCacher<
-            CashSystem::RecipeContentCacher,
-            CashSystem::RecipeFamilyRecord,
-            CashSystem::RecipeContentCacheCreateInfo
-        >(cacherType);
-        if (recipeCacher) recipeCacher->RegisterRecipe(recipeId, entry.bytecode);
+        RegisterRecipeContent(recipeId, entry);
+        AdvanceRecipeEditSerial();
     }
     return result;
+}
+
+void VulkanGraphApplication::StartProceduralPrecompile() {
+    // Compile off the frame thread: the builders run here (they read the live recipe table), their
+    // Build() runs on workers and fills the shader cache; the swap happens in PollProceduralShaderSwap.
+    VIXEN_FRAME_TRACE_SCOPE("update", "procedural-precompile-begin");
+    // R864.4: the precompile workers also create every downstream compute pipeline through its
+    // cacher key, so the swap's RecompileDirtyNodes finds them instead of compiling on the frame thread.
+    const auto pipelineNodes = renderGraph->GetInstancesOfType<Vixen::RenderGraph::ComputePipelineNodeType>();
+    for (const auto handle : proceduralShaderLibNodes_) {
+        auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle));
+        if (!lib) continue;
+        std::vector<ShaderLibraryNode::PipelineWarmer> warmers;
+        for (auto* node : pipelineNodes) {
+            if (!node->DependsOn(lib)) continue;
+            if (auto* pipelineNode = dynamic_cast<Vixen::RenderGraph::ComputePipelineNode*>(node)) {
+                if (auto warm = pipelineNode->MakePipelineWarmer()) warmers.push_back(std::move(warm));
+            }
+        }
+        lib->BeginPrecompile(std::move(warmers));
+    }
+    proceduralSwapPending_ = true;
 }
 
 void VulkanGraphApplication::RecompileProceduralShader() {
@@ -902,15 +933,32 @@ void VulkanGraphApplication::RecompileProceduralShader() {
     }
     if (!computeShaderLibNode_.IsValid()) {
         if (mainLogger) mainLogger->Warning("[VulkanGraphApplication::RecompileProceduralShader] computeShaderLibNode_ not found — cannot re-apply");
+        recipeCompilePendingSerial_ = recipeEditSerial_;
+        PublishRecipeCompileFailure();
         return;
     }
-    VIXEN_FRAME_TRACE_SCOPE("update", "procedural-precompile-begin");
-    // Compile off the frame thread: the builders run here (they read the live recipe table), their
-    // Build() runs on workers and fills the shader cache; the swap happens in PollProceduralShaderSwap.
-    for (const auto handle : proceduralShaderLibNodes_) {
-        if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->BeginPrecompile();
+    // The editor's failure witness must exercise the same serial/failure contract without
+    // launching the expensive worker precompile first.  A real compiler exception is reported
+    // through this same publication path; the hook only selects that outcome deterministically.
+    if (const char* forcedFailure = std::getenv("VIXEN_EDITOR_FORCE_RECIPE_COMPILE_FAILURE");
+        forcedFailure && std::strcmp(forcedFailure, "1") == 0) {
+        recipeCompilePendingSerial_ = recipeEditSerial_;
+        recipeCompileFailureForced_ = true;
+        if (mainLogger) {
+            mainLogger->Error("[VulkanGraphApplication::RecompileProceduralShader] forced recipe preview compile failure");
+        }
+        return;
     }
-    proceduralSwapPending_ = true;
+    if (!pendingRecipeAnalyses_.empty()) {
+        if (!lockstepProceduralRecompile_) {
+            // Analyses still run on workers: the precompile starts when the last one is published.
+            recompileAfterAnalysis_ = true;
+            proceduralSwapPending_ = true;
+            return;
+        }
+        PublishReadyRecipeAnalyses(/*wait=*/true);
+    }
+    StartProceduralPrecompile();
     if (lockstepProceduralRecompile_) {
         for (const auto handle : proceduralShaderLibNodes_) {
             if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->WaitPrecompile();
@@ -926,7 +974,16 @@ void VulkanGraphApplication::RecompileProceduralShader() {
 }
 
 void VulkanGraphApplication::PollProceduralShaderSwap() {
-    if (!proceduralSwapPending_ || !renderGraph) return;
+    if (!renderGraph) return;
+    if (!pendingRecipeAnalyses_.empty()) {
+        PublishReadyRecipeAnalyses(/*wait=*/false);
+        if (!pendingRecipeAnalyses_.empty()) return;
+    }
+    if (recompileAfterAnalysis_) {
+        recompileAfterAnalysis_ = false;
+        StartProceduralPrecompile();
+    }
+    if (!proceduralSwapPending_) return;
     for (const auto handle : proceduralShaderLibNodes_) {
         auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle));
         if (lib && !lib->IsPrecompileReady()) return;
@@ -936,7 +993,13 @@ void VulkanGraphApplication::PollProceduralShaderSwap() {
 }
 
 void VulkanGraphApplication::FlushProceduralShaderSwap() {
-    if (!proceduralSwapPending_ || !renderGraph) return;
+    if (!renderGraph) return;
+    PublishReadyRecipeAnalyses(/*wait=*/true);
+    if (recompileAfterAnalysis_) {
+        recompileAfterAnalysis_ = false;
+        StartProceduralPrecompile();
+    }
+    if (!proceduralSwapPending_) return;
     for (const auto handle : proceduralShaderLibNodes_) {
         if (auto* lib = dynamic_cast<ShaderLibraryNode*>(renderGraph->GetInstance(handle))) lib->WaitPrecompile();
     }
@@ -947,11 +1010,13 @@ void VulkanGraphApplication::FlushProceduralShaderSwap() {
 
 void VulkanGraphApplication::MarkProceduralShaderLibsDirty() {
     VIXEN_FRAME_TRACE_SCOPE("update", "procedural-swap-mark");
+    recipeCompilePendingSerial_ = recipeEditSerial_;
     // Replacing editor rule layers rebuilds the shader library and every dependent pipeline.
     // Drain prior frame submissions first: those pipelines may still be referenced by GPU work
     // even though the graph's ordinary recompile path does not wait device-wide.
     if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
         if (auto* device = deviceInst->GetVulkanDevice()) {
+            VIXEN_FRAME_TRACE_SCOPE("recipe-edit", "swap-device-wait-idle");
             const VkResult waitResult = vkDeviceWaitIdle(device->device);
             if (waitResult == VK_ERROR_DEVICE_LOST) {
                 renderGraph->NotifyDeviceLost(

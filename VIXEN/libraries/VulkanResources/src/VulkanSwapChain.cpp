@@ -317,6 +317,9 @@ VulkanStatus VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDev
     // Return a transient error so the caller can defer + retry instead of the process dying (was exit(-1)).
     if (scPrivateVars.surfCapabilities.maxImageExtent.width == 0 ||
         scPrivateVars.surfCapabilities.maxImageExtent.height == 0) {
+        LOG_ERROR("[R796] " + std::string(__FILE__) + ":" + std::to_string(__LINE__) +
+                  ": surface capabilities are 0x0; no presentable window surface is available. "
+                  "Use VIXEN_HEADLESS=1 or VIXEN_HUD_OFFSCREEN_CAPTURE=1 for a frame-loop/capture witness.");
         LOG_ERROR("ERROR: Surface capabilities returned invalid dimensions!");
         LOG_ERROR("Window dimensions: " + std::to_string(width) + "x" + std::to_string(height));
         LOG_ERROR("Surface capabilities: " + std::to_string(scPrivateVars.surfCapabilities.maxImageExtent.width)

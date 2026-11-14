@@ -93,6 +93,9 @@ CONSTEXPR_NODE_CONFIG(WorldPosHistoryNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
+    // False allocates a one-pixel placeholder with the same storage-image descriptor type.
+    static constexpr const char* PARAM_EXTENT_ENABLED = "extentEnabled";
+
     // ----- Constructor: runtime descriptor initialization -----
     WorldPosHistoryNodeConfig() {
         HandleDescriptor deviceDesc{"VulkanDevice*"};

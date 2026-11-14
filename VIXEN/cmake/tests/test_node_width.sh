@@ -4,6 +4,9 @@
 # Usage: test_node_width.sh <repo-root>
 set -uo pipefail
 repo_root="${1:?repo root}"
+# Sizing inputs come from this test's fixtures only: a test that runs inside a queue job inherits the live job's
+# UT_QUEUE_* variables (holder pid, grant file, other holders' reserved MB, ...) and must not read them.
+while IFS= read -r _v; do unset "$_v"; done < <(compgen -e | grep -E '^(UT_QUEUE_|NW_|VIXEN_MAX_BUILD_JOBS$|VIXEN_BUILD_MB_PER_JOB$|VIXEN_NATIVE_AVAILABLE_MB$)' || true)
 state="$(mktemp -d)"
 sleep 300 & a=$!
 sleep 300 & b=$!
@@ -26,6 +29,8 @@ expect "0 0" "$(UT_QUEUE_HOLDER_PID=$a nw_other_uncommitted_mb)" "this holder's 
 printf '9000\npid=%s\ncurrent=1000\nstart_ticks=1\n' "$a" > "$state/undertow-box-memory-reservation.$a"
 expect "0 0" "$(nw_other_uncommitted_mb)" "a recycled pid (start ticks differ) is ignored"
 rm -f "$state"/undertow-box-memory-reservation.*
+expect "700 0" "$(UT_QUEUE_RESERVED_OTHERS_MB=700 nw_other_uncommitted_mb)" "the queue's exported unspent reservations are a floor"
+expect "0 0" "$(nw_other_uncommitted_mb)" "no queue export and no files: nothing is uncommitted"
 
 # Two steps back to back, both still seeing 20000 MB available (the first has not grown yet).
 size_and_claim() {

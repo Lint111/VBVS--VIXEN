@@ -67,6 +67,7 @@ void StorageBufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
     uint32_t elementStrideParam = GetParameterValue<uint32_t>(StorageBufferNodeConfig::PARAM_ELEMENT_STRIDE, 0u);
     uint32_t bytesPerPixelParam = GetParameterValue<uint32_t>(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 0u);
     uint32_t frameRingSizeParam  = GetParameterValue<uint32_t>(StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE, 0u);
+    const bool extentEnabled = GetParameterValue<bool>(StorageBufferNodeConfig::PARAM_EXTENT_ENABLED, true);
 
     VkDeviceSize requested = 0;
 
@@ -74,11 +75,14 @@ void StorageBufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
         ctx.In(StorageBufferNodeConfig::SWAPCHAIN_INFO);
     if (swapchainInfo && bytesPerPixelParam != 0u) {
         VkExtent2D extent = swapchainInfo->GetExtent();
-        requested = static_cast<VkDeviceSize>(extent.width) *
-                    static_cast<VkDeviceSize>(extent.height) *
-                    static_cast<VkDeviceSize>(bytesPerPixelParam);
+        requested = extentEnabled
+            ? static_cast<VkDeviceSize>(extent.width) *
+              static_cast<VkDeviceSize>(extent.height) *
+              static_cast<VkDeviceSize>(bytesPerPixelParam)
+            : static_cast<VkDeviceSize>(bytesPerPixelParam);
         NODE_LOG_INFO("[StorageBufferNode] Extent-driven size: " +
-                      std::to_string(extent.width) + "x" + std::to_string(extent.height) +
+                      (extentEnabled ? std::to_string(extent.width) + "x" + std::to_string(extent.height)
+                                     : std::string("placeholder 1 element")) +
                       " * " + std::to_string(bytesPerPixelParam) + " bpp");
     } else if (sizeBytesParam != 0u) {
         requested = static_cast<VkDeviceSize>(sizeBytesParam);

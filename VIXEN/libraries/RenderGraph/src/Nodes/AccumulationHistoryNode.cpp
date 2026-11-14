@@ -62,11 +62,18 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[AccumulationHistoryNode] COMMAND_POOL is null");
     }
 
-    width_  = ctx.In(AccumulationHistoryNodeConfig::WIDTH);
-    height_ = ctx.In(AccumulationHistoryNodeConfig::HEIGHT);
-    if (width_ == 0 || height_ == 0) {
+    const uint32_t requestedWidth = ctx.In(AccumulationHistoryNodeConfig::WIDTH);
+    const uint32_t requestedHeight = ctx.In(AccumulationHistoryNodeConfig::HEIGHT);
+    if (requestedWidth == 0 || requestedHeight == 0) {
         throw std::runtime_error("[AccumulationHistoryNode] WIDTH/HEIGHT must be > 0 (got " +
-                                 std::to_string(width_) + "x" + std::to_string(height_) + ")");
+                                 std::to_string(requestedWidth) + "x" + std::to_string(requestedHeight) + ")");
+    }
+    const bool extentEnabled = GetParameterValue<bool>(
+        AccumulationHistoryNodeConfig::PARAM_EXTENT_ENABLED, true);
+    width_ = extentEnabled ? requestedWidth : 1u;
+    height_ = extentEnabled ? requestedHeight : 1u;
+    if (!extentEnabled) {
+        NODE_LOG_INFO("[AccumulationHistoryNode] Extent admission disabled; using 1x1 placeholder");
     }
 
     // Consumers decide the usage beyond storage (a generated system's sampled view adds SAMPLED);

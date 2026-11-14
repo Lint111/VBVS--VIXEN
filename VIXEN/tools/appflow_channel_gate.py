@@ -61,7 +61,7 @@ class McpProcess:
         self.process.stdin.flush()
         if notification:
             return None
-        ready, _, _ = select.select([self.process.stdout], [], [], 60)
+        ready, _, _ = select.select([self.process.stdout], [], [], 90)
         if not ready:
             raise RuntimeError(f"MCP server timed out on {method}")
         line = self.process.stdout.readline()
@@ -110,6 +110,8 @@ def main() -> int:
     parser.add_argument("--server", required=True, type=Path)
     parser.add_argument("--document", required=True, type=Path)
     parser.add_argument("--transcript", required=True, type=Path)
+    parser.add_argument("--force-compile-failure", action="store_true",
+                        help="force the next procedural preview compile to fail and verify the wait returns")
     args = parser.parse_args()
 
     args.transcript.parent.mkdir(parents=True, exist_ok=True)
@@ -125,6 +127,8 @@ def main() -> int:
             "VIXEN_EDITOR_TEST_CAMERA": "top-down",
             "VIXEN_EXIT_AFTER_FRAMES": "100000",
         })
+        if args.force_compile_failure:
+            environment["VIXEN_EDITOR_FORCE_RECIPE_COMPILE_FAILURE"] = "1"
         with editor_log.open("w", encoding="utf-8") as output:
             editor = subprocess.Popen(
                 [str(args.editor), str(args.document)],
@@ -151,7 +155,7 @@ def main() -> int:
                 tools_response = mcp.rpc("tools/list", {})
                 advertised = {tool["name"] for tool in tools_response["result"]["tools"]}
                 expected_tools = {"appflow.list", "appflow.dispatch", "appflow.read", "appflow.subscribe",
-                                  "appflow.await_frame", "appflow.readback"}
+                                  "appflow.await_frame", "appflow.wait_recipe_preview", "appflow.readback"}
                 assert expected_tools <= advertised, f"missing MCP tools: {sorted(expected_tools - advertised)}"
 
                 actions = {item["name"]: item for item in listed["actions"]}
@@ -163,6 +167,9 @@ def main() -> int:
                 parameter_up = actions["AdjustParameterUp"]
                 parameter_up_param = parameter_up["params"][0]["name"]
                 assert parameter_up["params"][0]["type"] == "integer"
+                program_up = actions["EditProgramFieldUp"]
+                program_up_param = program_up["params"][0]["name"]
+                assert program_up["params"][0]["type"] == "integer"
 
                 parameter_edits = []
                 for _ in range(4):
@@ -183,6 +190,49 @@ def main() -> int:
                     "selection": {"type": "sceneInstance", "reference": {"type": "bodyInstance", "index": 0}},
                     "format": "raw",
                 })
+
+                if args.force_compile_failure:
+                    failed_edit = mcp.tool("appflow.dispatch", {
+                        "actionId": program_up["id"],
+                        "params": {program_up_param: 0},
+                    })
+                    assert failed_edit["dispatchResult"]["name"] == "Ok", failed_edit
+                    failed_wait = mcp.tool("appflow.wait_recipe_preview", {
+                        "serial": failed_edit["recipePreviewSerial"], "timeoutMs": 30000,
+                    })
+                    assert failed_wait["ready"] and not failed_wait["ok"], failed_wait
+                    transcript = {"result": "PASS", "forcedCompileFailure": failed_wait,
+                                  "dispatch": failed_edit, "mcpTranscript": mcp.transcript}
+                    args.transcript.write_text(json.dumps(transcript, indent=2, ensure_ascii=False) + "\n",
+                                               encoding="utf-8")
+                    print(json.dumps({"result": "PASS", "forcedCompileFailure": failed_wait},
+                                     ensure_ascii=False, separators=(",", ":")))
+                    return 0
+
+                ready_fence_samples = []
+                previous_shape_hash = initial_small["hash"]
+                for edit_index in range(10):
+                    edited_shape = mcp.tool("appflow.dispatch", {
+                        "actionId": program_up["id"],
+                        "params": {program_up_param: 0},
+                    })
+                    assert edited_shape["dispatchResult"]["name"] == "Ok", edited_shape
+                    serial = int(edited_shape["recipePreviewSerial"])
+                    waited = mcp.tool("appflow.wait_recipe_preview", {"serial": serial, "timeoutMs": 60000})
+                    assert waited["ready"] and waited["ok"] and waited["serial"] == serial, waited
+                    sample = mcp.tool("appflow.readback", {
+                        "selection": {"type": "sceneInstance",
+                                       "reference": {"type": "bodyInstance", "index": 0}},
+                        "format": "raw", "recipePreviewSerial": serial,
+                    })
+                    assert sample["recipePreviewSerial"] == serial and sample["recipePreviewOk"], sample
+                    assert sample["hash"] != previous_shape_hash, {
+                        "edit": edit_index, "serial": serial, "sample": sample,
+                        "previousHash": previous_shape_hash,
+                    }
+                    ready_fence_samples.append({"edit": edit_index + 1, "serial": serial,
+                                                "frame": sample["frame"], "hash": sample["hash"]})
+                    previous_shape_hash = sample["hash"]
 
                 changed = mcp.tool("appflow.dispatch", {
                     "actionId": toggle_id,
@@ -221,7 +271,7 @@ def main() -> int:
                 )
                 state_after_toggle = mcp.tool("appflow.read")
                 assert mask_value(state_after_toggle) == 3
-                assert (state_after_toggle["undoDepth"], state_after_toggle["redoDepth"]) == (5, 0)
+                assert (state_after_toggle["undoDepth"], state_after_toggle["redoDepth"]) == (15, 0)
 
                 undone = mcp.tool("appflow.dispatch", {"actionId": undo_id, "params": {}})
                 assert undone["dispatchResult"]["name"] == "Ok", undone
@@ -229,7 +279,7 @@ def main() -> int:
                 assert mcp.tool("appflow.await_frame", {"actionId": undone["actionId"]})["presented"]
                 state_after_undo = mcp.tool("appflow.read")
                 assert mask_value(state_after_undo) == 7
-                assert (state_after_undo["undoDepth"], state_after_undo["redoDepth"]) == (4, 1)
+                assert (state_after_undo["undoDepth"], state_after_undo["redoDepth"]) == (14, 1)
 
                 redone = mcp.tool("appflow.dispatch", {"actionId": redo_id, "params": {}})
                 assert redone["dispatchResult"]["name"] == "Ok", redone
@@ -237,7 +287,7 @@ def main() -> int:
                 assert mcp.tool("appflow.await_frame", {"actionId": redone["actionId"]})["presented"]
                 state_after_redo = mcp.tool("appflow.read")
                 assert mask_value(state_after_redo) == 3
-                assert (state_after_redo["undoDepth"], state_after_redo["redoDepth"]) == (5, 0)
+                assert (state_after_redo["undoDepth"], state_after_redo["redoDepth"]) == (15, 0)
 
                 events = mcp.tool("appflow.subscribe", {"after": 0})
                 assert any(event["type"] == "view.reconcile" for event in events["events"]), events
@@ -346,6 +396,7 @@ def main() -> int:
                     "smallRegion": {"width": small["width"], "height": small["height"],
                                     "transferBytes": small["transferBytes"], "hash": small["hash"]},
                     "parameterEditCount": len(parameter_edits),
+                    "readyFenceSamples": ready_fence_samples,
                     "mcpTranscript": mcp.transcript,
                 }
                 args.transcript.write_text(json.dumps(transcript, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

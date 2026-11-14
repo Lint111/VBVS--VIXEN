@@ -83,6 +83,9 @@ class AppFlowClient:
             raise ValueError("provide action_id or after_frame")
         return self.call("appflow.await_frame", params)
 
+    def wait_recipe_preview(self, serial: int, timeout_ms: int = 30000) -> dict[str, Any]:
+        return self.call("appflow.wait_recipe_preview", {"serial": serial, "timeoutMs": timeout_ms})
+
     def readback(
         self,
         selection: dict[str, Any],
@@ -90,12 +93,16 @@ class AppFlowClient:
         format: str = "png",
         action_id: str | int | None = None,
         frame: int | None = None,
+        recipe_preview_serial: int | None = None,
+        timeout_ms: int = 30000,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"selection": selection, "format": format}
+        params: dict[str, Any] = {"selection": selection, "format": format, "timeoutMs": timeout_ms}
         if action_id is not None:
             params["actionId"] = action_id
         if frame is not None:
             params["frame"] = frame
+        if recipe_preview_serial is not None:
+            params["recipePreviewSerial"] = recipe_preview_serial
         return self.call("appflow.readback", params)
 
     def input(self, **event: Any) -> dict[str, Any]:

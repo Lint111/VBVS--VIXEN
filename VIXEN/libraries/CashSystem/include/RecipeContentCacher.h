@@ -14,7 +14,7 @@ namespace CashSystem {
 /**
  * @brief Creation-info input for `RecipeContentCacher::GetOrCreate`.
  *
- * `ComputeKey` only needs `bytecode` (hashed via M1's `ComputeRecipeBytecodeHash`); `recipeId`
+ * `ComputeKey` only needs the provider `contentDigest`; `recipeId`
  * rides along so `Create`/`GetOrCreate`'s caller-side bookkeeping (`firstRecipeId`/
  * `memberRecipeIds` on a repeat hit) has the registering recipe's identity available without a
  * second lookup.
@@ -22,6 +22,7 @@ namespace CashSystem {
 struct RecipeContentCacheCreateInfo {
     uint32_t recipeId = 0;
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bytecode;
+    std::vector<Yeroket::Sdf::Kernels::PathInstance> pathInstances;
 };
 
 /**
@@ -66,10 +67,12 @@ public:
      * There is no lock; a debug build asserts if two registrations ever overlap.
      */
     PtrT RegisterRecipe(uint32_t recipeId,
-                         const std::vector<Vixen::SVO::Recipe::SdfInstruction>& bytecode) {
+                         const std::vector<Vixen::SVO::Recipe::SdfInstruction>& bytecode,
+                         std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {}) {
         RecipeContentCacheCreateInfo ci;
         ci.recipeId = recipeId;
         ci.bytecode = bytecode;
+        ci.pathInstances.assign(pathInstances.begin(), pathInstances.end());
 
         PtrT record = GetOrCreate(ci);
 
@@ -91,14 +94,24 @@ public:
 protected:
     PtrT Create(const RecipeContentCacheCreateInfo& ci) override {
         auto record = std::make_shared<RecipeFamilyRecord>();
-        record->contentHash = ComputeRecipeBytecodeHash(ci.bytecode);
+        record->contentDigest = ComputeRecipeContentDigest(ci.bytecode, ci.pathInstances);
         record->firstRecipeId = ci.recipeId;
         record->memberRecipeIds.push_back(ci.recipeId);
         return record;
     }
 
     std::uint64_t ComputeKey(const RecipeContentCacheCreateInfo& ci) const override {
-        return ComputeRecipeBytecodeHash(ci.bytecode);
+        const std::string digest = ComputeRecipeContentDigest(ci.bytecode, ci.pathInstances);
+        if (!digest.empty()) return ComputeRecipeContentKey(digest);
+
+        // A missing provider is a provisioning error, but retain a deterministic nonzero key so
+        // a diagnostic build cannot collapse unrelated recipes into one empty-digest family.
+        CacheKeyHasher fallback;
+        if (!ci.bytecode.empty())
+            fallback.AddBytes(ci.bytecode.data(), ci.bytecode.size() * sizeof(ci.bytecode.front()));
+        if (!ci.pathInstances.empty())
+            fallback.AddBytes(ci.pathInstances.data(), ci.pathInstances.size() * sizeof(ci.pathInstances.front()));
+        return fallback.Finalize();
     }
 
 private:

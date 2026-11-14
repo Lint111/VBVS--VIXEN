@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <gaia.h>  // For gaia::ecs::Entity (value type, cannot forward declare)
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
@@ -106,6 +107,10 @@ public:
         float tMax;                  // Exit t-value (4 bytes)
         int scale;                   // Detail level of hit voxel (4 bytes)
         bool hit;                    // Whether ray hit anything (1 byte)
+
+        // Deterministic ESVO node-visit count for traversal correctness checks.
+        // GPU-mirror hits leave this at zero because they use a separate traversal.
+        uint32_t traversalIterations = 0;
 
         // Traversal state (opaque, implementation-specific)
         std::shared_ptr<void> traversalState;

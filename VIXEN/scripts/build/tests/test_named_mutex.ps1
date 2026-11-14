@@ -40,4 +40,11 @@ $env:VIXEN_NATIVE_PIDFILE = "$env:TEMP\vixen_native_root_test_$PID.pid"
 Register-NativeRunRoot | Out-Null
 Check "Register-NativeRunRoot writes the PID file" ((Get-Content $env:VIXEN_NATIVE_PIDFILE).Trim() -eq "$root")
 Remove-Item $env:VIXEN_NATIVE_PIDFILE -ErrorAction SilentlyContinue
+# The queue's CPU-attribution registration (sn-wincpu1): the same root PID goes to UT_QUEUE_WINROOT_FILE, with or without a cancel pidfile.
+$env:VIXEN_NATIVE_PIDFILE = ""
+$env:UT_QUEUE_WINROOT_FILE = "$env:TEMP\ut_queue_winroot_test_$PID"
+Register-NativeRunRoot | Out-Null
+Check "Register-NativeRunRoot writes the queue registration file" ((Get-Content $env:UT_QUEUE_WINROOT_FILE).Trim() -eq "$root")
+Remove-Item $env:UT_QUEUE_WINROOT_FILE -ErrorAction SilentlyContinue
+$env:UT_QUEUE_WINROOT_FILE = ""
 exit $failures

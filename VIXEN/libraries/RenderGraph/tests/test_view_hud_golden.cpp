@@ -68,7 +68,17 @@ TEST(ViewHudGolden, GeneratedBindFunctionCompilesAndBinds) {
     Rml::String activeLensName = "lens";
     std::vector<Vixen::Views::HudFaction> factions;
     std::vector<Vixen::Views::HudEvent> events;
-    Vixen::Views::HudBind bind{ &tick, &bodyCount, &activeLensName, &activeLensCount, &factions, &events };
+    int inspectSelected = -1;
+    Rml::String inspectName, inspectCause, inspectTopRelName;
+    float inspectMaxGrievance = 0.0f, inspectStrength = 0.0f, inspectTopRelSig = 0.0f;
+    // Every HudBind member is a pointer and Bind() rejects a null one, so this fixture must point each member at a
+    // variable. The guard fails the build when the Hud [View] schema gains or loses a member, instead of the bind
+    // reporting "Invalid pointer to data variable" for the members a brace-init left null.
+    static_assert(sizeof(Vixen::Views::HudBind) == 13 * sizeof(void*),
+                  "Hud [View] schema changed: point every new HudBind member at a variable below");
+    Vixen::Views::HudBind bind{ &tick, &bodyCount, &activeLensName, &activeLensCount, &factions, &events,
+                                &inspectSelected, &inspectName, &inspectCause, &inspectMaxGrievance,
+                                &inspectStrength, &inspectTopRelName, &inspectTopRelSig };
 
     Rml::DataModelConstructor c = ctx->CreateDataModel("hud");
     ASSERT_TRUE(static_cast<bool>(c));

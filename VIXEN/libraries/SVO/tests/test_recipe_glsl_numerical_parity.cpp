@@ -1,7 +1,7 @@
 /**
  * @file test_recipe_glsl_numerical_parity.cpp
  * @brief Lazy-Procedural-Delta-Baseline Inc1 M4 Task 9 — GLSL field-function
- *        numerical-parity harness: proves EmitProceduralFieldFunctionGlsl's output,
+ *        numerical-parity harness: proves RecipeGpuField's output,
  *        when run on a REAL (non-lavapipe) GPU, produces the same sdf values as the
  *        CPU reference VM (evalRecipe), for every program in ParityCorpus::GetAll().
  *
@@ -9,7 +9,7 @@
  *
  *  (1) RecipeGlslCompiles (standalone TEST, no fixture) — runs on EVERY machine,
  *      CI or dev, GPU or not:
- *        - Emit GLSL via EmitProceduralFieldFunctionGlsl() for every corpus program.
+ *        - Emit GLSL via RecipeGpuField() for every corpus program.
  *        - Compile the composed GLSL (SdfCoreKernels.g.glsl + emitted function + a
  *          small compute wrapper) through the REAL glslang-backed ShaderCompiler.
  *          This is pure CPU/host-side work — glslang does not touch a GPU device —
@@ -79,7 +79,7 @@
 #include "RecipeHash32TestVectors.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/SdfInstruction.h"
-#include "Recipe/SdfRecipeCodegenGlsl.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/SdfRecipeEval.h"
 #include "ShaderCompiler.h"
 #include "ShaderPreprocessor.h"
@@ -924,7 +924,7 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
         }
 
         // (2) Emit GLSL field function + compile it for this dispatch.
-        const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        const std::string fieldFn = Vixen::SVO::Recipe::RecipeGpuField(
             entry.program.data(),
             static_cast<uint32_t>(entry.program.size()),
             /*recipeId=*/0);
@@ -1040,7 +1040,7 @@ TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
                 << "wrong fill sign at sample " << i << ": " << cpuValues[i];
         }
 
-        const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        const std::string fieldFn = Vixen::SVO::Recipe::RecipeGpuField(
             &instruction, 1U, /*recipeId=*/0, false, nullptr, glyphRows);
         const std::string shaderSource = ComposeGlyphComputeShader(
             glyphSource.processedSource, kernelSource.str(), fieldFn);
@@ -1075,7 +1075,7 @@ TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) 
     const std::array<SdfInstruction, 2> hashProgram = {
         ReadParamU32Instruction(0), Hash32Instruction(),
     };
-    const std::string hashFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+    const std::string hashFn = Vixen::SVO::Recipe::RecipeGpuField(
         hashProgram.data(), static_cast<uint32_t>(hashProgram.size()), 0);
     const auto hashSpirv = compiler.Compile(
         ShaderManagement::ShaderStage::Compute, ComposeComputeShader(sdfCoreGlsl, hashFn), "main", opts);
@@ -1102,7 +1102,7 @@ TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) 
     const std::array<SdfInstruction, 3> combineProgram = {
         ReadParamU32Instruction(0), ReadParamU32Instruction(1), Hash32CombineInstruction(),
     };
-    const std::string combineFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+    const std::string combineFn = Vixen::SVO::Recipe::RecipeGpuField(
         combineProgram.data(), static_cast<uint32_t>(combineProgram.size()), 0);
     const auto combineSpirv = compiler.Compile(
         ShaderManagement::ShaderStage::Compute, ComposeComputeShader(sdfCoreGlsl, combineFn), "main", opts);
@@ -1126,7 +1126,7 @@ TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) 
     }
 
     const auto foldProgram = BodySeedFoldProgram();
-    const std::string foldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+    const std::string foldFn = Vixen::SVO::Recipe::RecipeGpuField(
         foldProgram.data(), static_cast<uint32_t>(foldProgram.size()), 0);
     const auto foldSpirv = compiler.Compile(
         ShaderManagement::ShaderStage::Compute, ComposeComputeShader(sdfCoreGlsl, foldFn), "main", opts);
@@ -1252,7 +1252,7 @@ TEST_F(RecipeGlslNumericalParityTest, TypedRecipeValueGoldenVectorsMatchCpuAndGp
         const int key = static_cast<int>(vector.opcode);
         if (!compiledPrograms.contains(key)) {
             const std::vector<SdfInstruction> program = makeProgram(vector);
-            const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+            const std::string fieldFn = Vixen::SVO::Recipe::RecipeGpuField(
                 program.data(), static_cast<uint32_t>(program.size()), 0);
             const auto compiled = compiler.Compile(
                 ShaderManagement::ShaderStage::Compute,
@@ -1318,7 +1318,7 @@ TEST_F(RecipeGlslNumericalParityTest, ReadParamSweepAcrossValuesWithoutRecompile
     // Compile EXACTLY ONCE — this SPIR-V module is reused verbatim for every params value
     // swept below, proving the recompile-avoidance claim (only the params SSBO's contents
     // change between vkCmdDispatch calls, never the shader module/pipeline).
-    const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+    const std::string fieldFn = Vixen::SVO::Recipe::RecipeGpuField(
         entry.program.data(), static_cast<uint32_t>(entry.program.size()), /*recipeId=*/0);
     const std::string shaderSrc = ComposeComputeShader(sdfCoreGlsl, fieldFn);
     ShaderManagement::CompilationOptions opts;
@@ -1401,7 +1401,7 @@ TEST_F(RecipeGlslNumericalParityTest, DeclaredPositionMatchesAcrossCpuAndGpu) {
     const std::string sdfCoreGlsl = kss.str();
 
     // Compile EXACTLY ONCE (claim (c) above) — emitted WITH the out-param (emitDeclaredPositionOutParam=true).
-    const std::string fieldFn = EmitProceduralFieldFunctionGlsl(
+    const std::string fieldFn = RecipeGpuField(
         prog, kCount, /*recipeId=*/0, /*emitDeclaredPositionOutParam=*/true);
     const std::string shaderSrc = ComposeComputeShaderWithDeclaredPosition(sdfCoreGlsl, fieldFn);
 
@@ -1512,7 +1512,7 @@ TEST(RecipeGlslCompiles, EmittedGlslCompilesForEveryCorpusProgram) {
     for (const auto& entry : corpus) {
         SCOPED_TRACE("corpus program: " + entry.name);
 
-        const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        const std::string fieldFn = Vixen::SVO::Recipe::RecipeGpuField(
             entry.program.data(),
             static_cast<uint32_t>(entry.program.size()),
             /*recipeId=*/0);
@@ -1538,7 +1538,7 @@ TEST(RecipeGlslCompiles, Hash32AndCombineEmissionCompiles) {
     kss << kernelFile.rdbuf();
     const std::string sdfCoreGlsl = kss.str();
     const auto program = BodySeedFoldProgram();
-    const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+    const std::string fieldFn = Vixen::SVO::Recipe::RecipeGpuField(
         program.data(), static_cast<uint32_t>(program.size()), 0);
     ShaderManagement::CompilationOptions opts;
     opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
@@ -1584,7 +1584,7 @@ TEST(RecipeGlslOpcodeCoverage, CorpusCoversEveryValidOpcode) {
 
     // Recipe-Nested-Invocation M1 exemption, same shape as DeclarePosition above: InvokeRecipe
     // requires a RecipeRegistry with an already-registered callee threaded through both
-    // evalRecipe and EmitProceduralFieldFunctionGlsl — a call shape this shared corpus-loop
+    // evalRecipe and RecipeGpuField — a call shape this shared corpus-loop
     // harness (single flat program, no registry) doesn't support. Its own dedicated correctness
     // gate (test_recipe_nested_invocation.cpp) exercises it directly, including the mandatory
     // GPU-verified CPU/GLSL parity check — this exemption only says "not in the SHARED loop,"

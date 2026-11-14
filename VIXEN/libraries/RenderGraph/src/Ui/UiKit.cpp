@@ -70,7 +70,7 @@ std::string FormatRange(bool hasRange, float minimum, float maximum) {
 // ================================================================================================ the override contract
 namespace {
 
-enum class Kind { Button, Disclosure, Toggle, TextField, NumberField, ChoiceGroup, List, Toolbar, StatusLine, Panel, Flyout };
+enum class Kind { Button, Toggle, TextField, NumberField, ChoiceGroup, List, Toolbar, StatusLine, Panel, Flyout };
 
 struct KindInfo {
     Kind kind;
@@ -82,9 +82,7 @@ struct KindInfo {
 
 const std::vector<KindInfo>& Kinds() {
     static const std::vector<KindInfo> kinds = {
-        {Kind::Button, "ut-button", "button", {"label", "variant", "disabled", "reason"}, {"label", "reason"}},
-        {Kind::Disclosure, "ut-disclosure", "disclosure", {"label", "open", "disabled", "reason", "tabindex"},
-         {"marker", "label", "reason"}},
+        {Kind::Button, "ut-button", "button", {"label", "variant"}, {"label"}},
         {Kind::Toggle, "ut-toggle", "toggle", {"checked", "variant"}, {"mark"}},
         {Kind::TextField, "ut-text-field", nullptr, {"value", "autofocus", "variant", "type"}, {}},
         {Kind::NumberField, "ut-number-field", "number-field",
@@ -278,17 +276,14 @@ public:
                 }
             }
         }
-        if (info_.kind == Kind::Button || info_.kind == Kind::Disclosure || info_.kind == Kind::Toggle)
-            SetAttribute("hit-mask", "none");
+        if (info_.kind == Kind::Button || info_.kind == Kind::Toggle) SetAttribute("hit-mask", "none");
         if (info_.kind == Kind::NumberField) {
             if (auto* input = Part("input")) input->AddEventListener("change", this);
             if (auto* up = Part("up")) up->AddEventListener("click", this);
             if (auto* down = Part("down")) down->AddEventListener("click", this);
             if (auto* label = Part("label")) label->AddEventListener("mousedown", this);
         }
-        if (info_.kind == Kind::Disclosure) AddEventListener("keydown", this);
         built_ = true;
-        Refresh();
     }
 
     // A data-for row clone (and any caller) replaces the instance's own contents with SetInnerRML; the kit's structure
@@ -310,14 +305,6 @@ public:
 
     void ProcessEvent(Rml::Event& event) override {
         const Rml::String& type = event.GetType();
-        if (info_.kind == Kind::Disclosure) {
-            const int key = event.GetParameter<int>("key_identifier", 0);
-            if (type == "keydown" && (key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER)) {
-                DispatchEvent("click", {});
-                event.StopPropagation();
-            }
-            return;
-        }
         if (info_.kind != Kind::NumberField) return;
         if (type == "change" && event.GetTargetElement() == Part("input")) {
             // Mirror what is typed into our own value attribute: after a refused commit the data binding then sees
@@ -358,53 +345,23 @@ private:
         }
     }
 
-    // Do not use the Windows SDK's min/max macro names in the kit's native state.
-    // The identifier guard runs before a Windows build and intentionally catches these
-    // declarations even though Linux preprocessors do not expand them.
     struct Range { bool has = false; float minimum = 0.0f; float maximum = 0.0f; };
     Range ReadRange() const {
         Range r;
-        r.has = ParseNumber(Attr("min"), r.minimum) && ParseNumber(Attr("max"), r.maximum) && r.maximum >= r.minimum;
+        r.has = ParseNumber(Attr("min"), r.minimum) && ParseNumber(Attr("max"), r.maximum) &&
+                r.maximum >= r.minimum;
         return r;
     }
 
     void Refresh() {
         switch (info_.kind) {
-            case Kind::Button:
-                SetText(Part("label"), Attr("label"));
-                RefreshActionState();
-                break;
-            case Kind::Disclosure:
-            {
-                SetText(Part("label"), Attr("label"));
-                const bool open = Truthy(Attr("open"));
-                SetText(Part("marker"), open ? "v" : ">");
-                SetClass("open", open);
-                RefreshActionState();
-                break;
-            }
+            case Kind::Button: SetText(Part("label"), Attr("label")); break;
             case Kind::ChoiceGroup: SetText(Part("label"), Attr("label")); break;
             case Kind::Toggle: SetClass("checked", Truthy(Attr("checked"))); break;
             case Kind::StatusLine: RefreshStatus(); break;
             case Kind::NumberField: RefreshNumber(); break;
             default: break;
         }
-    }
-
-    void RefreshActionState() {
-        const bool disabled = Truthy(Attr("disabled"));
-        const std::string reason = Attr("reason");
-        SetClass("disabled", disabled);
-        // A disabled action with a reason remains hit-testable so the user can discover why it
-        // cannot be removed. The editor's action dispatcher still owns the refusal (and therefore
-        // cannot mutate the model); the title and editor status line carry the explanation.
-        SetProperty("pointer-events", disabled && reason.empty() ? "none" : "auto");
-        SetText(Part("reason"), reason);
-        // Visibility is deliberately CSS-controlled. Always making the reason visible here turns
-        // every node row into a repeated diagnostic column; the editor keeps this part hidden and
-        // exposes the explanation through the title/status line after a refused action.
-        if (disabled && !reason.empty() && GetAttribute<Rml::String>("title", "") != reason)
-            SetAttribute("title", reason);
     }
 
     void RefreshStatus() {
@@ -436,9 +393,8 @@ private:
         const bool atDefault = hasDefault && ParseNumber(Attr("value"), current) && current == def;
         if (reset) {
             if (reset->GetId() != resetId) reset->SetId(resetId);
-            SetVisible(reset, !resetId.empty() && hasDefault && !atDefault);
-            SetText(reset, "reset");
-            if (hasDefault) reset->SetAttribute("title", "reset to " + FormatNumber(def));
+            SetVisible(reset, !resetId.empty() && !atDefault);
+            SetText(reset, hasDefault ? "reset " + FormatNumber(def) : std::string("reset"));
         }
     }
 
@@ -468,7 +424,8 @@ private:
     void Nudge(int direction, Rml::Event& event) {
         const Range r = ReadRange();
         const float before = CurrentValue();
-        const float after = UiKit::Nudge(before, direction, StepValue(r), StepMultiplier(event), r.has, r.minimum, r.maximum);
+        const float after = UiKit::Nudge(before, direction, StepValue(r), StepMultiplier(event), r.has,
+                                         r.minimum, r.maximum);
         if (after != before) Commit(FormatNumber(after));
     }
 

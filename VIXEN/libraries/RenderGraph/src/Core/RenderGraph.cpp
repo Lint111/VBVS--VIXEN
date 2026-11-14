@@ -2702,10 +2702,15 @@ void RenderGraph::RecompileDirtyNodes() {
     // CleanupImpl destroys submitted resources. Recompilation is occasional; this wait is bounded
     // to dirty waves, not frame rendering. WaitForGraphDevicesIdle uses DeviceNode owners, avoiding
     // non-owning node device pointers that may be stale during cleanup.
-    WaitForGraphDevicesIdle({});
+    {
+        VIXEN_FRAME_TRACE_SCOPE("compile", "wave-devices-idle");
+        WaitForGraphDevicesIdle({});
+    }
 
     // Recompile each node exactly once, in topological order.
     for (NodeInstance* node : nodesToRecompile) {
+        // Benchmark-only span per recompiled node (cleanup + setup + compile), for the swap split.
+        VIXEN_FRAME_TRACE_SCOPE("compile", node->GetInstanceName());
         // Check if any input dependencies failed during this recompilation
         bool dependencyFailed = false;
         std::vector<NodeInstance*> dependencies = dependencyTracker.GetDependenciesForNode(node);

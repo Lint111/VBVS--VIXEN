@@ -3,8 +3,8 @@
 //
 // The kernel repo's new GlslAstVisitor lowers recipe bytecode (and any
 // [VMKernel] body) to composable `float sdfRecipe_<id>(vec3 p, float
-// params[6])` functions — the same signature contract VIXEN's own local
-// walker (SdfRecipeCodegenGlsl.h, the eventual retirement target) emits.
+// params[6])` functions — the same signature contract as the VIXEN
+// RecipeServices GPU field lowerer.
 // This test proves those kernel-emitted functions round-trip VIXEN's ACTUAL
 // glslang-backed ShaderCompiler — the real acceptance criterion, not a
 // generic glslang: composed exactly the way production composes (version

@@ -1,11 +1,13 @@
 #pragma once
 #include <cmath>
+#include <limits>
 #include <cstdint>
 #include <span>
 #include <glm/glm.hpp>
 #include "Recipe/SdfInstruction.h"
 #include <RecipeSimd.g.hpp>
 #include "Recipe/RecipeRegistry.h"  // IsValidSdfOpCode
+#include "Recipe/SdfRecipeEval.h"
 
 namespace Vixen::SVO::Recipe {
 
@@ -296,6 +298,43 @@ struct ApplyBoundsResult {
     RecipeBoundsSource boundSource;
     RecipeBoundsSource relaxationSource;
 };
+
+// DeriveSampledBounds: the bound for a program DeriveConservativeBounds refuses (domain warps,
+// parameter maths, Transform). It evaluates the field on a regular grid that covers the bake
+// domain whether a document is authored about the origin ([-res/2, res/2]) or about the grid
+// corner ([0, res]), keeps every sample within one grid step of the surface, and returns the
+// sphere around their box. Features thinner than one step (res/32 recipe units) can be missed;
+// the returned radius carries one step of margin. Cost: 96^3 evaluations, a one-off at load.
+inline RecipeBoundsResult DeriveSampledBounds(
+    const SdfInstruction* prog, uint32_t count, std::span<const float> parameters,
+    uint32_t bakeResolution) {
+    RecipeBoundsResult out{};
+    if (!prog || count == 0 || bakeResolution == 0) return out;
+    // A callee needs the registry this sampler does not have.
+    for (uint32_t i = 0; i < count; ++i)
+        if (static_cast<SdfOpCode>(prog[i].opCode) == SdfOpCode::InvokeRecipe) return out;
+    const float res = static_cast<float>(bakeResolution);
+    const float step = res / 32.0f;
+    const int cells = 96;
+    glm::vec3 lo(std::numeric_limits<float>::max());
+    glm::vec3 hi(std::numeric_limits<float>::lowest());
+    for (int z = 0; z < cells; ++z)
+        for (int y = 0; y < cells; ++y)
+            for (int x = 0; x < cells; ++x) {
+                const glm::vec3 p(-res + step * static_cast<float>(x),
+                                  -res + step * static_cast<float>(y),
+                                  -res + step * static_cast<float>(z));
+                const float d = evalRecipe(prog, count, p, parameters);
+                if (!(d < step)) continue;
+                lo = glm::min(lo, p);
+                hi = glm::max(hi, p);
+            }
+    if (lo.x > hi.x) return out;
+    out.center = (lo + hi) * 0.5f;
+    out.radius = glm::length(hi - lo) * 0.5f + step;
+    out.ok = true;
+    return out;
+}
 
 // ApplyRecipeBoundsDefaults — fills in entry.boundCenter/boundRadius/stepRelaxation IN
 // PLACE for any field the caller left at its "0 = engine default" sentinel, preferring

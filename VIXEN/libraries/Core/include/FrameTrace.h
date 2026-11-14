@@ -65,6 +65,25 @@ inline constexpr uint32_t kCounterCount = static_cast<uint32_t>(Counter::Count_)
 
 void CountAdd(Counter counter, uint64_t amount);
 
+/// GPU ledger hooks (sn-gpumem1). Forwarded to VK_LAYER_VIXEN_gpu_ledger when that layer is loaded in this
+/// process (tools/gpu-ledger-layer, enabled by VIXEN_GPU_LEDGER=1); a no-op otherwise. The scope names the node
+/// whose Setup/Compile/Execute is running, so the layer can attribute allocations and uploads; Touch marks a
+/// mapped ring slot the CPU may write this frame; SetFrame (above) closes the previous frame in the layer.
+void LedgerPushScope(const char* name);
+void LedgerPopScope();
+void LedgerTouch(const void* mapped, uint64_t bytes);
+/// The bytes a node actually copied into a mapped slot (reported by the sites that copy a variable amount).
+void LedgerWritten(const void* mapped, uint64_t bytes);
+void LedgerFlush();
+
+class LedgerScope {
+public:
+    explicit LedgerScope(const char* name) { LedgerPushScope(name); }
+    LedgerScope(const LedgerScope&) = delete;
+    LedgerScope& operator=(const LedgerScope&) = delete;
+    ~LedgerScope() { LedgerPopScope(); }
+};
+
 /// The counts since the previous call; resets them. Called once per frame by the perf CSV recorder.
 struct FrameCounts {
     uint64_t value[kCounterCount] = {};
@@ -96,6 +115,10 @@ private:
     std::optional<::Vixen::FrameTrace::Scope> var; \
     (var).emplace((category), (name))
 #define VIXEN_FRAME_TRACE_END(var) (var).reset()
+#define VIXEN_LEDGER_SCOPE(name) \
+    ::Vixen::FrameTrace::LedgerScope VIXEN_FRAME_TRACE_CONCAT(vixenLedgerScope, __LINE__)((name))
+#define VIXEN_LEDGER_TOUCH(mapped, bytes) ::Vixen::FrameTrace::LedgerTouch((mapped), static_cast<uint64_t>(bytes))
+#define VIXEN_LEDGER_WRITTEN(mapped, bytes) ::Vixen::FrameTrace::LedgerWritten((mapped), static_cast<uint64_t>(bytes))
 #define VIXEN_FRAME_COUNT(counter, amount) \
     ::Vixen::FrameTrace::CountAdd(::Vixen::FrameTrace::Counter::counter, static_cast<uint64_t>(amount))
 
@@ -105,6 +128,9 @@ private:
 #define VIXEN_FRAME_TRACE_BEGIN(var, category, name) static_cast<void>(0)
 #define VIXEN_FRAME_TRACE_END(var) static_cast<void>(0)
 #define VIXEN_FRAME_COUNT(counter, amount) static_cast<void>(0)
+#define VIXEN_LEDGER_SCOPE(name) static_cast<void>(0)
+#define VIXEN_LEDGER_TOUCH(mapped, bytes) static_cast<void>(0)
+#define VIXEN_LEDGER_WRITTEN(mapped, bytes) static_cast<void>(0)
 
 namespace Vixen::FrameTrace {
 inline constexpr bool Enabled() noexcept { return false; }

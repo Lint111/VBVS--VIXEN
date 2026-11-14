@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Run a command in a capped systemd scope and report its cold working set per pipeline phase.
+"""Run a command under a memory cap and report its cold working set per pipeline phase.
 
-The payload runs under `systemd-run --user --scope -p MemoryMax=<cap>` with VIXEN_SHADER_DUMP_DIR
+On Linux the payload runs under `systemd-run --user --scope -p MemoryMax=<cap>`; on Windows it runs directly and the
+sampled process-tree working set is the only memory figure (it is the enforced bound on both). VIXEN_SHADER_DUMP_DIR
 pointed at <out>/dump. ShaderCompiler writes one `<stem>-<stage>-<hash>.spv` there per compile, so
 each file's arrival time closes a phase: the phase named after a file spans from the previous
 arrival (or launch) to that file, and its peak is the largest cgroup memory.current sampled in
@@ -16,6 +17,7 @@ Usage: tools/measure-cold-pipeline.py --out DIR [--cap 16G] [--interval 0.5] [--
 Run it inside one queue job (it is not queue-aware); never --wait with --scope.
 """
 import argparse
+import ctypes
 import json
 import os
 import re
@@ -63,19 +65,74 @@ def read_events(path):
     return events
 
 
-def tree_rss(root_pid):
-    """Sum VmRSS bytes over root_pid and its descendants (None when the root is gone)."""
-    parents, rss = {}, {}
+def windows_process_table():
+    """{pid: (parent pid, working set bytes)} for every process this user can open (Windows)."""
+    from ctypes import wintypes
+
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                    ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                    ("pcPriClassBase", wintypes.LONG), ("dwFlags", wintypes.DWORD), ("szExeFile", wintypes.WCHAR * 260)]
+
+    class MemoryCounters(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD), ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t), ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t), ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t), ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(MemoryCounters), wintypes.DWORD]
+    table = {}
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if snapshot in (None, wintypes.HANDLE(-1).value):
+        return table
+    try:
+        entry = ProcessEntry()
+        entry.dwSize = ctypes.sizeof(entry)
+        more = kernel32.Process32FirstW(wintypes.HANDLE(snapshot), ctypes.byref(entry))
+        while more:
+            working_set = 0
+            handle = kernel32.OpenProcess(0x1010, False, entry.th32ProcessID)  # QUERY_LIMITED_INFORMATION | VM_READ
+            if handle:
+                counters = MemoryCounters()
+                counters.cb = ctypes.sizeof(counters)
+                if psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+                    working_set = counters.WorkingSetSize
+                kernel32.CloseHandle(handle)
+            table[entry.th32ProcessID] = (entry.th32ParentProcessID, working_set)
+            more = kernel32.Process32NextW(wintypes.HANDLE(snapshot), ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(wintypes.HANDLE(snapshot))
+    return table
+
+
+def linux_process_table():
+    """{pid: (parent pid, VmRSS bytes)} from /proc."""
+    table = {}
     for entry in os.listdir("/proc"):
         if not entry.isdigit():
             continue
         try:
             with open(f"/proc/{entry}/status") as handle:
                 fields = dict(line.split(":", 1) for line in handle if ":" in line)
-            parents[int(entry)] = int(fields["PPid"].strip())
-            rss[int(entry)] = int(fields.get("VmRSS", "0 kB").split()[0]) * 1024
+            table[int(entry)] = (int(fields["PPid"].strip()), int(fields.get("VmRSS", "0 kB").split()[0]) * 1024)
         except (OSError, ValueError, KeyError):
             continue
+    return table
+
+
+def tree_rss(root_pid):
+    """Sum resident bytes over root_pid and its descendants (None when the root is gone)."""
+    table = windows_process_table() if os.name == "nt" else linux_process_table()
+    parents = {pid: parent for pid, (parent, _) in table.items()}
+    rss = {pid: resident for pid, (_, resident) in table.items()}
     if root_pid not in parents:
         return None
     members, grew = {root_pid}, True
@@ -132,9 +189,9 @@ def main():
     os.makedirs(dump_dir, exist_ok=True)
     env = dict(os.environ, VIXEN_SHADER_DUMP_DIR=dump_dir)
     start = time.time()
-    proc = subprocess.Popen(
-        ["systemd-run", "--user", "--scope", "--quiet", "-p", f"MemoryMax={args.cap}", "-p", "MemorySwapMax=0",
-         "--"] + command, env=env, stdin=subprocess.DEVNULL)
+    scope = [] if os.name == "nt" else ["systemd-run", "--user", "--scope", "--quiet", "-p", f"MemoryMax={args.cap}",
+                                        "-p", "MemorySwapMax=0", "--"]
+    proc = subprocess.Popen(scope + command, env=env, stdin=subprocess.DEVNULL)
 
     samples, rss_samples, peak_file, events, cgroup, timed_out = [], [], None, {}, None, False
     rss_cap_exceeded = False
@@ -144,7 +201,7 @@ def main():
             timed_out = True
             proc.terminate()
             break
-        if cgroup is None:
+        if cgroup is None and os.name != "nt":
             cgroup = cgroup_dir(proc.pid)
         if cgroup and os.path.isdir(cgroup):
             current = read_int(os.path.join(cgroup, "memory.current"))

@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+
+#include <array>
 #include "RecipeContentHash.h"
 
 using Vixen::SVO::Recipe::SdfInstruction;
@@ -23,48 +25,48 @@ SdfInstruction ReadParam(uint8_t paramMask, float slotIdx) {
 
 } // namespace
 
-TEST(RecipeContentHash, DeterministicAcrossCalls) {
+TEST(RecipeContentDigest, DeterministicAcrossCalls) {
     std::vector<SdfInstruction> bytecode = { Sphere(26.0f) };
-    EXPECT_EQ(CashSystem::ComputeRecipeBytecodeHash(bytecode),
-              CashSystem::ComputeRecipeBytecodeHash(bytecode));
+    EXPECT_EQ(CashSystem::ComputeRecipeContentDigest(bytecode),
+              CashSystem::ComputeRecipeContentDigest(bytecode));
 }
 
-TEST(RecipeContentHash, IdenticalBytecodeSameHashAcrossDistinctRecipeIds) {
+TEST(RecipeContentDigest, IdenticalBytecodeSameDigestAcrossDistinctRecipeIds) {
     // Two logically-identical recipes (same bytecode) registered under different recipeIds
     // must still collapse to one hash — recipeId is per-registration identity, not bytecode
     // content, and is never part of the hash input.
     std::vector<SdfInstruction> bytecodeA = { Sphere(26.0f) };
     std::vector<SdfInstruction> bytecodeB = { Sphere(26.0f) };
-    EXPECT_EQ(CashSystem::ComputeRecipeBytecodeHash(bytecodeA),
-              CashSystem::ComputeRecipeBytecodeHash(bytecodeB));
+    EXPECT_EQ(CashSystem::ComputeRecipeContentDigest(bytecodeA),
+              CashSystem::ComputeRecipeContentDigest(bytecodeB));
 }
 
-TEST(RecipeContentHash, DiffersByOneLiteral) {
+TEST(RecipeContentDigest, DiffersByOneLiteral) {
     std::vector<SdfInstruction> a = { Sphere(26.0f) };
     std::vector<SdfInstruction> b = { Sphere(26.5f) };
-    EXPECT_NE(CashSystem::ComputeRecipeBytecodeHash(a), CashSystem::ComputeRecipeBytecodeHash(b));
+    EXPECT_NE(CashSystem::ComputeRecipeContentDigest(a), CashSystem::ComputeRecipeContentDigest(b));
 }
 
-TEST(RecipeContentHash, DiffersByOpcode) {
+TEST(RecipeContentDigest, DiffersByOpcode) {
     std::vector<SdfInstruction> a = { Sphere(1.0f) };
     SdfInstruction box{};
     box.opCode = (uint8_t)SdfOpCode::Box;
     box.data[3] = 1.0f;
     std::vector<SdfInstruction> b = { box };
-    EXPECT_NE(CashSystem::ComputeRecipeBytecodeHash(a), CashSystem::ComputeRecipeBytecodeHash(b));
+    EXPECT_NE(CashSystem::ComputeRecipeContentDigest(a), CashSystem::ComputeRecipeContentDigest(b));
 }
 
 // Critical correctness property (plan §Task 2): two recipes identical except for a ReadParam
 // slot INDEX must NOT collapse to one hash — the slot index lives in data[0], which is part of
 // the hashed bytecode bytes.
-TEST(RecipeContentHash, DistinguishesReadParamSlotIndex) {
+TEST(RecipeContentDigest, DistinguishesReadParamSlotIndex) {
     std::vector<SdfInstruction> readsSlot0 = { ReadParam(1, 0.0f) };
     std::vector<SdfInstruction> readsSlot1 = { ReadParam(1, 1.0f) };
-    EXPECT_NE(CashSystem::ComputeRecipeBytecodeHash(readsSlot0),
-              CashSystem::ComputeRecipeBytecodeHash(readsSlot1));
+    EXPECT_NE(CashSystem::ComputeRecipeContentDigest(readsSlot0),
+              CashSystem::ComputeRecipeContentDigest(readsSlot1));
 }
 
-TEST(RecipeContentHash, DiffersByInstructionOrder) {
+TEST(RecipeContentDigest, DiffersByInstructionOrder) {
     SdfInstruction sphere = Sphere(1.0f);
     SdfInstruction box{};
     box.opCode = (uint8_t)SdfOpCode::Box;
@@ -72,5 +74,16 @@ TEST(RecipeContentHash, DiffersByInstructionOrder) {
 
     std::vector<SdfInstruction> a = { sphere, box };
     std::vector<SdfInstruction> b = { box, sphere };
-    EXPECT_NE(CashSystem::ComputeRecipeBytecodeHash(a), CashSystem::ComputeRecipeBytecodeHash(b));
+    EXPECT_NE(CashSystem::ComputeRecipeContentDigest(a), CashSystem::ComputeRecipeContentDigest(b));
+}
+
+TEST(RecipeContentDigest, PathRowsArePartOfProviderIdentity) {
+    std::vector<SdfInstruction> bytecode = {Sphere(1.0f)};
+    Yeroket::Sdf::Kernels::PathInstance first{};
+    Yeroket::Sdf::Kernels::PathInstance second{};
+    second.Dimension = 1u;
+    const std::array<Yeroket::Sdf::Kernels::PathInstance, 1> a = {first};
+    const std::array<Yeroket::Sdf::Kernels::PathInstance, 1> b = {second};
+    EXPECT_NE(CashSystem::ComputeRecipeContentDigest(bytecode, a),
+              CashSystem::ComputeRecipeContentDigest(bytecode, b));
 }

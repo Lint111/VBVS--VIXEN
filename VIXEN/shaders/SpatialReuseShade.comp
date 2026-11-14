@@ -1042,15 +1042,13 @@ void main() {
         CompositeMiningBeams(outStore, pc.cameraPos, rayDir, anyHitRT, recReadback.hitT);
 #endif
         imageStore(sceneRadianceImage, pixelCoords, outStore);
-        // The display-transform path consumes the persistent HDR history even when
-        // temporal accumulation is disabled (the default). Keep it synchronized with the
-        // final scene-linear composite, including emissive mining beams.
-        imageStore(sceneRadianceHistoryOutput, pixelCoords, outStore);
     }
 
     // Sampled Lighting Inc3 M2 (KI-023): write this frame's worldPos/hitT into the
     // companion history buffer — moved here verbatim from DirectLighting.comp (M5).
-    imageStore(worldPosHistoryOutput, pixelCoords, vec4(bestWorldPos, recReadback.hitT));
+    if (accumulationConfig.reprojectionEnabled != 0u) {
+        imageStore(worldPosHistoryOutput, pixelCoords, vec4(bestWorldPos, recReadback.hitT));
+    }
 #ifdef VIXEN_LEAF_SHADER_CLOCK
     recordLeafShaderClockShade(leafClockStart, uint(clockRealtimeEXT()));
 #endif

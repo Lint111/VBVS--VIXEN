@@ -110,8 +110,15 @@ public:
      * this node (the frame boundary swap), which then skips the rebuild. A second call supersedes the first: the older job
      * is retired (it cannot be cancelled, it is waited for at node destruction). No-op without a
      * registered builder.
+     *
+     * R864.4: each warmer runs on the same worker after a successful Build(), with the finished
+     * bundle (ComputePipelineNode::MakePipelineWarmer creates the consumer pipeline through its
+     * cacher key). IsPrecompileReady() therefore also means "consumer pipelines exist", and the
+     * swap Compile finds them instead of creating them on the frame thread. A throwing warmer is
+     * ignored: the swap Compile then creates that pipeline itself and reports any error.
      */
-    void BeginPrecompile();
+    using PipelineWarmer = std::function<void(const std::shared_ptr<::ShaderManagement::ShaderDataBundle>&)>;
+    void BeginPrecompile(std::vector<PipelineWarmer> warmers = {});
 
     /// True when no precompile is running (none started, or the latest one finished).
     [[nodiscard]] bool IsPrecompileReady() const;

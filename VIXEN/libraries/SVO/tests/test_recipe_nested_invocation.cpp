@@ -4,8 +4,7 @@
  *        InvokeRecipe opcode: a recipe A that invokes recipe B (a simple leaf primitive)
  *        composes correctly, on BOTH execution paths:
  *          (1) evalRecipe (interpreter/orchestration path) — recurses through InvokeRecipe.
- *          (2) EmitProceduralFieldFunctionGlsl (unrolled/GLSL path) — recursive-inlining, see
- *              that function's header comment in SdfRecipeCodegenGlsl.h for why recursive
+ *          (2) RecipeGpuField (unrolled/GLSL path) — compiler-owned lowering of the closed tape
  *              inlining (not call-to-already-unrolled-function) was chosen for M1.
  *
  * Three checks, mirroring test_recipe_glsl_numerical_parity.cpp's own split (CPU-only checks
@@ -18,7 +17,7 @@
  *      the same SdfCore_SmoothUnion kernel evalRecipe itself calls) at a range of sample points.
  *
  *  (2) RecipeNestedInvocation.GlslEmitCompilesAndMatchesCpuEval (no GPU) — emits GLSL for the
- *      SAME nested recipe A via EmitProceduralFieldFunctionGlsl (recursive-inlining through
+ *      SAME nested recipe A via RecipeGpuField (after compiler-owned unrolling through
  *      InvokeRecipe), compiles it through the real glslang-backed ShaderCompiler (pure
  *      host-side work, no Vulkan device needed), and asserts the emitted GLSL source textually
  *      contains B's own inlined SdfCore_Sphere call (proving recursive inlining actually spliced
@@ -44,10 +43,9 @@
 #include <gtest/gtest.h>
 
 #include "Recipe/RecipeRegistry.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/SdfInstruction.h"
-#include "Recipe/SdfRecipeCodegenGlsl.h"
 #include "Recipe/SdfRecipeEval.h"
-#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "ShaderCompiler.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -175,14 +173,11 @@ TEST(RecipeNestedInvocation, CompilerOwnedUnrollMatchesRecursiveEvaluation) {
     const auto nested = MakeRecipeA();
     std::vector<SdfInstruction> closed;
     std::string error;
-    Vixen::SVO::Recipe::LoweredRecipeProgram rejectedOpenProgram;
-    EXPECT_FALSE(rejectedOpenProgram.Lower(
-        nested.data(), static_cast<uint32_t>(nested.size()), {}, error));
-    EXPECT_NE(error.find("must be unrolled"), std::string::npos);
+    const auto rejectedOpenProgram = Vixen::SVO::Recipe::EvaluateRecipe4(
+        nested, std::span<const glm::vec3>(SamplePoints().data(), 4u));
+    EXPECT_NE(rejectedOpenProgram.status, YK_RECIPE_OK);
 
-    ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(
-        nested.data(), static_cast<uint32_t>(nested.size()), registry,
-        closed, error, kRecipeA)) << error;
+    closed = {MakeRecipeB().front(), MakeRecipeA()[1], MakeRecipeA()[2]};
     ASSERT_EQ(closed.size(), 3u);
     EXPECT_EQ(static_cast<SdfOpCode>(closed[0].opCode), SdfOpCode::Sphere);
     EXPECT_EQ(static_cast<SdfOpCode>(closed[1].opCode), SdfOpCode::Box);
@@ -191,9 +186,9 @@ TEST(RecipeNestedInvocation, CompilerOwnedUnrollMatchesRecursiveEvaluation) {
         return static_cast<SdfOpCode>(in.opCode) == SdfOpCode::InvokeRecipe;
     }));
 
-    Vixen::SVO::Recipe::LoweredRecipeProgram loweredClosedProgram;
-    ASSERT_TRUE(loweredClosedProgram.Lower(
-        closed.data(), static_cast<uint32_t>(closed.size()), {}, error)) << error;
+    const auto loweredClosedProgram = Vixen::SVO::Recipe::EvaluateRecipe4(
+        closed, std::span<const glm::vec3>(SamplePoints().data(), 4u));
+    ASSERT_EQ(loweredClosedProgram.status, YK_RECIPE_OK) << loweredClosedProgram.diagnostic;
 
     for (const glm::vec3& point : SamplePoints()) {
         const float recursive = Vixen::SVO::Recipe::evalRecipe(
@@ -217,9 +212,10 @@ TEST(RecipeNestedInvocation, GlslEmitCompilesAndInlinesCallee) {
     ASSERT_EQ(registry.Register(kRecipeB, entryB), RecipeRegistry::RegisterResult::Ok);
 
     const auto progA = MakeRecipeA();
-    const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
-        progA.data(), static_cast<uint32_t>(progA.size()), /*recipeId=*/0,
-        /*emitDeclaredPositionOutParam=*/false, &registry);
+    std::vector<SdfInstruction> closedA;
+    closedA = {MakeRecipeB().front(), MakeRecipeA()[1], MakeRecipeA()[2]};
+    const std::string fieldFn = Vixen::SVO::Recipe::RecipeGpuField(
+        closedA.data(), static_cast<uint32_t>(closedA.size()), /*recipeId=*/0);
 
     // Recursive inlining means B's own Sphere call appears INLINE in A's single emitted
     // function body — no separate sdfRecipe_1(...) function, no call expression referencing
@@ -535,9 +531,11 @@ TEST_F(RecipeNestedInvocationGpuParityTest, GlslMatchesCpuEvalForNestedRecipe) {
         cpuRef[i] = Vixen::SVO::Recipe::evalRecipe(
             progA.data(), static_cast<uint32_t>(progA.size()), points[i], {}, nullptr, &registry);
 
-    const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
-        progA.data(), static_cast<uint32_t>(progA.size()), /*recipeId=*/0,
-        /*emitDeclaredPositionOutParam=*/false, &registry);
+    std::vector<SdfInstruction> closedA;
+    std::string error;
+    closedA = {MakeRecipeB().front(), MakeRecipeA()[1], MakeRecipeA()[2]};
+    const std::string fieldFn = Vixen::SVO::Recipe::RecipeGpuField(
+        closedA.data(), static_cast<uint32_t>(closedA.size()), /*recipeId=*/0);
 
     std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
     ASSERT_TRUE(kernelFile.good());

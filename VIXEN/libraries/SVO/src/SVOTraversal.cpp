@@ -702,6 +702,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     lodHit.tMin = worldDistance;
                     lodHit.tMax = worldDistance + worldVoxelSize;
                     lodHit.scale = esvoToUserScale(state.scale);
+                    lodHit.traversalIterations = static_cast<uint32_t>(state.iter);
 
                     return lodHit;
                 }
@@ -711,6 +712,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 auto leafResult = handleLeafHit(state, coef, origin, tRayStart, tEntry, tExit, tv_max);
 
                 if (leafResult.has_value()) {
+                    leafResult->traversalIterations = static_cast<uint32_t>(state.iter);
                     return leafResult.value();
                 }
 
@@ -744,6 +746,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         }
     }
 
+    miss.traversalIterations = static_cast<uint32_t>(state.iter);
     return miss;
 }
 

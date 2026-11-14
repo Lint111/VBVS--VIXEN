@@ -43,7 +43,7 @@
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeStack.h"
 #include "Recipe/SdfInstruction.h"
-#include "Recipe/SdfRecipeCodegenGlsl.h"
+#include "Recipe/RecipeServices.h"
 #include "ShaderCompiler.h"
 #include "RenderGraphHeavyTestFixtures.h"
 
@@ -70,7 +70,7 @@
 
 using Vixen::SVO::Recipe::SdfOpCode;
 using Vixen::SVO::Recipe::RecipeStackStaticArity;
-using Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl;
+using Vixen::SVO::Recipe::RecipeGpuField;
 using Vixen::SVO::RecipeRegistry;
 using Vixen::SVO::Recipe::SdfInstruction;
 
@@ -263,8 +263,8 @@ std::string ReadTextFile(const char* path) {
 // Emits ONE self-contained switch-shader: N sdfRecipe_<id> field functions (mirrors
 // UberShaderSplice.h's own per-recipe emission) + an evalRecipeField(uint recipeId, vec3 p)
 // switch, wrapped in a fixed instance-loop main() that sphere-traces via that switch. This is
-// the REAL switch-generation shape the production tier-0 shader uses (same emitter,
-// EmitProceduralFieldFunctionGlsl, same switch structure UberShaderSplice.h builds) -- what
+// the REAL switch-generation shape the production tier-0 shader uses (same service lowerer,
+// same switch structure UberShaderSplice.h builds) -- what
 // differs from the live app is only the surrounding main()/binding scaffolding, exactly the
 // same "standalone synthetic harness, not the live render graph" scoping M3/M4 already
 // established (see this file's header comment).
@@ -280,7 +280,7 @@ std::string EmitSwitchShader(
     out << Vixen::SVO::Recipe::WithoutGlyphOutlineKernel(sdfCoreKernelsGlsl) << "\n\n";
 
     for (const auto& [id, prog] : recipes) {
-        out << EmitProceduralFieldFunctionGlsl(prog.data(), static_cast<uint32_t>(prog.size()), id) << "\n";
+        out << RecipeGpuField(prog.data(), static_cast<uint32_t>(prog.size()), id) << "\n";
     }
 
     out << "float evalRecipeField(uint recipeId, vec3 p) {\n";

@@ -46,13 +46,11 @@
 #include "ShellOctreeGpu.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
-#include "Recipe/RecipeBounds.h"
-#include "Recipe/RecipeOccupancy.h"
-#include "Recipe/RecipeTileSpecialization.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/SdfRecipeEval.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "Recipe/generated/VoxelDocument.g.h"
 #include "Recipe/generated/RecipeContainer.g.h"
-#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "EditorDocumentModel.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
@@ -895,10 +893,19 @@ TEST_F(EditorDocumentRenderTest, LayeredSlabSubtractSphereGuardsAreExactAndCaptu
         recipe.instructions, recipe.instructions + recipe.header.instructionCount);
 
     // This side tile stays inside the slab and outside the sphere, so the subtractor is
-    // provably irrelevant. The specialized tape must preserve evalRecipe bit for bit.
-    const RecipeTileDomain outsideCutter{{1.8f, -0.1f, -0.1f}, {1.9f, 0.1f, 0.1f}};
-    const auto specialized = SpecializeRecipeTapeForTile(program, outsideCutter);
-    ASSERT_TRUE(specialized.stats.specialized);
+    // provably irrelevant. The kernel analysis service must preserve the field bit for bit.
+    const glm::vec3 outsideMinimum{1.8f, -0.1f, -0.1f};
+    const glm::vec3 outsideMaximum{1.9f, 0.1f, 0.1f};
+    std::array<std::uint8_t, YK_RECIPE_ANALYSIS_MAX_CHANNELS> dependencies{};
+    dependencies[0] = YK_RECIPE_ANALYSIS_CHANNEL_GEOMETRY_WINNER;
+    for (std::size_t index = 1; index < 5u; ++index)
+        dependencies[index] = YK_RECIPE_ANALYSIS_CHANNEL_INDEPENDENT;
+    const auto scene = AnalyzeRecipeScene(
+        program, {}, outsideMinimum, outsideMaximum, YK_RECIPE_ANALYSIS_BACKEND_CPU_STRICT,
+        true, (1u << 5u) - 1u, dependencies, false, model.Revision());
+    ASSERT_EQ(scene.status, YK_RECIPE_ANALYSIS_OK);
+    const auto& specialized = scene.tile;
+    ASSERT_NE(specialized.stats.specialized, 0u);
     ASSERT_LT(specialized.instructions.size(), program.size());
     std::vector<std::uint32_t> unguardedBits;
     std::vector<std::uint32_t> guardedBits;
@@ -909,11 +916,11 @@ TEST_F(EditorDocumentRenderTest, LayeredSlabSubtractSphereGuardsAreExactAndCaptu
         for (int y = 0; y < kProbeSteps; ++y) {
             for (int x = 0; x < kProbeSteps; ++x) {
                 const glm::vec3 point(
-                    glm::mix(outsideCutter.minimum.x, outsideCutter.maximum.x,
+                    glm::mix(outsideMinimum.x, outsideMaximum.x,
                              static_cast<float>(x) / (kProbeSteps - 1)),
-                    glm::mix(outsideCutter.minimum.y, outsideCutter.maximum.y,
+                    glm::mix(outsideMinimum.y, outsideMaximum.y,
                              static_cast<float>(y) / (kProbeSteps - 1)),
-                    glm::mix(outsideCutter.minimum.z, outsideCutter.maximum.z,
+                    glm::mix(outsideMinimum.z, outsideMaximum.z,
                              static_cast<float>(z) / (kProbeSteps - 1)));
                 unguardedBits.push_back(std::bit_cast<std::uint32_t>(evalRecipe(
                     program.data(), static_cast<std::uint32_t>(program.size()), point)));
@@ -928,23 +935,19 @@ TEST_F(EditorDocumentRenderTest, LayeredSlabSubtractSphereGuardsAreExactAndCaptu
                           unguardedBits.size() * sizeof(unguardedBits[0])), 0)
         << "interval-guarded slab field differs from the unguarded document oracle";
 
-    const auto bounds = DeriveConservativeBounds(
-        program.data(), static_cast<std::uint32_t>(program.size()));
-    ASSERT_TRUE(bounds.ok);
-    const auto guardedOccupancy = DeriveOccupancyGrid(
-        program.data(), static_cast<std::uint32_t>(program.size()),
-        bounds.center, bounds.radius, 32, 8);
-    const auto unguardedOccupancy = occupancy_detail::DeriveOccupancyGridImpl<false>(
-        program.data(), static_cast<std::uint32_t>(program.size()),
-        bounds.center, bounds.radius, 32, 8);
-    ASSERT_TRUE(guardedOccupancy.ok);
-    ASSERT_TRUE(unguardedOccupancy.ok);
-    ASSERT_EQ(guardedOccupancy.values.size(), unguardedOccupancy.values.size());
-    EXPECT_GT(guardedOccupancy.skippedPoints, 0u)
-        << "the occupancy guard did not exercise its exact reduction path";
-    EXPECT_EQ(std::memcmp(guardedOccupancy.values.data(), unguardedOccupancy.values.data(),
-                          guardedOccupancy.values.size() * sizeof(float)), 0)
-        << "guarded occupancy values differ from the dense unguarded oracle";
+    Vixen::SVO::RecipeRegistry::RecipeEntry analysisEntry;
+    analysisEntry.bytecode = program;
+    const auto registration = AnalyzeRecipeRegistration(analysisEntry, 24.0f, 0.9f, 32u, 8u);
+    ASSERT_EQ(registration.status, YK_RECIPE_ANALYSIS_OK);
+    ASSERT_TRUE(registration.occupancyAvailable);
+    EXPECT_GT(registration.occupancySkippedPoints, 0u)
+        << "the service occupancy analysis did not exercise its exact reduction path";
+    const auto firstOccupancy = analysisEntry.occupancyGridValues;
+    const auto repeatRegistration = AnalyzeRecipeRegistration(analysisEntry, 24.0f, 0.9f, 32u, 8u);
+    ASSERT_TRUE(repeatRegistration.occupancyAvailable);
+    EXPECT_EQ(std::memcmp(firstOccupancy.data(),
+                          analysisEntry.occupancyGridValues.data(),
+                          firstOccupancy.size() * sizeof(float)), 0);
 
     std::vector<std::uint8_t> bakedBlob;
     auto baked = FlattenAndBake(model.View(), nullptr, bakedBlob);

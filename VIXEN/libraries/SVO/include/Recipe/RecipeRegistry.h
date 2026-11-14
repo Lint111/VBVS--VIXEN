@@ -48,8 +48,8 @@ public:
         // Lazy-Procedural-Delta-Baseline Inc0 M5 Task 10 — zero-bake dispatch metadata.
         // Same "0 = engine default" convention as bakeResolution/bandVoxels/brickDepth above.
         // V1 sourcing: authored directly by the caller, OR filled in by
-        // RecipeRegistry::DeriveAndApplyBounds (Recipe/RecipeBounds.h) restricted to an
-        // explicit opcode whitelist — see that file's header for why a program outside
+        // RecipeServices::AnalyzeRecipeRegistration restricted to an explicit opcode
+        // whitelist — programs outside the whitelist MUST
         // the whitelist MUST fall back to authored/engine-default rather than guess (a
         // wrong bound silently clips geometry). This does NOT resolve design §8.1 (the
         // interval-VM upgrade path remains open).
@@ -91,8 +91,8 @@ public:
         std::vector<BlockRef> blocks;
 
         // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — coarse occupancy grid metadata.
-        // Filled in by Recipe::DeriveOccupancyGrid (RecipeOccupancy.h) at the SAME
-        // registration call site as boundCenter/boundRadius above (RegisterProceduralRecipe).
+        // Filled in by RecipeServices::AnalyzeRecipeRegistration at the SAME registration
+        // call site as boundCenter/boundRadius above (RegisterProceduralRecipe).
         // occupancyGridValues stays empty when the program uses a non-Lipschitz-whitelisted
         // opcode (DeriveOccupancyGrid's ok=false) — the shader's splice-generated lookup
         // switch treats a zero-dim entry as "no grid, no empty-space skip for this recipe,"
