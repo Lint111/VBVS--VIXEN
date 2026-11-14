@@ -1317,7 +1317,8 @@ target_link_libraries(test_lod PRIVATE
 
 set_target_properties(test_lod PROPERTIES FOLDER "Tests/SVO Tests")
 
-vixen_gtest_discover_tests(SVO test_lod)
+vixen_gtest_discover_tests(SVO test_lod
+    BENCHMARK_TESTS "^LODRayCastingTest\\.NoPerformanceRegressionWithoutLOD$")
 
 # ===========================================================================
 # Shell Octree Tests  (SP1 — surface-shell voxelizer + body octree)
