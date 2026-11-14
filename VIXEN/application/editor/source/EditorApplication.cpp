@@ -2614,11 +2614,11 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     // Documents without material fields retain the virtual provider's parameter-edit behavior.
     Vixen::SVO::BodyInstanceGpu inst{};
     // RecipeBakeConfig stores an object-centered document at grid center (32,32,32), while the
-    // stored octree's fixed local frame maps that center to world (5,5,5). Use the same scale
-    // as the live editor render gate (10/64 * 5 = 0.78125) and translate that center back to the
-    // editor's origin. Without this affine placement the procedural preview was visible at the
-    // origin, but the first material edit moved the stored body to world (25,25,25), outside the
-    // still-valid camera frame; the rematerialization was real, yet every material readback was blank.
+    // stored octree's fixed local frame maps that center to world (5,5,5). Use the normalized
+    // document scale (10/64 * 6.4 = 1) and translate that center back to the editor's origin.
+    // This makes the stored body's screen-space bounds identical to the procedural body's bounds;
+    // the camera and both providers therefore share one document-space frame when materials are
+    // added or removed.
     const auto bodyPlacement = Vixen::Editor::PlaceEditorBody(
         entry.boundCenter, entry.boundRadius, hasDocumentMaterials);
     Vixen::SVO::SetInstanceTranslationScale(inst, bodyPlacement.origin, bodyPlacement.renderScale);

@@ -32,7 +32,7 @@ inline EditorBodyPlacement PlaceEditorBody(const glm::vec3& recipeCenter, float 
                                            bool storedMaterialBake,
                                            float worldGridSize = 10.0f,
                                            int bakeResolution = 64,
-                                           float storedRenderScale = 5.0f) {
+                                           float storedRenderScale = 6.4f) {
     EditorBodyPlacement placement{};
     if (!std::isfinite(worldGridSize) || !std::isfinite(storedRenderScale) || bakeResolution <= 0)
         return placement;

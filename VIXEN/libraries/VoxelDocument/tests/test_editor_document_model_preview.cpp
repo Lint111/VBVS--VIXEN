@@ -616,11 +616,15 @@ TEST(EditorDocumentFraming, StoredAndProceduralPlacementShareTheCameraBoundsSour
     const auto storedFrame = Vixen::Editor::FitEditorCameraToWorldBounds(
         stored.worldCenter, stored.worldRadius, 60.0f, 1.15f);
 
-    EXPECT_NEAR(stored.worldCenter.x, recipeCenter.x * (50.0f / 64.0f), 1e-5f);
-    EXPECT_NEAR(stored.worldCenter.y, recipeCenter.y * (50.0f / 64.0f), 1e-5f);
-    EXPECT_NEAR(stored.worldCenter.z, recipeCenter.z * (50.0f / 64.0f), 1e-5f);
-    EXPECT_NEAR(storedFrame.distance / storedFrame.worldRadius,
-                proceduralFrame.distance / proceduralFrame.worldRadius, 1e-5f);
+    EXPECT_NEAR(stored.worldCenter.x, procedural.worldCenter.x, 1e-5f);
+    EXPECT_NEAR(stored.worldCenter.y, procedural.worldCenter.y, 1e-5f);
+    EXPECT_NEAR(stored.worldCenter.z, procedural.worldCenter.z, 1e-5f);
+    EXPECT_NEAR(stored.worldRadius, procedural.worldRadius, 1e-5f);
+    EXPECT_NEAR(storedFrame.center.x, proceduralFrame.center.x, 1e-5f);
+    EXPECT_NEAR(storedFrame.center.y, proceduralFrame.center.y, 1e-5f);
+    EXPECT_NEAR(storedFrame.center.z, proceduralFrame.center.z, 1e-5f);
+    EXPECT_NEAR(storedFrame.worldRadius, proceduralFrame.worldRadius, 1e-5f);
+    EXPECT_NEAR(storedFrame.distance, proceduralFrame.distance, 1e-5f);
 }
 
 // ---- R872.1 catalogue consumer -------------------------------------------------------------
