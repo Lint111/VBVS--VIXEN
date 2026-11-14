@@ -111,9 +111,9 @@ public:
     void DeclarePanels(Vixen::RenderGraph::PanelDock& dock) override;
     std::string PanelLayoutName() const override { return "editor"; }
 
-    // Reads the current completed compute_render_target image to PNG. Call after Render() so it
-    // contains the scene output before the HUD covers part of the viewport. Scripted captures
-    // are scheduled in Update() and performed in PostTick().
+    // Reads the current completed scene image to PNG. Call after Render() so it contains the
+    // scene output before the HUD covers part of the viewport. Scripted captures are scheduled
+    // in Update() and performed in PostTick().
     bool CaptureFrameToPng(const std::string& path, std::string& err);
 
 private:

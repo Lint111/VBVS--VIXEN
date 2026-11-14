@@ -59,6 +59,26 @@
 #endif
 
 namespace {
+std::chrono::seconds EditorReadbackTimeout() {
+    constexpr uint64_t kDefaultSeconds = 90;
+    constexpr uint64_t kMaximumSeconds = 600;
+    uint64_t seconds = kDefaultSeconds;
+    if (const char* value = std::getenv("VIXEN_EDITOR_READBACK_TIMEOUT_SECONDS"); value && *value) {
+        const char* end = value + std::strlen(value);
+        uint64_t parsed = 0;
+        const auto result = std::from_chars(value, end, parsed);
+        if (result.ec == std::errc{} && result.ptr == end && parsed > 0 && parsed <= kMaximumSeconds) {
+            seconds = parsed;
+        }
+    }
+    return std::chrono::seconds(seconds);
+}
+
+bool ForceEditorReadbackFenceTimeout() {
+    const char* value = std::getenv("VIXEN_EDITOR_READBACK_FORCE_FENCE_TIMEOUT");
+    return value && std::string_view(value) == "1";
+}
+
 // R463 capture instrumentation only; steady timestamps correlate with shared backend spans.
 void TraceEditorLatency(const char* phase, const char* edge, long tick, int action = -1) {
 #if UNDERSET_NATIVE_BENCHMARK
@@ -2836,9 +2856,28 @@ void EditorApplication::PumpAppFlowChannel() {
 }
 
 void EditorApplication::StartPendingReadbacks() {
-    if (channelReadbacks_.empty()) return;
     using namespace Vixen::RenderGraph;
     using Vixen::Vulkan::Resources::IRenderTarget;
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto timeout = EditorReadbackTimeout();
+    for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
+        PendingReadback& pending = it->second;
+        if (now - pending.requestedAt < timeout) {
+            ++it;
+            continue;
+        }
+        const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - pending.requestedAt).count();
+        const std::string phase = pending.enqueued ? "readback fence" : "render target/frame";
+        const std::string diagnostic =
+            "R796: editor AppFlow readback timed out after " + std::to_string(elapsed) +
+            "s while waiting for the " + phase + " (frame=" + std::to_string(pending.frame) +
+            ", requiredUpdateSerial=" + std::to_string(pending.requiredSerial) + ")";
+        logger_->Error("[EditorApplication] " + diagnostic);
+        channelReadbackResults_[it->first] = nlohmann::json{{"error", diagnostic}}.dump();
+        it = channelReadbacks_.erase(it);
+    }
+    if (channelReadbacks_.empty()) return;
 
     auto* graph = GetRenderGraph();
     auto* deviceNode = graph
@@ -2846,7 +2885,8 @@ void EditorApplication::StartPendingReadbacks() {
     auto* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
     if (!graph || !device) {
         for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
-            channelReadbackResults_[it->first] = nlohmann::json{{"error", "render graph/device is unavailable"}}.dump();
+            channelReadbackResults_[it->first] = nlohmann::json{{"error",
+                "R796: render graph/device is unavailable for editor AppFlow readback"}}.dump();
             it = channelReadbacks_.erase(it);
         }
         return;
@@ -2864,7 +2904,12 @@ void EditorApplication::StartPendingReadbacks() {
         haveImageIndex = true;
     }
     if (!target) {
-        auto* renderTargetInstance = graph->GetInstanceByName("compute_render_target");
+        // In the offscreen editor path, compute_render_target is the pre-blit scene image. The
+        // presentation target is the image that receives the blit and UI composite, matching the
+        // offscreen-before-WSI capture path used by the main application (and HUD captures).
+        const char* targetName = GetPresentationTarget() == PresentationTarget::Offscreen
+            ? "main_offscreen_target" : "compute_render_target";
+        auto* renderTargetInstance = graph->GetInstanceByName(targetName);
         if (renderTargetInstance) {
             Resource* output = renderTargetInstance->GetOutput(0, 0);
             if (output) target = output->GetHandle<IRenderTarget*>();
@@ -2873,7 +2918,8 @@ void EditorApplication::StartPendingReadbacks() {
     if (target && !haveImageIndex) imageIndex = target->GetCurrentIndex();
     if (!target) {
         for (auto it = channelReadbacks_.begin(); it != channelReadbacks_.end();) {
-            channelReadbackResults_[it->first] = nlohmann::json{{"error", "native render target is unavailable"}}.dump();
+            channelReadbackResults_[it->first] = nlohmann::json{{"error",
+                "R796: native editor presentation render target is unavailable"}}.dump();
             it = channelReadbacks_.erase(it);
         }
         return;
@@ -2913,6 +2959,13 @@ void EditorApplication::StartPendingReadbacks() {
         } else if (pending.frame > channelPresentedFrame_) { ++it; continue; }
         const std::string key = it->first;
         try {
+            if (ForceEditorReadbackFenceTimeout()) {
+                // Diagnostic-only fixture: leave the request pending so the bounded timeout path
+                // proves a missing fence cannot strand the producer.
+                pending.enqueued = true;
+                ++it;
+                continue;
+            }
             if (!actionBound && pending.frame < channelPresentedFrame_) {
                 throw std::runtime_error("selected frame passed before its readback was staged");
             }
@@ -3006,7 +3059,8 @@ void EditorApplication::StartPendingReadbacks() {
             }
             pending.enqueued = true;
         } catch (const std::exception& exception) {
-            channelReadbackResults_[key] = nlohmann::json{{"error", exception.what()}}.dump();
+            channelReadbackResults_[key] = nlohmann::json{{"error",
+                "R796: editor AppFlow readback failed: " + std::string(exception.what())}}.dump();
             it = channelReadbacks_.erase(it);
             continue;
         }
@@ -3019,7 +3073,7 @@ void EditorApplication::StartPendingReadbacks() {
         if (pendingIt == channelReadbacks_.end()) continue;
         nlohmann::json response;
         if (!completed.error.empty()) {
-            response = {{"error", completed.error}};
+            response = {{"error", "R796: editor AppFlow readback completion failed: " + completed.error}};
         } else {
             const auto responseStarted = std::chrono::steady_clock::now();
             const nlohmann::json spec = nlohmann::json::parse(pendingIt->second.spec);
