@@ -2239,8 +2239,25 @@ bool EditorDocumentModel::Flatten(std::vector<uint8_t>& outVrc1Blob,
     if (!BuildEvaluationMask(enabledOverride, diagnostic)) return false;
 
     if (v5FeaturesUsed_) {
+        const DocumentBakeSnapshot snapshot = CaptureBakeSnapshot();
         Vixen::SVO::RecipeRegistry::RecipeEntry entry;
-        if (!FlattenToRecipeEntry(entry, CaptureBakeSnapshot(), diagnostic)) return false;
+        if (!FlattenToRecipeEntry(entry, snapshot, diagnostic)) return false;
+        // V5 document export is the persistence-side VRC1 bake face. The preview entry keeps
+        // ReadParam dynamic so a parameter edit can update the viewport without recompiling;
+        // the generated authoring flattener resolves the same scalar reads to PushParam bytes.
+        for (auto& instruction : entry.bytecode) {
+            if (static_cast<SdfOpCode>(instruction.opCode) != SdfOpCode::ReadParam) continue;
+            const float rawSlot = instruction.data[0];
+            if (!std::isfinite(rawSlot) || rawSlot < 0.0f || std::floor(rawSlot) != rawSlot ||
+                rawSlot >= static_cast<float>(snapshot.parameterValues.size())) {
+                diagnostic = {DocumentDiagnosticCode::FlattenError,
+                              "ReadParam export slot is outside the document parameter table"};
+                return false;
+            }
+            instruction = {};
+            instruction.opCode = static_cast<uint8_t>(SdfOpCode::PushParam);
+            instruction.data[0] = snapshot.parameterValues[static_cast<size_t>(rawSlot)];
+        }
         using namespace Yeroket::Sdf::Generated;
         RecipeContainerHeader header{};
         header.magic = kRecipeContainerMagic;
