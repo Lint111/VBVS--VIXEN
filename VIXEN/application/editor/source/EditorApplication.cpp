@@ -2524,13 +2524,9 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     // editor's origin. Without this affine placement the procedural preview was visible at the
     // origin, but the first material edit moved the stored body to world (25,25,25), outside the
     // still-valid camera frame; the rematerialization was real, yet every material readback was blank.
-    constexpr float kStoredRenderScale = 5.0f;
-    constexpr float kStoredGridToWorld = (10.0f / 64.0f) * kStoredRenderScale;
-    const glm::vec3 storedOrigin = hasDocumentMaterials
-        ? -glm::vec3(32.0f * kStoredGridToWorld)
-        : glm::vec3(0.0f);
-    Vixen::SVO::SetInstanceTranslationScale(inst, storedOrigin,
-                                             hasDocumentMaterials ? kStoredRenderScale : 1.0f);
+    const auto bodyPlacement = Vixen::Editor::PlaceEditorBody(
+        entry.boundCenter, entry.boundRadius, hasDocumentMaterials);
+    Vixen::SVO::SetInstanceTranslationScale(inst, bodyPlacement.origin, bodyPlacement.renderScale);
     inst.material.color[0] = 1.0f; inst.material.color[1] = 1.0f; inst.material.color[2] = 1.0f;
     inst.material.octreeIndex = 0u;
     inst.material.providerKind = hasDocumentMaterials ? Vixen::SVO::PROVIDER_STORED
@@ -2568,13 +2564,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
 
     if (reframeCamera) {
         if (EditorCamera() != nullptr) {
-            // Virtual recipe coordinates are world units. The helper's one-voxel-to-world
-            // factor is normalized to 1.0 here so arbitrary procedural recipe bounds map directly.
-            // Stored documents use the baked grid-to-world factor and the affine origin above.
-            const auto frame = Vixen::Editor::FitEditorCameraToBounds(
-                entry.boundCenter, entry.boundRadius, glm::vec3(0.0f), 64,
-                /*worldGridSize=*/10.0f,
-                /*renderScale=*/hasDocumentMaterials ? kStoredRenderScale : 6.4f,
+            const auto frame = Vixen::Editor::FitEditorCameraToWorldBounds(
+                bodyPlacement.worldCenter, bodyPlacement.worldRadius,
                 /*verticalFovDegrees=*/60.0f, /*padding=*/1.15f);
             framedBoundsCenter_ = frame.center;
             framedBoundsRadius_ = frame.worldRadius;

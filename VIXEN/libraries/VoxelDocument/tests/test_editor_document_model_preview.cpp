@@ -606,6 +606,23 @@ TEST(EditorDocumentFraming, FramesThreeDifferentlyBoundedDocumentsAndParameteriz
     EXPECT_GE(parameterizedBounds.radius, 1.75f);
 }
 
+TEST(EditorDocumentFraming, StoredAndProceduralPlacementShareTheCameraBoundsSource) {
+    const glm::vec3 recipeCenter(2.0f, -1.0f, 0.5f);
+    constexpr float recipeRadius = 12.0f;
+    const auto procedural = Vixen::Editor::PlaceEditorBody(recipeCenter, recipeRadius, false);
+    const auto stored = Vixen::Editor::PlaceEditorBody(recipeCenter, recipeRadius, true);
+    const auto proceduralFrame = Vixen::Editor::FitEditorCameraToWorldBounds(
+        procedural.worldCenter, procedural.worldRadius, 60.0f, 1.15f);
+    const auto storedFrame = Vixen::Editor::FitEditorCameraToWorldBounds(
+        stored.worldCenter, stored.worldRadius, 60.0f, 1.15f);
+
+    EXPECT_NEAR(stored.worldCenter.x, recipeCenter.x * (50.0f / 64.0f), 1e-5f);
+    EXPECT_NEAR(stored.worldCenter.y, recipeCenter.y * (50.0f / 64.0f), 1e-5f);
+    EXPECT_NEAR(stored.worldCenter.z, recipeCenter.z * (50.0f / 64.0f), 1e-5f);
+    EXPECT_NEAR(storedFrame.distance / storedFrame.worldRadius,
+                proceduralFrame.distance / proceduralFrame.worldRadius, 1e-5f);
+}
+
 // ---- R872.1 catalogue consumer -------------------------------------------------------------
 
 // Samples a flattened recipe on a coarse grid and reports whether it has a surface (both signs).

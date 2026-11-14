@@ -17,6 +17,56 @@ struct EditorCameraFrame {
     float worldRadius = 0.0f;
 };
 
+// The editor can preview the same document through either the procedural recipe or the
+// stored material-bearing bake. Keep the affine placement and the camera bounds derived from
+// one value object; otherwise the stored octree's grid-centred frame and the procedural origin
+// silently disagree when a material is first authored.
+struct EditorBodyPlacement {
+    glm::vec3 origin{0.0f};
+    float renderScale = 1.0f;
+    glm::vec3 worldCenter{0.0f};
+    float worldRadius = 0.0f;
+};
+
+inline EditorBodyPlacement PlaceEditorBody(const glm::vec3& recipeCenter, float recipeRadius,
+                                           bool storedMaterialBake,
+                                           float worldGridSize = 10.0f,
+                                           int bakeResolution = 64,
+                                           float storedRenderScale = 5.0f) {
+    EditorBodyPlacement placement{};
+    if (!std::isfinite(worldGridSize) || !std::isfinite(storedRenderScale) || bakeResolution <= 0)
+        return placement;
+    if (!storedMaterialBake) {
+        placement.worldCenter = recipeCenter;
+        placement.worldRadius = std::max(0.01f, std::abs(recipeRadius));
+        return placement;
+    }
+
+    const float gridToWorld = (worldGridSize / static_cast<float>(bakeResolution)) * storedRenderScale;
+    constexpr float kBakeCenter = 32.0f;
+    placement.renderScale = storedRenderScale;
+    placement.origin = glm::vec3(-kBakeCenter * gridToWorld);
+    placement.worldCenter = placement.origin + (glm::vec3(kBakeCenter) + recipeCenter) * gridToWorld;
+    placement.worldRadius = std::max(0.01f, std::abs(recipeRadius) * gridToWorld);
+    return placement;
+}
+
+inline EditorCameraFrame FitEditorCameraToWorldBounds(
+    const glm::vec3& worldCenter, float worldRadius,
+    float verticalFovDegrees = 45.0f, float padding = 1.15f) {
+    EditorCameraFrame frame{};
+    if (!std::isfinite(worldRadius) || !std::isfinite(verticalFovDegrees) || !std::isfinite(padding))
+        return frame;
+    frame.center = worldCenter;
+    frame.worldRadius = std::max(0.01f, std::abs(worldRadius));
+    constexpr float kPi = 3.14159265358979323846f;
+    const float halfFov = std::clamp(verticalFovDegrees, 1.0f, 179.0f) * (kPi / 360.0f);
+    const float safeSine = std::max(std::sin(halfFov), 1e-4f);
+    frame.distance = std::clamp(frame.worldRadius / safeSine * std::max(padding, 1.0f),
+                                0.1f, 120.0f);
+    return frame;
+}
+
 // Convert a conservative recipe-space sphere into the world frame used by the baked octree,
 // then place an orbit camera far enough away for the entire sphere to fit vertically. Recipe
 // coordinates are voxel units around bakeCenter; the octree spans worldGridSize units and the
@@ -34,16 +84,9 @@ inline EditorCameraFrame FitEditorCameraToBounds(
     }
 
     const float gridToWorld = (worldGridSize / static_cast<float>(bakeResolution)) * renderScale;
-    frame.center = (bakeCenter + recipeCenter) * gridToWorld;
-    frame.worldRadius = std::max(0.01f, std::abs(recipeRadius) * gridToWorld);
-
-    constexpr float kPi = 3.14159265358979323846f;
-    const float halfFov = std::clamp(verticalFovDegrees, 1.0f, 179.0f) * (kPi / 360.0f);
-    const float sine = std::sin(halfFov);
-    const float safeSine = std::max(sine, 1e-4f);
-    frame.distance = std::clamp(frame.worldRadius / safeSine * std::max(padding, 1.0f),
-                                0.1f, 120.0f);
-    return frame;
+    return FitEditorCameraToWorldBounds((bakeCenter + recipeCenter) * gridToWorld,
+                                        std::abs(recipeRadius) * gridToWorld,
+                                        verticalFovDegrees, padding);
 }
 
 }  // namespace Vixen::Editor
