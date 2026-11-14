@@ -482,7 +482,7 @@ struct LaneSpanF32 {
         return {true, PromotionReason::Admitted};
     }
     std::size_t gather_index(std::size_t logicalIndex) const noexcept {
-        return mapping == IterationMapping::SparseUnique ? indices[logicalIndex] : logicalIndex;
+        return mapping == IterationMapping::SparseUnique ? *(indices + logicalIndex) : logicalIndex;
     }
     std::uint8_t active_mask(std::size_t laneBase) const noexcept {
         std::uint8_t bits = 0u;
@@ -493,24 +493,21 @@ struct LaneSpanF32 {
         return bits;
     }
     f32 load(std::size_t laneBase) const noexcept {
-        assert(allows(AccessMode::ReadOnly));
         if (mapping != IterationMapping::SparseUnique) {
-            assert(laneBase + 4 <= padded_capacity);
             return f32::load_aligned(base + laneBase);
         }
         alignas(16) float lanes[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         const std::uint8_t active = active_mask(laneBase);
         for (std::size_t lane = 0; lane < 4; ++lane)
-            if ((active & (1u << lane)) != 0) lanes[lane] = base[gather_index(laneBase + lane)];
+            if ((active & (1u << lane)) != 0) lanes[lane] = *(base + gather_index(laneBase + lane));
         return f32::from_lanes(lanes);
     }
     void store(std::size_t laneBase, f32 value, std::uint8_t active) const noexcept {
-        assert(allows(AccessMode::WriteOnly));
         alignas(16) float lanes[4];
         value.store_unaligned(lanes);
         for (std::size_t lane = 0; lane < 4; ++lane) {
             if ((active & (1u << lane)) == 0) continue;
-            base[gather_index(laneBase + lane)] = lanes[lane];
+            *(base + gather_index(laneBase + lane)) = lanes[lane];
         }
     }
 };
@@ -543,8 +540,8 @@ struct LaneSpanF64 {
     }
     std::size_t gather_index(std::size_t i) const noexcept { return mapping == IterationMapping::SparseUnique ? indices[i] : i; }
     std::uint8_t active_mask(std::size_t laneBase) const noexcept { std::uint8_t bits = 0u; for (std::size_t lane = 0; lane < 4; ++lane) { const std::size_t logical = laneBase + lane; if (logical < logical_count && (filter ? filter[logical] != 0 : true)) bits |= static_cast<std::uint8_t>(1u << lane); } return bits; }
-    f64 load(std::size_t laneBase) const noexcept { assert(allows(AccessMode::ReadOnly)); if (mapping != IterationMapping::SparseUnique) { assert(laneBase + 4 <= padded_capacity); return f64::load_aligned(base + laneBase); } alignas(16) double lanes[4] = {0.0, 0.0, 0.0, 0.0}; const std::uint8_t active = active_mask(laneBase); for (std::size_t lane = 0; lane < 4; ++lane) if ((active & (1u << lane)) != 0) lanes[lane] = base[gather_index(laneBase + lane)]; return f64::from_lanes(lanes); }
-    void store(std::size_t laneBase, f64 value, std::uint8_t active) const noexcept { assert(allows(AccessMode::WriteOnly)); alignas(16) double lanes[4]; value.store_unaligned(lanes); for (std::size_t lane = 0; lane < 4; ++lane) { if ((active & (1u << lane)) == 0) continue; base[gather_index(laneBase + lane)] = lanes[lane]; } }
+    f64 load(std::size_t laneBase) const noexcept { if (mapping != IterationMapping::SparseUnique) { return f64::load_aligned(base + laneBase); } alignas(16) double lanes[4] = {0.0, 0.0, 0.0, 0.0}; const std::uint8_t active = active_mask(laneBase); for (std::size_t lane = 0; lane < 4; ++lane) if ((active & (1u << lane)) != 0) lanes[lane] = *(base + gather_index(laneBase + lane)); return f64::from_lanes(lanes); }
+    void store(std::size_t laneBase, f64 value, std::uint8_t active) const noexcept { alignas(16) double lanes[4]; value.store_unaligned(lanes); for (std::size_t lane = 0; lane < 4; ++lane) { if ((active & (1u << lane)) == 0) continue; *(base + gather_index(laneBase + lane)) = lanes[lane]; } }
 };
 struct LaneSpanF32x3 {
     LaneSpanF32 x, y, z;
@@ -4734,8 +4731,51 @@ inline bool UnrollRecipeInstructions(const Yeroket::Sdf::Generated::SdfInstructi
     return true;
 }
 
+/// Maps a version 4 document's reference (a pack:recipe content id) to the registry id of the recipe it names.
+/// The engine holds no pack ids: the consumer that owns the packs supplies this (R802.5).
+struct RecipeReferenceResolver {
+    bool (*resolve)(void* user, const char* reference, std::uint32_t& recipeId) noexcept = nullptr;
+    void* user = nullptr;
+};
+
+/// A version 4 document's InvokeRecipe instructions carry an index into its reference table in data[0]; this
+/// rewrites each to the resolved registry id (what UnrollRecipeInstructions reads). Documents before version 4
+/// carry a registry id there already and pass through untouched. Every failure names layer and instruction.
+inline bool ResolveDocumentReferences(const Yeroket::Sdf::Generated::VoxelDocumentView& document,
+                                      const RecipeReferenceResolver* resolver,
+                                      std::uint32_t layerIndex,
+                                      std::vector<Yeroket::Sdf::Generated::SdfInstruction>& program,
+                                      std::string& error) noexcept {
+    if (document.header.formatVersion < 4u) return true;
+    for (std::uint32_t i = 0; i < program.size(); ++i) {
+        if (static_cast<Recipe::SdfOpCode>(program[i].opCode) != Recipe::SdfOpCode::InvokeRecipe) continue;
+        const std::string where = "layer " + std::to_string(layerIndex) + " instruction " + std::to_string(i) + ": ";
+        const float slot = program[i].data[0];
+        if (!(slot >= 0.0f) || slot != static_cast<float>(static_cast<std::uint32_t>(slot)) ||
+            static_cast<std::uint32_t>(slot) >= document.referenceCount) {
+            error = where + "InvokeRecipe reference index " + std::to_string(slot) +
+                    " is outside the document's reference table (count " +
+                    std::to_string(document.referenceCount) + ")";
+            return false;
+        }
+        const char* reference = reinterpret_cast<const char*>(document.references[static_cast<std::uint32_t>(slot)].id);
+        std::uint32_t recipeId = 0;
+        if (resolver == nullptr || resolver->resolve == nullptr) {
+            error = where + "InvokeRecipe reference '" + reference + "' cannot be resolved: no resolver was supplied";
+            return false;
+        }
+        if (!resolver->resolve(resolver->user, reference, recipeId)) {
+            error = where + "InvokeRecipe references unknown recipe '" + reference + "'";
+            return false;
+        }
+        program[i].data[0] = static_cast<float>(recipeId);
+    }
+    return true;
+}
+
 inline bool FlattenVoxelDocument(const Yeroket::Sdf::Generated::VoxelDocumentView& document,
                                  const std::vector<std::uint8_t>* enabledOverride,
+                                 const RecipeReferenceResolver* resolver,
                                  std::vector<std::uint8_t>& outputBlob,
                                  std::string& error) noexcept {
     using Yeroket::Sdf::Generated::RecipeContainerHeader;
@@ -4764,8 +4804,10 @@ inline bool FlattenVoxelDocument(const Yeroket::Sdf::Generated::VoxelDocumentVie
         const std::uint32_t count = layer.header->instructionCount;
         if (!GeneratedRecipePipelineDetail::ValidateProgram(
                 layer.instructions, count, sp, psp, error)) return false;
+        std::vector<SdfInstruction> layerProgram(layer.instructions, layer.instructions + count);
+        if (!ResolveDocumentReferences(document, resolver, layerIndex, layerProgram, error)) return false;
         if (!haveBase) {
-            instructions.insert(instructions.end(), layer.instructions, layer.instructions + count);
+            instructions.insert(instructions.end(), layerProgram.begin(), layerProgram.end());
             haveBase = true;
             continue;
         }
@@ -4775,7 +4817,7 @@ inline bool FlattenVoxelDocument(const Yeroket::Sdf::Generated::VoxelDocumentVie
                     " on layer index " + std::to_string(layerIndex);
             return false;
         }
-        instructions.insert(instructions.end(), layer.instructions, layer.instructions + count);
+        instructions.insert(instructions.end(), layerProgram.begin(), layerProgram.end());
         SdfInstruction combine{};
         combine.opCode = static_cast<std::uint8_t>(combineOpcode);
         combine.inputMask = 3;
@@ -4801,6 +4843,13 @@ inline bool FlattenVoxelDocument(const Yeroket::Sdf::Generated::VoxelDocumentVie
         std::memcpy(outputBlob.data() + sizeof(header), instructions.data(),
                     instructions.size() * sizeof(SdfInstruction));
     return true;
+}
+
+inline bool FlattenVoxelDocument(const Yeroket::Sdf::Generated::VoxelDocumentView& document,
+                                 const std::vector<std::uint8_t>* enabledOverride,
+                                 std::vector<std::uint8_t>& outputBlob,
+                                 std::string& error) noexcept {
+    return FlattenVoxelDocument(document, enabledOverride, nullptr, outputBlob, error);
 }
 } // namespace Vixen::SVO
 
