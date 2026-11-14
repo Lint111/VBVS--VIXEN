@@ -423,8 +423,20 @@ void EditorDocumentModel::DeriveBoundsOf(const Vixen::SVO::RecipeRegistry::Recip
         const uint32_t slot = ParameterSlot(i);
         if (slot < maxima.size()) maxima[slot] = ParameterMax(i);
     }
+    // MaterialRef + Attach are a typed output suffix, not geometry. Strip those generated
+    // channel instructions before asking the bounds transfer to classify the shape; otherwise
+    // a material-bearing document falls back to the full 64-voxel bake cube while its neutral
+    // counterpart receives the tight primitive bounds. The same filtered program therefore
+    // drives both stored placement and procedural framing.
+    std::vector<SdfInstruction> geometryProgram;
+    geometryProgram.reserve(entry.bytecode.size());
+    for (const auto& instruction : entry.bytecode) {
+        const auto opcode = static_cast<SdfOpCode>(instruction.opCode);
+        if (opcode == SdfOpCode::MaterialRef || opcode == SdfOpCode::Attach) continue;
+        geometryProgram.push_back(instruction);
+    }
     const auto derived = Vixen::SVO::Recipe::DeriveConservativeBounds(
-        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), maxima);
+        geometryProgram.data(), static_cast<uint32_t>(geometryProgram.size()), maxima);
     if (derived.ok && std::isfinite(derived.radius) && derived.radius > 0.0f) {
         center = {derived.center.x, derived.center.y, derived.center.z};
         radius = derived.radius;
@@ -434,7 +446,16 @@ void EditorDocumentModel::DeriveBoundsOf(const Vixen::SVO::RecipeRegistry::Recip
 void EditorDocumentModel::DerivePreviewBounds(std::array<float, 3>& center, float& radius) const {
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
     DocumentDiagnostic ignored;
-    if (!FlattenToRecipeEntry(entry, ignored)) entry.bytecode.clear();  // falls back to the bake domain
+    // Preview bounds are geometry bounds. Resolve authored material references to a neutral
+    // slot only for this analysis so a document with a typed MaterialRef still gets the same
+    // flattened geometry as its no-material state; DeriveBoundsOf removes the resulting
+    // MaterialRef/Attach suffix before the extent transfer.
+    const MaterialReferenceResolver previewMaterialResolver =
+        [](const std::string&, uint32_t& resolved) { resolved = 0u; return true; };
+    if (!FlattenToRecipeEntry(entry, CaptureBakeSnapshot(), RecipeReferenceResolver{},
+                              previewMaterialResolver, true, ignored)) {
+        entry.bytecode.clear();  // falls back to the bake domain
+    }
     DeriveBoundsOf(entry, center, radius);
 }
 

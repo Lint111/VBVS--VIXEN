@@ -1183,6 +1183,25 @@ TEST(EditorDocumentModelPlacement, WithNoSelectedLayerTheShapeSitsAtTheDocumentB
     for (size_t axis = 0; axis < 3; ++axis) EXPECT_NEAR(placed.position[axis], docCenter[axis], 1e-3f);
 }
 
+TEST(EditorDocumentModelPlacement, MaterialSuffixDoesNotChangePreviewBounds) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    std::array<float, 3> neutralCenter{};
+    float neutralRadius = 0.0f;
+    model.DerivePreviewBounds(neutralCenter, neutralRadius);
+
+    ASSERT_TRUE(model.SetLayerMaterial(model.LayerId(0u), "core:hull_metal_major", diagnostic))
+        << diagnostic.message;
+    std::array<float, 3> materialCenter{};
+    float materialRadius = 0.0f;
+    model.DerivePreviewBounds(materialCenter, materialRadius);
+
+    for (size_t axis = 0; axis < 3; ++axis)
+        EXPECT_NEAR(materialCenter[axis], neutralCenter[axis], 1e-5f);
+    EXPECT_NEAR(materialRadius, neutralRadius, 1e-5f);
+}
+
 TEST(EditorDocumentModelVdc1, MaterialsAndRecipeReferencesRoundTripWithValidation) {
     const std::string recipeId = std::string("pack") + ":" + "recipe";
     const auto original = ReadFile(VXD_GOLDEN_PATH);
