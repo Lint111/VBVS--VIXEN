@@ -1397,8 +1397,12 @@ TEST(EditorDocumentModelLayerPorts, RemovingAReadPortNodeRemovesItsWire) {
         }
     }
     ASSERT_LT(readNode, graph->view.nodeCount);
+    Vixen::SVO::RecipeRegistry::RecipeEntry flattened;
+    ASSERT_TRUE(model.FlattenToRecipeEntry(flattened, diagnostic)) << diagnostic.message;
     ASSERT_TRUE(model.RemoveNode(1u, readNode, diagnostic)) << diagnostic.message;
     EXPECT_TRUE(model.Wires().empty());
+    flattened = {};
+    ASSERT_TRUE(model.FlattenToRecipeEntry(flattened, diagnostic)) << diagnostic.message;
 }
 
 }  // namespace
