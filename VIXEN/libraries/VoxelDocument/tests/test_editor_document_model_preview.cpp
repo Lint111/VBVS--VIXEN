@@ -1386,11 +1386,8 @@ TEST(EditorDocumentModelLayerPorts, RemovingAReadPortNodeRemovesItsWire) {
     ASSERT_EQ(model.Wires().size(), 1u);
     const auto* graph = model.GetLayerGraph(1u, diagnostic);
     ASSERT_NE(graph, nullptr);
-    // A ReadPort is retained in the partial graph view even when the generated validator reports
-    // the surrounding program's leftover stack. Removing it must still validate the candidate.
-    ASSERT_TRUE(graph->raw);
-    EXPECT_EQ(graph->diagnostic.code,
-              Vixen::SVO::Recipe::SdfGraphDiagnosticCode::ValueStackLeftover);
+    ASSERT_FALSE(graph->raw);
+    ASSERT_GE(graph->view.nodeCount, 1u);
     uint32_t readNode = graph->view.nodeCount;
     for (uint32_t i = 0u; i < graph->view.nodeCount; ++i) {
         if (graph->view.nodes[i].opcodeInfo->opcode ==

@@ -1599,7 +1599,42 @@ bool EditorDocumentModel::InsertPortRead(uint32_t layerId, uint32_t afterNode,
                                    });
     read.data[0] = wire == wires_.end() ? 0.0f
                                         : static_cast<float>(wire - wires_.begin());
-    program.insert(program.begin() + afterNode + 1u, read);
+    const auto originalProgram = program;
+    std::vector<SdfInstruction> candidate(originalProgram.begin(), originalProgram.end());
+    if (candidate.size() == 1u && afterNode == 0u) {
+        // A ReadPort is itself a complete Field-producing node. Replacing the seed primitive keeps
+        // the render program valid in the same action; exposing [primitive, ReadPort] would leave
+        // two values on the recipe stack and can reach the live evaluator before a follow-up edit.
+        candidate.front() = read;
+    } else {
+        candidate.insert(candidate.begin() + afterNode + 1u, read);
+    }
+    Vixen::SVO::Recipe::SdfGraphDiagnostic graphDiagnostic{};
+    if (!Vixen::SVO::Recipe::ValidateSdfGraphProgram(
+            std::span<const SdfInstruction>(candidate.data(), candidate.size()), graphDiagnostic)) {
+        // A selected domain wrapper may precede the actual Field producer. Replace the first
+        // zero-input Field-producing instruction while retaining its Transform/RestorePos frame.
+        candidate.assign(originalProgram.begin(), originalProgram.end());
+        bool replaced = false;
+        for (size_t instructionIndex = 0u; instructionIndex < candidate.size(); ++instructionIndex) {
+            const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(
+                static_cast<SdfOpCode>(candidate[instructionIndex].opCode));
+            if (info == nullptr || info->valuePop != 0 || info->valuePush != 1 ||
+                static_cast<SdfOpCode>(candidate[instructionIndex].opCode) == SdfOpCode::ReadPort) continue;
+            candidate[instructionIndex] = read;
+            replaced = true;
+            break;
+        }
+        if (!replaced || !Vixen::SVO::Recipe::ValidateSdfGraphProgram(
+                std::span<const SdfInstruction>(candidate.data(), candidate.size()), graphDiagnostic)) {
+            RemoveWire(layerId, "read", diagnostic);
+            diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                          "port read would leave an invalid program: " +
+                              GraphDiagnosticMessage(graphDiagnostic)};
+            return false;
+        }
+    }
+    program = std::move(candidate);
     if (Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic)) return true;
     RemoveWire(layerId, "read", diagnostic);
     return false;
@@ -2096,17 +2131,33 @@ bool EditorDocumentModel::RemoveNode(uint32_t layerIndex, uint32_t nodeIndex,
     std::vector<SdfInstruction> candidate(program.size() > 0u ? program.size() - 1u : 0u);
     uint32_t candidateCount = 0u;
     Vixen::SVO::Recipe::SdfGraphDiagnostic graphDiagnostic{};
-    if (!Vixen::SVO::Recipe::RemoveNode(
-            program, graph->view.nodes[nodeIndex].instructionIndex,
-            std::span<SdfInstruction>(candidate.data(), candidate.size()), candidateCount,
-            graphDiagnostic)) {
+    const uint32_t instructionIndex = graph->view.nodes[nodeIndex].instructionIndex;
+    const bool removesPortRead = static_cast<SdfOpCode>(program[instructionIndex].opCode) == SdfOpCode::ReadPort;
+    const bool removed = Vixen::SVO::Recipe::RemoveNode(
+        program, instructionIndex, std::span<SdfInstruction>(candidate.data(), candidate.size()), candidateCount,
+        graphDiagnostic);
+    if (!removed && !removesPortRead) {
         diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
                       "generated graph diagnostic: " + GraphDiagnosticMessage(graphDiagnostic)};
         return false;
     }
     candidate.resize(candidateCount);
-    const bool removesPortRead = static_cast<SdfOpCode>(
-        program[graph->view.nodes[nodeIndex].instructionIndex].opCode) == SdfOpCode::ReadPort;
+    if (removesPortRead) {
+        // Removing a read inside a generated Transform/RestorePos wrapper must keep the frame
+        // balanced. Prefer the declared-default transport in place of the node; if the read was
+        // an unwrapped stack term, the generated removal below may still produce the smaller valid
+        // program.
+        std::vector<SdfInstruction> fallback(program.begin(), program.end());
+        fallback[instructionIndex] = {};
+        fallback[instructionIndex].opCode =
+            static_cast<uint8_t>(SdfOpCode::PushParam);
+        Vixen::SVO::Recipe::SdfGraphDiagnostic fallbackDiagnostic{};
+        if (Vixen::SVO::Recipe::ValidateSdfGraphProgram(
+                std::span<const SdfInstruction>(fallback.data(), fallback.size()), fallbackDiagnostic)) {
+            candidate = std::move(fallback);
+            candidateCount = static_cast<uint32_t>(candidate.size());
+        }
+    }
     const auto savedWires = wires_;
     size_t removedWire = wires_.size();
     if (removesPortRead) {
