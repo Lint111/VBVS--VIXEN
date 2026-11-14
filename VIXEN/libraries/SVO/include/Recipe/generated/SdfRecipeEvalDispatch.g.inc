@@ -676,6 +676,17 @@ case SdfOpCode::InvokeRecipe: {
     assert(callee && "InvokeRecipe: unknown calleeRecipeId");
     stack[sp++] = evalRecipe(callee->bytecode.data(), static_cast<uint32_t>(callee->bytecode.size()), pos, params, nullptr, registry);
 } break;
+case SdfOpCode::ReadPort: {
+    assert(false && "ReadPort must be flattened before C++ dispatch");
+    stack[sp++] = 0.0f;
+} break;
+case SdfOpCode::SampleSurface: {
+    assert(false && "Set operations must be expanded by native recipe lowering");
+} break;
+case SdfOpCode::Instance: {
+    assert(false && "Set operations must be expanded by native recipe lowering");
+    stack[sp++] = std::numeric_limits<float>::quiet_NaN();
+} break;
 case SdfOpCode::Hash32: {
     assert(sp >= 1 && "Hash32: value stack underflow");
     assert(sp - 1 + 1 <= 64 && "Hash32: value stack overflow");

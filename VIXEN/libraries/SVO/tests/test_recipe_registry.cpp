@@ -255,6 +255,9 @@ TEST(RecipeRegistry, ArityTableCoversAllValidOpcodes) {
     constexpr uint8_t kLegitimateNoOps[] = {
         (uint8_t)SdfOpCode::Output,
         (uint8_t)SdfOpCode::ComposeFloat3,
+        // SampleSurface consumes/produces a typed set rather than the scalar
+        // value/position stacks represented by RecipeStackStaticArity.
+        (uint8_t)SdfOpCode::SampleSurface,
     };
     auto isLegitNoOp = [&](uint8_t v) {
         for (auto n : kLegitimateNoOps) if (v == n) return true;

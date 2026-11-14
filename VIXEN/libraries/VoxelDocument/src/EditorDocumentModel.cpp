@@ -690,7 +690,8 @@ bool EditorDocumentModel::Rebuild(
     std::vector<VoxelDocLayerWrite> writes(layers.size());
     for (size_t i = 0; i < layers.size(); ++i) {
         const auto& source = layers[i];
-        if (source.type != 0u || source.op > 3u || !std::isfinite(source.blendRadius)) {
+        if (source.type != 0u || Vixen::SVO::Recipe::FindSdfLayerOp(source.op) == nullptr ||
+            !std::isfinite(source.blendRadius)) {
             diagnostic = {DocumentDiagnosticCode::InvalidProgramField,
                           "layer type, operation, or blend radius is invalid"};
             return false;
@@ -710,13 +711,14 @@ bool EditorDocumentModel::Rebuild(
     WriteVoxelDocument(view_.channels, view_.header.channelCount,
                        parameters.data(), static_cast<uint32_t>(parameters.size()),
                        writes.data(), static_cast<uint32_t>(writes.size()),
-                       nullptr, 0, required);
+                       nullptr, 0, required, view_.header.formatVersion);
     std::vector<uint8_t> candidateBytes(required);
     size_t written = 0;
     if (!WriteVoxelDocument(view_.channels, view_.header.channelCount,
                             parameters.data(), static_cast<uint32_t>(parameters.size()),
                             writes.data(), static_cast<uint32_t>(writes.size()),
-                            candidateBytes.data(), candidateBytes.size(), written)) {
+                            candidateBytes.data(), candidateBytes.size(), written,
+                            view_.header.formatVersion)) {
         diagnostic = {DocumentDiagnosticCode::WriteError,
                       "WriteVoxelDocument failed to rebuild the candidate document"};
         return false;
@@ -1177,12 +1179,14 @@ bool EditorDocumentModel::Serialize(std::vector<uint8_t>& bytes,
     size_t required = 0;
     WriteVoxelDocument(view_.channels, view_.header.channelCount,
                        parameters.data(), static_cast<uint32_t>(parameters.size()),
-                       writes.data(), LayerCount(), nullptr, 0, required);
+                       writes.data(), LayerCount(), nullptr, 0, required,
+                       view_.header.formatVersion);
     bytes.assign(required, 0u);
     size_t written = 0;
     if (!WriteVoxelDocument(view_.channels, view_.header.channelCount,
                             parameters.data(), static_cast<uint32_t>(parameters.size()),
-                            writes.data(), LayerCount(), bytes.data(), bytes.size(), written)) {
+                            writes.data(), LayerCount(), bytes.data(), bytes.size(), written,
+                            view_.header.formatVersion)) {
         diagnostic = {DocumentDiagnosticCode::WriteError,
                       "WriteVoxelDocument failed sizing/writing the document"};
         return false;

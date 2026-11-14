@@ -112,6 +112,9 @@ enum class SdfOpCode : uint8_t {
     ReadParamFloat3        = 111,
     DeclarePosition        = 112,
     InvokeRecipe           = 113,
+    ReadPort               = 114,
+    SampleSurface          = 115,
+    Instance               = 116,
     Hash32                 = 151,
     Hash32Combine          = 152,
     U32Add                 = 153,
@@ -148,7 +151,7 @@ enum class SdfOpCode : uint8_t {
 };
 struct StackArity { std::int8_t vPop, vPush, pPop, pPush; };
 struct RecipeOpcodeStackInfo { std::uint8_t opcode; std::int8_t vPop, vPush, pPop, pPush; std::uint64_t inputTypes, outputTypes; RecipeContinuityKind continuity; RecipeMipFilterMode mipFilter; };
-inline constexpr std::array<RecipeOpcodeStackInfo, 124> RecipeOpcodeStackTable{{
+inline constexpr std::array<RecipeOpcodeStackInfo, 127> RecipeOpcodeStackTable{{
     {0, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
     {1, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
     {2, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
@@ -240,6 +243,9 @@ inline constexpr std::array<RecipeOpcodeStackInfo, 124> RecipeOpcodeStackTable{{
     {111, 0, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
     {112, 3, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
     {113, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
+    {114, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
+    {115, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
+    {116, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified},
     {151, 1, 1, 0, 0, 1ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable},
     {152, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable},
     {153, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable},
@@ -282,12 +288,12 @@ inline StackArity RecipeStackStaticArity(SdfOpCode op) noexcept {
     const auto* entry = FindRecipeOpcodeStackInfo(static_cast<std::uint8_t>(op));
     return entry ? StackArity{entry->vPop, entry->vPush, entry->pPop, entry->pPush} : StackArity{0, 0, 0, 0};
 }
-enum class SdfOpCategory : std::uint8_t { Control, Domain, Vector, Primitive, Combine, Modifier, Input, Expression };
-enum class SdfArgumentSource : std::uint8_t { ValueStack, Position, InstructionData, GlyphInstance, FixedBucketInstance };
+enum class SdfOpCategory : std::uint8_t { Control, Domain, Vector, Set, Primitive, Combine, Modifier, Input, Expression };
+enum class SdfArgumentSource : std::uint8_t { ValueStack, Position, InstructionData, GlyphInstance, FixedBucketInstance, Wire, FieldPort, SetPort };
 struct SdfOpArgument { std::uint8_t opcode; const char* name; SdfArgumentSource source; std::int16_t offset; std::uint8_t width; const char* type; std::uint8_t hasDefault; float defaultValue[4]; std::uint8_t hasRange; float minValue; float maxValue; const char* label; };
 struct SdfOpInfo { std::uint8_t opcode; const char* name; SdfOpCategory category; std::uint16_t firstArgument; std::uint8_t argumentCount; std::int8_t valuePop; std::int8_t valuePush; std::int8_t positionPop; std::int8_t positionPush; std::uint64_t inputTypes; std::uint64_t outputTypes; std::uint8_t opensDomainFrame; std::uint8_t closesDomainFrame; };
 struct SdfLayerOp { std::uint8_t layerOp; const char* name; SdfOpCode opcode; };
-inline constexpr std::array<SdfOpArgument, 250> SdfOpArgumentTable{{
+inline constexpr std::array<SdfOpArgument, 261> SdfOpArgumentTable{{
     {0, "p", SdfArgumentSource::Position, -1, 3, "float3", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "p"},
     {0, "center", SdfArgumentSource::InstructionData, 0, 3, "float3", 1, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "center"},
     {0, "radius", SdfArgumentSource::InstructionData, 3, 1, "float", 1, {1.0f, 0.0f, 0.0f, 0.0f}, 1, 0.0f, std::numeric_limits<float>::infinity(), "radius"},
@@ -482,6 +488,17 @@ inline constexpr std::array<SdfOpArgument, 250> SdfOpArgumentTable{{
     {108, "b", SdfArgumentSource::ValueStack, 3, 3, "float3", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "b"},
     {109, "v", SdfArgumentSource::ValueStack, 0, 3, "float3", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "v"},
     {113, "callee", SdfArgumentSource::InstructionData, 0, 1, "recipe", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "callee"},
+    {114, "wire", SdfArgumentSource::InstructionData, 0, 1, "wire", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "wire"},
+    {115, "surface", SdfArgumentSource::FieldPort, 0, 2, "field", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "surface"},
+    {115, "count", SdfArgumentSource::InstructionData, 2, 1, "uint", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 1, 0.0f, std::numeric_limits<float>::infinity(), "count"},
+    {115, "seed", SdfArgumentSource::InstructionData, 3, 1, "uint", 1, {0.0f, 0.0f, 0.0f, 0.0f}, 1, 0.0f, std::numeric_limits<float>::infinity(), "seed"},
+    {115, "spacing", SdfArgumentSource::InstructionData, 4, 1, "float", 1, {0.0f, 0.0f, 0.0f, 0.0f}, 1, 0.0f, std::numeric_limits<float>::infinity(), "spacing"},
+    {115, "limit", SdfArgumentSource::InstructionData, 5, 1, "float", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 1, 0.0f, std::numeric_limits<float>::infinity(), "limit"},
+    {116, "at", SdfArgumentSource::SetPort, 0, 2, "set", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "at"},
+    {116, "element", SdfArgumentSource::FieldPort, 2, 2, "field", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "element"},
+    {116, "size", SdfArgumentSource::InstructionData, 4, 1, "float", 1, {1.0f, 0.0f, 0.0f, 0.0f}, 1, 0.0f, std::numeric_limits<float>::infinity(), "size"},
+    {116, "align", SdfArgumentSource::InstructionData, 5, 1, "float", 1, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "align"},
+    {116, "spin", SdfArgumentSource::InstructionData, 6, 1, "float", 1, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "spin"},
     {151, "valueBits", SdfArgumentSource::ValueStack, 0, 1, "uint", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "valueBits"},
     {152, "stateBits", SdfArgumentSource::ValueStack, 0, 1, "uint", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "stateBits"},
     {152, "valueBits", SdfArgumentSource::ValueStack, 1, 1, "uint", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "valueBits"},
@@ -539,7 +556,7 @@ inline constexpr std::array<SdfOpArgument, 250> SdfOpArgumentTable{{
     {183, "p", SdfArgumentSource::Position, -1, 3, "float3", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "p"},
     {183, "path", SdfArgumentSource::FixedBucketInstance, 0, 0, "PathInstance", 0, {0.0f, 0.0f, 0.0f, 0.0f}, 0, 0.0f, 0.0f, "path"},
 }};
-inline constexpr std::array<SdfOpInfo, 124> SdfOpInfoTable{{
+inline constexpr std::array<SdfOpInfo, 127> SdfOpInfoTable{{
     {0, "Sphere", SdfOpCategory::Primitive, 0, 3, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
     {1, "Box", SdfOpCategory::Primitive, 3, 2, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
     {2, "BoxRounded", SdfOpCategory::Primitive, 5, 3, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
@@ -631,45 +648,49 @@ inline constexpr std::array<SdfOpInfo, 124> SdfOpInfoTable{{
     {111, "ReadParamFloat3", SdfOpCategory::Vector, 193, 0, 0, 3, 0, 0, 0ull, 0ull, 0, 0},
     {112, "DeclarePosition", SdfOpCategory::Control, 193, 0, 3, 0, 0, 0, 0ull, 0ull, 0, 0},
     {113, "InvokeRecipe", SdfOpCategory::Input, 193, 1, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
-    {151, "Hash32", SdfOpCategory::Expression, 194, 1, 1, 1, 0, 0, 1ull, 1ull, 0, 0},
-    {152, "Hash32Combine", SdfOpCategory::Expression, 195, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {153, "U32Add", SdfOpCategory::Expression, 197, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {154, "U32Sub", SdfOpCategory::Expression, 199, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {155, "U32Mul", SdfOpCategory::Expression, 201, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {156, "U32Min", SdfOpCategory::Expression, 203, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {157, "U32Max", SdfOpCategory::Expression, 205, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {158, "U32Equal", SdfOpCategory::Expression, 207, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {159, "U32NotEqual", SdfOpCategory::Expression, 209, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {160, "U32Less", SdfOpCategory::Expression, 211, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {161, "U32LessEqual", SdfOpCategory::Expression, 213, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {162, "U32Greater", SdfOpCategory::Expression, 215, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {163, "U32GreaterEqual", SdfOpCategory::Expression, 217, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
-    {164, "Q16Add", SdfOpCategory::Expression, 219, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
-    {165, "Q16Sub", SdfOpCategory::Expression, 221, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
-    {166, "Q16Mul", SdfOpCategory::Expression, 223, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
-    {167, "Q16Min", SdfOpCategory::Expression, 225, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
-    {168, "Q16Max", SdfOpCategory::Expression, 227, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
-    {169, "Q16Equal", SdfOpCategory::Expression, 229, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
-    {170, "Q16NotEqual", SdfOpCategory::Expression, 231, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
-    {171, "Q16Less", SdfOpCategory::Expression, 233, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
-    {172, "Q16LessEqual", SdfOpCategory::Expression, 235, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
-    {173, "Q16Greater", SdfOpCategory::Expression, 237, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
-    {174, "Q16GreaterEqual", SdfOpCategory::Expression, 239, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
-    {175, "FloatToQ16", SdfOpCategory::Expression, 241, 1, 1, 1, 0, 0, 0ull, 2ull, 0, 0},
-    {176, "Q16ToFloat", SdfOpCategory::Expression, 242, 1, 1, 1, 0, 0, 2ull, 0ull, 0, 0},
-    {177, "U32ToQ16", SdfOpCategory::Expression, 243, 1, 1, 1, 0, 0, 1ull, 2ull, 0, 0},
-    {178, "Q16ToU32", SdfOpCategory::Expression, 244, 1, 1, 1, 0, 0, 2ull, 1ull, 0, 0},
-    {179, "U32ToFloat", SdfOpCategory::Expression, 245, 1, 1, 1, 0, 0, 1ull, 0ull, 0, 0},
-    {180, "ReadParamU32", SdfOpCategory::Input, 246, 0, 0, 1, 0, 0, 0ull, 1ull, 0, 0},
-    {181, "ReadParamQ16", SdfOpCategory::Input, 246, 0, 0, 1, 0, 0, 0ull, 2ull, 0, 0},
-    {182, "GlyphOutline", SdfOpCategory::Primitive, 246, 2, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
-    {183, "PathDistance", SdfOpCategory::Primitive, 248, 2, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
+    {114, "ReadPort", SdfOpCategory::Input, 194, 1, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
+    {115, "SampleSurface", SdfOpCategory::Set, 195, 5, 0, 0, 0, 0, 0ull, 0ull, 0, 0},
+    {116, "Instance", SdfOpCategory::Input, 200, 5, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
+    {151, "Hash32", SdfOpCategory::Expression, 205, 1, 1, 1, 0, 0, 1ull, 1ull, 0, 0},
+    {152, "Hash32Combine", SdfOpCategory::Expression, 206, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {153, "U32Add", SdfOpCategory::Expression, 208, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {154, "U32Sub", SdfOpCategory::Expression, 210, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {155, "U32Mul", SdfOpCategory::Expression, 212, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {156, "U32Min", SdfOpCategory::Expression, 214, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {157, "U32Max", SdfOpCategory::Expression, 216, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {158, "U32Equal", SdfOpCategory::Expression, 218, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {159, "U32NotEqual", SdfOpCategory::Expression, 220, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {160, "U32Less", SdfOpCategory::Expression, 222, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {161, "U32LessEqual", SdfOpCategory::Expression, 224, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {162, "U32Greater", SdfOpCategory::Expression, 226, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {163, "U32GreaterEqual", SdfOpCategory::Expression, 228, 2, 2, 1, 0, 0, 5ull, 1ull, 0, 0},
+    {164, "Q16Add", SdfOpCategory::Expression, 230, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
+    {165, "Q16Sub", SdfOpCategory::Expression, 232, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
+    {166, "Q16Mul", SdfOpCategory::Expression, 234, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
+    {167, "Q16Min", SdfOpCategory::Expression, 236, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
+    {168, "Q16Max", SdfOpCategory::Expression, 238, 2, 2, 1, 0, 0, 10ull, 2ull, 0, 0},
+    {169, "Q16Equal", SdfOpCategory::Expression, 240, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
+    {170, "Q16NotEqual", SdfOpCategory::Expression, 242, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
+    {171, "Q16Less", SdfOpCategory::Expression, 244, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
+    {172, "Q16LessEqual", SdfOpCategory::Expression, 246, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
+    {173, "Q16Greater", SdfOpCategory::Expression, 248, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
+    {174, "Q16GreaterEqual", SdfOpCategory::Expression, 250, 2, 2, 1, 0, 0, 10ull, 1ull, 0, 0},
+    {175, "FloatToQ16", SdfOpCategory::Expression, 252, 1, 1, 1, 0, 0, 0ull, 2ull, 0, 0},
+    {176, "Q16ToFloat", SdfOpCategory::Expression, 253, 1, 1, 1, 0, 0, 2ull, 0ull, 0, 0},
+    {177, "U32ToQ16", SdfOpCategory::Expression, 254, 1, 1, 1, 0, 0, 1ull, 2ull, 0, 0},
+    {178, "Q16ToU32", SdfOpCategory::Expression, 255, 1, 1, 1, 0, 0, 2ull, 1ull, 0, 0},
+    {179, "U32ToFloat", SdfOpCategory::Expression, 256, 1, 1, 1, 0, 0, 1ull, 0ull, 0, 0},
+    {180, "ReadParamU32", SdfOpCategory::Input, 257, 0, 0, 1, 0, 0, 0ull, 1ull, 0, 0},
+    {181, "ReadParamQ16", SdfOpCategory::Input, 257, 0, 0, 1, 0, 0, 0ull, 2ull, 0, 0},
+    {182, "GlyphOutline", SdfOpCategory::Primitive, 257, 2, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
+    {183, "PathDistance", SdfOpCategory::Primitive, 259, 2, 0, 1, 0, 0, 0ull, 0ull, 0, 0},
 }};
-inline constexpr std::array<SdfLayerOp, 4> SdfLayerOpTable{{
+inline constexpr std::array<SdfLayerOp, 5> SdfLayerOpTable{{
     {0, "Union", SdfOpCode::Union},
     {1, "SmoothUnion", SdfOpCode::SmoothUnion},
     {2, "Subtract", SdfOpCode::Subtract},
     {3, "Intersect", SdfOpCode::Intersect},
+    {4, "Provide", static_cast<SdfOpCode>(255)},
 }};
 inline const SdfOpInfo* FindSdfOpInfo(SdfOpCode op) noexcept {
     for (const auto& entry : SdfOpInfoTable) if (entry.opcode == static_cast<std::uint8_t>(op)) return &entry;
@@ -690,11 +711,11 @@ inline const SdfLayerOp* FindSdfLayerOp(std::uint8_t layerOp) noexcept {
     for (const auto& entry : SdfLayerOpTable) if (entry.layerOp == layerOp) return &entry;
     return nullptr;
 }
-enum class SdfGraphValueType : std::uint8_t { Float = 0, U32 = 1, Q16_16 = 2, Unknown = 255 };
-enum class SdfGraphInputSource : std::uint8_t { LayerInput, Unbound, NodeOutput };
+enum class SdfGraphValueType : std::uint8_t { Float = 0, U32 = 1, Q16_16 = 2, Field = 3, Scalar = 4, Vector = 5, Channel = 6, Set = 7, Grid = 8, Unknown = 255 };
+enum class SdfGraphInputSource : std::uint8_t { LayerInput, Unbound, NodeOutput, LayerPort };
 enum class SdfGraphDiagnosticCode : std::uint8_t { None, UnknownOpcode, ValueStackUnderflow, ValueStackLeftover, ValueTypeMismatch, PositionStackUnderflow, UnbalancedDomainFrame, ArgumentOutOfRange, BufferTooSmall, InvalidEdit, DanglingSocket };
 struct SdfGraphDiagnostic { SdfGraphDiagnosticCode code; std::uint32_t instructionIndex; const char* argumentName; SdfGraphValueType expected; SdfGraphValueType actual; };
-struct SdfGraphInputSocket { SdfGraphInputSource source; std::int32_t sourceNode; std::int8_t sourceOutput; SdfGraphValueType expected; SdfGraphValueType actual; };
+struct SdfGraphInputSocket { SdfGraphInputSource source; std::int32_t sourceNode; std::int8_t sourceOutput; SdfGraphValueType expected; SdfGraphValueType actual; std::uint32_t sourceLayerId; const char* sourcePort; };
 struct SdfGraphOutputSocket { SdfGraphValueType type; };
 struct SdfGraphNode { std::uint32_t instructionIndex; std::uint8_t opcode; const SdfOpInfo* opcodeInfo; std::uint32_t firstInput; std::uint8_t inputCount; std::uint32_t firstOutput; std::uint8_t outputCount; std::int32_t domainFrame; };
 struct SdfGraphBuffers { std::span<SdfGraphNode> nodes; std::span<SdfGraphInputSocket> inputs; std::span<SdfGraphOutputSocket> outputs; };

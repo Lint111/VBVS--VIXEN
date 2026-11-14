@@ -1,6 +1,13 @@
 #pragma once
 #include <cstdint>
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#endif
 #include "generated/SdfOpCodes.g.h"   // codegen-mirror of C# SDFOpCode; namespace Vixen::SVO::Recipe
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 #include "generated/RecipeContainer.g.h"  // codegen-emitted reader; namespace Yeroket::Sdf::Generated
 
 namespace Vixen::SVO::Recipe {
