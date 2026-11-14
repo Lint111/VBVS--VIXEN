@@ -19,7 +19,7 @@ PARTIAL / STOPPED ON THE NATIVE-HUD REFERENCE ROUTE. The d9 opcode coupling is u
 
 ## NATIVE BOOT
 
-- Provider resolution used the local launcher row `6f53334e2` and exact d9 kernel root `597757236`; the published VIXEN/KFR waves were reachable after controller fast-forward.
+- Provider resolution used the local launcher row `6f53334e2` and exact d9 kernel root `597757236`; the published VIXEN/KFR waves were reachable after controller fast-forward. No launcher-main remote reachability was needed: `UNDERSET_LAUNCHER_ROOT` resolved the local d9 launcher row for this witness.
 - Initial stage red: the exact clean d9 row had stale batch-owned generated content (`Codec.g.cs` v181 versus a generated `BakedRenderRecipeDef` requiring `renderJob`), producing `CS7036` at `core/src/Undertow.Content/Codec.g.cs:7690`. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1794686031-build-cx-opcodeown2-r2:native-boot-stage.log`.
 - Recovery: normal queued `check-content-codegen.sh --write` regenerated 246/246 jobs (`OK 246 / STALE 0 / FAILED 0 / SKIPPED 0`), then the boot graph passed. The generated materialization was restored afterward; Undertow is clean at exact `50ec5098e8` and no follow-up Undertow commit is claimed.
 - Final graph: native stage 25/25; native Release build 835/835; products 73 files digest `05d45236bbefdb70`; default CTest 12/12; composition CTest 13/13; fixtures 15/15; default and composition each ran 3 frames with no blocked lifecycle arms. Summary log: `/home/liory/.local/state/undertow/undertow-box-logs/1794687610-short-cx-opcodeown2-r2:native-boot-summary.log`.
