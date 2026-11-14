@@ -8,7 +8,7 @@
 
 namespace Vixen::Views {
 
-struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; float blendRadius; Rml::String blendUpId; Rml::String blendDownId; Rml::String selectId; bool isSelected; Rml::String blendValueId; Rml::String providesMark; Rml::String readsMark; Rml::String readByMark; Rml::String dependencyTitle; Rml::String provideId; Rml::String soloId; bool isSolo; };
+struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; float blendRadius; Rml::String blendUpId; Rml::String blendDownId; Rml::String selectId; bool isSelected; Rml::String blendValueId; Rml::String providesMark; Rml::String readsMark; Rml::String readByMark; Rml::String dependencyTitle; Rml::String provideId; Rml::String soloId; bool isSolo; Rml::String warningMark; Rml::String warningTitle; Rml::String diagnostic; };
 struct EditorParameterRow { Rml::String name; Rml::String unit; Rml::String upId; Rml::String downId; float value; float minimum; float maximum; Rml::String setId; };
 struct EditorTransformRow { Rml::String label; float value; Rml::String upId; Rml::String downId; Rml::String valueId; };
 struct EditorPrimitiveRow { Rml::String name; Rml::String display; Rml::String category; Rml::String elementId; };
@@ -16,8 +16,10 @@ struct EditorLayerOpRow { Rml::String name; Rml::String elementId; bool isCurren
 struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool hasDefault; bool isDefault; Rml::String resetId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorPackRecipeRow { Rml::String id; Rml::String elementId; };
-struct EditorNodeRow { int nodeIndex; Rml::String name; Rml::String category; Rml::String addOp; Rml::String summary; Rml::String elementId; Rml::String addId; Rml::String removeId; Rml::String toggleId; bool canRemove; bool isExpanded; Rml::String addReason; Rml::String removeReason; Rml::String removeTitle; int indent; };
-struct EditorNodeArgumentRow { int nodeIndex; Rml::String field; Rml::String component; Rml::String label; float value; bool hasRange; float minimum; float maximum; float defaultValue; bool hasDefault; bool isDefault; Rml::String valueId; Rml::String upId; Rml::String downId; Rml::String resetId; };
+struct EditorNodeRow { int nodeIndex; Rml::String name; Rml::String category; Rml::String addOp; Rml::String summary; Rml::String elementId; Rml::String addId; Rml::String removeId; Rml::String toggleId; bool canRemove; bool isExpanded; Rml::String addReason; Rml::String removeReason; Rml::String removeTitle; int indent; Rml::String warning; };
+struct EditorNodeArgumentRow { int nodeIndex; Rml::String field; Rml::String component; Rml::String label; float value; bool hasRange; float minimum; float maximum; float defaultValue; bool hasDefault; bool isDefault; Rml::String valueId; Rml::String upId; Rml::String downId; Rml::String resetId; bool isPort; Rml::String portType; Rml::String portEmptyReason; };
+struct EditorNodePortChoiceRow { int nodeIndex; Rml::String argument; Rml::String label; Rml::String elementId; Rml::String removeId; bool isSelected; };
+struct EditorReadPortChoiceRow { int nodeIndex; Rml::String argument; Rml::String label; Rml::String elementId; Rml::String removeId; bool isSelected; };
 struct EditorNodeWrapRow { int firstNode; int lastNode; Rml::String op; Rml::String label; Rml::String elementId; };
 struct EditorNodeChoiceRow { Rml::String name; Rml::String display; Rml::String category; Rml::String elementId; };
 struct EditorLayersBind {
@@ -37,9 +39,12 @@ struct EditorLayersBind {
     std::vector<EditorPackRecipeRow>* packRecipes;
     std::vector<EditorNodeRow>* nodes;
     std::vector<EditorNodeArgumentRow>* nodeArguments;
+    std::vector<EditorNodePortChoiceRow>* portChoices;
+    std::vector<EditorReadPortChoiceRow>* readPortChoices;
     std::vector<EditorNodeWrapRow>* nodeWrapChoices;
     std::vector<EditorNodeChoiceRow>* nodeChoices;
     bool* nodePickerActive;
+    Rml::String* readPortEmptyReason;
     bool* rawProgram;
     Rml::String* rawProgramDiagnostic;
     Rml::String* statusDocument;
@@ -73,6 +78,9 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("provideId", &EditorLayerRow::provideId);
         sh.RegisterMember("soloId", &EditorLayerRow::soloId);
         sh.RegisterMember("isSolo", &EditorLayerRow::isSolo);
+        sh.RegisterMember("warningMark", &EditorLayerRow::warningMark);
+        sh.RegisterMember("warningTitle", &EditorLayerRow::warningTitle);
+        sh.RegisterMember("diagnostic", &EditorLayerRow::diagnostic);
     }
     if (auto sh = c.RegisterStruct<EditorParameterRow>()) {
         sh.RegisterMember("name", &EditorParameterRow::name);
@@ -141,6 +149,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("removeReason", &EditorNodeRow::removeReason);
         sh.RegisterMember("removeTitle", &EditorNodeRow::removeTitle);
         sh.RegisterMember("indent", &EditorNodeRow::indent);
+        sh.RegisterMember("warning", &EditorNodeRow::warning);
     }
     if (auto sh = c.RegisterStruct<EditorNodeArgumentRow>()) {
         sh.RegisterMember("nodeIndex", &EditorNodeArgumentRow::nodeIndex);
@@ -158,6 +167,25 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("upId", &EditorNodeArgumentRow::upId);
         sh.RegisterMember("downId", &EditorNodeArgumentRow::downId);
         sh.RegisterMember("resetId", &EditorNodeArgumentRow::resetId);
+        sh.RegisterMember("isPort", &EditorNodeArgumentRow::isPort);
+        sh.RegisterMember("portType", &EditorNodeArgumentRow::portType);
+        sh.RegisterMember("portEmptyReason", &EditorNodeArgumentRow::portEmptyReason);
+    }
+    if (auto sh = c.RegisterStruct<EditorNodePortChoiceRow>()) {
+        sh.RegisterMember("nodeIndex", &EditorNodePortChoiceRow::nodeIndex);
+        sh.RegisterMember("argument", &EditorNodePortChoiceRow::argument);
+        sh.RegisterMember("label", &EditorNodePortChoiceRow::label);
+        sh.RegisterMember("elementId", &EditorNodePortChoiceRow::elementId);
+        sh.RegisterMember("removeId", &EditorNodePortChoiceRow::removeId);
+        sh.RegisterMember("isSelected", &EditorNodePortChoiceRow::isSelected);
+    }
+    if (auto sh = c.RegisterStruct<EditorReadPortChoiceRow>()) {
+        sh.RegisterMember("nodeIndex", &EditorReadPortChoiceRow::nodeIndex);
+        sh.RegisterMember("argument", &EditorReadPortChoiceRow::argument);
+        sh.RegisterMember("label", &EditorReadPortChoiceRow::label);
+        sh.RegisterMember("elementId", &EditorReadPortChoiceRow::elementId);
+        sh.RegisterMember("removeId", &EditorReadPortChoiceRow::removeId);
+        sh.RegisterMember("isSelected", &EditorReadPortChoiceRow::isSelected);
     }
     if (auto sh = c.RegisterStruct<EditorNodeWrapRow>()) {
         sh.RegisterMember("firstNode", &EditorNodeWrapRow::firstNode);
@@ -182,6 +210,8 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.RegisterArray<std::vector<EditorPackRecipeRow>>();
     c.RegisterArray<std::vector<EditorNodeRow>>();
     c.RegisterArray<std::vector<EditorNodeArgumentRow>>();
+    c.RegisterArray<std::vector<EditorNodePortChoiceRow>>();
+    c.RegisterArray<std::vector<EditorReadPortChoiceRow>>();
     c.RegisterArray<std::vector<EditorNodeWrapRow>>();
     c.RegisterArray<std::vector<EditorNodeChoiceRow>>();
     c.Bind("layers", b.layers);
@@ -200,9 +230,12 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.Bind("packRecipes", b.packRecipes);
     c.Bind("nodes", b.nodes);
     c.Bind("nodeArguments", b.nodeArguments);
+    c.Bind("portChoices", b.portChoices);
+    c.Bind("readPortChoices", b.readPortChoices);
     c.Bind("nodeWrapChoices", b.nodeWrapChoices);
     c.Bind("nodeChoices", b.nodeChoices);
     c.Bind("nodePickerActive", b.nodePickerActive);
+    c.Bind("readPortEmptyReason", b.readPortEmptyReason);
     c.Bind("rawProgram", b.rawProgram);
     c.Bind("rawProgramDiagnostic", b.rawProgramDiagnostic);
     c.Bind("statusDocument", b.statusDocument);

@@ -243,6 +243,8 @@ private:
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
     std::string lastEditorError_;
     std::string lastEditorDiagnosticCode_;
+    uint32_t lastLayerDiagnosticId_ = 0;
+    std::string lastLayerDiagnostic_;
     Vixen::EventBus::MessageBus* appFlowBus_ = nullptr;
     std::string lastSavedPath_;
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastSavedProgram_;

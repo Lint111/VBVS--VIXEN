@@ -37,6 +37,9 @@ namespace Vixen.ViewSchemas
         public string provideId;
         public string soloId;
         public bool isSolo;
+        public string warningMark;
+        public string warningTitle;
+        public string diagnostic;
     }
 
     // E3: one placement field (position/rotation/scale axis) of the selected layer, with its stepper ids.
@@ -132,6 +135,7 @@ namespace Vixen.ViewSchemas
         public string removeReason;
         public string removeTitle;
         public int indent;
+        public string warning;
     }
 
     public struct EditorNodeArgumentRow {
@@ -150,6 +154,27 @@ namespace Vixen.ViewSchemas
         public string upId;
         public string downId;
         public string resetId;
+        public bool isPort;
+        public string portType;
+        public string portEmptyReason;
+    }
+
+    public struct EditorNodePortChoiceRow {
+        public int nodeIndex;
+        public string argument;
+        public string label;
+        public string elementId;
+        public string removeId;
+        public bool isSelected;
+    }
+
+    public struct EditorReadPortChoiceRow {
+        public int nodeIndex;
+        public string argument;
+        public string label;
+        public string elementId;
+        public string removeId;
+        public bool isSelected;
     }
 
     public struct EditorNodeWrapRow {
@@ -216,9 +241,12 @@ namespace Vixen.ViewSchemas
         // node controls; valid programs expose generated nodes and catalogue-backed arguments.
         [ViewSection(Layout = ViewLayout.Aos)] public EditorNodeRow[] nodes;
         [ViewSection(Layout = ViewLayout.Aos)] public EditorNodeArgumentRow[] nodeArguments;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorNodePortChoiceRow[] portChoices;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorReadPortChoiceRow[] readPortChoices;
         [ViewSection(Layout = ViewLayout.Aos)] public EditorNodeWrapRow[] nodeWrapChoices;
         [ViewSection(Layout = ViewLayout.Aos)] public EditorNodeChoiceRow[] nodeChoices;
         public bool nodePickerActive;
+        public string readPortEmptyReason;
         public bool rawProgram;
         public string rawProgramDiagnostic;
 

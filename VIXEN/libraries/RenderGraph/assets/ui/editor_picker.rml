@@ -13,6 +13,14 @@
     <ut-flyout data-model="editor_layers">
         <ut-text-field autofocus="autofocus" id="picker-filter-{filter}" data-value="pickerFilter"/>
         <div class="picker-section" data-if="nodePickerActive">
+            <div class="picker-section-title">Read from layer</div>
+            <div class="hint picker-hint" data-if="readPortChoices.size == 0">{{readPortEmptyReason}}</div>
+            <ut-list class="picker-rows">
+                <ut-button variant="row" data-for="item : readPortChoices" data-attr-id="item.elementId"
+                           data-attr-label="item.label"> </ut-button>
+            </ut-list>
+        </div>
+        <div class="picker-section" data-if="nodePickerActive">
             <div class="picker-section-title">Insert after node</div>
             <div class="hint picker-hint" data-if="nodeChoices.size == 0">No compatible operations match "{{pickerFilter}}".</div>
             <ut-list class="fill picker-rows">

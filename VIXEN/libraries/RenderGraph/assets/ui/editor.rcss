@@ -152,6 +152,34 @@ body.picker {
     border-color: #506090;
 }
 
+.node-warning,
+.layer-diagnostic {
+    color: #f0bd68;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.node-port {
+    display: block;
+    margin: 2px 0 3px 20px;
+}
+
+.node-port-choices {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+
+.node-port-selected {
+    color: #b8d7ff;
+    padding: 2px 4px;
+}
+
+.node-port-clear {
+    flex: 0 0 auto;
+}
+
 /* R765: pack recipe list -- one button per layered document; the open one is highlighted. */
 .recipe-row {
     display: block;

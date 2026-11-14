@@ -221,6 +221,9 @@ public:
                  DocumentDiagnostic& diagnostic);
     bool RemoveWire(uint32_t readerLayerId, const std::string& input,
                     DocumentDiagnostic& diagnostic);
+    // Exact inverse seam for a structural graph edit that removes a ReadPort node. The editor
+    // action stack restores the authored wire order together with the prior program snapshot.
+    bool RestoreWires(const std::vector<LayerWire>& wires, DocumentDiagnostic& diagnostic);
     bool InsertPortRead(uint32_t layerId, uint32_t afterNode, const std::string& source,
                         DocumentDiagnostic& diagnostic);
     // Solo is presentation state: it never changes revision, serialization, or the undo stack.

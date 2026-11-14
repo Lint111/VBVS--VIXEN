@@ -27,6 +27,7 @@
                                    data-attr-label="node.nodeIndex + '  ' + node.name + '  (' + node.category + ')'"
                                    data-attr-open="node.isExpanded" data-attr-title="node.summary" tabindex="0"> </ut-disclosure>
                     <div class="node-summary">{{node.summary}}</div>
+                    <div class="node-warning" data-if="node.warning != ''">{{node.warning}}</div>
                     <div class="node-actions">
                         <ut-button class="node-action" data-attr-id="node.addId" label="+"
                                    data-attr-disabled="node.addOp == ''"
@@ -38,12 +39,27 @@
                     </div>
                 </div>
                 <div class="node-fields" data-if="node.isExpanded">
-                    <ut-number-field data-for="field : nodeArguments" data-if="field.nodeIndex == node.nodeIndex"
+                    <ut-number-field data-for="field : nodeArguments" data-if="field.nodeIndex == node.nodeIndex &amp;&amp; !field.isPort"
                                      data-attr-label="field.label" data-attr-value="field.value"
                                      data-attr-value-id="field.valueId" data-attr-reset-id="field.resetId"
                                      data-attr-default="field.defaultValue"
                                      data-attr-min="field.hasRange ? field.minimum : ''"
                                      data-attr-max="field.hasRange ? field.maximum : ''"> </ut-number-field>
+                    <div class="node-port" data-for="field : nodeArguments"
+                         data-if="field.nodeIndex == node.nodeIndex &amp;&amp; field.isPort">
+                        <span class="ut-field-label">{{field.label}} ({{field.portType}})</span>
+                        <div class="node-port-choices">
+                            <span class="node-port-selected" data-for="port : portChoices"
+                                  data-if="port.nodeIndex == field.nodeIndex &amp;&amp; port.argument == field.field &amp;&amp; port.isSelected">{{port.label}}</span>
+                            <ut-button variant="row" data-for="port : portChoices"
+                                       data-if="port.nodeIndex == field.nodeIndex &amp;&amp; port.argument == field.field &amp;&amp; !port.isSelected"
+                                       data-attr-id="port.elementId" data-attr-label="port.label"> </ut-button>
+                            <ut-button class="node-port-clear" data-for="port : portChoices"
+                                       data-if="port.nodeIndex == field.nodeIndex &amp;&amp; port.argument == field.field &amp;&amp; port.isSelected"
+                                       data-attr-id="port.removeId" label="clear"> </ut-button>
+                        </div>
+                        <div class="hint" data-if="field.portEmptyReason != ''">{{field.portEmptyReason}}</div>
+                    </div>
                 </div>
             </div>
         </ut-list>

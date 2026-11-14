@@ -80,6 +80,57 @@ bool IsRecipeInstruction(const std::vector<SdfInstruction>& program, uint32_t& t
     return true;
 }
 
+bool IsWireIndexedArgument(Vixen::SVO::Recipe::SdfArgumentSource source) {
+    using Source = Vixen::SVO::Recipe::SdfArgumentSource;
+    return source == Source::FieldPort || source == Source::SetPort;
+}
+
+void RewriteWireIndices(std::vector<EditableDocumentLayer>& layers, size_t removedIndex) {
+    for (auto& layer : layers) {
+        for (auto& instruction : layer.program) {
+            const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(
+                static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode));
+            if (info == nullptr) continue;
+            if (static_cast<SdfOpCode>(instruction.opCode) == SdfOpCode::ReadPort) {
+                const float raw = instruction.data[0];
+                if (std::isfinite(raw) && raw >= 0.0f && std::floor(raw) == raw) {
+                    const size_t index = static_cast<size_t>(raw);
+                    if (index == removedIndex) instruction.data[0] = 0.0f;
+                    else if (index > removedIndex) instruction.data[0] = static_cast<float>(index - 1u);
+                }
+            }
+            const auto* args = Vixen::SVO::Recipe::SdfOpArguments(*info);
+            for (uint32_t i = 0; i < info->argumentCount; ++i) {
+                if (!IsWireIndexedArgument(args[i].source)) continue;
+                const float raw = instruction.data[args[i].offset];
+                if (!std::isfinite(raw) || raw < 0.0f || std::floor(raw) != raw) continue;
+                const size_t index = static_cast<size_t>(raw);
+                if (index == removedIndex) instruction.data[args[i].offset] = 0.0f;
+                else if (index > removedIndex) instruction.data[args[i].offset] = static_cast<float>(index - 1u);
+            }
+        }
+    }
+}
+
+void BindWireIndex(std::vector<EditableDocumentLayer>& layers, uint32_t readerIndex,
+                   std::string_view input, size_t wireIndex) {
+    if (readerIndex >= layers.size()) return;
+    for (auto& instruction : layers[readerIndex].program) {
+        const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(
+            static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode));
+        if (info == nullptr) continue;
+        if (input == "read" && static_cast<SdfOpCode>(instruction.opCode) == SdfOpCode::ReadPort) {
+            instruction.data[0] = static_cast<float>(wireIndex);
+        }
+        const auto* args = Vixen::SVO::Recipe::SdfOpArguments(*info);
+        for (uint32_t i = 0; i < info->argumentCount; ++i) {
+            if (IsWireIndexedArgument(args[i].source) && input == args[i].name) {
+                instruction.data[args[i].offset] = static_cast<float>(wireIndex);
+            }
+        }
+    }
+}
+
 constexpr float kDegreesToRadians = 0.017453292519943295f;
 constexpr float kRadiansToDegrees = 57.29577951308232f;
 
@@ -1446,12 +1497,15 @@ bool EditorDocumentModel::AddWire(uint32_t readerLayerId, const std::string& inp
     }
     const auto saved = wires_;
     const LayerPortKind wireKind = portKind == LayerPortKind::Unknown ? inputKind : portKind;
+    auto candidateLayers = CopyLayers();
+    const size_t wireIndex = wires_.size();
     wires_.push_back(LayerWire{readerLayerId, sourceLayerId,
                                wireKind == LayerPortKind::Unknown ? LayerPortKind::Field : wireKind,
                                input, port});
+    BindWireIndex(candidateLayers, readerIndex, input, wireIndex);
     const bool oldV5 = v5FeaturesUsed_;
     v5FeaturesUsed_ = true;
-    if (Rebuild(CopyLayers(), CopyParameters(), enabledMask_, diagnostic)) return true;
+    if (Rebuild(std::move(candidateLayers), CopyParameters(), enabledMask_, diagnostic)) return true;
     wires_ = saved;
     v5FeaturesUsed_ = oldV5;
     return false;
@@ -1470,9 +1524,25 @@ bool EditorDocumentModel::RemoveWire(uint32_t readerLayerId, const std::string& 
         return false;
     }
     const auto saved = wires_;
+    const size_t removedIndex = static_cast<size_t>(found - wires_.begin());
+    auto candidateLayers = CopyLayers();
     wires_.erase(found);
+    RewriteWireIndices(candidateLayers, removedIndex);
+    if (Rebuild(std::move(candidateLayers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    wires_ = saved;
+    return false;
+}
+
+bool EditorDocumentModel::RestoreWires(const std::vector<LayerWire>& wires,
+                                       DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const auto saved = wires_;
+    wires_ = wires;
+    const bool oldV5 = v5FeaturesUsed_;
+    v5FeaturesUsed_ = oldV5 || !wires.empty();
     if (Rebuild(CopyLayers(), CopyParameters(), enabledMask_, diagnostic)) return true;
     wires_ = saved;
+    v5FeaturesUsed_ = oldV5;
     return false;
 }
 
@@ -2032,7 +2102,24 @@ bool EditorDocumentModel::RemoveNode(uint32_t layerIndex, uint32_t nodeIndex,
         return false;
     }
     candidate.resize(candidateCount);
-    return SetLayerProgram(layerIndex, candidate, diagnostic);
+    const bool removesPortRead = static_cast<SdfOpCode>(
+        program[graph->view.nodes[nodeIndex].instructionIndex].opCode) == SdfOpCode::ReadPort;
+    const auto savedWires = wires_;
+    size_t removedWire = wires_.size();
+    if (removesPortRead) {
+        const float rawWire = program[graph->view.nodes[nodeIndex].instructionIndex].data[0];
+        if (std::isfinite(rawWire) && rawWire >= 0.0f && std::floor(rawWire) == rawWire &&
+            rawWire < static_cast<float>(wires_.size())) {
+            removedWire = static_cast<size_t>(rawWire);
+            wires_.erase(wires_.begin() + static_cast<std::ptrdiff_t>(removedWire));
+        }
+    }
+    auto candidateLayers = CopyLayers();
+    candidateLayers[layerIndex].program = std::move(candidate);
+    if (removedWire != savedWires.size()) RewriteWireIndices(candidateLayers, removedWire);
+    if (Rebuild(std::move(candidateLayers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    wires_ = savedWires;
+    return false;
 }
 
 bool EditorDocumentModel::WrapNodes(uint32_t layerIndex, uint32_t firstNode, uint32_t lastNode,
