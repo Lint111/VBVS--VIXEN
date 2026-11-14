@@ -378,7 +378,7 @@ private:
             {
                 SetText(Part("label"), Attr("label"));
                 const bool open = Truthy(Attr("open"));
-                SetText(Part("marker"), open ? "▾" : "▸");
+                SetText(Part("marker"), open ? "v" : ">");
                 SetClass("open", open);
                 RefreshActionState();
                 break;

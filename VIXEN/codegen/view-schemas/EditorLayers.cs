@@ -141,6 +141,8 @@ namespace Vixen.ViewSchemas
         public string removeTitle;
         public int indent;
         public string warning;
+        public string materialName;
+        public string materialColor;
     }
 
     public struct EditorNodeArgumentRow {
@@ -205,6 +207,7 @@ namespace Vixen.ViewSchemas
         public string elementId;
         public string defaultId;
         public string color;
+        public string coverage;
     }
 
     // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML

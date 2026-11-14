@@ -97,7 +97,7 @@ public:
             row.selectId = "layer-" + std::to_string(i) + "-select";
             row.blendValueId = "layer-" + std::to_string(i) + "-blend-{radius}";
             row.isSelected = static_cast<int>(i) == placement.selectedLayer;
-            row.providesMark = layerData[i].provides ? "↗" : "";
+            row.providesMark = layerData[i].provides ? "P" : "";
             row.readsMark = Rml::String(layerData[i].readsMark);
             row.readByMark = Rml::String(layerData[i].readByMark);
             row.dependencyTitle = Rml::String(layerData[i].dependencyTitle);
@@ -217,6 +217,8 @@ public:
                 row.removeTitle = Rml::String(node.removeTitle);
                 row.indent = node.indent;
                 row.warning = Rml::String(node.warning);
+                row.materialName = Rml::String(node.materialName);
+                row.materialColor = Rml::String(node.materialColor);
                 nodes_.push_back(std::move(row));
             }
             nodeArguments_.reserve(graph.arguments.size());
@@ -385,6 +387,7 @@ public:
             row.elementId = Rml::String(material.elementId);
             row.defaultId = Rml::String(material.defaultId);
             row.color = Rml::String(material.color);
+            row.coverage = Rml::String(material.coverage);
             materials_.push_back(std::move(row));
         }
         if (model_) model_.DirtyVariable("materials");

@@ -54,6 +54,51 @@ body.layers {
     overflow: hidden;
 }
 
+/* The two document summaries are pinned, single-line rows. Their detail is available while the
+   row has focus (or is hovered) without turning the layer list into an eight-row material menu. */
+body.layers .inputs-pinned,
+body.layers .outputs-pinned {
+    flex: none;
+    max-height: 24px;
+    overflow: hidden;
+    border-bottom-width: 1px;
+    border-color: #303050;
+    padding: 2px 0;
+}
+body.layers .inputs-pinned:hover,
+body.layers .inputs-pinned:focus-within,
+body.layers .outputs-pinned:hover,
+body.layers .outputs-pinned:focus-within {
+    max-height: 180px;
+    overflow-y: auto;
+}
+.section-summary {
+    display: block;
+    min-height: 18px;
+    color: #90c0ff;
+    font-size: 13px;
+    line-height: 18px;
+}
+.section-count, .section-detail { color: #a0b0d0; font-size: 12px; }
+.material-coverage, .default-material-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    min-height: 20px;
+    color: #a0b0d0;
+    font-size: 12px;
+}
+.material-chip, .node-material-chip {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 5px;
+    color: #f0f2ff;
+    background-color: var(--material-color, #506090);
+    border-width: 1px;
+    border-color: #7f90c0;
+}
+.node-material-chip { flex: 0 0 auto; margin-top: 4px; font-size: 11px; }
+
 /* The Add flyout: a filter field above the matching catalogue primitives (R872.1 rows, ranked by match). */
 body.picker {
     overflow: hidden;
@@ -213,3 +258,19 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
     color: #a0b0d0;
     font-size: 12px;
 }
+
+body.layers .ut-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    min-height: 24px;
+    margin-top: 3px;
+    overflow: hidden;
+}
+body.layers .ut-row > ut-toggle { flex: 0 0 auto; }
+body.layers .ut-row > ut-button.name { flex: 0 1 92px; width: auto; min-width: 54px; overflow: hidden; white-space: nowrap; }
+body.layers .ut-row > .col-op { flex: 0 1 70px; min-width: 38px; overflow: hidden; white-space: nowrap; }
+body.layers .dependency-mark { flex: 0 0 auto; min-width: 34px; color: #9fb0d0; white-space: nowrap; }
+body.layers .layer-provide, body.layers .layer-solo { flex: 0 0 auto; }
+body.layers .layer-diagnostic { flex: 0 1 auto; overflow: hidden; white-space: nowrap; }

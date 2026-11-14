@@ -26,6 +26,8 @@
                     <ut-disclosure class="node-toggle" data-attr-id="node.toggleId"
                                    data-attr-label="node.nodeIndex + '  ' + node.name + '  (' + node.category + ')'"
                                    data-attr-open="node.isExpanded" data-attr-title="node.summary" tabindex="0"> </ut-disclosure>
+                    <span class="node-material-chip" data-if="node.materialName != ''"
+                          data-attr-style="'--material-color: ' + node.materialColor">{{node.materialName}}</span>
                     <div class="node-summary">{{node.summary}}</div>
                     <div class="node-warning" data-if="node.warning != ''">{{node.warning}}</div>
                     <div class="node-actions">
@@ -33,7 +35,7 @@
                                    data-attr-disabled="node.addOp == ''"
                                    data-attr-title="node.addReason == '' ? 'add ' + node.addOp : node.addReason"
                                    data-attr-reason="node.addReason"> </ut-button>
-                        <ut-button class="node-action" data-attr-id="node.removeId" label="×"
+                        <ut-button class="node-action" data-attr-id="node.removeId" label="x"
                                    data-attr-disabled="!node.canRemove" data-attr-title="node.removeTitle"
                                    data-attr-reason="node.removeReason"> </ut-button>
                     </div>
@@ -70,7 +72,7 @@
                 <ut-button data-if="row.materialClearId != ''" data-attr-id="row.materialClearId" label="clear"> </ut-button>
             </div>
         </div>
-        <ut-choice-group label="wrap in…" data-if="!rawProgram">
+        <ut-choice-group label="wrap in..." data-if="!rawProgram">
             <ut-button data-for="choice : nodeWrapChoices" data-attr-id="choice.elementId"
                        data-attr-label="choice.label" data-attr-title="'wrap nodes in ' + choice.label"> </ut-button>
         </ut-choice-group>

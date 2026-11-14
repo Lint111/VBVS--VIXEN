@@ -49,6 +49,15 @@ namespace Vixen::App { class EditorLayersView; }
 namespace Vixen::RenderGraph { class CameraNode; }
 namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 
+// A read-only projection of the material-id output captured during the latest stored bake.
+// Keeping the counts beside the bake result means the Outputs row is measured from the same
+// VRC1-side data that drives the stored instance, rather than from authored references or a
+// second approximation.
+struct EditorMaterialCoverageSnapshot {
+    std::unordered_map<uint32_t, uint64_t> counts;
+    uint64_t totalSurfaceSamples = 0;
+};
+
 class EditorApplication : public VulkanGraphApplication {
 public:
     // documentPath: .vxd to load. Empty = caller must call LoadDocument() before Prepare().
@@ -265,6 +274,7 @@ private:
     // EditorDocumentModel and resolve through this table at flatten time.
     std::vector<MaterialRow> materialRows_;
     std::string defaultMaterial_;
+    std::shared_ptr<const EditorMaterialCoverageSnapshot> materialCoverage_;
     std::unordered_map<std::string, uint32_t> packRecipeRegistryIds_;
     std::unordered_map<uint32_t, Vixen::SVO::RecipeRegistry::RecipeEntry> packRecipeEntries_;
     std::unordered_set<std::string> unavailablePackReferences_;

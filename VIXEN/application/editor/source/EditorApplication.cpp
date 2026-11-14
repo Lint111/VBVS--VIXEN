@@ -33,6 +33,7 @@
 #include <stb_image_write.h>
 
 #include <cstdlib>
+#include <atomic>
 #include <charconv>
 #include <algorithm>
 #include <array>
@@ -228,6 +229,41 @@ std::string MaterialColorHex(uint32_t srgbColor) {
     return buffer;
 }
 
+std::shared_ptr<const EditorMaterialCoverageSnapshot> MeasureMaterialCoverage(
+    const Vixen::SVO::BakedRecipeOutputSet& output) {
+    auto snapshot = std::make_shared<EditorMaterialCoverageSnapshot>();
+    const Vixen::SVO::Recipe::RecipeOutputDescriptor* distance = nullptr;
+    const Vixen::SVO::Recipe::RecipeOutputDescriptor* material = nullptr;
+    for (const auto& descriptor : output.outputs) {
+        const auto* spec = Vixen::SVO::FindRecipeOutputChannel(descriptor.channel);
+        if (spec == nullptr) continue;
+        if (spec->fieldKind == Vixen::SVO::FK_DISTANCE) distance = &descriptor;
+        if (spec->semantic == Vixen::SVO::SEM_MATERIAL_ID) material = &descriptor;
+    }
+    if (distance == nullptr || material == nullptr || output.resolution <= 0) return snapshot;
+
+    for (int z = 0; z < output.resolution; ++z) {
+        for (int y = 0; y < output.resolution; ++y) {
+            for (int x = 0; x < output.resolution; ++x) {
+                const float* values = output.sample({x, y, z});
+                if (values == nullptr || !std::isfinite(values[distance->valueOffset]) ||
+                    std::abs(values[distance->valueOffset]) > 0.5f) continue;
+                const float rawMaterial = values[material->valueOffset];
+                if (!std::isfinite(rawMaterial) || rawMaterial < 0.0f ||
+                    std::floor(rawMaterial) != rawMaterial) continue;
+                ++snapshot->counts[static_cast<uint32_t>(rawMaterial)];
+                ++snapshot->totalSurfaceSamples;
+            }
+        }
+    }
+    return snapshot;
+}
+
+std::string CoveragePercent(uint64_t count, uint64_t total) {
+    if (total == 0u) return {};
+    return std::to_string((count * 100u + total / 2u) / total) + "%";
+}
+
 // One stepper click of the E3 layer fields (the same fixed-step shape as the program-field buttons).
 constexpr float kBlendStep = 0.25f;
 constexpr float kPrimitiveStep = 0.25f;
@@ -415,12 +451,12 @@ void EditorApplication::RefreshLayersView() {
             }
             return text;
         };
-        row.readsMark = reads.empty() ? "" : "← " + std::to_string(reads.size());
-        row.readByMark = readBy.empty() ? "" : "→ " + std::to_string(readBy.size());
+        row.readsMark = reads.empty() ? "" : "R " + std::to_string(reads.size());
+        row.readByMark = readBy.empty() ? "" : "B " + std::to_string(readBy.size());
         row.dependencyTitle = "reads: " + (reads.empty() ? std::string("none") : join(reads)) +
                               "; read by: " + (readBy.empty() ? std::string("none") : join(readBy));
         const auto warnings = doc_.LayerWarnings(row.id);
-        row.warningMark = warnings.empty() ? "" : "⚠";
+        row.warningMark = warnings.empty() ? "" : "!";
         row.warningTitle = join(warnings);
         if (row.id == lastLayerDiagnosticId_) row.diagnostic = lastLayerDiagnostic_;
         Vixen::Editor::DocumentDiagnostic materialDiagnostic;
@@ -553,14 +589,6 @@ void EditorApplication::RefreshLayersView() {
                 const auto& layer = doc_.View().layers[selectedLayer_];
                 const std::span<const Vixen::SVO::Recipe::SdfInstruction> program(
                     layer.instructions, layer.header->instructionCount);
-                const auto warningForInput = [this, layerId = doc_.LayerId(selectedLayer_)](
-                                                 std::string_view input) -> std::string {
-                    const std::string prefix = "input " + std::string(input) + " ";
-                    for (const auto& warning : doc_.LayerWarnings(layerId)) {
-                        if (warning.rfind(prefix, 0u) == 0u) return warning;
-                    }
-                    return {};
-                };
                 const auto wireForInput = [this, layerId = doc_.LayerId(selectedLayer_)](
                                               std::string_view input) -> const Vixen::Editor::LayerWire* {
                     const auto it = std::find_if(doc_.Wires().begin(), doc_.Wires().end(),
@@ -586,7 +614,11 @@ void EditorApplication::RefreshLayersView() {
                         candidateCount, removeDiagnostic);
                     const std::string removeReason = canRemove
                         ? std::string()
-                        : Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(removeDiagnostic);
+                        : (removeDiagnostic.code == Vixen::SVO::Recipe::SdfGraphDiagnosticCode::DanglingSocket
+                            ? "removing this would leave " + std::string(node.opcodeInfo->name) +
+                              " without its input"
+                            : "cannot remove this node: " +
+                              Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(removeDiagnostic));
                     const std::string removeTitle = canRemove ? "Remove node" : removeReason;
                     std::string addOp;
                     std::string addReason;
@@ -605,6 +637,8 @@ void EditorApplication::RefreshLayersView() {
                         addReason = Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(insertDiagnostic);
                     }
                     std::string displayName = node.opcodeInfo->name;
+                    std::string materialName;
+                    std::string materialColor;
                     std::string recipeId;
                     Vixen::Editor::DocumentDiagnostic recipeDiagnostic;
                     if (node.opcodeInfo->opcode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe) &&
@@ -666,13 +700,45 @@ void EditorApplication::RefreshLayersView() {
                         if (argument.source != Vixen::SVO::Recipe::SdfArgumentSource::InstructionData) continue;
                         static constexpr const char* kComponents[4] = {"x", "y", "z", "w"};
                         const bool isTransform = node.opcodeInfo->name == "Transform";
-                        std::string summary = argument.label;
+                        std::string argumentLabel = argument.label;
+                        uint32_t referencedMaterial = 0u;
+                        const float rawMaterialIndex = layer.instructions[node.instructionIndex].data[0];
+                        const bool isMaterialRef = node.opcodeInfo->opcode ==
+                            static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::MaterialRef) &&
+                            std::isfinite(rawMaterialIndex) && rawMaterialIndex >= 0.0f &&
+                            std::floor(rawMaterialIndex) == rawMaterialIndex &&
+                            static_cast<uint32_t>(rawMaterialIndex) < doc_.References().size();
+                        if (isMaterialRef) referencedMaterial = static_cast<uint32_t>(rawMaterialIndex);
+                        if (isMaterialRef) {
+                            materialName = doc_.References()[referencedMaterial];
+                            for (const auto& materialRow : materialRows_) {
+                                if (materialRow.name == materialName) {
+                                    materialColor = MaterialColorHex(materialRow.srgbColor);
+                                    break;
+                                }
+                            }
+                            argumentLabel = "material " + materialName;
+                        } else if (node.opcodeInfo->name == "ReadParam") {
+                            const float rawParameter = layer.instructions[node.instructionIndex]
+                                .data[argument.offset];
+                            if (std::isfinite(rawParameter) && rawParameter >= 0.0f &&
+                                std::floor(rawParameter) == rawParameter) {
+                                const std::string parameterName = doc_.ParameterName(
+                                    static_cast<uint32_t>(rawParameter));
+                                if (!parameterName.empty()) argumentLabel = "parameter " + parameterName;
+                            }
+                        }
+                        std::string summary = argumentLabel;
                         if (argument.width > 1u) summary += " (";
                         for (uint32_t component = 0; component < argument.width && component < 4u; ++component) {
                             const std::string field = argument.name;
                             const std::string componentName = kComponents[component];
                             const float value = layer.instructions[node.instructionIndex]
                                 .data[argument.offset + static_cast<int16_t>(component)];
+                            if (isMaterialRef || (node.opcodeInfo->name == "ReadParam" &&
+                                                  argument.width == 1u && argumentLabel != argument.label)) {
+                                continue;
+                            }
                             if (argument.width > 1u) {
                                 if (component != 0u) summary += ", ";
                                 summary += FloatParamText(value);
@@ -682,8 +748,8 @@ void EditorApplication::RefreshLayersView() {
                             if (!isTransform) {
                                 graphData.arguments.push_back({static_cast<int>(nodeIndex), field, componentName,
                                                                argument.width > 1u
-                                                                   ? std::string(argument.label) + " " + kComponents[component]
-                                                                   : std::string(argument.label),
+                                                                   ? argumentLabel + " " + kComponents[component]
+                                                                   : argumentLabel,
                                                                value, argument.hasRange != 0u, argument.minValue,
                                                                argument.maxValue, argument.defaultValue[component],
                                                                argument.hasDefault != 0u,
@@ -717,9 +783,7 @@ void EditorApplication::RefreshLayersView() {
                                                std::move(summary), canRemove, nodeIndex == expandedNode_,
                                                std::move(addReason), std::move(removeReason), std::move(removeTitle),
                                                indentFor(node),
-                                               warningForInput(node.opcodeInfo->opcode ==
-                                                                   static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)
-                                                               ? "read" : "")});
+                                               {}, std::move(materialName), std::move(materialColor)});
                 }
                 for (uint32_t sourceIndex = 0u; sourceIndex < selectedLayer_; ++sourceIndex) {
                     if (doc_.View().layers[sourceIndex].header->op != 4u) continue;
@@ -746,8 +810,15 @@ void EditorApplication::RefreshLayersView() {
                                     graph->view.nodes[last].instructionIndex, info.opcode,
                                     std::span<Vixen::SVO::Recipe::SdfInstruction>(candidate.data(), candidate.size()),
                                     candidateCount, wrapDiagnostic)) continue;
-                            graphData.wrapChoices.push_back({static_cast<int>(first), static_cast<int>(last),
-                                                             info.name, Vixen::Editor::EditorDocumentModel::DisplayName(info.name)});
+                            const auto duplicate = std::find_if(graphData.wrapChoices.begin(), graphData.wrapChoices.end(),
+                                [&](const Vixen::App::EditorNodeWrapData& choice) {
+                                    return choice.firstNode == static_cast<int>(first) &&
+                                           choice.lastNode == static_cast<int>(last) && choice.op == info.name;
+                                });
+                            if (duplicate == graphData.wrapChoices.end()) {
+                                graphData.wrapChoices.push_back({static_cast<int>(first), static_cast<int>(last),
+                                                                 info.name, Vixen::Editor::EditorDocumentModel::DisplayName(info.name)});
+                            }
                         }
                     }
                 }
@@ -759,11 +830,19 @@ void EditorApplication::RefreshLayersView() {
     std::vector<Vixen::App::EditorMaterialData> materials;
     materials.reserve(materialRows_.size());
     const uint32_t selectedId = doc_.LayerCount() == 0u ? 0u : doc_.LayerId(selectedLayer_);
+    const auto materialCoverage = std::atomic_load_explicit(&materialCoverage_, std::memory_order_acquire);
     for (const auto& materialRow : materialRows_) {
+        std::string coverage;
+        if (materialCoverage != nullptr) {
+            const auto count = materialCoverage->counts.find(materialRow.slot);
+            coverage = CoveragePercent(count == materialCoverage->counts.end() ? 0u : count->second,
+                                       materialCoverage->totalSurfaceSamples);
+        }
         materials.push_back({std::to_string(materialRow.slot), materialRow.name,
                              "layer-" + std::to_string(selectedId) + "-material-" + materialRow.name,
-                             "document-material-default-" + materialRow.name,
-                             MaterialColorHex(materialRow.srgbColor)});
+                             defaultMaterial_ == materialRow.name
+                                 ? "document-material-default-" + materialRow.name : "",
+                             MaterialColorHex(materialRow.srgbColor), std::move(coverage)});
     }
     Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     if (!primitivesPublished_) {
@@ -981,11 +1060,17 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     }
 
     doc_ = std::move(candidate);
+    // The generated VDC1 codec currently has no field for this editor-only selection. Do not
+    // make a reopen look successful by leaking the previous document's in-memory default.
+    defaultMaterial_.clear();
+    std::atomic_store_explicit(&materialCoverage_,
+                               std::shared_ptr<const EditorMaterialCoverageSnapshot>{},
+                               std::memory_order_release);
     documentPath_ = path;
     ClearEditorError();
     if (doc_.MajorMaterialId() != 0u || doc_.MinorMaterialId() != 0u ||
         doc_.MajorMaterialPercent() != 0u) {
-        ReportEditorError("legacy document material fields are ignored; author MaterialId from layer outputs",
+        ReportEditorError("located legacy VDC1 material fields (major/minor/percent) are ignored; author MaterialId on layer outputs or set a document default",
                           "LegacyDocumentMaterial");
     }
     if (!pendingReferenceDiagnostic_.empty()) {
@@ -2505,10 +2590,20 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         lastPreviewParameterValues_[i] = snapshot.parameterValues[i];
     }
 
-    SetRecipePoolProducer([bakeRegistry, bakeCfg]() mutable {
+    std::atomic_store_explicit(&materialCoverage_,
+                               std::shared_ptr<const EditorMaterialCoverageSnapshot>{},
+                               std::memory_order_release);
+    SetRecipePoolProducer([bakeRegistry, bakeCfg, this]() mutable {
         auto bakeResult = Vixen::SVO::BakeRegistryToPool(*bakeRegistry, bakeCfg);
         if (!bakeResult.ok) {
             throw std::runtime_error("BakeRegistryToPool failed: " + bakeResult.err);
+        }
+        const auto* previewEntry = bakeRegistry->Get(kRecipeId);
+        if (previewEntry != nullptr && previewEntry->octreeSlot < bakeResult.owned.size()) {
+            std::atomic_store_explicit(&materialCoverage_,
+                                       MeasureMaterialCoverage(
+                                           bakeResult.owned[previewEntry->octreeSlot].recipeOutputSet),
+                                       std::memory_order_release);
         }
         return std::move(bakeResult.pool);
     });
@@ -2775,6 +2870,12 @@ bool EditorApplication::AdoptDocument(Vixen::Editor::EditorDocumentModel candida
     channelGroupOpen_ = false;  // the reloaded runtime starts with an empty undo history
     channelGroupLabel_.clear();
     doc_ = std::move(candidate);
+    // SetDocumentDefaultMaterial is not part of the generated VDC1 payload yet; clear the
+    // process-local value on every adopted document so the missing persistence remains visible.
+    defaultMaterial_.clear();
+    std::atomic_store_explicit(&materialCoverage_,
+                               std::shared_ptr<const EditorMaterialCoverageSnapshot>{},
+                               std::memory_order_release);
     // Re-establish the pack callees after the candidate becomes the live document. Reopen's
     // comparison registers its temporary candidate, but the dirty re-apply below consumes the
     // adopted document and must see the same reference table in the live recipe registry.

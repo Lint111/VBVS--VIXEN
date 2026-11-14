@@ -92,6 +92,8 @@ struct EditorNodeData {
     std::string removeTitle;
     int indent = 0;
     std::string warning;
+    std::string materialName;
+    std::string materialColor;
 };
 
 struct EditorNodeArgumentData {
@@ -185,6 +187,7 @@ struct EditorMaterialData {
     std::string elementId;
     std::string defaultId;
     std::string color;
+    std::string coverage;
 };
 
 // R766: the status-line panel's content.

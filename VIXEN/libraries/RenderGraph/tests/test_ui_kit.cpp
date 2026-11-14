@@ -16,6 +16,8 @@
 #include "Ui/UiKit.h"
 
 #include <string>
+#include <fstream>
+#include <iterator>
 #include <vector>
 
 using namespace Vixen::RenderGraph;
@@ -59,6 +61,18 @@ TEST(UiKitContract, InstancesMayOnlyCarryTheOverrideContract) {
     EXPECT_TRUE(UiKit::AttributeAllowed("ut-disclosure", "reason"));
     EXPECT_TRUE(UiKit::AttributeAllowed("ut-disclosure", "tabindex"));
     EXPECT_EQ(UiKit::Tags().size(), 11u);
+}
+
+TEST(UiKitContract, EveryKitFragmentUsesFontSafeAsciiGlyphs) {
+    constexpr const char* kFragments[] = {
+        "button", "choice-group", "disclosure", "number-field", "status-line", "toggle"};
+    for (const char* fragment : kFragments) {
+        std::ifstream input(std::string("assets/ui/kit/") + fragment + ".rml");
+        ASSERT_TRUE(input.good()) << fragment;
+        const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        for (unsigned char glyph : text)
+            EXPECT_LT(glyph, 0x80u) << fragment << " contains a non-ASCII UI glyph";
+    }
 }
 
 namespace {
@@ -204,7 +218,7 @@ TEST_F(UiKitTest, DisabledReasonIsVisibleAndDisclosurePublishesOpenState) {
     ASSERT_NE(disclosure, nullptr);
     EXPECT_TRUE(disclosure->IsClassSet("open"));
     ASSERT_NE(Part(disclosure, "marker"), nullptr);
-    EXPECT_EQ(Part(disclosure, "marker")->GetInnerRML(), "▾");
+    EXPECT_EQ(Part(disclosure, "marker")->GetInnerRML(), "v");
     Rml::Dictionary key;
     key["key_identifier"] = static_cast<int>(Rml::Input::KI_RETURN);
     disclosure->DispatchEvent("keydown", key);
