@@ -26,7 +26,6 @@ add_library(SVO STATIC
     include/Recipe/RecipeServices.h  # R841 fixed kernel-service consumer boundary
     include/SceneGenerator.h  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
     include/BulkMaterialization.h
-    include/RuntimeMaterialTable.h
     # VoxelInjection.h DEPRECATED - removed in favor of rebuild() API
 
     # Implementation
@@ -53,7 +52,6 @@ add_library(SVO STATIC
     src/Serialization.cpp
     src/SceneGenerator.cpp  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
     src/BulkMaterialization.cpp
-    src/RuntimeMaterialTable.cpp
     # src/SVOFactory.cpp  # TODO: Implement
     src/RecipePackLoader.cpp  # I2.5: manifest+blobs→registry, fail-loud
     src/Recipe/LodSelection.cpp  # Recipe LOD selection, hysteresis, and upload gating (Wave A)
