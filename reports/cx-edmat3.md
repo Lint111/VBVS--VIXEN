@@ -58,7 +58,7 @@ Recovery record: the configured global queue path was usable. The initial target
 
 ## SPT DISPOSITION
 
-Four proposals were appended to `.spt-proposals/cx-edmat3.jsonl` and committed with the lane. They cover sparse AppFlow ordinals, generated graph initializers, VoxelDocument vending, and generator runtime/pairing provisioning.
+Five proposals were appended to `.spt-proposals/cx-edmat3.jsonl` and committed with the lane. They cover sparse AppFlow ordinals, generated graph initializers, VoxelDocument vending, generator runtime/pairing provisioning, and scalar opcode dispatch coverage.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
@@ -66,3 +66,4 @@ Four proposals were appended to `.spt-proposals/cx-edmat3.jsonl` and committed w
 - proposed: Generated SDF graph initializers must initialize appended socket fields
 - proposed: VIXEN codegen should vendor the refreshed VoxelDocument artifact
 - proposed: Kernel generator test target needs explicit runtime and pairing provisioning
+- proposed: Generated scalar recipe dispatch must cover newly declared opcodes
