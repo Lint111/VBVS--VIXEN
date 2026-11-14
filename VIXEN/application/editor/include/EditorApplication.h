@@ -192,6 +192,7 @@ private:
                                      std::unordered_map<std::string, uint8_t>& state,
                                      std::string& diagnostic, uint32_t depth);
     Vixen::Editor::EditorDocumentModel::RecipeReferenceResolver RecipeResolver() const;
+    Vixen::Editor::EditorDocumentModel::MaterialReferenceResolver MaterialResolver() const;
 
 
     std::string documentPath_;
@@ -257,12 +258,13 @@ private:
     struct MaterialRow {
         uint32_t slot = 0;
         std::string name;
+        uint32_t srgbColor = 0x808080u;
     };
-    // Pack material rows are a read-only projection for the channel witness. The generated
-    // EditorLayers view currently exposes the scalar layer-mask Data action, but has no readable
-    // Data action for its material rows; keep the same pack projection here until that view
-    // contract grows a collection-shaped read.
+    // Pack material rows are the read-only content projection used by the layer row, picker, and
+    // document-default controls. They remain pack-owned; authored layer references are stored by
+    // EditorDocumentModel and resolve through this table at flatten time.
     std::vector<MaterialRow> materialRows_;
+    std::string defaultMaterial_;
     std::unordered_map<std::string, uint32_t> packRecipeRegistryIds_;
     std::unordered_map<uint32_t, Vixen::SVO::RecipeRegistry::RecipeEntry> packRecipeEntries_;
     std::unordered_set<std::string> unavailablePackReferences_;

@@ -63,6 +63,13 @@
                 </div>
             </div>
         </ut-list>
+        <div class="node-entry material-outline-row" data-for="row : layers" data-if="row.isSelected">
+            <div class="node-row">
+                <span class="ut-field-label">Material</span>
+                <span data-attr-style="row.materialColor == '' ? '' : '--material-color: ' + row.materialColor">{{row.materialName}}</span>
+                <ut-button data-if="row.materialClearId != ''" data-attr-id="row.materialClearId" label="clear"> </ut-button>
+            </div>
+        </div>
         <ut-choice-group label="wrap in…" data-if="!rawProgram">
             <ut-button data-for="choice : nodeWrapChoices" data-attr-id="choice.elementId"
                        data-attr-label="choice.label" data-attr-title="'wrap nodes in ' + choice.label"> </ut-button>

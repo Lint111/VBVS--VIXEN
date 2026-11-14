@@ -40,6 +40,11 @@ namespace Vixen.ViewSchemas
         public string warningMark;
         public string warningTitle;
         public string diagnostic;
+        // R872.11: the material is the final row of each layer outline. The selector ids are
+        // carried by the projection so the view never reconstructs action parameters.
+        public string materialName;
+        public string materialColor;
+        public string materialClearId;
     }
 
     // E3: one placement field (position/rotation/scale axis) of the selected layer, with its stepper ids.
@@ -192,11 +197,14 @@ namespace Vixen.ViewSchemas
         public string elementId;
     }
 
-    // R872.10: pack-owned material rows are exposed as view data for the later
-    // material-panel lane. This section deliberately has no panel or action yet.
+    // R872.10/R872.11: pack-owned material rows feed both the layer picker and the document
+    // default control. elementId selects the current layer; defaultId selects the document default.
     public struct EditorMaterialRow {
         public string id;
         public string name;
+        public string elementId;
+        public string defaultId;
+        public string color;
     }
 
     // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML

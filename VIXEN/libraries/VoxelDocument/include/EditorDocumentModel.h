@@ -196,6 +196,7 @@ public:
     // VDC1 v4 recipe-reference table. Ids are the authored <pack>:<recipe> strings; layers carry
     // one InvokeRecipe instruction whose data[0] is the table index.
     const std::vector<std::string>& References() const { return references_; }
+    bool IsMaterialReference(const std::string& id) const;
     bool AddReference(const std::string& id, DocumentDiagnostic& diagnostic);
     bool RemoveReference(const std::string& id, DocumentDiagnostic& diagnostic);
     bool MakeRecipeReferenceLayer(const std::string& id, const std::string& name,
@@ -216,6 +217,15 @@ public:
                      DocumentDiagnostic& diagnostic);
     bool MoveLayer(uint32_t from, uint32_t to, DocumentDiagnostic& diagnostic);
     bool SetLayerProvide(uint32_t layerId, bool provide, DocumentDiagnostic& diagnostic);
+    // R872.11: a material is authored as a typed MaterialRef/Attach suffix on the layer's
+    // distance program. The reference table remains the single persisted string table used by
+    // recipe and material references alike; callers resolve the content id against the pack.
+    bool GetLayerMaterial(uint32_t layerId, std::string& out,
+                          DocumentDiagnostic& diagnostic) const;
+    bool HasLayerMaterials() const;
+    bool SetLayerMaterial(uint32_t layerId, const std::string& material,
+                          DocumentDiagnostic& diagnostic);
+    bool ClearLayerMaterial(uint32_t layerId, DocumentDiagnostic& diagnostic);
     bool AddWire(uint32_t readerLayerId, const std::string& input,
                  uint32_t sourceLayerId, const std::string& port,
                  DocumentDiagnostic& diagnostic);
@@ -358,9 +368,17 @@ public:
                               DocumentDiagnostic& diagnostic) const;
     using RecipeReferenceResolver = std::function<bool(const std::string& reference,
                                                        uint32_t& recipeId)>;
+    using MaterialReferenceResolver = std::function<bool(const std::string& reference,
+                                                         uint32_t& materialId)>;
     bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
                               const DocumentBakeSnapshot& snapshot,
                               const RecipeReferenceResolver& resolver,
+                              bool skipUnresolvedReferences,
+                              DocumentDiagnostic& diagnostic) const;
+    bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+                              const DocumentBakeSnapshot& snapshot,
+                              const RecipeReferenceResolver& recipeResolver,
+                              const MaterialReferenceResolver& materialResolver,
                               bool skipUnresolvedReferences,
                               DocumentDiagnostic& diagnostic) const;
 

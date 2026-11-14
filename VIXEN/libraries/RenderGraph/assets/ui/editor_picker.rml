@@ -34,6 +34,15 @@
                 <ut-button variant="row" data-for="item : primitives" data-attr-id="item.elementId" data-attr-label="item.display"> </ut-button>
             </ut-list>
         </div>
+        <div class="picker-section" data-if="!nodePickerActive">
+            <div class="picker-section-title">Materials</div>
+            <div class="hint picker-hint" data-if="materials.size == 0">No pack materials match "{{pickerFilter}}".</div>
+            <div class="picker-rows">
+                <ut-button variant="row" data-for="item : materials" data-attr-id="item.elementId" data-attr-label="item.name"
+                            data-attr-style="'--material-color: ' + item.color"> </ut-button>
+            </div>
+            <div class="hint picker-hint">From input: no material-typed parameters in this document.</div>
+        </div>
         <!-- R872.6: the same filter drives the second, pack-recipe section. Each row dispatches
              InsertRecipeReference and is omitted for the open recipe by the editor publisher. -->
         <div class="picker-section" data-if="!nodePickerActive">

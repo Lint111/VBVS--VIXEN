@@ -40,6 +40,9 @@ struct EditorLayerData {
     std::string warningMark;
     std::string warningTitle;
     std::string diagnostic;
+    std::string materialName;
+    std::string materialColor;
+    std::string materialClearId;
 };
 
 // E3: the placement of the selected layer, in the order px py pz rx ry rz sx sy sz (rotation in
@@ -179,6 +182,9 @@ struct EditorPackRecipeData {
 struct EditorMaterialData {
     std::string id;
     std::string name;
+    std::string elementId;
+    std::string defaultId;
+    std::string color;
 };
 
 // R766: the status-line panel's content.

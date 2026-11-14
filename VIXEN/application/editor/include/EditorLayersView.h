@@ -108,6 +108,9 @@ public:
             row.warningMark = Rml::String(layerData[i].warningMark);
             row.warningTitle = Rml::String(layerData[i].warningTitle);
             row.diagnostic = Rml::String(layerData[i].diagnostic);
+            row.materialName = Rml::String(layerData[i].materialName);
+            row.materialColor = Rml::String(layerData[i].materialColor);
+            row.materialClearId = Rml::String(layerData[i].materialClearId);
             layers_.push_back(std::move(row));
         }
         parameters_.clear();
@@ -379,6 +382,9 @@ public:
             Vixen::Views::EditorMaterialRow row;
             row.id = Rml::String(material.id);
             row.name = Rml::String(material.name);
+            row.elementId = Rml::String(material.elementId);
+            row.defaultId = Rml::String(material.defaultId);
+            row.color = Rml::String(material.color);
             materials_.push_back(std::move(row));
         }
         if (model_) model_.DirtyVariable("materials");

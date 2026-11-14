@@ -46,6 +46,9 @@ namespace Vixen.AppFlow.Reference
         SetNodeArgument = 48, InsertNodeAfter = 49, RemoveNode = 50, WrapNodes = 51, ExpandNode = 52,
         // R876 LM-V2/LM-V3: layer-port edits are addressed by stable layer id, not outline index.
         SetLayerProvide = 53, AddWire = 54, RemoveWire = 55, InsertPortRead = 56, SoloLayer = 57,
+        // R872.11/R872.12: material channel edits follow every layer-port action. Their
+        // ordinals are declaration-derived; do not add explicit values here.
+        SetLayerMaterial, ClearLayerMaterial, SetLayerMaterialFromInput, SetDocumentDefaultMaterial,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -376,6 +379,38 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Param0Name = "layer";
         public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetLayerMaterial))]
+    public static class SetLayerMaterialParams
+    {
+        public const string Param0Name = "layer";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "material";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.ClearLayerMaterial))]
+    public static class ClearLayerMaterialParams
+    {
+        public const string Param0Name = "layer";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetLayerMaterialFromInput))]
+    public static class SetLayerMaterialFromInputParams
+    {
+        public const string Param0Name = "layer";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "parameter";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetDocumentDefaultMaterial))]
+    public static class SetDocumentDefaultMaterialParams
+    {
+        public const string Param0Name = "material";
+        public const int Param0Type = (int)FlowParamType.String;
     }
 
     // R766: panel ids are the declared PanelDecl ids; regions are left | right | bottom | overlay | floating.
@@ -828,6 +863,38 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Element = "layer-{layer}-solo";
         public const string ParamName = "layer";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerMaterial))]
+    public static class SetLayerMaterialTrigger
+    {
+        public const string Element = "layer-{layer}-material-{material}";
+        public const string ParamName = "layer";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.ClearLayerMaterial))]
+    public static class ClearLayerMaterialTrigger
+    {
+        public const string Element = "layer-{layer}-material-clear";
+        public const string ParamName = "layer";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerMaterialFromInput))]
+    public static class SetLayerMaterialFromInputTrigger
+    {
+        public const string Element = "layer-{layer}-material-input-{parameter}";
+        public const string ParamName = "layer";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetDocumentDefaultMaterial))]
+    public static class SetDocumentDefaultMaterialTrigger
+    {
+        public const string Element = "document-material-default-{material}";
+        public const string ParamName = "material";
         public const string On = "click";
     }
 

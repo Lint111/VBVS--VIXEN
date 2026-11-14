@@ -222,6 +222,12 @@ bool ParseTextParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const 
     return false;
 }
 
+std::string MaterialColorHex(uint32_t srgbColor) {
+    char buffer[8];
+    std::snprintf(buffer, sizeof(buffer), "#%06X", srgbColor & 0x00FFFFFFu);
+    return buffer;
+}
+
 // One stepper click of the E3 layer fields (the same fixed-step shape as the program-field buttons).
 constexpr float kBlendStep = 0.25f;
 constexpr float kPrimitiveStep = 0.25f;
@@ -417,6 +423,22 @@ void EditorApplication::RefreshLayersView() {
         row.warningMark = warnings.empty() ? "" : "⚠";
         row.warningTitle = join(warnings);
         if (row.id == lastLayerDiagnosticId_) row.diagnostic = lastLayerDiagnostic_;
+        Vixen::Editor::DocumentDiagnostic materialDiagnostic;
+        std::string material;
+        if (doc_.GetLayerMaterial(row.id, material, materialDiagnostic) && !material.empty()) {
+            row.materialName = material;
+            row.materialClearId = "layer-" + std::to_string(row.id) + "-material-clear";
+            for (const auto& materialRow : materialRows_) {
+                if (materialRow.name == material) {
+                    row.materialColor = MaterialColorHex(materialRow.srgbColor);
+                    break;
+                }
+            }
+        } else {
+            row.materialName = "none";
+            row.materialColor.clear();
+            row.materialClearId.clear();
+        }
         layers.push_back(std::move(row));
     }
     std::vector<Vixen::App::EditorParameterData> parameters;
@@ -734,6 +756,16 @@ void EditorApplication::RefreshLayersView() {
     }
     Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), layers, parameters, placement, shape,
                                         graphData);
+    std::vector<Vixen::App::EditorMaterialData> materials;
+    materials.reserve(materialRows_.size());
+    const uint32_t selectedId = doc_.LayerCount() == 0u ? 0u : doc_.LayerId(selectedLayer_);
+    for (const auto& materialRow : materialRows_) {
+        materials.push_back({std::to_string(materialRow.slot), materialRow.name,
+                             "layer-" + std::to_string(selectedId) + "-material-" + materialRow.name,
+                             "document-material-default-" + materialRow.name,
+                             MaterialColorHex(materialRow.srgbColor)});
+    }
+    Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     if (!primitivesPublished_) {
         primitivesPublished_ = true;
         PublishPickerPrimitives();
@@ -745,12 +777,23 @@ void EditorApplication::PublishPickerPrimitives() {
     if (nodePickerActive_) {
         Vixen::App::RefreshEditorPrimitivesView(*layersView_, {});
         Vixen::App::RefreshEditorPackRecipesView(*layersView_, {});
+        Vixen::App::RefreshEditorMaterialsView(*layersView_, {});
         PublishNodePickerChoices();
         return;
     }
     Vixen::App::RefreshEditorPrimitivesView(*layersView_, PickerPrimitives(publishedPickerFilter_));
     Vixen::App::RefreshEditorPackRecipesView(
         *layersView_, PickerPackRecipes(pack_, openRecipeId_, publishedPickerFilter_));
+    std::vector<Vixen::App::EditorMaterialData> materials;
+    for (const auto& material : materialRows_) {
+        if (Vixen::Editor::EditorDocumentModel::FilterRank(material.name, publishedPickerFilter_) < 0) continue;
+        materials.push_back({std::to_string(material.slot), material.name,
+                             "layer-" + std::to_string(doc_.LayerCount() == 0u ? 0u : doc_.LayerId(selectedLayer_)) +
+                                 "-material-" + material.name,
+                             "document-material-default-" + material.name,
+                             MaterialColorHex(material.srgbColor)});
+    }
+    Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     Vixen::App::RefreshEditorNodeChoicesView(*layersView_, {}, false);
 }
 
@@ -1435,6 +1478,109 @@ void EditorApplication::RegisterAppFlowHandlers() {
         ClearEditorError();
         RefreshLayersView();
     });
+
+    // R872.11/R872.12: material edits use the same document reference table as recipe content,
+    // but the pack table is the authority for whether a string is selectable. Each accepted
+    // dispatch enters the ordinary ActionStack exactly once; the model supplies the byte-stable
+    // inverse by adding/removing the typed MaterialRef/Attach suffix.
+    const auto materialSlot = [this](const std::string& id, uint32_t& slot) {
+        for (const auto& row : materialRows_) {
+            if (row.name == id) {
+                slot = row.slot;
+                return true;
+            }
+        }
+        return false;
+    };
+    rt_.RegisterHandler(FlowActionId::SetLayerMaterial,
+        [this, recordEdit, refuse, materialSlot](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        std::string material;
+        if (!ParseIndexParam(p, "layer", layerId) || !ParseTextParam(p, "material", material) || material.empty()) {
+            refuse("SetLayerMaterial", "needs a layer id and material content id");
+            return;
+        }
+        uint32_t slot = 0u;
+        if (!materialSlot(material, slot)) {
+            refuse("SetLayerMaterial", "unknown material '" + material + "' at the material control");
+            return;
+        }
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        std::string before;
+        if (!doc_.GetLayerMaterial(layerId, before, diagnostic)) {
+            refuse("SetLayerMaterial", diagnostic.message);
+            return;
+        }
+        if (before == material) return;
+        recordEdit(FlowActionId::SetLayerMaterial, "SetLayerMaterial",
+                   [this, layerId, material](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerMaterial(layerId, material, d);
+                   },
+                   [this, layerId, before](Vixen::Editor::DocumentDiagnostic& d) {
+                       return before.empty() ? doc_.ClearLayerMaterial(layerId, d)
+                                             : doc_.SetLayerMaterial(layerId, before, d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::ClearLayerMaterial,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        if (!ParseIndexParam(p, "layer", layerId)) {
+            refuse("ClearLayerMaterial", "needs a layer id");
+            return;
+        }
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        std::string before;
+        if (!doc_.GetLayerMaterial(layerId, before, diagnostic)) {
+            refuse("ClearLayerMaterial", diagnostic.message);
+            return;
+        }
+        if (before.empty()) return;
+        recordEdit(FlowActionId::ClearLayerMaterial, "ClearLayerMaterial",
+                   [this, layerId](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.ClearLayerMaterial(layerId, d);
+                   },
+                   [this, layerId, before](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerMaterial(layerId, before, d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::SetLayerMaterialFromInput,
+        [this, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        std::string parameter;
+        if (!ParseIndexParam(p, "layer", layerId) || !ParseTextParam(p, "parameter", parameter) || parameter.empty()) {
+            refuse("SetLayerMaterialFromInput", "needs a layer id and parameter name");
+            return;
+        }
+        // VDC1 currently admits only scalar float parameters. Keep the action live and located
+        // until the typed parameter reader/writer grows the material type; it must never guess a
+        // numeric material id from an unrelated float.
+        refuse("SetLayerMaterialFromInput",
+               "parameter '" + parameter + "' is not a material-typed input");
+    });
+    rt_.RegisterHandler(FlowActionId::SetDocumentDefaultMaterial,
+        [this, recordEdit, refuse, materialSlot](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        std::string material;
+        if (!ParseTextParam(p, "material", material) || material.empty()) {
+            refuse("SetDocumentDefaultMaterial", "needs a material content id");
+            return;
+        }
+        uint32_t slot = 0u;
+        if (!materialSlot(material, slot)) {
+            refuse("SetDocumentDefaultMaterial", "unknown material '" + material + "' at the default control");
+            return;
+        }
+        const std::string before = defaultMaterial_;
+        if (before == material) return;
+        recordEdit(FlowActionId::SetDocumentDefaultMaterial, "SetDocumentDefaultMaterial",
+                   [this, material](Vixen::Editor::DocumentDiagnostic&) {
+                       defaultMaterial_ = material;
+                       return true;
+                   },
+                   [this, before](Vixen::Editor::DocumentDiagnostic&) {
+                       defaultMaterial_ = before;
+                       return true;
+                   });
+    });
     const auto setBlend = [this, recordEdit, refuse](FlowActionId actionId, uint32_t index, float radius) {
         Vixen::Editor::DocumentDiagnostic diagnostic;
         if (index >= doc_.LayerCount()) { refuse("SetLayerBlend", "layer index " + std::to_string(index) + " is outside the document"); return; }
@@ -2052,7 +2198,7 @@ void EditorApplication::BuildRenderGraph() {
         const auto snapshot = doc_.CaptureBakeSnapshot();
         Vixen::SVO::RecipeRegistry::RecipeEntry entry;
         Vixen::Editor::DocumentDiagnostic diagnostic;
-        if (doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), true, diagnostic)) {
+        if (doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), MaterialResolver(), true, diagnostic)) {
             ApplyEditorPreviewBounds(entry, doc_);
             const auto result = RegisterProceduralRecipe(kEditorProceduralRecipeId, entry);
             if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
@@ -2266,7 +2412,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
     Vixen::Editor::DocumentDiagnostic diagnostic;
     const Vixen::Editor::DocumentBakeSnapshot snapshot = doc_.CaptureBakeSnapshot();
-    if (!doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), true, diagnostic)) {
+    if (!doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), MaterialResolver(), true, diagnostic)) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
@@ -2275,9 +2421,10 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     TraceEditorLatency("registry", "begin", updateTick_);
 
     // Legacy VDC1 document material fields are read for byte-stable save/reopen,
-    // but no longer lower into the recipe. Only authored layer output channels
-    // may select the stored material provider.
-    constexpr bool hasDocumentMaterials = false;
+    // but no longer lower into the recipe. Authored layer MaterialRef outputs select
+    // the stored provider; the provider swap is a data update and does not recompile
+    // the procedural shader.
+    const bool hasDocumentMaterials = doc_.HasLayerMaterials();
 
     // Runtime parameter values remain per-instance data. Only a changed canonical bytecode
     // program replaces the registry entry and triggers a shader splice rebuild.
@@ -2517,7 +2664,7 @@ bool EditorApplication::SaveDocument() {
     // user's solo selection for the live editor immediately after the snapshot.
     const auto savedSoloLayer = doc_.SoloLayerId();
     if (savedSoloLayer.has_value()) doc_.ClearSoloLayer();
-    const bool flattened = doc_.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), true, diagnostic);
+    const bool flattened = doc_.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), MaterialResolver(), true, diagnostic);
     if (savedSoloLayer.has_value()) {
         Vixen::Editor::DocumentDiagnostic restoreDiagnostic;
         doc_.SetSoloLayer(*savedSoloLayer, restoreDiagnostic);
@@ -2583,7 +2730,7 @@ bool EditorApplication::ReopenSavedDocument() {
 
     const auto snapshot = candidate.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
-    if (!candidate.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), true, diagnostic)) {
+    if (!candidate.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), MaterialResolver(), true, diagnostic)) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
@@ -2704,6 +2851,7 @@ bool EditorApplication::RegisterPackRecipeRecursive(
     }
     bool dependenciesReady = true;
     for (const auto& dependency : child.References()) {
+        if (child.IsMaterialReference(dependency)) continue;
         std::string dependencyDiagnostic;
         if (!RegisterPackRecipeRecursive(dependency, state, dependencyDiagnostic, depth + 1u)) {
             dependenciesReady = false;
@@ -2725,7 +2873,7 @@ bool EditorApplication::RegisterPackRecipeRecursive(
         resolved = found->second;
         return true;
     };
-    if (!child.FlattenToRecipeEntry(entry, child.CaptureBakeSnapshot(), resolver, false, childDiagnostic)) {
+    if (!child.FlattenToRecipeEntry(entry, child.CaptureBakeSnapshot(), resolver, MaterialResolver(), false, childDiagnostic)) {
         diagnostic = childDiagnostic.message;
         state[id] = 3u;
         unavailablePackReferences_.insert(id);
@@ -2765,6 +2913,7 @@ bool EditorApplication::RegisterPackRecipeReferences(Vixen::Editor::EditorDocume
     std::unordered_map<std::string, uint8_t> state;
     bool allReady = true;
     for (const auto& reference : document.References()) {
+        if (document.IsMaterialReference(reference)) continue;
         std::string diagnostic;
         if (!RegisterPackRecipeRecursive(reference, state, diagnostic, 0u)) {
             allReady = false;
@@ -2790,6 +2939,18 @@ Vixen::Editor::EditorDocumentModel::RecipeReferenceResolver EditorApplication::R
         if (found == packRecipeRegistryIds_.end()) return false;
         resolved = found->second;
         return true;
+    };
+}
+
+Vixen::Editor::EditorDocumentModel::MaterialReferenceResolver EditorApplication::MaterialResolver() const {
+    return [this](const std::string& reference, uint32_t& resolved) {
+        for (const auto& row : materialRows_) {
+            if (row.name == reference) {
+                resolved = row.slot;
+                return true;
+            }
+        }
+        return false;
     };
 }
 
@@ -2881,13 +3042,16 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
         std::vector<Vixen::App::EditorMaterialData> materials;
         materials.reserve(materialTable.Rows().size());
         for (const auto& row : materialTable.Rows()) {
-            materialRows_.push_back({row.id, row.name != nullptr ? row.name : ""});
-            materials.push_back({std::to_string(row.id), row.name != nullptr ? row.name : ""});
+            const std::string name = row.name != nullptr ? row.name : "";
+            materialRows_.push_back({row.id, name, row.srgbColor});
+            materials.push_back({std::to_string(row.id), name, {},
+                                 "document-material-default-" + name,
+                                 MaterialColorHex(row.srgbColor)});
         }
         Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     } else {
         for (const auto& row : materialTable.Rows()) {
-            materialRows_.push_back({row.id, row.name != nullptr ? row.name : ""});
+            materialRows_.push_back({row.id, row.name != nullptr ? row.name : "", row.srgbColor});
         }
     }
     RefreshRecipesView();
@@ -3344,7 +3508,7 @@ void EditorApplication::StartPendingReadbacks() {
                 }
                 Vixen::SVO::RecipeRegistry::RecipeEntry recipe;
                 Vixen::Editor::DocumentDiagnostic diagnostic;
-                if (!doc_.FlattenToRecipeEntry(recipe, doc_.CaptureBakeSnapshot(), RecipeResolver(), true, diagnostic)) {
+                if (!doc_.FlattenToRecipeEntry(recipe, doc_.CaptureBakeSnapshot(), RecipeResolver(), MaterialResolver(), true, diagnostic)) {
                     throw std::runtime_error("could not derive scene instance bounds: " + diagnostic.message);
                 }
                 ApplyEditorPreviewBounds(recipe, doc_);

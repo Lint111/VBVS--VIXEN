@@ -8,7 +8,7 @@
 
 namespace Vixen::Views {
 
-struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; float blendRadius; Rml::String blendUpId; Rml::String blendDownId; Rml::String selectId; bool isSelected; Rml::String blendValueId; Rml::String providesMark; Rml::String readsMark; Rml::String readByMark; Rml::String dependencyTitle; Rml::String provideId; Rml::String soloId; bool isSolo; Rml::String warningMark; Rml::String warningTitle; Rml::String diagnostic; };
+struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; float blendRadius; Rml::String blendUpId; Rml::String blendDownId; Rml::String selectId; bool isSelected; Rml::String blendValueId; Rml::String providesMark; Rml::String readsMark; Rml::String readByMark; Rml::String dependencyTitle; Rml::String provideId; Rml::String soloId; bool isSolo; Rml::String warningMark; Rml::String warningTitle; Rml::String diagnostic; Rml::String materialName; Rml::String materialColor; Rml::String materialClearId; };
 struct EditorParameterRow { Rml::String name; Rml::String unit; Rml::String upId; Rml::String downId; float value; float minimum; float maximum; Rml::String setId; };
 struct EditorTransformRow { Rml::String label; float value; Rml::String upId; Rml::String downId; Rml::String valueId; };
 struct EditorPrimitiveRow { Rml::String name; Rml::String display; Rml::String category; Rml::String elementId; };
@@ -16,7 +16,7 @@ struct EditorLayerOpRow { Rml::String name; Rml::String elementId; bool isCurren
 struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool hasDefault; bool isDefault; Rml::String resetId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorPackRecipeRow { Rml::String id; Rml::String elementId; };
-struct EditorMaterialRow { Rml::String id; Rml::String name; };
+struct EditorMaterialRow { Rml::String id; Rml::String name; Rml::String elementId; Rml::String defaultId; Rml::String color; };
 struct EditorNodeRow { int nodeIndex; Rml::String name; Rml::String category; Rml::String addOp; Rml::String summary; Rml::String elementId; Rml::String addId; Rml::String removeId; Rml::String toggleId; bool canRemove; bool isExpanded; Rml::String addReason; Rml::String removeReason; Rml::String removeTitle; int indent; Rml::String warning; };
 struct EditorNodeArgumentRow { int nodeIndex; Rml::String field; Rml::String component; Rml::String label; float value; bool hasRange; float minimum; float maximum; float defaultValue; bool hasDefault; bool isDefault; Rml::String valueId; Rml::String upId; Rml::String downId; Rml::String resetId; bool isPort; Rml::String portType; Rml::String portEmptyReason; };
 struct EditorNodePortChoiceRow { int nodeIndex; Rml::String argument; Rml::String label; Rml::String elementId; Rml::String removeId; bool isSelected; };
@@ -83,6 +83,9 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("warningMark", &EditorLayerRow::warningMark);
         sh.RegisterMember("warningTitle", &EditorLayerRow::warningTitle);
         sh.RegisterMember("diagnostic", &EditorLayerRow::diagnostic);
+        sh.RegisterMember("materialName", &EditorLayerRow::materialName);
+        sh.RegisterMember("materialColor", &EditorLayerRow::materialColor);
+        sh.RegisterMember("materialClearId", &EditorLayerRow::materialClearId);
     }
     if (auto sh = c.RegisterStruct<EditorParameterRow>()) {
         sh.RegisterMember("name", &EditorParameterRow::name);
@@ -138,6 +141,9 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     if (auto sh = c.RegisterStruct<EditorMaterialRow>()) {
         sh.RegisterMember("id", &EditorMaterialRow::id);
         sh.RegisterMember("name", &EditorMaterialRow::name);
+        sh.RegisterMember("elementId", &EditorMaterialRow::elementId);
+        sh.RegisterMember("defaultId", &EditorMaterialRow::defaultId);
+        sh.RegisterMember("color", &EditorMaterialRow::color);
     }
     if (auto sh = c.RegisterStruct<EditorNodeRow>()) {
         sh.RegisterMember("nodeIndex", &EditorNodeRow::nodeIndex);

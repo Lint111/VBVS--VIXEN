@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0x4A629711u;
+inline constexpr uint32_t kAppFlowShapeHash = 0x72E73191u;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -16,7 +16,7 @@ inline constexpr std::array<FlowStateId, 0> kTerminalStateIds = {  };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41, CreatePrimitiveLayer=42, SetLayerOp=43, SetLayerPrimitiveField=44, ChoosePrimitive=45, InsertRecipeReference=46, SetDocumentMaterials=47, SetNodeArgument=48, InsertNodeAfter=49, RemoveNode=50, WrapNodes=51, ExpandNode=52, SetLayerProvide=53, AddWire=54, RemoveWire=55, InsertPortRead=56, SoloLayer=57 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14, OpenRecipe=15, OpenPanel=16, ClosePanel=17, FocusPanel=18, MovePanel=19, SplitPanel=20, FloatPanel=21, ResizeRegion=22, ResetLayout=23, SetLayerBlend=24, RenameLayer=25, SetLayerTransform=26, ReopenSaved=27, SelectLayer=28, NudgeLayerField=29, OrbitCamera=30, PanCamera=31, ZoomCamera=32, FrameAsset=33, SetViewAngle=34, SelectViewAngle0=35, SelectViewAngle1=36, SelectViewAngle2=37, SelectViewAngle3=38, SetParameter=39, ResetParameter=40, ScrubParameter=41, CreatePrimitiveLayer=42, SetLayerOp=43, SetLayerPrimitiveField=44, ChoosePrimitive=45, InsertRecipeReference=46, SetDocumentMaterials=47, SetNodeArgument=48, InsertNodeAfter=49, RemoveNode=50, WrapNodes=51, ExpandNode=52, SetLayerProvide=53, AddWire=54, RemoveWire=55, InsertPortRead=56, SoloLayer=57, SetLayerMaterial=58, ClearLayerMaterial=59, SetLayerMaterialFromInput=60, SetDocumentDefaultMaterial=61 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -88,6 +88,10 @@ namespace FlowElementTriggerId {
     inline constexpr const char* RemoveWireTrigger = "RemoveWireTrigger";
     inline constexpr const char* InsertPortReadTrigger = "InsertPortReadTrigger";
     inline constexpr const char* SoloLayerTrigger = "SoloLayerTrigger";
+    inline constexpr const char* SetLayerMaterialTrigger = "SetLayerMaterialTrigger";
+    inline constexpr const char* ClearLayerMaterialTrigger = "ClearLayerMaterialTrigger";
+    inline constexpr const char* SetLayerMaterialFromInputTrigger = "SetLayerMaterialFromInputTrigger";
+    inline constexpr const char* SetDocumentDefaultMaterialTrigger = "SetDocumentDefaultMaterialTrigger";
     inline constexpr const char* SetLayerTransformPXTrigger = "SetLayerTransformPXTrigger";
     inline constexpr const char* SetLayerTransformPYTrigger = "SetLayerTransformPYTrigger";
     inline constexpr const char* SetLayerTransformPZTrigger = "SetLayerTransformPZTrigger";
@@ -165,6 +169,10 @@ inline constexpr FlowParamSchema kAddWireParams[] = { {"readerLayer", FlowParamT
 inline constexpr FlowParamSchema kRemoveWireParams[] = { {"readerLayer", FlowParamType::Int}, {"input", FlowParamType::String} };
 inline constexpr FlowParamSchema kInsertPortReadParams[] = { {"layer", FlowParamType::Int}, {"afterNode", FlowParamType::Int}, {"source", FlowParamType::String} };
 inline constexpr FlowParamSchema kSoloLayerParams[] = { {"layer", FlowParamType::Int} };
+inline constexpr FlowParamSchema kSetLayerMaterialParams[] = { {"layer", FlowParamType::Int}, {"material", FlowParamType::String} };
+inline constexpr FlowParamSchema kClearLayerMaterialParams[] = { {"layer", FlowParamType::Int} };
+inline constexpr FlowParamSchema kSetLayerMaterialFromInputParams[] = { {"layer", FlowParamType::Int}, {"parameter", FlowParamType::String} };
+inline constexpr FlowParamSchema kSetDocumentDefaultMaterialParams[] = { {"material", FlowParamType::String} };
 inline constexpr FlowParamSchema kOpenPanelParams[] = { {"panelId", FlowParamType::String} };
 inline constexpr FlowParamSchema kClosePanelParams[] = { {"panelId", FlowParamType::String} };
 inline constexpr FlowParamSchema kFocusPanelParams[] = { {"panelId", FlowParamType::String} };
@@ -238,7 +246,11 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::AddWire, sizeof(LayerState), true, kAddWireParams, 4 },
     { FlowActionId::RemoveWire, sizeof(LayerState), true, kRemoveWireParams, 2 },
     { FlowActionId::InsertPortRead, sizeof(LayerState), true, kInsertPortReadParams, 3 },
-    { FlowActionId::SoloLayer, sizeof(LayerState), true, kSoloLayerParams, 1 }
+    { FlowActionId::SoloLayer, sizeof(LayerState), true, kSoloLayerParams, 1 },
+    { FlowActionId::SetLayerMaterial, sizeof(LayerState), true, kSetLayerMaterialParams, 2 },
+    { FlowActionId::ClearLayerMaterial, sizeof(LayerState), true, kClearLayerMaterialParams, 1 },
+    { FlowActionId::SetLayerMaterialFromInput, sizeof(LayerState), true, kSetLayerMaterialFromInputParams, 2 },
+    { FlowActionId::SetDocumentDefaultMaterial, sizeof(LayerState), true, kSetDocumentDefaultMaterialParams, 1 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -285,6 +297,10 @@ inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::RemoveWireTrigger, "layer-{readerLayer}-wire-{input}-remove", FlowActionId::RemoveWire, "readerLayer", "click" },
     { FlowElementTriggerId::InsertPortReadTrigger, "layer-{layer}-node-{afterNode}-read-{source}", FlowActionId::InsertPortRead, "layer", "click" },
     { FlowElementTriggerId::SoloLayerTrigger, "layer-{layer}-solo", FlowActionId::SoloLayer, "layer", "click" },
+    { FlowElementTriggerId::SetLayerMaterialTrigger, "layer-{layer}-material-{material}", FlowActionId::SetLayerMaterial, "layer", "click" },
+    { FlowElementTriggerId::ClearLayerMaterialTrigger, "layer-{layer}-material-clear", FlowActionId::ClearLayerMaterial, "layer", "click" },
+    { FlowElementTriggerId::SetLayerMaterialFromInputTrigger, "layer-{layer}-material-input-{parameter}", FlowActionId::SetLayerMaterialFromInput, "layer", "click" },
+    { FlowElementTriggerId::SetDocumentDefaultMaterialTrigger, "document-material-default-{material}", FlowActionId::SetDocumentDefaultMaterial, "material", "click" },
     { FlowElementTriggerId::SetLayerTransformPXTrigger, "layer-{index}-placement-px-{px}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
     { FlowElementTriggerId::SetLayerTransformPYTrigger, "layer-{index}-placement-py-{py}", FlowActionId::SetLayerTransform, "layerIndex", "click" },
     { FlowElementTriggerId::SetLayerTransformPZTrigger, "layer-{index}-placement-pz-{pz}", FlowActionId::SetLayerTransform, "layerIndex", "click" },

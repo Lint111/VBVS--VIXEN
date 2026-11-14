@@ -1199,11 +1199,11 @@ TEST(EditorDocumentModelVdc1, MaterialsAndRecipeReferencesRoundTripWithValidatio
     Vixen::SVO::RecipeRegistry::RecipeEntry materialEntry;
     ASSERT_TRUE(model.FlattenToRecipeEntry(materialEntry, model.CaptureBakeSnapshot(), diagnostic))
         << diagnostic.message;
-    ASSERT_GE(materialEntry.bytecode.size(), 6u);
-    EXPECT_EQ(materialEntry.bytecode[materialEntry.bytecode.size() - 1u].opCode,
+    // Legacy v3 fields remain document metadata. They do not add a typed output instruction;
+    // authored v4 MaterialRef/Attach suffixes are the only layer material lowering seam.
+    ASSERT_GE(materialEntry.bytecode.size(), 5u);
+    EXPECT_NE(materialEntry.bytecode.back().opCode,
               static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Output));
-    EXPECT_FLOAT_EQ(materialEntry.bytecode[materialEntry.bytecode.size() - 1u].data[0],
-                    static_cast<float>(Vixen::SVO::RecipeOutputSlotFor(Vixen::SVO::SEM_MATERIAL_ID)));
 
     EXPECT_FALSE(model.AddReference("invalid", diagnostic));
     EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::InvalidReferenceId);
@@ -1264,6 +1264,50 @@ TEST(EditorDocumentModelVdc1, MaterialsAndRecipeReferencesRoundTripWithValidatio
     EXPECT_EQ(reopened.MinorMaterialId(), 9u);
     EXPECT_EQ(reopened.MajorMaterialPercent(), 75u);
     EXPECT_EQ(reopened.FormatVersion(), 3u);
+}
+
+TEST(EditorDocumentModelVdc1, LayerMaterialRoundTripsThroughTypedReferenceAndRestoresBytes) {
+    const auto original = ReadFile(VXD_GOLDEN_PATH);
+    ASSERT_FALSE(original.empty());
+
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    std::vector<uint8_t> before;
+    ASSERT_TRUE(model.Serialize(before, diagnostic)) << diagnostic.message;
+    ASSERT_EQ(before, original);
+
+    const uint32_t layerId = model.LayerId(0u);
+    std::string material;
+    ASSERT_TRUE(model.GetLayerMaterial(layerId, material, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(material.empty());
+    ASSERT_TRUE(model.SetLayerMaterial(layerId, "core:hull_metal_major", diagnostic))
+        << diagnostic.message;
+    ASSERT_TRUE(model.GetLayerMaterial(layerId, material, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(material, "core:hull_metal_major");
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    ASSERT_TRUE(model.FlattenToRecipeEntry(
+        entry, model.CaptureBakeSnapshot(), {},
+        [](const std::string& id, uint32_t& resolved) {
+            if (id != "core:hull_metal_major") return false;
+            resolved = 5u;
+            return true;
+        }, false, diagnostic)) << diagnostic.message;
+    bool foundMaterial = false;
+    for (const auto& instruction : entry.bytecode) {
+        if (instruction.opCode ==
+                static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::MaterialRef) &&
+            instruction.data[0] == 5.0f) {
+            foundMaterial = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundMaterial);
+
+    ASSERT_TRUE(model.ClearLayerMaterial(layerId, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.Serialize(before, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(before, original) << "clearing the only material reference restores the exact document bytes";
 }
 
 TEST(EditorDocumentModelVdc1, UnresolvedReferencesAreLocatedAndCanBeSkippedForPreview) {

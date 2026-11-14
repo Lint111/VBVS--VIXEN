@@ -358,10 +358,13 @@ private:
         }
     }
 
-    struct Range { bool has = false; float min = 0.0f; float max = 0.0f; };
+    // Do not use the Windows SDK's min/max macro names in the kit's native state.
+    // The identifier guard runs before a Windows build and intentionally catches these
+    // declarations even though Linux preprocessors do not expand them.
+    struct Range { bool has = false; float minimum = 0.0f; float maximum = 0.0f; };
     Range ReadRange() const {
         Range r;
-        r.has = ParseNumber(Attr("min"), r.min) && ParseNumber(Attr("max"), r.max) && r.max >= r.min;
+        r.has = ParseNumber(Attr("min"), r.minimum) && ParseNumber(Attr("max"), r.maximum) && r.maximum >= r.minimum;
         return r;
     }
 
@@ -419,7 +422,7 @@ private:
         }
         const Range range = ReadRange();
         auto* rangePart = Part("range");
-        SetText(rangePart, FormatRange(range.has, range.min, range.max));
+        SetText(rangePart, FormatRange(range.has, range.minimum, range.maximum));
         SetVisible(rangePart, range.has);
         auto* reset = Part("reset");
         const std::string resetId = Attr("reset-id");
@@ -451,7 +454,7 @@ private:
     }
     float StepValue(const Range& r) const {
         float s = 0.0f;
-        return ParseNumber(Attr("step"), s) && s > 0.0f ? s : DefaultStep(r.has, r.min, r.max);
+        return ParseNumber(Attr("step"), s) && s > 0.0f ? s : DefaultStep(r.has, r.minimum, r.maximum);
     }
 
     // CAPABILITY (added after the migration, one place): Shift+nudge steps ten times as far, on every number field.
@@ -460,7 +463,7 @@ private:
     void Nudge(int direction, Rml::Event& event) {
         const Range r = ReadRange();
         const float before = CurrentValue();
-        const float after = UiKit::Nudge(before, direction, StepValue(r), StepMultiplier(event), r.has, r.min, r.max);
+        const float after = UiKit::Nudge(before, direction, StepValue(r), StepMultiplier(event), r.has, r.minimum, r.maximum);
         if (after != before) Commit(FormatNumber(after));
     }
 
@@ -478,7 +481,7 @@ private:
     void MoveScrub(Rml::Event& event) {
         const Range r = ReadRange();
         const float dx = event.GetParameter<float>("mouse_x", scrubStartX_) - scrubStartX_;
-        scrubValue_ = ScrubValue(scrubStartValue_, dx, StepValue(r), r.has, r.min, r.max);
+        scrubValue_ = ScrubValue(scrubStartValue_, dx, StepValue(r), r.has, r.minimum, r.maximum);
         scrubMoved_ = true;
         if (auto* input = Part("input")) {  // preview only; one commit on release is one undo entry
             mirroring_ = true;

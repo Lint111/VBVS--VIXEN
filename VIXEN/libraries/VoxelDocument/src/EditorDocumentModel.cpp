@@ -81,6 +81,51 @@ bool IsRecipeInstruction(const std::vector<SdfInstruction>& program, uint32_t& t
     return true;
 }
 
+bool ReadReferenceIndex(const SdfInstruction& instruction, uint32_t& index) {
+    const float rawIndex = instruction.data[0];
+    if (!std::isfinite(rawIndex) || rawIndex < 0.0f ||
+        rawIndex >= static_cast<float>(std::numeric_limits<uint32_t>::max()) ||
+        std::floor(rawIndex) != rawIndex) {
+        return false;
+    }
+    index = static_cast<uint32_t>(rawIndex);
+    return true;
+}
+
+bool MaterialSuffix(const std::vector<SdfInstruction>& program, size_t& suffixIndex,
+                    uint32_t& tableIndex) {
+    if (program.size() < 2u ||
+        program[program.size() - 2u].opCode != static_cast<uint8_t>(SdfOpCode::MaterialRef) ||
+        program.back().opCode != static_cast<uint8_t>(SdfOpCode::Attach)) {
+        return false;
+    }
+    if (!ReadReferenceIndex(program[program.size() - 2u], tableIndex)) return false;
+    suffixIndex = program.size() - 2u;
+    return true;
+}
+
+void PruneTrailingUnusedReferences(const std::vector<EditableDocumentLayer>& layers,
+                                   std::vector<std::string>& references) {
+    while (!references.empty()) {
+        const uint32_t candidate = static_cast<uint32_t>(references.size() - 1u);
+        bool used = false;
+        for (const auto& layer : layers) {
+            for (const auto& instruction : layer.program) {
+                const auto opcode = static_cast<SdfOpCode>(instruction.opCode);
+                if (opcode != SdfOpCode::InvokeRecipe && opcode != SdfOpCode::MaterialRef) continue;
+                uint32_t index = 0u;
+                if (ReadReferenceIndex(instruction, index) && index == candidate) {
+                    used = true;
+                    break;
+                }
+            }
+            if (used) break;
+        }
+        if (used) break;
+        references.pop_back();
+    }
+}
+
 bool IsWireIndexedArgument(Vixen::SVO::Recipe::SdfArgumentSource source) {
     using Source = Vixen::SVO::Recipe::SdfArgumentSource;
     return source == Source::FieldPort || source == Source::SetPort;
@@ -918,14 +963,15 @@ bool EditorDocumentModel::RemoveReference(const std::string& id, DocumentDiagnos
         for (uint32_t instructionIndex = 0; instructionIndex < layer.header->instructionCount;
              ++instructionIndex) {
             const auto& instruction = layer.instructions[instructionIndex];
-            if (instruction.opCode != static_cast<uint8_t>(SdfOpCode::InvokeRecipe)) continue;
+            if (instruction.opCode != static_cast<uint8_t>(SdfOpCode::InvokeRecipe) &&
+                instruction.opCode != static_cast<uint8_t>(SdfOpCode::MaterialRef)) continue;
             const float rawIndex = instruction.data[0];
             if (std::isfinite(rawIndex) && rawIndex >= 0.0f &&
                 rawIndex < static_cast<float>(std::numeric_limits<uint32_t>::max()) &&
                 std::floor(rawIndex) == rawIndex &&
                 static_cast<uint32_t>(rawIndex) == referenceIndex) {
                 diagnostic = {DocumentDiagnosticCode::ReferenceInUse,
-                              "cannot remove recipe reference used by layer " +
+                              "cannot remove reference used by layer " +
                                   std::to_string(layerIndex)};
                 return false;
             }
@@ -935,6 +981,23 @@ bool EditorDocumentModel::RemoveReference(const std::string& id, DocumentDiagnos
     references_.erase(found);
     if (Rebuild(CopyLayers(), CopyParameters(), enabledMask_, diagnostic)) return true;
     references_.insert(references_.begin() + referenceIndex, saved);
+    return false;
+}
+
+bool EditorDocumentModel::IsMaterialReference(const std::string& id) const {
+    const auto found = std::find(references_.begin(), references_.end(), id);
+    if (found == references_.end()) return false;
+    const uint32_t referenceIndex = static_cast<uint32_t>(found - references_.begin());
+    for (uint32_t layerIndex = 0; layerIndex < LayerCount(); ++layerIndex) {
+        const auto& layer = view_.layers[layerIndex];
+        for (uint32_t instructionIndex = 0; instructionIndex < layer.header->instructionCount;
+             ++instructionIndex) {
+            const auto& instruction = layer.instructions[instructionIndex];
+            if (instruction.opCode != static_cast<uint8_t>(SdfOpCode::MaterialRef)) continue;
+            uint32_t index = 0u;
+            if (ReadReferenceIndex(instruction, index) && index == referenceIndex) return true;
+        }
+    }
     return false;
 }
 
@@ -978,6 +1041,119 @@ bool EditorDocumentModel::IsRecipeReferenceLayer(uint32_t index, std::string* id
     }
     if (id != nullptr) *id = references_[tableIndex];
     return true;
+}
+
+bool EditorDocumentModel::GetLayerMaterial(uint32_t layerId, std::string& out,
+                                           DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    uint32_t index = 0u;
+    if (!LayerIndexForId(layerId, index)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                      "layer id " + std::to_string(layerId) + " does not exist"};
+        return false;
+    }
+    const auto& source = view_.layers[index];
+    const std::vector<SdfInstruction> program(source.instructions,
+                                              source.instructions + source.header->instructionCount);
+    size_t suffixIndex = 0u;
+    uint32_t tableIndex = 0u;
+    if (!MaterialSuffix(program, suffixIndex, tableIndex)) {
+        out.clear();
+        return true;
+    }
+    if (tableIndex >= references_.size()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidDocumentMaterial,
+                      "layer " + std::to_string(layerId) + " has an invalid material reference"};
+        return false;
+    }
+    out = references_[tableIndex];
+    return true;
+}
+
+bool EditorDocumentModel::HasLayerMaterials() const {
+    for (uint32_t layerIndex = 0; layerIndex < LayerCount(); ++layerIndex) {
+        const auto& layer = view_.layers[layerIndex];
+        for (uint32_t instructionIndex = 0; instructionIndex < layer.header->instructionCount;
+             ++instructionIndex) {
+            if (layer.instructions[instructionIndex].opCode == static_cast<uint8_t>(SdfOpCode::MaterialRef)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool EditorDocumentModel::SetLayerMaterial(uint32_t layerId, const std::string& material,
+                                           DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (!ValidateReferenceId(material, diagnostic)) return false;
+    uint32_t index = 0u;
+    if (!LayerIndexForId(layerId, index)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                      "layer id " + std::to_string(layerId) + " does not exist"};
+        return false;
+    }
+
+    std::string current;
+    if (!GetLayerMaterial(layerId, current, diagnostic)) return false;
+    if (current == material) return true;
+
+    const auto savedReferences = references_;
+    auto layers = CopyLayers();
+    auto& program = layers[index].program;
+    size_t suffixIndex = 0u;
+    uint32_t ignoredIndex = 0u;
+    if (MaterialSuffix(program, suffixIndex, ignoredIndex)) {
+        program.erase(program.begin() + static_cast<std::ptrdiff_t>(suffixIndex), program.end());
+    }
+    PruneTrailingUnusedReferences(layers, references_);
+
+    auto found = std::find(references_.begin(), references_.end(), material);
+    uint32_t referenceIndex = 0u;
+    if (found == references_.end()) {
+        if (references_.size() >= kMaximumReferences) {
+            diagnostic = {DocumentDiagnosticCode::TooManyReferences,
+                          "a document supports at most 32 recipe and material references"};
+            return false;
+        }
+        references_.push_back(material);
+        referenceIndex = static_cast<uint32_t>(references_.size() - 1u);
+    } else {
+        referenceIndex = static_cast<uint32_t>(found - references_.begin());
+    }
+
+    SdfInstruction materialRef{};
+    materialRef.opCode = static_cast<uint8_t>(SdfOpCode::MaterialRef);
+    materialRef.data[0] = static_cast<float>(referenceIndex);
+    SdfInstruction attach{};
+    attach.opCode = static_cast<uint8_t>(SdfOpCode::Attach);
+    program.push_back(materialRef);
+    program.push_back(attach);
+    if (Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    references_ = savedReferences;
+    return false;
+}
+
+bool EditorDocumentModel::ClearLayerMaterial(uint32_t layerId,
+                                             DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    uint32_t index = 0u;
+    if (!LayerIndexForId(layerId, index)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                      "layer id " + std::to_string(layerId) + " does not exist"};
+        return false;
+    }
+    auto layers = CopyLayers();
+    auto& program = layers[index].program;
+    size_t suffixIndex = 0u;
+    uint32_t ignoredIndex = 0u;
+    if (!MaterialSuffix(program, suffixIndex, ignoredIndex)) return true;
+    program.erase(program.begin() + static_cast<std::ptrdiff_t>(suffixIndex), program.end());
+    const auto savedReferences = references_;
+    PruneTrailingUnusedReferences(layers, references_);
+    if (Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    references_ = savedReferences;
+    return false;
 }
 
 bool EditorDocumentModel::SetLayerEnabled(uint32_t index, bool enabled,
@@ -2303,6 +2479,17 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
     const RecipeReferenceResolver& resolver,
     bool skipUnresolvedReferences,
     DocumentDiagnostic& diagnostic) const {
+    return FlattenToRecipeEntry(outEntry, snapshot, resolver, MaterialReferenceResolver{},
+                                skipUnresolvedReferences, diagnostic);
+}
+
+bool EditorDocumentModel::FlattenToRecipeEntry(
+    Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+    const DocumentBakeSnapshot& snapshot,
+    const RecipeReferenceResolver& recipeResolver,
+    const MaterialReferenceResolver& materialResolver,
+    bool skipUnresolvedReferences,
+    DocumentDiagnostic& diagnostic) const {
     using Yeroket::Sdf::Generated::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
 
@@ -2383,7 +2570,8 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
         if (view_.header.formatVersion >= kVdc1ReferenceVersion) {
             for (uint32_t instructionIndex = 0; instructionIndex < layerProgram.size(); ++instructionIndex) {
                 auto& instruction = layerProgram[instructionIndex];
-                if (static_cast<SdfOpCode>(instruction.opCode) != SdfOpCode::InvokeRecipe) continue;
+                const SdfOpCode opcode = static_cast<SdfOpCode>(instruction.opCode);
+                if (opcode != SdfOpCode::InvokeRecipe && opcode != SdfOpCode::MaterialRef) continue;
                 const float rawIndex = instruction.data[0];
                 if (!std::isfinite(rawIndex) || rawIndex < 0.0f ||
                     rawIndex >= static_cast<float>(std::numeric_limits<uint32_t>::max()) ||
@@ -2391,14 +2579,18 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
                     static_cast<uint32_t>(rawIndex) >= references_.size()) {
                     diagnostic = {DocumentDiagnosticCode::FlattenError,
                                   "layer " + std::to_string(layerIndex) + " instruction " +
-                                      std::to_string(instructionIndex) + ": invalid recipe reference index"};
+                                      std::to_string(instructionIndex) + ": invalid reference index"};
                     return false;
                 }
                 const std::string& reference = references_[static_cast<uint32_t>(rawIndex)];
-                uint32_t recipeId = 0u;
-                if (!resolver || !resolver(reference, recipeId)) {
+                uint32_t resolvedId = 0u;
+                const bool resolved = opcode == SdfOpCode::InvokeRecipe
+                    ? (recipeResolver && recipeResolver(reference, resolvedId))
+                    : (materialResolver && materialResolver(reference, resolvedId));
+                if (!resolved) {
                     uint32_t recipeTableIndex = 0u;
-                    if (skipUnresolvedReferences && IsRecipeInstruction(layerProgram, recipeTableIndex)) {
+                    if (opcode == SdfOpCode::InvokeRecipe && skipUnresolvedReferences &&
+                        IsRecipeInstruction(layerProgram, recipeTableIndex)) {
                         diagnostic = {DocumentDiagnosticCode::FlattenError,
                                       "layer " + std::to_string(layerIndex) + ": recipe '" + reference +
                                           "' is inert until its pack is available"};
@@ -2407,10 +2599,12 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
                     }
                     diagnostic = {DocumentDiagnosticCode::FlattenError,
                                   "layer " + std::to_string(layerIndex) + " instruction " +
-                                      std::to_string(instructionIndex) + ": unknown recipe '" + reference + "'"};
+                                      std::to_string(instructionIndex) + ": unknown " +
+                                      (opcode == SdfOpCode::MaterialRef ? "material '" : "recipe '") +
+                                      reference + "'"};
                     return false;
                 }
-                instruction.data[0] = static_cast<float>(recipeId);
+                instruction.data[0] = static_cast<float>(resolvedId);
             }
         }
         if (skipLayer) continue;

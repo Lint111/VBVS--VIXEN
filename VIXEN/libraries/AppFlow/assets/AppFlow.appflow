@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0x4A629711
+shape 0x72E73191
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -65,6 +65,10 @@ action AddWire 54
 action RemoveWire 55
 action InsertPortRead 56
 action SoloLayer 57
+action SetLayerMaterial 58
+action ClearLayerMaterial 59
+action SetLayerMaterialFromInput 60
+action SetDocumentDefaultMaterial 61
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -195,6 +199,10 @@ decl 54 sizeof(LayerState) 1
 decl 55 sizeof(LayerState) 1
 decl 56 sizeof(LayerState) 1
 decl 57 sizeof(LayerState) 1
+decl 58 sizeof(LayerState) 1
+decl 59 sizeof(LayerState) 1
+decl 60 sizeof(LayerState) 1
+decl 61 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -265,6 +273,12 @@ param 56 layer 1
 param 56 afterNode 1
 param 56 source 0
 param 57 layer 1
+param 58 layer 1
+param 58 material 0
+param 59 layer 1
+param 60 layer 1
+param 60 parameter 0
+param 61 material 0
 param 16 panelId 0
 param 17 panelId 0
 param 18 panelId 0
@@ -329,6 +343,10 @@ trigger AddWireTrigger layer-{readerLayer}-wire-{input}-{sourceLayer}-{port} 54 
 trigger RemoveWireTrigger layer-{readerLayer}-wire-{input}-remove 55 readerLayer click
 trigger InsertPortReadTrigger layer-{layer}-node-{afterNode}-read-{source} 56 layer click
 trigger SoloLayerTrigger layer-{layer}-solo 57 layer click
+trigger SetLayerMaterialTrigger layer-{layer}-material-{material} 58 layer click
+trigger ClearLayerMaterialTrigger layer-{layer}-material-clear 59 layer click
+trigger SetLayerMaterialFromInputTrigger layer-{layer}-material-input-{parameter} 60 layer click
+trigger SetDocumentDefaultMaterialTrigger document-material-default-{material} 61 material click
 trigger SetLayerTransformPXTrigger layer-{index}-placement-px-{px} 26 layerIndex click
 trigger SetLayerTransformPYTrigger layer-{index}-placement-py-{py} 26 layerIndex click
 trigger SetLayerTransformPZTrigger layer-{index}-placement-pz-{pz} 26 layerIndex click
