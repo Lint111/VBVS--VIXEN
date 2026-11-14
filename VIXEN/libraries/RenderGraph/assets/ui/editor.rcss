@@ -156,7 +156,6 @@ body.picker {
 .layer-diagnostic {
     color: #f0bd68;
     white-space: normal;
-    overflow-wrap: anywhere;
 }
 
 .node-port {
