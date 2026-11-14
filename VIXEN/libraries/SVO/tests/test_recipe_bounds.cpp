@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "Recipe/RecipeBounds.h"
 #include "Recipe/RecipeServices.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/SdfRecipeEval.h"
