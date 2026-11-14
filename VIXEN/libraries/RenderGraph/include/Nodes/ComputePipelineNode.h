@@ -5,6 +5,9 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/ComputePipelineNodeConfig.h"
 
+#include <functional>
+#include <memory>
+
 // Forward declarations
 namespace CashSystem {
     class ComputePipelineCacher;
@@ -62,6 +65,19 @@ public:
     );
     ~ComputePipelineNode() override = default;
 
+    /**
+     * @brief R864.4: a callable that creates this node's pipeline for a NEW shader bundle on a
+     * worker thread, through the same ComputePipelineCacher key the node's next Compile uses.
+     *
+     * Resolved here, on the frame thread: the device, the cachers, the current descriptor set
+     * layout, the workgroup size and the current descriptor-interface uuid. The returned callable
+     * touches no node state. It creates nothing when the new bundle's interface differs (its
+     * pipeline would be built against a stale layout; the swap Compile builds it instead), and
+     * nothing before the node's first Compile (empty function). The swap Compile then finds the
+     * pipeline in the cacher instead of compiling it on the frame thread.
+     */
+    std::function<void(const std::shared_ptr<::ShaderManagement::ShaderDataBundle>&)> MakePipelineWarmer();
+
 protected:
     void TypedSetupImpl(TypedSetupContext& ctx) override;
     void TypedCompileImpl(TypedCompileContext& ctx) override;
@@ -69,6 +85,11 @@ protected:
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
+    // Descriptor-interface uuid of the bundle the pipeline was last compiled from (R864.4 warmer guard)
+    std::string compiledInterfaceUuid_;
+    VkDescriptorSetLayout compiledDescriptorSetLayout_ = VK_NULL_HANDLE;
+    uint32_t compiledWorkgroup_[3] = {8, 8, 1};
+
     // Cached outputs (for multi-frame stability)
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;

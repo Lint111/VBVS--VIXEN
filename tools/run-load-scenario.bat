@@ -8,6 +8,8 @@ REM   frame trace and phase timing written into ROOT\NAME\. ROOT\NAME must not e
 REM   evidence is never overwritten). KEY:VALUE pairs become environment variables for the run
 REM   (resolution VIXEN_WINDOW_WIDTH/HEIGHT and the illumination feature settings).
 REM   LOAD_SCENARIO_ARGS:--lockstep makes recipe recompiles swap on a fixed frame (deterministic hashes).
+REM   SCENARIO_EXE:vixen_recipe_edit_bench runs the recipe edit-latency bench instead (same outputs and
+REM   output convention; its options are RECIPE_EDIT_TIER, RECIPE_EDIT_EXTRA_RECIPES, RECIPE_EDIT_REPEATS).
 set "CAPTURE_ROOT="
 if /i "%~1"=="--evidence-root" (
     set "CAPTURE_ROOT=%~2"
@@ -25,7 +27,6 @@ if exist "%OUT%" (
     exit /b 2
 )
 mkdir "%OUT%"
-set "EXE=%ROOT%\build\ninja-release\application\main\vixen_load_scenario.exe"
 set VIXEN_HIDDEN_WINDOW=1
 set VIXEN_HDR_EXPOSURE=1
 set VIXEN_HUD_SUPPRESS=1
@@ -49,6 +50,8 @@ if defined VIXEN_GPU_LEDGER (
     set "VK_INSTANCE_LAYERS=VK_LAYER_VIXEN_gpu_ledger"
     reg add "HKLM\SOFTWARE\Khronos\Vulkan\ExplicitLayers" /v "%LEDGER_JSON%" /t REG_DWORD /d 0 /f >nul 2>&1
 )
+if not defined SCENARIO_EXE set "SCENARIO_EXE=vixen_load_scenario"
+set "EXE=%ROOT%\build\ninja-release\application\main\%SCENARIO_EXE%.exe"
 cd /d "%ROOT%\build\ninja-release\application\main"
 "%EXE%" --out "%OUT%" %LOAD_SCENARIO_ARGS% > "%OUT%\run.log" 2>&1
 set RC=%errorlevel%

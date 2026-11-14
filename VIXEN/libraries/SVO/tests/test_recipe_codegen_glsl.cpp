@@ -1,10 +1,10 @@
 // Lazy-Procedural-Delta-Baseline Inc1 M4 Task 8: compile + basic-shape smoke test for
-// EmitProceduralFieldFunctionGlsl. Pure CPU (string output only) — no GPU/glslang needed.
+// RecipeGpuField. Pure CPU (string output only) — no GPU/glslang needed.
 // Numerical correctness (vs CPU evalRecipe, on real GPU) is Task 9's job; this test only
 // proves the emitter runs, produces well-formed function shape, and honours the
 // float-literal guard.
 
-#include "Recipe/SdfRecipeCodegenGlsl.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/generated/SdfOpCodes.g.h"
 
 #include <gtest/gtest.h>
@@ -33,9 +33,9 @@ SdfInstruction MakeGlyph(uint32_t index) {
 }
 } // namespace
 
-TEST(EmitProceduralFieldFunctionGlsl, SingleSphereProducesComposableFunction) {
+TEST(RecipeGpuField, SingleSphereProducesComposableFunction) {
     SdfInstruction prog[] = { MakeSphere(0.0f, 0.0f, 0.0f, 2.5f) };
-    const std::string glsl = EmitProceduralFieldFunctionGlsl(prog, 1, /*recipeId=*/7);
+    const std::string glsl = RecipeGpuField(prog, 1, /*recipeId=*/7);
 
     // Composable function, not a trace main: exactly one function, named by id, takes vec3
     // + the per-instance params[6] array (Recipe-Parameterization M2 Task 5), returns float,
@@ -48,32 +48,32 @@ TEST(EmitProceduralFieldFunctionGlsl, SingleSphereProducesComposableFunction) {
     EXPECT_NE(glsl.find("SdfCore_Sphere(p, vec3("), std::string::npos);
 }
 
-TEST(EmitProceduralFieldFunctionGlsl, UnionOfTwoSpheresChainsCorrectly) {
+TEST(RecipeGpuField, UnionOfTwoSpheresChainsCorrectly) {
     SdfInstruction prog[] = {
         MakeSphere(-2.0f, 0.0f, 0.0f, 2.5f),
         MakeSphere(2.0f, 0.0f, 0.0f, 2.5f),
         MakeOp(SdfOpCode::Union),
     };
-    const std::string glsl = EmitProceduralFieldFunctionGlsl(prog, 3, /*recipeId=*/0);
+    const std::string glsl = RecipeGpuField(prog, 3, /*recipeId=*/0);
 
     EXPECT_NE(glsl.find("SdfCore_Union(t0, t1)"), std::string::npos);
     EXPECT_NE(glsl.find("return t2;"), std::string::npos);
 }
 
-TEST(EmitProceduralFieldFunctionGlsl, InstructionFloatLiteralsRoundTripExactly) {
+TEST(RecipeGpuField, InstructionFloatLiteralsRoundTripExactly) {
     for (float value : {1.0f / 3.0f, 0.123456789f, 1.23456789e-12f, -0.0f}) {
         SdfInstruction program[] = {MakeSphere(value, value, value, value)};
-        const auto glsl = EmitProceduralFieldFunctionGlsl(program, 1, 0);
+        const auto glsl = RecipeGpuField(program, 1, 0);
         const std::string literal = "uintBitsToFloat(" + std::to_string(std::bit_cast<std::uint32_t>(value)) + "u)";
         EXPECT_NE(glsl.find("vec3(" + literal + ", " + literal + ", " + literal + "), " + literal),
             std::string::npos) << glsl;
     }
 }
 
-TEST(EmitProceduralFieldFunctionGlsl, GlyphOutlineUsesRuntimeBufferAndRebasedIndex) {
+TEST(RecipeGpuField, GlyphOutlineUsesRuntimeBufferAndRebasedIndex) {
     SdfInstruction prog[] = {MakeGlyph(/*localIndex=*/2)};
     Yeroket::Sdf::Kernels::GlyphOutlineInstance glyph{};
-    const std::string glsl = EmitProceduralFieldFunctionGlsl(
+    const std::string glsl = RecipeGpuField(
         prog, 1, /*recipeId=*/12, /*emitDeclaredPositionOutParam=*/false, nullptr,
         std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance>(&glyph, 1),
         /*glyphInstanceBase=*/5);
@@ -84,17 +84,17 @@ TEST(EmitProceduralFieldFunctionGlsl, GlyphOutlineUsesRuntimeBufferAndRebasedInd
 }
 
 // Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype. Proves
-// EmitProceduralFieldFunctionGlsl's new emitDeclaredPositionOutParam=true path produces the
+// RecipeGpuField's emitDeclaredPositionOutParam=true path produces the
 // expected `out vec3 declaredPos` signature + inline assignment shape (pure string-shape
 // check; GPU numerical parity + the "declared position actually moves the shape" claim live
 // in test_recipe_glsl_numerical_parity.cpp's GPU-gated harness).
-TEST(EmitProceduralFieldFunctionGlsl, DeclaredPositionEmitsOutParamAndInlineAssignment) {
+TEST(RecipeGpuField, DeclaredPositionEmitsOutParamAndInlineAssignment) {
     SdfInstruction prog[] = {
         MakeOp(SdfOpCode::ReadParamFloat3), // idx defaults to data[0]=0 via zero-init
         MakeOp(SdfOpCode::DeclarePosition),
         MakeSphere(0.0f, 0.0f, 0.0f, 0.5f),
     };
-    const std::string glsl = EmitProceduralFieldFunctionGlsl(prog, 3, /*recipeId=*/9,
+    const std::string glsl = RecipeGpuField(prog, 3, /*recipeId=*/9,
                                                               /*emitDeclaredPositionOutParam=*/true);
 
     // Signature carries the out-param.
@@ -117,12 +117,12 @@ TEST(EmitProceduralFieldFunctionGlsl, DeclaredPositionEmitsOutParamAndInlineAssi
         << "resolve segment must sample the DeclarePosition-translated point, not raw p:\n" << glsl;
 }
 
-TEST(EmitProceduralFieldFunctionGlsl, EveryNumericLiteralHasDecimalPoint) {
+TEST(RecipeGpuField, EveryNumericLiteralHasDecimalPoint) {
     // Float-literal guard: a program exercising an integer-valued float (radius 6, a value
     // that would silently become the GLSL/HLSL int literal `6` without the guard) — mirrors
     // the documented `1/6` int-div failure class the guard exists to prevent.
     SdfInstruction prog[] = { MakeSphere(1.0f, 2.0f, 3.0f, 6.0f) };
-    const std::string glsl = EmitProceduralFieldFunctionGlsl(prog, 1, /*recipeId=*/1);
+    const std::string glsl = RecipeGpuField(prog, 1, /*recipeId=*/1);
 
     // Every bare integer token (a run of digits NOT adjacent to '.', and not part of an
     // identifier like sdfRecipe_1 or t0) would indicate a literal emitted without ".0".

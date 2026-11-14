@@ -653,6 +653,16 @@ endif()
 set_target_properties(test_recipe_codegen_glsl PROPERTIES FOLDER "Tests/SVO Tests")
 vixen_gtest_discover_tests(SVO test_recipe_codegen_glsl)
 
+# R841 consumer parity: fixed-provider services versus the retired VIXEN oracle paths.
+add_executable(test_recipe_services test_recipe_services.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_services PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_services PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_services PROPERTIES FOLDER "Tests/SVO Tests")
+vixen_gtest_discover_tests(SVO test_recipe_services)
+
 # ===========================================================================
 # Recipe parity fixture EXPORTER (task #26 cross-repo gate) — env-gated:
 # skips without VIXEN_EXPORT_RECIPE_PARITY_FIXTURES=<out.json>; with it,

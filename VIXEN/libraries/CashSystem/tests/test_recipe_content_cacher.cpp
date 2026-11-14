@@ -80,7 +80,7 @@ TEST_F(RecipeContentCacherTest, IdenticalBytecodeDistinctRecipeIdsCollapseToOneE
     ASSERT_NE(recordB, nullptr);
     EXPECT_EQ(recordA, recordB) << "same shared_ptr identity — TypedCacher::GetOrCreate returns "
                                     "the SAME cached entry on a content-hash hit";
-    EXPECT_EQ(recordA->contentHash, recordB->contentHash);
+    EXPECT_EQ(recordA->contentDigest, recordB->contentDigest);
     EXPECT_EQ(recordA->firstRecipeId, 1u);
     ASSERT_EQ(recordA->memberRecipeIds.size(), 2u);
     EXPECT_EQ(recordA->memberRecipeIds[0], 1u);
@@ -99,7 +99,7 @@ TEST_F(RecipeContentCacherTest, DiffersByOpcodeDistinctEntries) {
     ASSERT_NE(recordA, nullptr);
     ASSERT_NE(recordB, nullptr);
     EXPECT_NE(recordA, recordB);
-    EXPECT_NE(recordA->contentHash, recordB->contentHash);
+    EXPECT_NE(recordA->contentDigest, recordB->contentDigest);
     EXPECT_EQ(recordA->memberRecipeIds.size(), 1u);
     EXPECT_EQ(recordB->memberRecipeIds.size(), 1u);
 }
@@ -114,7 +114,7 @@ TEST_F(RecipeContentCacherTest, DiffersByOneLiteralDistinctEntries) {
     auto recordB = cacher_->RegisterRecipe(2, b);
 
     EXPECT_NE(recordA, recordB);
-    EXPECT_NE(recordA->contentHash, recordB->contentHash);
+    EXPECT_NE(recordA->contentDigest, recordB->contentDigest);
 }
 
 // (c) ReadParam slot-index distinction re-proven through the CACHER (not just the hash function):
@@ -132,7 +132,7 @@ TEST_F(RecipeContentCacherTest, ReadParamSlotIndexDoesNotCollapseAcrossCacher) {
     ASSERT_NE(recordSlot0, nullptr);
     ASSERT_NE(recordSlot1, nullptr);
     EXPECT_NE(recordSlot0, recordSlot1);
-    EXPECT_NE(recordSlot0->contentHash, recordSlot1->contentHash);
+    EXPECT_NE(recordSlot0->contentDigest, recordSlot1->contentDigest);
     EXPECT_EQ(recordSlot0->memberRecipeIds.size(), 1u);
     EXPECT_EQ(recordSlot1->memberRecipeIds.size(), 1u);
 

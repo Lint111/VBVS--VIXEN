@@ -7,6 +7,7 @@
 #include "Recipe/generated/RecipeSimd.g.hpp"
 #include "Recipe/RecipeBounds.h"
 #include "Recipe/SdfRecipeEval.h"
+#include "Recipe/RecipeServices.h"
 
 #include <chrono>
 #include <cmath>
@@ -555,11 +556,13 @@ TEST(EditorDocumentFraming, FramesThreeDifferentlyBoundedDocumentsAndParameteriz
 
     std::vector<Vixen::Editor::EditorCameraFrame> frames;
     for (const auto& program : programs) {
-        const auto bounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
-            program.data(), static_cast<uint32_t>(program.size()));
-        ASSERT_TRUE(bounds.ok);
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+        entry.bytecode = program;
+        const auto analysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(entry, 24.0f, 0.9f);
+        ASSERT_EQ(analysis.boundSource,
+                  Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource::Derived);
         frames.push_back(Vixen::Editor::FitEditorCameraToBounds(
-            bounds.center, bounds.radius, glm::vec3(32.0f), 64));
+            entry.boundCenter, entry.boundRadius, glm::vec3(32.0f), 64));
     }
     ASSERT_EQ(frames.size(), 3u);
     EXPECT_NE(frames[0].distance, frames[1].distance);
@@ -591,10 +594,14 @@ TEST(EditorDocumentFraming, FramesThreeDifferentlyBoundedDocumentsAndParameteriz
         }(),
     };
     const float parameterValues[] = {1.25f};
-    const auto parameterizedBounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
-        parameterized, 3u, parameterValues);
-    ASSERT_TRUE(parameterizedBounds.ok);
-    EXPECT_GE(parameterizedBounds.radius, 1.75f);
+    Vixen::SVO::RecipeRegistry::RecipeEntry parameterizedEntry;
+    parameterizedEntry.bytecode.assign(parameterized, parameterized + 3u);
+    parameterizedEntry.parameterValues.assign(parameterValues, parameterValues + 1u);
+    const auto parameterizedAnalysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
+        parameterizedEntry, 24.0f, 0.9f);
+    ASSERT_EQ(parameterizedAnalysis.boundSource,
+              Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource::Derived);
+    EXPECT_GE(parameterizedEntry.boundRadius, 1.75f);
 }
 
 // ---- R872.1 catalogue consumer -------------------------------------------------------------
