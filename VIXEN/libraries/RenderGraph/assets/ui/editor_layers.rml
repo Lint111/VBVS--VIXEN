@@ -16,14 +16,25 @@
             <ut-button id="panel-picker-open" label="Add"/>
             <ut-button id="undo-button" label="Undo"/>
             <ut-button id="redo-button" label="Redo"/>
-            <ut-button id="save-button" label="Save"/>
-            <ut-button id="reopen-button" label="Reopen saved"/>
+        <ut-button id="save-button" label="Save"/>
+        <ut-button id="reopen-button" label="Reopen saved"/>
         </ut-toolbar>
+        <div class="inputs-pinned">
+            <div class="subtitle">Inputs</div>
+            <ut-number-field data-for="param : parameters" data-attr-label="param.name" data-attr-unit="param.unit"
+                             data-attr-value="param.value" data-attr-value-id="param.setId"
+                             data-attr-reset-id="'parameter-' + it_index + '-reset'"
+                             data-attr-min="param.minimum" data-attr-max="param.maximum"> </ut-number-field>
+            <div class="hint" data-if="parameters.size == 0">This document declares no inputs.</div>
+        </div>
         <ut-list class="fill">
             <div class="ut-row" data-for="row : layers">
                 <ut-toggle data-attr-id="row.elementId" data-attr-checked="row.isChecked"> </ut-toggle>
                 <ut-button variant="name" data-attr-id="row.selectId" data-attr-label="row.name" data-class-selected="row.isSelected"> </ut-button>
                 <span class="col-op">{{row.op}}</span>
+                <span class="dependency-mark" data-attr-title="row.dependencyTitle + (row.warningTitle == '' ? '' : ' — ' + row.warningTitle)">{{row.providesMark}} {{row.readsMark}} {{row.readByMark}} {{row.warningMark}}</span>
+                <ut-button class="layer-provide" data-attr-id="row.provideId" label="provide"> </ut-button>
+                <ut-button class="layer-solo" data-attr-id="row.soloId" label="solo" data-class-selected="row.isSolo"> </ut-button>
                 <ut-button data-attr-id="row.moveUpId" label="ˆ"> </ut-button>
                 <ut-button data-attr-id="row.moveDownId" label="ˇ"> </ut-button>
                 <ut-button data-attr-id="row.deleteId" label="×"> </ut-button>
@@ -32,6 +43,7 @@
                     <ut-button data-attr-id="row.blendDownId" label="−"> </ut-button>
                     <ut-button data-attr-id="row.blendUpId" label="+"> </ut-button>
                 </div>
+                <div class="layer-diagnostic" data-if="row.diagnostic != ''">{{row.diagnostic}}</div>
             </div>
         </ut-list>
     </ut-panel>

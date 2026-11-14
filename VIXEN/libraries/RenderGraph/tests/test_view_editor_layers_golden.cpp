@@ -88,9 +88,12 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
     std::vector<Vixen::Views::EditorMaterialRow> materials;
     std::vector<Vixen::Views::EditorNodeRow> nodes;
     std::vector<Vixen::Views::EditorNodeArgumentRow> nodeArguments;
+    std::vector<Vixen::Views::EditorNodePortChoiceRow> portChoices;
+    std::vector<Vixen::Views::EditorReadPortChoiceRow> readPortChoices;
     std::vector<Vixen::Views::EditorNodeWrapRow> nodeWrapChoices;
     std::vector<Vixen::Views::EditorNodeChoiceRow> nodeChoices;
     bool nodePickerActive = false;
+    Rml::String readPortEmptyReason;
     bool rawProgram = false;
     Rml::String rawProgramDiagnostic;
     Rml::String statusDocument, statusMessage, flowState;
@@ -100,7 +103,8 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
                                          &activeLayerCount, &recipes,
                                          &packRecipes,
                                          &materials,
-                                         &nodes, &nodeArguments, &nodeWrapChoices, &nodeChoices, &nodePickerActive, &rawProgram,
+                                         &nodes, &nodeArguments, &portChoices, &readPortChoices, &nodeWrapChoices,
+                                         &nodeChoices, &nodePickerActive, &readPortEmptyReason, &rawProgram,
                                          &rawProgramDiagnostic,
                                          &statusDocument, &statusMessage, &flowState, &undoDepth, &redoDepth };
 

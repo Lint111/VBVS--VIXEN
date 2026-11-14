@@ -200,6 +200,19 @@ std::vector<Vixen::App::EditorPackRecipeData> PickerPackRecipes(
     return out;
 }
 
+bool IsPortArgument(Vixen::SVO::Recipe::SdfArgumentSource source) {
+    using Source = Vixen::SVO::Recipe::SdfArgumentSource;
+    return source == Source::FieldPort || source == Source::SetPort;
+}
+
+const char* PortArgumentKind(Vixen::SVO::Recipe::SdfArgumentSource source) {
+    return source == Vixen::SVO::Recipe::SdfArgumentSource::SetPort ? "Set" : "Field";
+}
+
+const char* PortArgumentName(Vixen::SVO::Recipe::SdfArgumentSource source) {
+    return source == Vixen::SVO::Recipe::SdfArgumentSource::SetPort ? "set" : "field";
+}
+
 bool ParseTextParam(const Vixen::AppFlow::AppFlowRuntime::Params& params, const char* name, std::string& out) {
     for (const auto& [n, v] : params) {
         if (n != name) continue;
@@ -366,12 +379,44 @@ void EditorApplication::DeInitialize() {
 void EditorApplication::RefreshLayersView() {
     std::vector<Vixen::App::EditorLayerData> layers;
     layers.reserve(doc_.LayerCount());
+    const auto layerNameForId = [this](uint32_t id) {
+        uint32_t index = 0u;
+        return doc_.LayerIndexForId(id, index) ? doc_.LayerName(index) :
+                                                ("missing layer " + std::to_string(id));
+    };
     for (uint32_t i = 0; i < doc_.LayerCount(); ++i) {
         Vixen::App::EditorLayerData row;
+        row.id = doc_.LayerId(i);
         row.name = doc_.LayerName(i);
         row.op = Vixen::Editor::EditorDocumentModel::OpName(doc_.View().layers[i].header->op);
         row.enabled = ((doc_.EnabledMask() >> i) & 1u) != 0u;
         row.blendRadius = doc_.View().layers[i].header->blendRadius;
+        row.provides = doc_.View().layers[i].header->op == 4u;
+        row.solo = doc_.SoloLayerId().has_value() && *doc_.SoloLayerId() == doc_.LayerId(i);
+        std::vector<std::string> reads;
+        std::vector<std::string> readBy;
+        for (const auto& wire : doc_.Wires()) {
+            if (wire.readerLayerId == doc_.LayerId(i))
+                reads.push_back(layerNameForId(wire.sourceLayerId) + "." + wire.output);
+            if (wire.sourceLayerId == doc_.LayerId(i))
+                readBy.push_back(layerNameForId(wire.readerLayerId) + "." + wire.input);
+        }
+        const auto join = [](const std::vector<std::string>& names) {
+            std::string text;
+            for (const auto& name : names) {
+                if (!text.empty()) text += ", ";
+                text += name;
+            }
+            return text;
+        };
+        row.readsMark = reads.empty() ? "" : "← " + std::to_string(reads.size());
+        row.readByMark = readBy.empty() ? "" : "→ " + std::to_string(readBy.size());
+        row.dependencyTitle = "reads: " + (reads.empty() ? std::string("none") : join(reads)) +
+                              "; read by: " + (readBy.empty() ? std::string("none") : join(readBy));
+        const auto warnings = doc_.LayerWarnings(row.id);
+        row.warningMark = warnings.empty() ? "" : "⚠";
+        row.warningTitle = join(warnings);
+        if (row.id == lastLayerDiagnosticId_) row.diagnostic = lastLayerDiagnostic_;
         layers.push_back(std::move(row));
     }
     std::vector<Vixen::App::EditorParameterData> parameters;
@@ -436,11 +481,24 @@ void EditorApplication::RefreshLayersView() {
         Vixen::Editor::DocumentDiagnostic graphDiagnostic;
         const Vixen::Editor::LayerGraph* graph = doc_.GetLayerGraph(selectedLayer_, graphDiagnostic);
         if (graph != nullptr) {
-            graphData.rawProgram = graph->raw;
+            // ReadPort is a side-input node. The generated graph intentionally retains its
+            // emitted nodes when the surrounding program has a leftover stack, so the editor can
+            // still expose/remove the read node while the candidate program is being completed.
+            bool hasPartialReadPortGraph = false;
             if (graph->raw) {
+                for (uint32_t nodeIndex = 0u; nodeIndex < graph->view.nodeCount; ++nodeIndex) {
+                    if (graph->view.nodes[nodeIndex].opcode ==
+                        static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) {
+                        hasPartialReadPortGraph = true;
+                        break;
+                    }
+                }
+            }
+            graphData.rawProgram = graph->raw && !hasPartialReadPortGraph;
+            if (graphData.rawProgram) {
                 graphData.rawProgramDiagnostic =
                     Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(graph->diagnostic);
-            } else {
+            } else if (hasPartialReadPortGraph || !graph->raw) {
                 const auto categoryName = [](Vixen::SVO::Recipe::SdfOpCategory category) {
                     using Category = Vixen::SVO::Recipe::SdfOpCategory;
                     switch (category) {
@@ -473,6 +531,22 @@ void EditorApplication::RefreshLayersView() {
                 const auto& layer = doc_.View().layers[selectedLayer_];
                 const std::span<const Vixen::SVO::Recipe::SdfInstruction> program(
                     layer.instructions, layer.header->instructionCount);
+                const auto warningForInput = [this, layerId = doc_.LayerId(selectedLayer_)](
+                                                 std::string_view input) -> std::string {
+                    const std::string prefix = "input " + std::string(input) + " ";
+                    for (const auto& warning : doc_.LayerWarnings(layerId)) {
+                        if (warning.rfind(prefix, 0u) == 0u) return warning;
+                    }
+                    return {};
+                };
+                const auto wireForInput = [this, layerId = doc_.LayerId(selectedLayer_)](
+                                              std::string_view input) -> const Vixen::Editor::LayerWire* {
+                    const auto it = std::find_if(doc_.Wires().begin(), doc_.Wires().end(),
+                        [layerId, input](const Vixen::Editor::LayerWire& wire) {
+                            return wire.readerLayerId == layerId && wire.input == input;
+                        });
+                    return it == doc_.Wires().end() ? nullptr : &*it;
+                };
                 if (graph->view.nodeCount == 0u) {
                     expandedNode_ = 0u;
                 } else if (expandedNode_ >= graph->view.nodeCount) {
@@ -495,6 +569,7 @@ void EditorApplication::RefreshLayersView() {
                     std::string addOp;
                     std::string addReason;
                     for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+                        if (info.opcode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) continue;
                         std::vector<Vixen::SVO::Recipe::SdfInstruction> inserted(program.size() + 1u);
                         uint32_t insertedCount = 0u;
                         Vixen::SVO::Recipe::SdfGraphDiagnostic insertDiagnostic{};
@@ -514,12 +589,58 @@ void EditorApplication::RefreshLayersView() {
                         doc_.IsRecipeReferenceLayer(selectedLayer_, &recipeId, recipeDiagnostic)) {
                         displayName = "Recipe " + recipeId;
                     }
+                    if (node.opcodeInfo->opcode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) {
+                        const auto* wire = wireForInput("read");
+                        displayName = wire == nullptr
+                            ? "read <unwired port>"
+                            : "read " + layerNameForId(wire->sourceLayerId) + "." + wire->output;
+                    }
                     std::vector<std::string> summaryParts;
 
                     const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(*node.opcodeInfo);
                     for (uint32_t argumentIndex = 0;
                          argumentIndex < node.opcodeInfo->argumentCount; ++argumentIndex) {
                         const auto& argument = arguments[argumentIndex];
+                        if (node.opcodeInfo->opcode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) {
+                            continue;
+                        }
+                        if (IsPortArgument(argument.source)) {
+                            const auto* existing = wireForInput(argument.name);
+                            const char* portName = PortArgumentName(argument.source);
+                            bool hasChoice = false;
+                            for (uint32_t sourceIndex = 0u;
+                                 sourceIndex < selectedLayer_; ++sourceIndex) {
+                                if (doc_.View().layers[sourceIndex].header->op != 4u) continue;
+                                hasChoice = true;
+                                const uint32_t sourceId = doc_.LayerId(sourceIndex);
+                                graphData.portChoices.push_back({
+                                    static_cast<int>(nodeIndex), argument.name,
+                                    doc_.LayerName(sourceIndex) + "." + portName,
+                                    "layer-" + std::to_string(doc_.LayerId(selectedLayer_)) + "-wire-" +
+                                        argument.name + "-" + std::to_string(sourceId) + "-" + portName,
+                                    "layer-" + std::to_string(doc_.LayerId(selectedLayer_)) + "-wire-" +
+                                        argument.name + "-remove",
+                                    existing != nullptr && existing->sourceLayerId == sourceId &&
+                                        existing->output == portName});
+                            }
+                            if (existing != nullptr && !hasChoice) {
+                                graphData.portChoices.push_back({
+                                    static_cast<int>(nodeIndex), argument.name,
+                                    layerNameForId(existing->sourceLayerId) + "." + existing->output,
+                                    {},
+                                    "layer-" + std::to_string(doc_.LayerId(selectedLayer_)) + "-wire-" +
+                                        argument.name + "-remove",
+                                    true});
+                            }
+                            const std::string emptyReason = hasChoice || existing != nullptr
+                                ? std::string()
+                                : std::string("no layer below provides a ") + PortArgumentKind(argument.source);
+                            graphData.arguments.push_back({static_cast<int>(nodeIndex), argument.name, "",
+                                                           argument.label, 0.0f, false, 0.0f, 0.0f, 0.0f,
+                                                           false, false, true, PortArgumentKind(argument.source),
+                                                           emptyReason});
+                            continue;
+                        }
                         if (argument.source != Vixen::SVO::Recipe::SdfArgumentSource::InstructionData) continue;
                         static constexpr const char* kComponents[4] = {"x", "y", "z", "w"};
                         const bool isTransform = node.opcodeInfo->name == "Transform";
@@ -552,7 +673,9 @@ void EditorApplication::RefreshLayersView() {
                         summaryParts.push_back(std::move(summary));
                     }
                     std::string summary;
-                    if (node.opcodeInfo->name == "Transform") {
+                    if (node.opcodeInfo->opcode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) {
+                        summary = displayName;
+                    } else if (node.opcodeInfo->name == "Transform") {
                         const auto vec = [](const std::array<float, 9>& values, size_t offset, const char* suffix) {
                             return std::string(suffix) + " (" + FloatParamText(values[offset]) + ", " +
                                    FloatParamText(values[offset + 1u]) + ", " + FloatParamText(values[offset + 2u]) + ")";
@@ -571,11 +694,25 @@ void EditorApplication::RefreshLayersView() {
                                                categoryName(node.opcodeInfo->category), std::move(addOp),
                                                std::move(summary), canRemove, nodeIndex == expandedNode_,
                                                std::move(addReason), std::move(removeReason), std::move(removeTitle),
-                                               indentFor(node)});
+                                               indentFor(node),
+                                               warningForInput(node.opcodeInfo->opcode ==
+                                                                   static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)
+                                                               ? "read" : "")});
+                }
+                for (uint32_t sourceIndex = 0u; sourceIndex < selectedLayer_; ++sourceIndex) {
+                    if (doc_.View().layers[sourceIndex].header->op != 4u) continue;
+                    graphData.readPortChoices.push_back({
+                        static_cast<int>(nodePickerNode_), {}, doc_.LayerName(sourceIndex) + ".field",
+                        "layer-" + std::to_string(doc_.LayerId(selectedLayer_)) + "-node-" +
+                            std::to_string(nodePickerNode_) + "-read-" + doc_.LayerName(sourceIndex) + ".field",
+                        {}, false});
+                }
+                if (graphData.readPortChoices.empty()) {
+                    graphData.readPortEmptyReason = "no layer below provides a Field";
                 }
                 // The catalogue is the only source for domain choices. The generated rewrite is
                 // tried for every contiguous pair; only candidates accepted by its validation are published.
-                for (uint32_t first = 0; first < graph->view.nodeCount; ++first) {
+                for (uint32_t first = 0; !graph->raw && first < graph->view.nodeCount; ++first) {
                     for (uint32_t last = first; last < graph->view.nodeCount; ++last) {
                         for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
                             if (info.opensDomainFrame == 0u) continue;
@@ -648,6 +785,7 @@ void EditorApplication::PublishNodePickerChoices() {
             };
             const auto& node = graph->view.nodes[nodePickerNode_];
             for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
+                if (info.opcode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) continue;
                 std::vector<Vixen::SVO::Recipe::SdfInstruction> candidate(program.size() + 1u);
                 uint32_t candidateCount = 0u;
                 Vixen::SVO::Recipe::SdfGraphDiagnostic insertDiagnostic{};
@@ -733,6 +871,8 @@ void EditorApplication::SyncAfterDocumentMutation() {
     rt_.Layers().SetLayerCount(doc_.LayerCount());
     rt_.Layers().SetMask(mask);
     dirty_ = true;
+    lastLayerDiagnosticId_ = 0u;
+    lastLayerDiagnostic_.clear();
     // A successful action supersedes the previous action's located refusal. Keep this generic at
     // the mutation seam so typed-filter adds, undo/redo, and node edits all clear stale status.
     ClearEditorError();
@@ -1036,8 +1176,11 @@ void EditorApplication::RegisterAppFlowHandlers() {
             rt_.Stack().Dispatch(actionId, [this, from, to](bool forward) {
                 Vixen::Editor::DocumentDiagnostic diagnostic;
                 if (!doc_.MoveLayer(forward ? from : to, forward ? to : from, diagnostic)) {
+                    lastLayerDiagnosticId_ = doc_.LayerId(from);
+                    lastLayerDiagnostic_ = diagnostic.message;
                     ReportEditorDiagnostic(diagnostic);
                     logger_->Error("[EditorApplication] MoveLayer operation failed: " + diagnostic.message);
+                    RefreshLayersView();
                     return;
                 }
                 SyncAfterDocumentMutation();
@@ -1166,6 +1309,132 @@ void EditorApplication::RegisterAppFlowHandlers() {
     // R874.3: id 47 remains reserved for the retired VDC1 document-material edit.
     // It is intentionally not registered; the generated runtime reports an
     // unimplemented action instead of mutating the legacy header fields.
+    rt_.RegisterHandler(FlowActionId::SetLayerProvide,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        uint32_t provide = 0u;
+        if (!ParseIndexParam(p, "layer", layerId) || !ParseIndexParam(p, "provide", provide) || provide > 1u) {
+            refuse("SetLayerProvide", "needs a layer id and provide value 0 or 1");
+            return;
+        }
+        uint32_t index = 0u;
+        if (!doc_.LayerIndexForId(layerId, index)) {
+            refuse("SetLayerProvide", "layer id " + std::to_string(layerId) + " does not exist");
+            return;
+        }
+        const bool before = doc_.View().layers[index].header->op == 4u;
+        const bool after = provide != 0u;
+        if (before == after) return;
+        recordEdit(FlowActionId::SetLayerProvide, "SetLayerProvide",
+                   [this, layerId, after](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerProvide(layerId, after, d);
+                   },
+                   [this, layerId, before](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerProvide(layerId, before, d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::AddWire,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t reader = 0u;
+        uint32_t source = 0u;
+        std::string input;
+        std::string port;
+        if (!ParseIndexParam(p, "readerLayer", reader) || !ParseTextParam(p, "input", input) ||
+            !ParseIndexParam(p, "sourceLayer", source) || !ParseTextParam(p, "port", port)) {
+            refuse("AddWire", "needs readerLayer, input, sourceLayer, and port");
+            return;
+        }
+        const auto wiresBefore = doc_.Wires();
+        recordEdit(FlowActionId::AddWire, "AddWire",
+                   [this, reader, input, source, port, wiresBefore](Vixen::Editor::DocumentDiagnostic& d) {
+                       const auto found = std::find_if(doc_.Wires().begin(), doc_.Wires().end(),
+                                                       [reader, &input](const Vixen::Editor::LayerWire& wire) {
+                                                           return wire.readerLayerId == reader && wire.input == input;
+                                                       });
+                       const bool hadExisting = found != doc_.Wires().end();
+                       if (hadExisting && !doc_.RemoveWire(reader, input, d)) return false;
+                       if (doc_.AddWire(reader, input, source, port, d)) return true;
+                       if (hadExisting) {
+                           Vixen::Editor::DocumentDiagnostic restoreDiagnostic;
+                           doc_.RestoreWires(wiresBefore, restoreDiagnostic);
+                       }
+                       return false;
+                   },
+                   [this, wiresBefore](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.RestoreWires(wiresBefore, d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::RemoveWire,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t reader = 0u;
+        std::string input;
+        if (!ParseIndexParam(p, "readerLayer", reader) || !ParseTextParam(p, "input", input)) {
+            refuse("RemoveWire", "needs readerLayer and input");
+            return;
+        }
+        const auto found = std::find_if(doc_.Wires().begin(), doc_.Wires().end(),
+                                        [reader, &input](const Vixen::Editor::LayerWire& wire) {
+                                            return wire.readerLayerId == reader && wire.input == input;
+                                        });
+        if (found == doc_.Wires().end()) {
+            refuse("RemoveWire", "no matching wire exists");
+            return;
+        }
+        const uint32_t source = found->sourceLayerId;
+        const std::string port = found->output;
+        recordEdit(FlowActionId::RemoveWire, "RemoveWire",
+                   [this, reader, input](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.RemoveWire(reader, input, d);
+                   },
+                   [this, reader, input, source, port](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.AddWire(reader, input, source, port, d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::InsertPortRead,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        uint32_t afterNode = 0u;
+        std::string source;
+        if (!ParseIndexParam(p, "layer", layerId) || !ParseIndexParam(p, "afterNode", afterNode) ||
+            !ParseTextParam(p, "source", source)) {
+            refuse("InsertPortRead", "needs layer, afterNode, and source");
+            return;
+        }
+        uint32_t index = 0u;
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (!doc_.LayerIndexForId(layerId, index)) {
+            refuse("InsertPortRead", "layer id does not exist");
+            return;
+        }
+        Vixen::Editor::EditableDocumentLayer before;
+        if (!doc_.GetLayer(index, before, diagnostic)) { refuse("InsertPortRead", diagnostic.message); return; }
+        recordEdit(FlowActionId::InsertPortRead, "InsertPortRead",
+                   [this, layerId, afterNode, source](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.InsertPortRead(layerId, afterNode, source, d);
+                   },
+                   [this, layerId, index, program = std::move(before.program)](Vixen::Editor::DocumentDiagnostic& d) {
+                       if (!doc_.SetLayerProgram(index, program, d)) return false;
+                       return doc_.RemoveWire(layerId, "read", d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::SoloLayer,
+        [this, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        if (!ParseIndexParam(p, "layer", layerId)) {
+            refuse("SoloLayer", "needs a layer id");
+            return;
+        }
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        const bool clear = doc_.SoloLayerId().has_value() && *doc_.SoloLayerId() == layerId;
+        const bool accepted = clear ? (doc_.ClearSoloLayer(), true)
+                                    : doc_.SetSoloLayer(layerId, diagnostic);
+        if (!accepted) {
+            ReportEditorDiagnostic(diagnostic);
+            return;
+        }
+        ClearEditorError();
+        RefreshLayersView();
+    });
     const auto setBlend = [this, recordEdit, refuse](FlowActionId actionId, uint32_t index, float radius) {
         Vixen::Editor::DocumentDiagnostic diagnostic;
         if (index >= doc_.LayerCount()) { refuse("SetLayerBlend", "layer index " + std::to_string(index) + " is outside the document"); return; }
@@ -1276,6 +1545,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
             refuse(label, diagnostic.message);
             return;
         }
+        const auto wiresBefore = doc_.Wires();
         recordEdit(actionId, label,
                    [this, actionId, layerIndex, first, last, op](Vixen::Editor::DocumentDiagnostic& d) {
                        if (actionId == FlowActionId::InsertNodeAfter)
@@ -1284,9 +1554,17 @@ void EditorApplication::RegisterAppFlowHandlers() {
                            return doc_.RemoveNode(layerIndex, first, d);
                        return doc_.WrapNodes(layerIndex, first, last, op, d);
                    },
-                   [this, layerIndex, program = std::move(layerBefore.program)](
+                   [this, layerIndex, program = std::move(layerBefore.program), wiresBefore](
                        Vixen::Editor::DocumentDiagnostic& d) {
-                       return doc_.SetLayerProgram(layerIndex, program, d);
+                       if (!doc_.SetLayerProgram(layerIndex, program, d)) return false;
+                       if (doc_.Wires().size() == wiresBefore.size() &&
+                           std::equal(doc_.Wires().begin(), doc_.Wires().end(), wiresBefore.begin(),
+                                      [](const auto& a, const auto& b) {
+                                          return a.readerLayerId == b.readerLayerId &&
+                                                 a.sourceLayerId == b.sourceLayerId &&
+                                                 a.type == b.type && a.input == b.input && a.output == b.output;
+                                      })) return true;
+                       return doc_.RestoreWires(wiresBefore, d);
                    });
         if (actionId == FlowActionId::InsertNodeAfter && PickerOpen()) ClosePicker();
     };
@@ -2234,7 +2512,17 @@ bool EditorApplication::SaveDocument() {
     const auto snapshot = doc_.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
     Vixen::Editor::DocumentDiagnostic diagnostic;
-    if (!doc_.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), true, diagnostic)) {
+    // Solo is a viewport-only projection and is not authored in VDC1.  Save the complete enabled
+    // document so a later reopen compares against the same canonical program, while restoring the
+    // user's solo selection for the live editor immediately after the snapshot.
+    const auto savedSoloLayer = doc_.SoloLayerId();
+    if (savedSoloLayer.has_value()) doc_.ClearSoloLayer();
+    const bool flattened = doc_.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), true, diagnostic);
+    if (savedSoloLayer.has_value()) {
+        Vixen::Editor::DocumentDiagnostic restoreDiagnostic;
+        doc_.SetSoloLayer(*savedSoloLayer, restoreDiagnostic);
+    }
+    if (!flattened) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }

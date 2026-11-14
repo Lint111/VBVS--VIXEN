@@ -1288,4 +1288,131 @@ TEST(EditorDocumentModelVdc1, UnresolvedReferencesAreLocatedAndCanBeSkippedForPr
     EXPECT_NE(diagnostic.message.find(recipeId), std::string::npos);
 }
 
+TEST(EditorDocumentModelLayerPorts, LegacyBytesStayStableUntilAFeatureIsUsed) {
+    const auto original = ReadFile(VXD_GOLDEN_PATH);
+    ASSERT_FALSE(original.empty());
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    ASSERT_FALSE(model.UsesLayerPorts());
+    std::vector<std::uint8_t> saved;
+    ASSERT_TRUE(model.Serialize(saved, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(saved, original);
+    ASSERT_GE(model.LayerCount(), 2u);
+    EXPECT_EQ(model.LayerId(0u), 1u);
+    EXPECT_EQ(model.LayerId(1u), 2u);
+}
+
+TEST(EditorDocumentModelLayerPorts, WiresUseStableIdsAndRefuseUpwardReorder) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    ASSERT_GE(model.LayerCount(), 2u);
+    const uint32_t sourceId = model.LayerId(0u);
+    const uint32_t readerId = model.LayerId(1u);
+    const uint8_t ordinaryOp = model.View().layers[0].header->op;
+    ASSERT_TRUE(model.SetLayerProvide(sourceId, true, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.SetLayerProvide(sourceId, false, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(model.View().layers[0].header->op, ordinaryOp);
+    ASSERT_TRUE(model.SetLayerProvide(sourceId, true, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.AddWire(readerId, "field", sourceId, "field", diagnostic)) << diagnostic.message;
+    ASSERT_EQ(model.FormatVersion(), 5u);
+    ASSERT_EQ(model.Wires().size(), 1u);
+    EXPECT_EQ(model.Wires().front().readerLayerId, readerId);
+    EXPECT_EQ(model.Wires().front().sourceLayerId, sourceId);
+
+    const uint64_t revision = model.Revision();
+    ASSERT_FALSE(model.MoveLayer(1u, 0u, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::LayerDependencyOrder);
+    EXPECT_EQ(model.Revision(), revision);
+
+    ASSERT_TRUE(model.SetLayerEnabled(0u, false, diagnostic)) << diagnostic.message;
+    const auto warnings = model.LayerWarnings(readerId);
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_NE(warnings.front().find("using default"), std::string::npos);
+    std::vector<std::uint8_t> fallbackFlatten;
+    ASSERT_TRUE(model.Flatten(fallbackFlatten, diagnostic)) << diagnostic.message;
+
+    const auto path = MakeTempDocumentPath("vdc1-v5-wires");
+    ASSERT_TRUE(model.Save(path.path, diagnostic)) << diagnostic.message;
+    EditorDocumentModel reopened;
+    ASSERT_TRUE(reopened.Load(path.path, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(reopened.FormatVersion(), 5u);
+    EXPECT_EQ(reopened.LayerId(0u), sourceId);
+    EXPECT_EQ(reopened.LayerId(1u), readerId);
+    ASSERT_EQ(reopened.Wires().size(), 1u);
+    EXPECT_EQ(reopened.Wires().front().readerLayerId, readerId);
+    ASSERT_TRUE(reopened.RemoveWire(readerId, "field", diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(reopened.Wires().empty());
+    ASSERT_TRUE(reopened.AddWire(readerId, "field", sourceId, "field", diagnostic)) << diagnostic.message;
+
+    const uint64_t soloRevision = reopened.Revision();
+    ASSERT_TRUE(reopened.SetSoloLayer(readerId, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(reopened.Revision(), soloRevision);
+    EXPECT_TRUE(reopened.SoloLayerId().has_value());
+    reopened.ClearSoloLayer();
+    EXPECT_FALSE(reopened.SoloLayerId().has_value());
+
+    Vixen::Editor::EditableDocumentLayer removed;
+    ASSERT_TRUE(reopened.DeleteLayer(0u, &removed, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(removed.id, sourceId);
+    EXPECT_TRUE(reopened.Wires().empty());
+}
+
+TEST(EditorDocumentModelLayerPorts, TypedAndCapacityDiagnosticsAreGeneratedAndLocated) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    ASSERT_GE(model.LayerCount(), 2u);
+    const uint32_t sourceId = model.LayerId(0u);
+    const uint32_t readerId = model.LayerId(1u);
+
+    EXPECT_FALSE(model.AddWire(readerId, "radius", sourceId, "field", diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::WireTypeMismatch);
+    EXPECT_NE(diagnostic.message.find("radius"), std::string::npos);
+    EXPECT_FALSE(model.RemoveWire(readerId, "missing", diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::WireNotFound);
+
+    for (uint32_t i = 0; i < 64u; ++i) {
+        ASSERT_TRUE(model.AddWire(readerId, "input" + std::to_string(i), sourceId,
+                                  "port" + std::to_string(i), diagnostic)) << diagnostic.message;
+    }
+    EXPECT_EQ(model.Wires().size(), 64u);
+    EXPECT_FALSE(model.AddWire(readerId, "input64", sourceId, "port64", diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::WireCapacityExceeded);
+}
+
+TEST(EditorDocumentModelLayerPorts, RemovingAReadPortNodeRemovesItsWire) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    ASSERT_GE(model.LayerCount(), 2u);
+    const uint32_t sourceId = model.LayerId(0u);
+    const uint32_t readerId = model.LayerId(1u);
+    ASSERT_TRUE(model.SetLayerProvide(sourceId, true, diagnostic)) << diagnostic.message;
+
+    ASSERT_TRUE(model.InsertPortRead(readerId, 0u, model.LayerName(0u) + ".field", diagnostic))
+        << diagnostic.message;
+    ASSERT_EQ(model.Wires().size(), 1u);
+    const auto* graph = model.GetLayerGraph(1u, diagnostic);
+    ASSERT_NE(graph, nullptr);
+    ASSERT_FALSE(graph->raw);
+    ASSERT_GE(graph->view.nodeCount, 1u);
+    uint32_t readNode = graph->view.nodeCount;
+    for (uint32_t i = 0u; i < graph->view.nodeCount; ++i) {
+        if (graph->view.nodes[i].opcodeInfo->opcode ==
+            static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) {
+            readNode = i;
+            break;
+        }
+    }
+    ASSERT_LT(readNode, graph->view.nodeCount);
+    Vixen::SVO::RecipeRegistry::RecipeEntry flattened;
+    ASSERT_TRUE(model.FlattenToRecipeEntry(flattened, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.RemoveNode(1u, readNode, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(model.Wires().empty());
+    flattened = {};
+    ASSERT_TRUE(model.FlattenToRecipeEntry(flattened, diagnostic)) << diagnostic.message;
+}
+
 }  // namespace

@@ -29,6 +29,17 @@ struct EditorLayerData {
     std::string op;
     bool enabled = true;
     float blendRadius = 0.0f;
+    // Stable identity and dependency affordances are appended after the original four fields so
+    // existing headless panel fixtures can keep their compact aggregate initialization.
+    uint32_t id = 0;
+    bool provides = false;
+    bool solo = false;
+    std::string readsMark;
+    std::string readByMark;
+    std::string dependencyTitle;
+    std::string warningMark;
+    std::string warningTitle;
+    std::string diagnostic;
 };
 
 // E3: the placement of the selected layer, in the order px py pz rx ry rz sx sy sz (rotation in
@@ -77,6 +88,7 @@ struct EditorNodeData {
     std::string removeReason;
     std::string removeTitle;
     int indent = 0;
+    std::string warning;
 };
 
 struct EditorNodeArgumentData {
@@ -91,6 +103,18 @@ struct EditorNodeArgumentData {
     float defaultValue = 0.0f;
     bool hasDefault = false;
     bool isDefault = false;
+    bool isPort = false;
+    std::string portType;
+    std::string portEmptyReason;
+};
+
+struct EditorNodePortChoiceData {
+    int nodeIndex = -1;
+    std::string argument;
+    std::string label;
+    std::string elementId;
+    std::string removeId;
+    bool isSelected = false;
 };
 
 struct EditorNodeWrapData {
@@ -110,9 +134,12 @@ struct EditorNodeChoiceData {
 struct EditorGraphData {
     std::vector<EditorNodeData> nodes;
     std::vector<EditorNodeArgumentData> arguments;
+    std::vector<EditorNodePortChoiceData> portChoices;
+    std::vector<EditorNodePortChoiceData> readPortChoices;
     std::vector<EditorNodeWrapData> wrapChoices;
     std::vector<EditorNodeChoiceData> choices;
     bool nodePickerActive = false;
+    std::string readPortEmptyReason;
     bool rawProgram = true;
     std::string rawProgramDiagnostic;
 };

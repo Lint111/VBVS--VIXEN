@@ -9,6 +9,8 @@
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "Recipe/RecipeBounds.h"
@@ -48,8 +50,13 @@ constexpr uint32_t kVdc1LegacyVersion = 1u;
 constexpr uint32_t kVdc1ParameterVersion = 2u;
 constexpr uint32_t kVdc1MaterialVersion = 3u;
 constexpr uint32_t kVdc1ReferenceVersion = 4u;
+constexpr uint32_t kVdc1LayerPortVersion = 5u;
 constexpr uint32_t kMaximumReferences = 32u;
+constexpr uint32_t kMaximumWires = 64u;
+constexpr uint32_t kMaximumBindings = 32u;
 constexpr size_t kReferenceIdBytes = 64u;
+constexpr size_t kPortNameBytes = 32u;
+constexpr size_t kQueryIdBytes = 64u;
 
 bool IsValidMaterialTriple(uint32_t major, uint32_t minor, uint32_t majorPercent) {
     if (major == 0u && minor == 0u && majorPercent == 0u) return true;
@@ -72,6 +79,57 @@ bool IsRecipeInstruction(const std::vector<SdfInstruction>& program, uint32_t& t
         std::floor(rawIndex) != rawIndex) return false;
     tableIndex = static_cast<uint32_t>(rawIndex);
     return true;
+}
+
+bool IsWireIndexedArgument(Vixen::SVO::Recipe::SdfArgumentSource source) {
+    using Source = Vixen::SVO::Recipe::SdfArgumentSource;
+    return source == Source::FieldPort || source == Source::SetPort;
+}
+
+void RewriteWireIndices(std::vector<EditableDocumentLayer>& layers, size_t removedIndex) {
+    for (auto& layer : layers) {
+        for (auto& instruction : layer.program) {
+            const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(
+                static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode));
+            if (info == nullptr) continue;
+            if (static_cast<SdfOpCode>(instruction.opCode) == SdfOpCode::ReadPort) {
+                const float raw = instruction.data[0];
+                if (std::isfinite(raw) && raw >= 0.0f && std::floor(raw) == raw) {
+                    const size_t index = static_cast<size_t>(raw);
+                    if (index == removedIndex) instruction.data[0] = 0.0f;
+                    else if (index > removedIndex) instruction.data[0] = static_cast<float>(index - 1u);
+                }
+            }
+            const auto* args = Vixen::SVO::Recipe::SdfOpArguments(*info);
+            for (uint32_t i = 0; i < info->argumentCount; ++i) {
+                if (!IsWireIndexedArgument(args[i].source)) continue;
+                const float raw = instruction.data[args[i].offset];
+                if (!std::isfinite(raw) || raw < 0.0f || std::floor(raw) != raw) continue;
+                const size_t index = static_cast<size_t>(raw);
+                if (index == removedIndex) instruction.data[args[i].offset] = 0.0f;
+                else if (index > removedIndex) instruction.data[args[i].offset] = static_cast<float>(index - 1u);
+            }
+        }
+    }
+}
+
+void BindWireIndex(std::vector<EditableDocumentLayer>& layers, uint32_t readerIndex,
+                   std::string_view input, size_t wireIndex) {
+    if (readerIndex >= layers.size()) return;
+    for (auto& instruction : layers[readerIndex].program) {
+        const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(
+            static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode));
+        if (info == nullptr) continue;
+        if (input == "read" && static_cast<SdfOpCode>(instruction.opCode) == SdfOpCode::ReadPort) {
+            instruction.data[0] = static_cast<float>(wireIndex);
+        }
+        const auto* args = Vixen::SVO::Recipe::SdfOpArguments(*info);
+        for (uint32_t i = 0; i < info->argumentCount; ++i) {
+            if (IsWireIndexedArgument(args[i].source) && input == args[i].name) {
+                instruction.data[args[i].offset] = static_cast<float>(wireIndex);
+            }
+        }
+    }
 }
 
 constexpr float kDegreesToRadians = 0.017453292519943295f;
@@ -397,7 +455,11 @@ bool EditorDocumentModel::SetLayerOp(uint32_t index, uint8_t layerOp, DocumentDi
     if (view_.layers[index].header->op == layerOp) return true;
     auto layers = CopyLayers();
     layers[index].op = layerOp;
-    return Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic);
+    const bool oldV5 = v5FeaturesUsed_;
+    if (layerOp == 4u) v5FeaturesUsed_ = true;
+    if (Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    v5FeaturesUsed_ = oldV5;
+    return false;
 }
 
 bool EditorDocumentModel::GetLayerPrimitive(uint32_t index, SdfOpCode& out,
@@ -579,6 +641,74 @@ bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diag
         candidateReferences.push_back(id);
     }
 
+    std::vector<uint32_t> candidateLayerIds(candidateView.header.layerCount);
+    uint32_t candidateNextLayerId = candidateView.header.layerCount + 1u;
+    bool candidateV5 = candidateView.header.formatVersion >= kVdc1LayerPortVersion;
+    if (candidateV5) {
+        if (candidateView.layerIdCount != candidateView.header.layerCount ||
+            candidateView.nextLayerId == 0u) {
+            diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                          "v5 layer-id table does not match the layer count"};
+            return false;
+        }
+        std::unordered_set<uint32_t> ids;
+        ids.reserve(candidateView.layerIdCount);
+        uint32_t maximumId = 0u;
+        for (uint32_t i = 0; i < candidateView.layerIdCount; ++i) {
+            const uint32_t id = candidateView.layerIds[i];
+            if (id == 0u || !ids.insert(id).second) {
+                diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                              "v5 layer-id table contains a zero or duplicate id"};
+                return false;
+            }
+            candidateLayerIds[i] = id;
+            maximumId = std::max(maximumId, id);
+        }
+        if (candidateView.nextLayerId <= maximumId) {
+            diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                          "v5 nextLayerId must be greater than every layer id"};
+            return false;
+        }
+        candidateNextLayerId = candidateView.nextLayerId;
+    } else {
+        for (uint32_t i = 0; i < candidateView.header.layerCount; ++i)
+            candidateLayerIds[i] = i + 1u;
+    }
+
+    std::vector<LayerWire> candidateWires;
+    candidateWires.reserve(candidateView.wireCount);
+    for (uint32_t i = 0; i < candidateView.wireCount; ++i) {
+        const auto& row = candidateView.wires[i];
+        const std::string input = DecodeFixedText(row.input);
+        const std::string output = DecodeFixedText(row.output);
+        DocumentDiagnostic portDiagnostic;
+        if (!ValidatePortName(input, portDiagnostic) || !ValidatePortName(output, portDiagnostic)) {
+            diagnostic = portDiagnostic;
+            return false;
+        }
+        if (row.type > static_cast<uint8_t>(LayerPortKind::Grid)) {
+            diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                          "v5 wire has an unknown port kind"};
+            return false;
+        }
+        candidateWires.push_back(LayerWire{row.readerLayerId, row.sourceLayerId,
+                                           static_cast<LayerPortKind>(row.type), input, output});
+    }
+    std::vector<LayerBinding> candidateBindings;
+    candidateBindings.reserve(candidateView.bindingCount);
+    for (uint32_t i = 0; i < candidateView.bindingCount; ++i) {
+        const auto& row = candidateView.bindings[i];
+        const std::string input = DecodeFixedText(row.input);
+        const std::string query = DecodeFixedText(row.query);
+        DocumentDiagnostic portDiagnostic;
+        if (!ValidatePortName(input, portDiagnostic) || query.empty() || query.size() >= kQueryIdBytes) {
+            diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                          "v5 binding has an invalid input or query id"};
+            return false;
+        }
+        candidateBindings.push_back(LayerBinding{row.layerId, input, query});
+    }
+
     uint32_t candidateMask = 0u;
     for (uint32_t i = 0; i < candidateView.header.layerCount; ++i) {
         if (candidateView.layers[i].header->enabled != 0u) {
@@ -593,6 +723,13 @@ bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diag
     sourcePath_ = path;
     enabledMask_ = candidateMask;
     authoredFormatVersion_ = view_.header.formatVersion;
+    nextLayerId_ = candidateNextLayerId;
+    v5FeaturesUsed_ = candidateV5;
+    layerIds_ = std::move(candidateLayerIds);
+    wires_ = std::move(candidateWires);
+    bindings_ = std::move(candidateBindings);
+    soloLayerId_.reset();
+    provideFallbackOps_.clear();
     majorMaterialId_ = view_.header.majorMaterialId;
     minorMaterialId_ = view_.header.minorMaterialId;
     majorMaterialPercent_ = view_.header.majorWeightPercent;
@@ -625,6 +762,35 @@ uint64_t EditorDocumentModel::Revision() const {
 
 uint32_t EditorDocumentModel::FormatVersion() const {
     return view_.header.formatVersion;
+}
+
+uint32_t EditorDocumentModel::LayerId(uint32_t index) const {
+    return index < layerIds_.size() ? layerIds_[index] : 0u;
+}
+
+bool EditorDocumentModel::LayerIndexForId(uint32_t id, uint32_t& index) const {
+    const auto found = std::find(layerIds_.begin(), layerIds_.end(), id);
+    if (found == layerIds_.end()) return false;
+    index = static_cast<uint32_t>(found - layerIds_.begin());
+    return true;
+}
+
+std::vector<std::string> EditorDocumentModel::LayerWarnings(uint32_t layerId) const {
+    std::vector<std::string> warnings;
+    for (const auto& wire : wires_) {
+        if (wire.readerLayerId != layerId) continue;
+        uint32_t sourceIndex = 0u;
+        if (!LayerIndexForId(wire.sourceLayerId, sourceIndex)) {
+            warnings.push_back("input " + wire.input + " reads missing layer " +
+                               std::to_string(wire.sourceLayerId) + "; using default");
+            continue;
+        }
+        if ((enabledMask_ & (1u << sourceIndex)) == 0u) {
+            warnings.push_back("input " + wire.input + " reads disabled layer " +
+                               LayerName(sourceIndex) + "; using default");
+        }
+    }
+    return warnings;
 }
 
 uint32_t EditorDocumentModel::ParameterCount() const {
@@ -858,6 +1024,7 @@ std::vector<EditableDocumentLayer> EditorDocumentModel::CopyLayers() const {
     for (uint32_t i = 0; i < LayerCount(); ++i) {
         const auto& source = view_.layers[i];
         EditableDocumentLayer layer;
+        layer.id = LayerId(i);
         layer.type = source.header->type;
         layer.op = source.header->op;
         layer.enabled = ((enabledMask_ >> i) & 1u) != 0u;
@@ -887,6 +1054,162 @@ EditorDocumentModel::CopyReferences() const {
     return references;
 }
 
+std::vector<Yeroket::Sdf::Generated::VoxelDocBinding>
+EditorDocumentModel::CopyBindings() const {
+    std::vector<Yeroket::Sdf::Generated::VoxelDocBinding> rows(bindings_.size());
+    for (size_t i = 0; i < bindings_.size(); ++i) {
+        rows[i].layerId = bindings_[i].layerId;
+        EncodeFixedText(bindings_[i].input, rows[i].input);
+        EncodeFixedText(bindings_[i].query, rows[i].query);
+    }
+    return rows;
+}
+
+LayerPortKind EditorDocumentModel::InferPortKind(std::string_view name) {
+    std::string lower;
+    lower.reserve(name.size());
+    for (const unsigned char c : name) lower.push_back(static_cast<char>(std::tolower(c)));
+    if (lower.find("field") != std::string::npos || lower == "sdf" || lower == "distance" ||
+        lower == "surface" || lower == "element") return LayerPortKind::Field;
+    if (lower.find("set") != std::string::npos || lower == "points" || lower == "at")
+        return LayerPortKind::Set;
+    if (lower.find("channel") != std::string::npos || lower == "material" || lower == "color")
+        return LayerPortKind::Channel;
+    if (lower.find("vector") != std::string::npos || lower == "normal" || lower == "position")
+        return LayerPortKind::Vector;
+    if (lower.find("grid") != std::string::npos) return LayerPortKind::Grid;
+    if (lower == "radius" || lower == "count" || lower == "seed" || lower == "size" ||
+        lower == "value" || lower == "scalar" || lower == "parameter") return LayerPortKind::Scalar;
+    return LayerPortKind::Unknown;
+}
+
+bool EditorDocumentModel::ValidatePortName(std::string_view name, DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (name.empty() || name.size() >= kPortNameBytes || name.find('\0') != std::string_view::npos) {
+        diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                      "port names must be 1..31 bytes and contain no NUL"};
+        return false;
+    }
+    for (const unsigned char byte : name) {
+        if (byte < 0x20u || byte == 0x7Fu) {
+            diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                          "port names may not contain control characters"};
+            return false;
+        }
+    }
+    return true;
+}
+
+bool EditorDocumentModel::ValidateWireSet(const std::vector<LayerWire>& wires,
+                                          const std::vector<EditableDocumentLayer>& layers,
+                                          DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    if (wires.size() > kMaximumWires) {
+        diagnostic = {DocumentDiagnosticCode::WireCapacityExceeded,
+                      "a document supports at most 64 layer wires"};
+        return false;
+    }
+    std::unordered_set<uint32_t> ids;
+    ids.reserve(layers.size());
+    std::unordered_map<uint32_t, uint32_t> positions;
+    positions.reserve(layers.size());
+    for (uint32_t i = 0; i < layers.size(); ++i) {
+        if (layers[i].id == 0u || !ids.insert(layers[i].id).second) {
+            diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                          "layer ids must be nonzero and unique"};
+            return false;
+        }
+        positions.emplace(layers[i].id, i);
+    }
+    std::unordered_set<std::string> keys;
+    keys.reserve(wires.size());
+    for (const auto& wire : wires) {
+        DocumentDiagnostic nameDiagnostic;
+        if (!ValidatePortName(wire.input, nameDiagnostic) ||
+            !ValidatePortName(wire.output, nameDiagnostic)) {
+            diagnostic = nameDiagnostic;
+            return false;
+        }
+        const auto reader = positions.find(wire.readerLayerId);
+        const auto source = positions.find(wire.sourceLayerId);
+        if (reader == positions.end() || source == positions.end()) {
+            // A file may contain a dangling wire. It remains detached and is surfaced by the
+            // located warning, but a newly authored wire must always name admitted layers.
+            if (v5FeaturesUsed_) continue;
+            diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                          "wire names a layer that is not in the document"};
+            return false;
+        }
+        if (reader->second <= source->second) {
+            diagnostic = {DocumentDiagnosticCode::LayerDependencyOrder,
+                          "wire " + wire.input + " reads " + wire.output +
+                              " from a layer below it; reorder would move the source above the reader"};
+            return false;
+        }
+        if (wire.type > LayerPortKind::Grid) {
+            diagnostic = {DocumentDiagnosticCode::InvalidWire, "wire has an unknown port kind"};
+            return false;
+        }
+        const LayerPortKind expected = InferPortKind(wire.input);
+        const LayerPortKind actual = InferPortKind(wire.output);
+        if (expected != LayerPortKind::Unknown && actual != LayerPortKind::Unknown && expected != actual) {
+            diagnostic = {DocumentDiagnosticCode::WireTypeMismatch,
+                          "wire " + wire.input + " expects " + std::to_string(static_cast<int>(expected)) +
+                              " but " + wire.output + " provides " +
+                              std::to_string(static_cast<int>(actual))};
+            return false;
+        }
+        const std::string key = std::to_string(wire.readerLayerId) + "\n" + wire.input;
+        if (!keys.insert(key).second) {
+            diagnostic = {DocumentDiagnosticCode::WireAlreadyExists,
+                          "layer input already has a wire: " + wire.input};
+            return false;
+        }
+    }
+    return true;
+}
+
+bool EditorDocumentModel::RemoveWiresForLayer(uint32_t layerId) {
+    const auto oldSize = wires_.size();
+    wires_.erase(std::remove_if(wires_.begin(), wires_.end(),
+                                [layerId](const LayerWire& wire) {
+                                    return wire.readerLayerId == layerId || wire.sourceLayerId == layerId;
+                                }),
+                wires_.end());
+    return oldSize != wires_.size();
+}
+
+bool EditorDocumentModel::BuildEvaluationMask(std::vector<uint8_t>& mask,
+                                              DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    mask.assign(LayerCount(), 0u);
+    if (!soloLayerId_) {
+        for (uint32_t i = 0; i < LayerCount(); ++i)
+            mask[i] = static_cast<uint8_t>((enabledMask_ >> i) & 1u);
+        return true;
+    }
+    uint32_t soloIndex = 0u;
+    if (!LayerIndexForId(*soloLayerId_, soloIndex)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerId, "solo layer no longer exists"};
+        return false;
+    }
+    std::vector<uint32_t> pending{soloIndex};
+    while (!pending.empty()) {
+        const uint32_t index = pending.back();
+        pending.pop_back();
+        if (mask[index] != 0u) continue;
+        mask[index] = 1u;
+        const uint32_t id = LayerId(index);
+        for (const auto& wire : wires_) {
+            if (wire.readerLayerId != id) continue;
+            uint32_t source = 0u;
+            if (LayerIndexForId(wire.sourceLayerId, source) &&
+                (enabledMask_ & (1u << source)) != 0u) pending.push_back(source);
+        }
+    }
+    return true;
+}
+
 bool EditorDocumentModel::Rebuild(
     std::vector<EditableDocumentLayer> layers,
     std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader> parameters,
@@ -905,11 +1228,36 @@ bool EditorDocumentModel::Rebuild(
         return false;
     }
 
+    std::unordered_set<uint32_t> usedIds;
+    usedIds.reserve(layers.size());
+    uint32_t candidateNextLayerId = nextLayerId_ == 0u ? 1u : nextLayerId_;
+    for (auto& layer : layers) {
+        if (layer.id == 0u) {
+            while (candidateNextLayerId == 0u || usedIds.contains(candidateNextLayerId)) ++candidateNextLayerId;
+            layer.id = candidateNextLayerId++;
+        }
+        if (!usedIds.insert(layer.id).second) {
+            diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                          "layer ids must be nonzero and unique"};
+            return false;
+        }
+    }
+    const bool hasV5 = v5FeaturesUsed_ || !wires_.empty() || !bindings_.empty() ||
+                       std::any_of(layers.begin(), layers.end(), [](const EditableDocumentLayer& layer) {
+                           return layer.op == 4u;
+                       });
+    if (hasV5 && layers.size() > kMaximumLayerCount) {
+        diagnostic = {DocumentDiagnosticCode::TooManyLayers,
+                      "v5 documents support at most 32 layers"};
+        return false;
+    }
+    if (!ValidateWireSet(wires_, layers, diagnostic)) return false;
+
     std::vector<VoxelDocLayerHeader> headers(layers.size());
     std::vector<VoxelDocLayerWrite> writes(layers.size());
     for (size_t i = 0; i < layers.size(); ++i) {
         const auto& source = layers[i];
-        if (source.type != 0u || source.op > 3u || !std::isfinite(source.blendRadius)) {
+        if (source.type != 0u || source.op > 4u || !std::isfinite(source.blendRadius)) {
             diagnostic = {DocumentDiagnosticCode::InvalidProgramField,
                           "layer type, operation, or blend radius is invalid"};
             return false;
@@ -926,41 +1274,62 @@ bool EditorDocumentModel::Rebuild(
     }
 
     const auto referenceRows = CopyReferences();
+    std::vector<uint32_t> idsForWrite;
+    idsForWrite.reserve(layers.size());
+    for (const auto& layer : layers) idsForWrite.push_back(layer.id);
+    std::vector<VoxelDocWire> wireRows(wires_.size());
+    for (size_t i = 0; i < wires_.size(); ++i) {
+        wireRows[i].readerLayerId = wires_[i].readerLayerId;
+        wireRows[i].sourceLayerId = wires_[i].sourceLayerId;
+        wireRows[i].type = static_cast<uint8_t>(wires_[i].type);
+        EncodeFixedText(wires_[i].input, wireRows[i].input);
+        EncodeFixedText(wires_[i].output, wireRows[i].output);
+    }
+    const auto bindingRows = CopyBindings();
     size_t required = 0;
-    WriteVoxelDocument(view_.channels, view_.header.channelCount,
-                       parameters.data(), static_cast<uint32_t>(parameters.size()),
-                       writes.data(), static_cast<uint32_t>(writes.size()),
-                       referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
-                       majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
-                       nullptr, 0, required);
+    if (hasV5) {
+        WriteVoxelDocumentV5(view_.channels, view_.header.channelCount,
+                             parameters.data(), static_cast<uint32_t>(parameters.size()),
+                             writes.data(), static_cast<uint32_t>(writes.size()),
+                             referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                             candidateNextLayerId, idsForWrite.data(), static_cast<uint32_t>(idsForWrite.size()),
+                             wireRows.data(), static_cast<uint32_t>(wireRows.size()),
+                             bindingRows.data(), static_cast<uint32_t>(bindingRows.size()),
+                             majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                             nullptr, 0, required, authoredFormatVersion_);
+    } else {
+        WriteVoxelDocument(view_.channels, view_.header.channelCount,
+                           parameters.data(), static_cast<uint32_t>(parameters.size()),
+                           writes.data(), static_cast<uint32_t>(writes.size()),
+                           referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                           majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                           nullptr, 0, required, authoredFormatVersion_);
+    }
     std::vector<uint8_t> candidateBytes(required);
     size_t written = 0;
-    if (!WriteVoxelDocument(view_.channels, view_.header.channelCount,
-                            parameters.data(), static_cast<uint32_t>(parameters.size()),
-                            writes.data(), static_cast<uint32_t>(writes.size()),
-                            referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
-                            majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
-                            candidateBytes.data(), candidateBytes.size(), written)) {
+    const bool wrote = hasV5
+        ? WriteVoxelDocumentV5(view_.channels, view_.header.channelCount,
+                               parameters.data(), static_cast<uint32_t>(parameters.size()),
+                               writes.data(), static_cast<uint32_t>(writes.size()),
+                               referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                               candidateNextLayerId, idsForWrite.data(), static_cast<uint32_t>(idsForWrite.size()),
+                               wireRows.data(), static_cast<uint32_t>(wireRows.size()),
+                               bindingRows.data(), static_cast<uint32_t>(bindingRows.size()),
+                               majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                               candidateBytes.data(), candidateBytes.size(), written, authoredFormatVersion_)
+        : WriteVoxelDocument(view_.channels, view_.header.channelCount,
+                             parameters.data(), static_cast<uint32_t>(parameters.size()),
+                             writes.data(), static_cast<uint32_t>(writes.size()),
+                             referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                             majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                             candidateBytes.data(), candidateBytes.size(), written, authoredFormatVersion_);
+    if (!wrote) {
         diagnostic = {DocumentDiagnosticCode::WriteError,
-                      "WriteVoxelDocument failed to rebuild the candidate document"};
+                      hasV5 ? "WriteVoxelDocumentV5 failed to rebuild the candidate document"
+                            : "WriteVoxelDocument failed to rebuild the candidate document"};
         return false;
     }
     candidateBytes.resize(written);
-
-    // The generated kernel writer emits the current feature version (v3/v4). Existing v1/v2
-    // documents retain their authored format until a v3 material or v4 reference is required;
-    // the byte layout is identical, so only the version word needs restoring here.
-    const bool needsMaterialVersion = majorMaterialId_ != 0u || minorMaterialId_ != 0u || majorMaterialPercent_ != 0u;
-    const uint32_t targetVersion = referenceRows.empty()
-        ? (needsMaterialVersion ? kVdc1MaterialVersion
-                                : (authoredFormatVersion_ <= kVdc1ParameterVersion
-                                       ? authoredFormatVersion_ : kVdc1MaterialVersion))
-        : kVdc1ReferenceVersion;
-    if (targetVersion != kVdc1MaterialVersion && targetVersion != kVdc1ReferenceVersion &&
-        candidateBytes.size() >= sizeof(VoxelDocumentHeader)) {
-        std::memcpy(candidateBytes.data() + offsetof(VoxelDocumentHeader, formatVersion),
-                    &targetVersion, sizeof(targetVersion));
-    }
 
     VoxelDocumentView candidateView{};
     if (!ReadVoxelDocument(candidateBytes.data(), candidateBytes.size(), candidateView)) {
@@ -971,6 +1340,9 @@ bool EditorDocumentModel::Rebuild(
     rawBytes_.swap(candidateBytes);
     view_ = candidateView;
     enabledMask_ = enabledMask;
+    nextLayerId_ = candidateNextLayerId;
+    v5FeaturesUsed_ = hasV5;
+    layerIds_ = std::move(idsForWrite);
     serializationDirty_ = true;
     RefreshLayerGraphs();
     ++revision_;
@@ -1024,10 +1396,15 @@ bool EditorDocumentModel::DeleteLayer(uint32_t index, EditableDocumentLayer* rem
     auto layers = CopyLayers();
     EditableDocumentLayer deleted = std::move(layers[index]);
     layers.erase(layers.begin() + index);
+    const auto savedWires = wires_;
+    RemoveWiresForLayer(deleted.id);
     uint32_t mask = 0u;
     for (uint32_t i = 0; i < layers.size(); ++i)
         if (layers[i].enabled) mask |= (1u << i);
-    if (!Rebuild(std::move(layers), CopyParameters(), mask, diagnostic)) return false;
+    if (!Rebuild(std::move(layers), CopyParameters(), mask, diagnostic)) {
+        wires_ = savedWires;
+        return false;
+    }
     if (removed) *removed = std::move(deleted);
     return true;
 }
@@ -1050,6 +1427,232 @@ bool EditorDocumentModel::MoveLayer(uint32_t from, uint32_t to,
     for (uint32_t i = 0; i < layers.size(); ++i)
         if (layers[i].enabled) mask |= (1u << i);
     return Rebuild(std::move(layers), CopyParameters(), mask, diagnostic);
+}
+
+bool EditorDocumentModel::SetLayerProvide(uint32_t layerId, bool provide,
+                                          DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    uint32_t index = 0u;
+    if (!LayerIndexForId(layerId, index)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                      "layer id " + std::to_string(layerId) + " does not exist"};
+        return false;
+    }
+    const uint8_t requested = provide
+        ? 4u
+        : (provideFallbackOps_.contains(layerId) ? provideFallbackOps_.at(layerId) : 0u);
+    if (view_.layers[index].header->op == requested) return true;
+    auto layers = CopyLayers();
+    if (provide && layers[index].op != 4u) provideFallbackOps_[layerId] = layers[index].op;
+    layers[index].op = requested;
+    const bool oldV5 = v5FeaturesUsed_;
+    v5FeaturesUsed_ = true;
+    if (Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic)) {
+        if (!provide) provideFallbackOps_.erase(layerId);
+        return true;
+    }
+    v5FeaturesUsed_ = oldV5;
+    if (provide) provideFallbackOps_.erase(layerId);
+    return false;
+}
+
+bool EditorDocumentModel::AddWire(uint32_t readerLayerId, const std::string& input,
+                                  uint32_t sourceLayerId, const std::string& port,
+                                  DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    uint32_t readerIndex = 0u;
+    uint32_t sourceIndex = 0u;
+    if (!LayerIndexForId(readerLayerId, readerIndex) || !LayerIndexForId(sourceLayerId, sourceIndex)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                      "wire reader and source must name existing layers"};
+        return false;
+    }
+    if (readerLayerId == sourceLayerId || sourceIndex >= readerIndex) {
+        diagnostic = {DocumentDiagnosticCode::LayerDependencyOrder,
+                      "wire source '" + port + "' must be below reader input '" + input + "'"};
+        return false;
+    }
+    if (wires_.size() >= kMaximumWires) {
+        diagnostic = {DocumentDiagnosticCode::WireCapacityExceeded,
+                      "a document supports at most 64 layer wires"};
+        return false;
+    }
+    const LayerPortKind inputKind = InferPortKind(input);
+    const LayerPortKind portKind = InferPortKind(port);
+    if (inputKind != LayerPortKind::Unknown && portKind != LayerPortKind::Unknown && inputKind != portKind) {
+        diagnostic = {DocumentDiagnosticCode::WireTypeMismatch,
+                      "wire input '" + input + "' and source port '" + port + "' have different types"};
+        return false;
+    }
+    DocumentDiagnostic nameDiagnostic;
+    if (!ValidatePortName(input, nameDiagnostic) || !ValidatePortName(port, nameDiagnostic)) {
+        diagnostic = nameDiagnostic;
+        return false;
+    }
+    for (const auto& wire : wires_) {
+        if (wire.readerLayerId == readerLayerId && wire.input == input) {
+            diagnostic = {DocumentDiagnosticCode::WireAlreadyExists,
+                          "layer input already has a wire: " + input};
+            return false;
+        }
+    }
+    const auto saved = wires_;
+    const LayerPortKind wireKind = portKind == LayerPortKind::Unknown ? inputKind : portKind;
+    auto candidateLayers = CopyLayers();
+    const size_t wireIndex = wires_.size();
+    wires_.push_back(LayerWire{readerLayerId, sourceLayerId,
+                               wireKind == LayerPortKind::Unknown ? LayerPortKind::Field : wireKind,
+                               input, port});
+    BindWireIndex(candidateLayers, readerIndex, input, wireIndex);
+    const bool oldV5 = v5FeaturesUsed_;
+    v5FeaturesUsed_ = true;
+    if (Rebuild(std::move(candidateLayers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    wires_ = saved;
+    v5FeaturesUsed_ = oldV5;
+    return false;
+}
+
+bool EditorDocumentModel::RemoveWire(uint32_t readerLayerId, const std::string& input,
+                                     DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const auto found = std::find_if(wires_.begin(), wires_.end(),
+                                    [readerLayerId, &input](const LayerWire& wire) {
+                                        return wire.readerLayerId == readerLayerId && wire.input == input;
+                                    });
+    if (found == wires_.end()) {
+        diagnostic = {DocumentDiagnosticCode::WireNotFound,
+                      "no wire exists for layer input: " + input};
+        return false;
+    }
+    const auto saved = wires_;
+    const size_t removedIndex = static_cast<size_t>(found - wires_.begin());
+    auto candidateLayers = CopyLayers();
+    wires_.erase(found);
+    RewriteWireIndices(candidateLayers, removedIndex);
+    if (Rebuild(std::move(candidateLayers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    wires_ = saved;
+    return false;
+}
+
+bool EditorDocumentModel::RestoreWires(const std::vector<LayerWire>& wires,
+                                       DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const auto saved = wires_;
+    wires_ = wires;
+    const bool oldV5 = v5FeaturesUsed_;
+    v5FeaturesUsed_ = oldV5 || !wires.empty();
+    if (Rebuild(CopyLayers(), CopyParameters(), enabledMask_, diagnostic)) return true;
+    wires_ = saved;
+    v5FeaturesUsed_ = oldV5;
+    return false;
+}
+
+bool EditorDocumentModel::InsertPortRead(uint32_t layerId, uint32_t afterNode,
+                                         const std::string& source,
+                                         DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    const size_t dot = source.find('.');
+    if (dot == std::string::npos || dot == 0u || dot + 1u >= source.size()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                      "port read source must be <layerName>.<port>"};
+        return false;
+    }
+    uint32_t layerIndex = 0u;
+    if (!LayerIndexForId(layerId, layerIndex)) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                      "layer id " + std::to_string(layerId) + " does not exist"};
+        return false;
+    }
+    const std::string layerName = source.substr(0u, dot);
+    const std::string port = source.substr(dot + 1u);
+    uint32_t sourceIndex = 0u;
+    bool found = false;
+    for (uint32_t i = 0; i < LayerCount(); ++i) {
+        if (LayerName(i) == layerName) {
+            if (found) {
+                diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                              "port read layer name is ambiguous: " + layerName};
+                return false;
+            }
+            sourceIndex = i;
+            found = true;
+        }
+    }
+    if (!found || sourceIndex >= layerIndex) {
+        diagnostic = {DocumentDiagnosticCode::LayerDependencyOrder,
+                      "port read source must name a unique layer below the reader"};
+        return false;
+    }
+    if (!AddWire(layerId, "read", LayerId(sourceIndex), port, diagnostic)) return false;
+    auto layers = CopyLayers();
+    auto& program = layers[layerIndex].program;
+    if (afterNode >= program.size()) {
+        RemoveWire(layerId, "read", diagnostic);
+        diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                      "port read insertion node is outside the layer program"};
+        return false;
+    }
+    SdfInstruction read{};
+    read.opCode = static_cast<uint8_t>(SdfOpCode::ReadPort);
+    const auto wire = std::find_if(wires_.begin(), wires_.end(),
+                                   [layerId](const LayerWire& row) {
+                                       return row.readerLayerId == layerId && row.input == "read";
+                                   });
+    read.data[0] = wire == wires_.end() ? 0.0f
+                                        : static_cast<float>(wire - wires_.begin());
+    const auto originalProgram = program;
+    std::vector<SdfInstruction> candidate(originalProgram.begin(), originalProgram.end());
+    if (candidate.size() == 1u && afterNode == 0u) {
+        // A ReadPort is itself a complete Field-producing node. Replacing the seed primitive keeps
+        // the render program valid in the same action; exposing [primitive, ReadPort] would leave
+        // two values on the recipe stack and can reach the live evaluator before a follow-up edit.
+        candidate.front() = read;
+    } else {
+        candidate.insert(candidate.begin() + afterNode + 1u, read);
+    }
+    Vixen::SVO::Recipe::SdfGraphDiagnostic graphDiagnostic{};
+    if (!Vixen::SVO::Recipe::ValidateSdfGraphProgram(
+            std::span<const SdfInstruction>(candidate.data(), candidate.size()), graphDiagnostic)) {
+        // A selected domain wrapper may precede the actual Field producer. Replace the first
+        // zero-input Field-producing instruction while retaining its Transform/RestorePos frame.
+        candidate.assign(originalProgram.begin(), originalProgram.end());
+        bool replaced = false;
+        for (size_t instructionIndex = 0u; instructionIndex < candidate.size(); ++instructionIndex) {
+            const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(
+                static_cast<SdfOpCode>(candidate[instructionIndex].opCode));
+            if (info == nullptr || info->valuePop != 0 || info->valuePush != 1 ||
+                static_cast<SdfOpCode>(candidate[instructionIndex].opCode) == SdfOpCode::ReadPort) continue;
+            candidate[instructionIndex] = read;
+            replaced = true;
+            break;
+        }
+        if (!replaced || !Vixen::SVO::Recipe::ValidateSdfGraphProgram(
+                std::span<const SdfInstruction>(candidate.data(), candidate.size()), graphDiagnostic)) {
+            RemoveWire(layerId, "read", diagnostic);
+            diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
+                          "port read would leave an invalid program: " +
+                              GraphDiagnosticMessage(graphDiagnostic)};
+            return false;
+        }
+    }
+    program = std::move(candidate);
+    if (Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    RemoveWire(layerId, "read", diagnostic);
+    return false;
+}
+
+bool EditorDocumentModel::SetSoloLayer(uint32_t layerId, DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (layerId != 0u) {
+        uint32_t index = 0u;
+        if (!LayerIndexForId(layerId, index)) {
+            diagnostic = {DocumentDiagnosticCode::InvalidLayerId,
+                          "layer id " + std::to_string(layerId) + " does not exist"};
+            return false;
+        }
+    }
+    soloLayerId_ = layerId == 0u ? std::nullopt : std::optional<uint32_t>(layerId);
+    return true;
 }
 
 bool EditorDocumentModel::GetLayerProgramField(uint32_t layerIndex,
@@ -1510,7 +2113,10 @@ bool EditorDocumentModel::RemoveNode(uint32_t layerIndex, uint32_t nodeIndex,
     diagnostic.Clear();
     const LayerGraph* graph = GetLayerGraph(layerIndex, diagnostic);
     if (graph == nullptr) return false;
-    if (graph->raw) {
+    // DeriveSdfGraph retains ReadPort nodes before reporting the surrounding program's leftover
+    // stack. Let removal validate the candidate in that partial view; empty/raw programs remain
+    // rejected here.
+    if (graph->raw && graph->view.nodeCount == 0u) {
         diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
                       "generated graph diagnostic: " + GraphDiagnosticMessage(graph->diagnostic)};
         return false;
@@ -1526,16 +2132,49 @@ bool EditorDocumentModel::RemoveNode(uint32_t layerIndex, uint32_t nodeIndex,
     std::vector<SdfInstruction> candidate(program.size() > 0u ? program.size() - 1u : 0u);
     uint32_t candidateCount = 0u;
     Vixen::SVO::Recipe::SdfGraphDiagnostic graphDiagnostic{};
-    if (!Vixen::SVO::Recipe::RemoveNode(
-            program, graph->view.nodes[nodeIndex].instructionIndex,
-            std::span<SdfInstruction>(candidate.data(), candidate.size()), candidateCount,
-            graphDiagnostic)) {
+    const uint32_t instructionIndex = graph->view.nodes[nodeIndex].instructionIndex;
+    const bool removesPortRead = static_cast<SdfOpCode>(program[instructionIndex].opCode) == SdfOpCode::ReadPort;
+    const bool removed = Vixen::SVO::Recipe::RemoveNode(
+        program, instructionIndex, std::span<SdfInstruction>(candidate.data(), candidate.size()), candidateCount,
+        graphDiagnostic);
+    if (!removed && !removesPortRead) {
         diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
                       "generated graph diagnostic: " + GraphDiagnosticMessage(graphDiagnostic)};
         return false;
     }
     candidate.resize(candidateCount);
-    return SetLayerProgram(layerIndex, candidate, diagnostic);
+    if (removesPortRead) {
+        // Removing a read inside a generated Transform/RestorePos wrapper must keep the frame
+        // balanced. Prefer the declared-default transport in place of the node; if the read was
+        // an unwrapped stack term, the generated removal below may still produce the smaller valid
+        // program.
+        std::vector<SdfInstruction> fallback(program.begin(), program.end());
+        fallback[instructionIndex] = {};
+        fallback[instructionIndex].opCode =
+            static_cast<uint8_t>(SdfOpCode::PushParam);
+        Vixen::SVO::Recipe::SdfGraphDiagnostic fallbackDiagnostic{};
+        if (Vixen::SVO::Recipe::ValidateSdfGraphProgram(
+                std::span<const SdfInstruction>(fallback.data(), fallback.size()), fallbackDiagnostic)) {
+            candidate = std::move(fallback);
+            candidateCount = static_cast<uint32_t>(candidate.size());
+        }
+    }
+    const auto savedWires = wires_;
+    size_t removedWire = wires_.size();
+    if (removesPortRead) {
+        const float rawWire = program[graph->view.nodes[nodeIndex].instructionIndex].data[0];
+        if (std::isfinite(rawWire) && rawWire >= 0.0f && std::floor(rawWire) == rawWire &&
+            rawWire < static_cast<float>(wires_.size())) {
+            removedWire = static_cast<size_t>(rawWire);
+            wires_.erase(wires_.begin() + static_cast<std::ptrdiff_t>(removedWire));
+        }
+    }
+    auto candidateLayers = CopyLayers();
+    candidateLayers[layerIndex].program = std::move(candidate);
+    if (removedWire != savedWires.size()) RewriteWireIndices(candidateLayers, removedWire);
+    if (Rebuild(std::move(candidateLayers), CopyParameters(), enabledMask_, diagnostic)) return true;
+    wires_ = savedWires;
+    return false;
 }
 
 bool EditorDocumentModel::WrapNodes(uint32_t layerIndex, uint32_t firstNode, uint32_t lastNode,
@@ -1598,8 +2237,43 @@ bool EditorDocumentModel::Flatten(std::vector<uint8_t>& outVrc1Blob,
                                   DocumentDiagnostic& diagnostic) const {
     diagnostic.Clear();
     std::vector<uint8_t> enabledOverride(LayerCount());
-    for (uint32_t i = 0; i < LayerCount(); ++i) {
-        enabledOverride[i] = static_cast<uint8_t>((enabledMask_ >> i) & 1u);
+    if (!BuildEvaluationMask(enabledOverride, diagnostic)) return false;
+
+    if (v5FeaturesUsed_) {
+        const DocumentBakeSnapshot snapshot = CaptureBakeSnapshot();
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+        if (!FlattenToRecipeEntry(entry, snapshot, diagnostic)) return false;
+        // V5 document export is the persistence-side VRC1 bake face. The preview entry keeps
+        // ReadParam dynamic so a parameter edit can update the viewport without recompiling;
+        // the generated authoring flattener resolves the same scalar reads to PushParam bytes.
+        for (auto& instruction : entry.bytecode) {
+            if (static_cast<SdfOpCode>(instruction.opCode) != SdfOpCode::ReadParam) continue;
+            const float rawSlot = instruction.data[0];
+            if (!std::isfinite(rawSlot) || rawSlot < 0.0f || std::floor(rawSlot) != rawSlot ||
+                rawSlot >= static_cast<float>(snapshot.parameterValues.size())) {
+                diagnostic = {DocumentDiagnosticCode::FlattenError,
+                              "ReadParam export slot is outside the document parameter table"};
+                return false;
+            }
+            instruction = {};
+            instruction.opCode = static_cast<uint8_t>(SdfOpCode::PushParam);
+            instruction.data[0] = snapshot.parameterValues[static_cast<size_t>(rawSlot)];
+        }
+        using namespace Yeroket::Sdf::Generated;
+        RecipeContainerHeader header{};
+        header.magic = kRecipeContainerMagic;
+        header.formatVersion = kRecipeContainerVersion;
+        header.instructionCount = static_cast<uint32_t>(entry.bytecode.size());
+        header.bakeResolution = entry.bakeResolution;
+        header.bandVoxels = entry.bandVoxels;
+        header.brickDepth = entry.brickDepth;
+        outVrc1Blob.resize(sizeof(header) + entry.bytecode.size() * sizeof(SdfInstruction));
+        std::memcpy(outVrc1Blob.data(), &header, sizeof(header));
+        if (!entry.bytecode.empty()) {
+            std::memcpy(outVrc1Blob.data() + sizeof(header), entry.bytecode.data(),
+                        entry.bytecode.size() * sizeof(SdfInstruction));
+        }
+        return true;
     }
 
     std::string error;
@@ -1639,9 +2313,57 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
         return false;
     }
     std::vector<uint8_t> enabledOverride(LayerCount());
-    for (uint32_t i = 0; i < LayerCount(); ++i) {
-        enabledOverride[i] = static_cast<uint8_t>((enabledMask_ >> i) & 1u);
-    }
+    if (!BuildEvaluationMask(enabledOverride, diagnostic)) return false;
+
+    std::function<bool(uint32_t, std::vector<SdfInstruction>&, std::vector<uint32_t>&)> expandLayer;
+    expandLayer = [&](uint32_t layerIndex, std::vector<SdfInstruction>& output,
+                      std::vector<uint32_t>& path) -> bool {
+        if (std::find(path.begin(), path.end(), layerIndex) != path.end()) {
+            diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                          "layer-port wire cycle while flattening layer " +
+                              std::to_string(LayerId(layerIndex))};
+            return false;
+        }
+        path.push_back(layerIndex);
+        const auto& source = view_.layers[layerIndex];
+        for (uint32_t instructionIndex = 0; instructionIndex < source.header->instructionCount;
+             ++instructionIndex) {
+            const SdfInstruction& instruction = source.instructions[instructionIndex];
+            if (static_cast<SdfOpCode>(instruction.opCode) != SdfOpCode::ReadPort) {
+                output.push_back(instruction);
+                continue;
+            }
+            const float rawWire = instruction.data[0];
+            if (!std::isfinite(rawWire) || rawWire < 0.0f || std::floor(rawWire) != rawWire ||
+                rawWire >= static_cast<float>(wires_.size())) {
+                diagnostic = {DocumentDiagnosticCode::InvalidWire,
+                              "ReadPort at layer " + std::to_string(LayerId(layerIndex)) +
+                                  " names an invalid wire"};
+                path.pop_back();
+                return false;
+            }
+            const LayerWire& wire = wires_[static_cast<size_t>(rawWire)];
+            uint32_t sourceIndex = 0u;
+            if (!LayerIndexForId(wire.sourceLayerId, sourceIndex) || enabledOverride[sourceIndex] == 0u) {
+                // The generated default transport is PushParam. A wire does not store a sampled
+                // value; zero is the neutral fallback for an unbound Field read and the located
+                // warning remains available through LayerWarnings().
+                SdfInstruction fallback{};
+                fallback.opCode = static_cast<uint8_t>(SdfOpCode::PushParam);
+                fallback.data[0] = 0.0f;
+                output.push_back(fallback);
+                continue;
+            }
+            std::vector<SdfInstruction> sourceProgram;
+            if (!expandLayer(sourceIndex, sourceProgram, path)) {
+                path.pop_back();
+                return false;
+            }
+            output.insert(output.end(), sourceProgram.begin(), sourceProgram.end());
+        }
+        path.pop_back();
+        return true;
+    };
 
     std::vector<SdfInstruction> instructions;
     int sp = 0;
@@ -1650,8 +2372,13 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
     for (uint32_t layerIndex = 0; layerIndex < LayerCount(); ++layerIndex) {
         if (enabledOverride[layerIndex] == 0) continue;
         const auto& layer = view_.layers[layerIndex];
+        if (layer.header->op == 4u) continue;  // Provide is a readable source, never a spine term.
         const uint32_t count = layer.header->instructionCount;
         std::vector<SdfInstruction> layerProgram(layer.instructions, layer.instructions + count);
+        std::vector<SdfInstruction> expandedProgram;
+        std::vector<uint32_t> path;
+        if (v5FeaturesUsed_ && !expandLayer(layerIndex, expandedProgram, path)) return false;
+        if (v5FeaturesUsed_) layerProgram = std::move(expandedProgram);
         bool skipLayer = false;
         if (view_.header.formatVersion >= kVdc1ReferenceVersion) {
             for (uint32_t instructionIndex = 0; instructionIndex < layerProgram.size(); ++instructionIndex) {
@@ -1755,39 +2482,60 @@ bool EditorDocumentModel::Serialize(std::vector<uint8_t>& bytes,
     }
     const auto parameters = CopyParameters();
     const auto referenceRows = CopyReferences();
+    std::vector<VoxelDocWire> wireRows(wires_.size());
+    for (size_t i = 0; i < wires_.size(); ++i) {
+        wireRows[i].readerLayerId = wires_[i].readerLayerId;
+        wireRows[i].sourceLayerId = wires_[i].sourceLayerId;
+        wireRows[i].type = static_cast<uint8_t>(wires_[i].type);
+        EncodeFixedText(wires_[i].input, wireRows[i].input);
+        EncodeFixedText(wires_[i].output, wireRows[i].output);
+    }
+    const auto bindingRows = CopyBindings();
 
     size_t required = 0;
-    WriteVoxelDocument(view_.channels, view_.header.channelCount,
-                       parameters.data(), static_cast<uint32_t>(parameters.size()),
-                       writes.data(), LayerCount(),
-                       referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
-                       majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
-                       nullptr, 0, required);
+    if (v5FeaturesUsed_) {
+        WriteVoxelDocumentV5(view_.channels, view_.header.channelCount,
+                             parameters.data(), static_cast<uint32_t>(parameters.size()),
+                             writes.data(), LayerCount(),
+                             referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                             nextLayerId_, layerIds_.data(), static_cast<uint32_t>(layerIds_.size()),
+                             wireRows.data(), static_cast<uint32_t>(wireRows.size()),
+                             bindingRows.data(), static_cast<uint32_t>(bindingRows.size()),
+                             majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                             nullptr, 0, required, authoredFormatVersion_);
+    } else {
+        WriteVoxelDocument(view_.channels, view_.header.channelCount,
+                           parameters.data(), static_cast<uint32_t>(parameters.size()),
+                           writes.data(), LayerCount(),
+                           referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                           majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                           nullptr, 0, required, authoredFormatVersion_);
+    }
     bytes.assign(required, 0u);
     size_t written = 0;
-    if (!WriteVoxelDocument(view_.channels, view_.header.channelCount,
-                            parameters.data(), static_cast<uint32_t>(parameters.size()),
-                            writes.data(), LayerCount(),
-                            referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
-                            majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
-                            bytes.data(), bytes.size(), written)) {
+    const bool wrote = v5FeaturesUsed_
+        ? WriteVoxelDocumentV5(view_.channels, view_.header.channelCount,
+                               parameters.data(), static_cast<uint32_t>(parameters.size()),
+                               writes.data(), LayerCount(),
+                               referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                               nextLayerId_, layerIds_.data(), static_cast<uint32_t>(layerIds_.size()),
+                               wireRows.data(), static_cast<uint32_t>(wireRows.size()),
+                               bindingRows.data(), static_cast<uint32_t>(bindingRows.size()),
+                               majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                               bytes.data(), bytes.size(), written, authoredFormatVersion_)
+        : WriteVoxelDocument(view_.channels, view_.header.channelCount,
+                             parameters.data(), static_cast<uint32_t>(parameters.size()),
+                             writes.data(), LayerCount(),
+                             referenceRows.data(), static_cast<uint32_t>(referenceRows.size()),
+                             majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                             bytes.data(), bytes.size(), written, authoredFormatVersion_);
+    if (!wrote) {
         diagnostic = {DocumentDiagnosticCode::WriteError,
-                      "WriteVoxelDocument failed sizing/writing the document"};
+                      v5FeaturesUsed_ ? "WriteVoxelDocumentV5 failed sizing/writing the document"
+                                     : "WriteVoxelDocument failed sizing/writing the document"};
         return false;
     }
     bytes.resize(written);
-    const bool needsMaterialVersion = majorMaterialId_ != 0u || minorMaterialId_ != 0u ||
-                                      majorMaterialPercent_ != 0u;
-    const uint32_t targetVersion = referenceRows.empty()
-        ? (needsMaterialVersion ? kVdc1MaterialVersion
-                                : (authoredFormatVersion_ <= kVdc1ParameterVersion
-                                       ? authoredFormatVersion_ : kVdc1MaterialVersion))
-        : kVdc1ReferenceVersion;
-    if (targetVersion != kVdc1MaterialVersion && targetVersion != kVdc1ReferenceVersion &&
-        bytes.size() >= sizeof(VoxelDocumentHeader)) {
-        std::memcpy(bytes.data() + offsetof(VoxelDocumentHeader, formatVersion),
-                    &targetVersion, sizeof(targetVersion));
-    }
     return true;
 }
 

@@ -260,7 +260,7 @@ TEST_F(UiInputForwarderTest, WithNoFocusableElementTheInputChangesNothing) {
     EXPECT_TRUE(forwarder_.DrainCommits().empty());
 }
 
-// The real inspector document: the parameter row's field is the SetParameter selector with a value slot, and a
+// The real pinned Inputs document: the parameter row's field is the SetParameter selector with a value slot, and a
 // value the action refuses snaps back to the model's after the resync.
 TEST_F(UiInputForwarderTest, InspectorFieldCommitsASelectorAndARefusedValueSnapsBack) {
     Vixen::App::EditorLayersView view;
@@ -269,7 +269,7 @@ TEST_F(UiInputForwarderTest, InspectorFieldCommitsASelectorAndARefusedValueSnaps
     view.Register(constructor);
     Rml::DataModelHandle model = constructor.GetModelHandle();
     view.PopulateFromDocument(0b01u, {{"body", "Union", true, 1.0f}}, {{"lump_radius", "m", 9.25f, 4.0f, 12.0f}});
-    doc_ = ctx_->LoadDocument("assets/ui/editor_inspector.rml");
+    doc_ = ctx_->LoadDocument("assets/ui/editor_layers.rml");
     ASSERT_NE(doc_, nullptr);
     doc_->Show();
     ctx_->Update();
@@ -400,7 +400,7 @@ TEST_F(UiInputForwarderTest, KitNudgeAndScrubCommitTheSameSelectorPathAsTyping) 
     ASSERT_TRUE(static_cast<bool>(constructor));
     view.Register(constructor);
     view.PopulateFromDocument(0b01u, {{"body", "Union", true, 1.0f}}, {{"lump_radius", "m", 9.25f, 4.0f, 12.0f}});
-    doc_ = ctx_->LoadDocument("assets/ui/editor_inspector.rml");
+    doc_ = ctx_->LoadDocument("assets/ui/editor_layers.rml");
     ASSERT_NE(doc_, nullptr);
     doc_->Show();
     ctx_->Update();

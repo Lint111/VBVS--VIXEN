@@ -54,8 +54,9 @@ public:
             Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
                                             &selectedLayer_, &primitives_, &opChoices_, &shape_,
                                             &selectedShape_, &shapeNote_, &pickerFilter_, &activeLayerCountRaw_, &recipes_,
-                                            &packRecipes_, &materials_, &nodes_, &nodeArguments_,
-                                            &nodeWrapChoices_, &nodeChoices_, &nodePickerActive_,
+                                            &packRecipes_, &materials_, &nodes_, &nodeArguments_, &portChoices_,
+                                            &readPortChoices_, &nodeWrapChoices_, &nodeChoices_, &nodePickerActive_,
+                                            &readPortEmptyReason_,
                                             &rawProgram_, &rawProgramDiagnostic_,
                                             &statusDocument_, &statusMessage_, &flowState_,
                                             &undoDepth_, &redoDepth_ });
@@ -96,6 +97,17 @@ public:
             row.selectId = "layer-" + std::to_string(i) + "-select";
             row.blendValueId = "layer-" + std::to_string(i) + "-blend-{radius}";
             row.isSelected = static_cast<int>(i) == placement.selectedLayer;
+            row.providesMark = layerData[i].provides ? "↗" : "";
+            row.readsMark = Rml::String(layerData[i].readsMark);
+            row.readByMark = Rml::String(layerData[i].readByMark);
+            row.dependencyTitle = Rml::String(layerData[i].dependencyTitle);
+            row.provideId = "layer-" + std::to_string(layerData[i].id) + "-provide-" +
+                            (layerData[i].provides ? "0" : "1");
+            row.soloId = "layer-" + std::to_string(layerData[i].id) + "-solo";
+            row.isSolo = layerData[i].solo;
+            row.warningMark = Rml::String(layerData[i].warningMark);
+            row.warningTitle = Rml::String(layerData[i].warningTitle);
+            row.diagnostic = Rml::String(layerData[i].diagnostic);
             layers_.push_back(std::move(row));
         }
         parameters_.clear();
@@ -177,6 +189,8 @@ public:
         shapeNote_ = Rml::String(shape.note);
         nodes_.clear();
         nodeArguments_.clear();
+        portChoices_.clear();
+        readPortChoices_.clear();
         nodeWrapChoices_.clear();
         if (!layerData.empty()) {
             const std::string layerStem = "layer-" + std::to_string(placement.selectedLayer);
@@ -199,6 +213,7 @@ public:
                 row.removeReason = Rml::String(node.removeReason);
                 row.removeTitle = Rml::String(node.removeTitle);
                 row.indent = node.indent;
+                row.warning = Rml::String(node.warning);
                 nodes_.push_back(std::move(row));
             }
             nodeArguments_.reserve(graph.arguments.size());
@@ -223,7 +238,32 @@ public:
                 row.resetId = argument.hasDefault
                     ? stem + "-" + argument.component + "-" + FloatText(argument.defaultValue)
                     : std::string();
+                row.isPort = argument.isPort;
+                row.portType = Rml::String(argument.portType);
+                row.portEmptyReason = Rml::String(argument.portEmptyReason);
                 nodeArguments_.push_back(std::move(row));
+            }
+            portChoices_.reserve(graph.portChoices.size());
+            for (const auto& choice : graph.portChoices) {
+                Vixen::Views::EditorNodePortChoiceRow row;
+                row.nodeIndex = choice.nodeIndex;
+                row.argument = Rml::String(choice.argument);
+                row.label = Rml::String(choice.label);
+                row.elementId = Rml::String(choice.elementId);
+                row.removeId = Rml::String(choice.removeId);
+                row.isSelected = choice.isSelected;
+                portChoices_.push_back(std::move(row));
+            }
+            readPortChoices_.reserve(graph.readPortChoices.size());
+            for (const auto& choice : graph.readPortChoices) {
+                Vixen::Views::EditorReadPortChoiceRow row;
+                row.nodeIndex = choice.nodeIndex;
+                row.argument = Rml::String(choice.argument);
+                row.label = Rml::String(choice.label);
+                row.elementId = Rml::String(choice.elementId);
+                row.removeId = Rml::String(choice.removeId);
+                row.isSelected = choice.isSelected;
+                readPortChoices_.push_back(std::move(row));
             }
             nodeWrapChoices_.reserve(graph.wrapChoices.size());
             for (const auto& choice : graph.wrapChoices) {
@@ -239,6 +279,7 @@ public:
         }
         rawProgram_ = graph.rawProgram;
         rawProgramDiagnostic_ = Rml::String(graph.rawProgramDiagnostic);
+        readPortEmptyReason_ = Rml::String(graph.readPortEmptyReason);
         // activeLayerCount (Inc-Ovr Override proof): storage holds the raw mask reinterpreted as
         // int; BindEditorLayersModel_activeLayerCountOverride (this file, above) popcounts it at
         // bind time. Only needs a dirty when the mask itself changes, same as "layers".
@@ -255,9 +296,12 @@ public:
             model_.DirtyVariable("shapeNote");
             model_.DirtyVariable("nodes");
             model_.DirtyVariable("nodeArguments");
+            model_.DirtyVariable("portChoices");
+            model_.DirtyVariable("readPortChoices");
             model_.DirtyVariable("nodeWrapChoices");
             model_.DirtyVariable("nodeChoices");
             model_.DirtyVariable("nodePickerActive");
+            model_.DirtyVariable("readPortEmptyReason");
             model_.DirtyVariable("rawProgram");
             model_.DirtyVariable("rawProgramDiagnostic");
             model_.DirtyVariable("activeLayerCount");
@@ -412,9 +456,12 @@ private:
     std::vector<Vixen::Views::EditorMaterialRow> materials_;
     std::vector<Vixen::Views::EditorNodeRow> nodes_;
     std::vector<Vixen::Views::EditorNodeArgumentRow> nodeArguments_;
+    std::vector<Vixen::Views::EditorNodePortChoiceRow> portChoices_;
+    std::vector<Vixen::Views::EditorReadPortChoiceRow> readPortChoices_;
     std::vector<Vixen::Views::EditorNodeWrapRow> nodeWrapChoices_;
     std::vector<Vixen::Views::EditorNodeChoiceRow> nodeChoices_;
     bool nodePickerActive_ = false;
+    Rml::String readPortEmptyReason_;
     bool rawProgram_ = true;
     Rml::String rawProgramDiagnostic_;
     Rml::String statusDocument_;

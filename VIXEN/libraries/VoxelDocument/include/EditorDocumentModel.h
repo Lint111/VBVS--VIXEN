@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "Recipe/generated/VoxelDocument.g.h"
@@ -48,6 +49,13 @@ enum class DocumentDiagnosticCode : uint8_t {
     InvalidReferenceLayer,
     InvalidGraphEdit,
     RawProgram,
+    InvalidLayerId,
+    InvalidWire,
+    WireCapacityExceeded,
+    WireTypeMismatch,
+    WireAlreadyExists,
+    WireNotFound,
+    LayerDependencyOrder,
 };
 
 struct DocumentDiagnostic {
@@ -61,12 +69,39 @@ struct DocumentDiagnostic {
 };
 
 struct EditableDocumentLayer {
+    // Stable in-document identity. Legacy files receive ids in memory at load; ids are emitted
+    // only after the first v5 feature makes the document a v5 document.
+    uint32_t id = 0;
     uint8_t type = 0;
     uint8_t op = 0;
     bool enabled = true;
     float blendRadius = 0.0f;
     std::string name;
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> program;
+};
+
+enum class LayerPortKind : uint8_t {
+    Field = 0,
+    Scalar = 1,
+    Vector = 2,
+    Channel = 3,
+    Set = 4,
+    Grid = 5,
+    Unknown = 255,
+};
+
+struct LayerWire {
+    uint32_t readerLayerId = 0;
+    uint32_t sourceLayerId = 0;
+    LayerPortKind type = LayerPortKind::Field;
+    std::string input;
+    std::string output;
+};
+
+struct LayerBinding {
+    uint32_t layerId = 0;
+    std::string input;
+    std::string query;
 };
 
 // A layer's placement as the editor shows it: position, Euler rotation (degrees, R = Rz * Ry * Rx)
@@ -131,6 +166,13 @@ public:
     uint32_t EnabledMask() const;
     uint64_t Revision() const;
     uint32_t FormatVersion() const;
+    uint32_t LayerId(uint32_t index) const;
+    bool LayerIndexForId(uint32_t id, uint32_t& index) const;
+    uint32_t NextLayerId() const { return nextLayerId_; }
+    bool UsesLayerPorts() const { return v5FeaturesUsed_; }
+    const std::vector<LayerWire>& Wires() const { return wires_; }
+    const std::vector<LayerBinding>& Bindings() const { return bindings_; }
+    std::vector<std::string> LayerWarnings(uint32_t layerId) const;
 
     uint32_t ParameterCount() const;
     std::string ParameterName(uint32_t index) const;
@@ -173,6 +215,21 @@ public:
     bool DeleteLayer(uint32_t index, EditableDocumentLayer* removed,
                      DocumentDiagnostic& diagnostic);
     bool MoveLayer(uint32_t from, uint32_t to, DocumentDiagnostic& diagnostic);
+    bool SetLayerProvide(uint32_t layerId, bool provide, DocumentDiagnostic& diagnostic);
+    bool AddWire(uint32_t readerLayerId, const std::string& input,
+                 uint32_t sourceLayerId, const std::string& port,
+                 DocumentDiagnostic& diagnostic);
+    bool RemoveWire(uint32_t readerLayerId, const std::string& input,
+                    DocumentDiagnostic& diagnostic);
+    // Exact inverse seam for a structural graph edit that removes a ReadPort node. The editor
+    // action stack restores the authored wire order together with the prior program snapshot.
+    bool RestoreWires(const std::vector<LayerWire>& wires, DocumentDiagnostic& diagnostic);
+    bool InsertPortRead(uint32_t layerId, uint32_t afterNode, const std::string& source,
+                        DocumentDiagnostic& diagnostic);
+    // Solo is presentation state: it never changes revision, serialization, or the undo stack.
+    bool SetSoloLayer(uint32_t layerId, DocumentDiagnostic& diagnostic);
+    void ClearSoloLayer() { soloLayerId_.reset(); }
+    std::optional<uint32_t> SoloLayerId() const { return soloLayerId_; }
     bool GetLayerProgramField(uint32_t layerIndex, uint32_t instructionIndex,
                               uint32_t fieldIndex, float& out,
                               DocumentDiagnostic& diagnostic) const;
@@ -318,6 +375,14 @@ private:
     std::vector<EditableDocumentLayer> CopyLayers() const;
     std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader> CopyParameters() const;
     std::vector<Yeroket::Sdf::Generated::VoxelDocReference> CopyReferences() const;
+    std::vector<Yeroket::Sdf::Generated::VoxelDocBinding> CopyBindings() const;
+    bool ValidateWireSet(const std::vector<LayerWire>& wires,
+                         const std::vector<EditableDocumentLayer>& layers,
+                         DocumentDiagnostic& diagnostic) const;
+    bool BuildEvaluationMask(std::vector<uint8_t>& mask, DocumentDiagnostic& diagnostic) const;
+    static LayerPortKind InferPortKind(std::string_view name);
+    static bool ValidatePortName(std::string_view name, DocumentDiagnostic& diagnostic);
+    bool RemoveWiresForLayer(uint32_t layerId);
     bool Rebuild(std::vector<EditableDocumentLayer> layers,
                  std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader> parameters,
                  uint32_t enabledMask, DocumentDiagnostic& diagnostic);
@@ -329,6 +394,15 @@ private:
     uint32_t enabledMask_ = 0;
     uint64_t revision_ = 0;
     uint32_t authoredFormatVersion_ = 1;
+    uint32_t nextLayerId_ = 1;
+    bool v5FeaturesUsed_ = false;
+    std::vector<uint32_t> layerIds_;
+    std::vector<LayerWire> wires_;
+    std::vector<LayerBinding> bindings_;
+    std::optional<uint32_t> soloLayerId_;
+    // A Provide toggle temporarily replaces the ordinary layer op. Keep that op in editor state
+    // so turning the mark off is reversible without inventing a new operation value.
+    std::unordered_map<uint32_t, uint8_t> provideFallbackOps_;
     uint32_t majorMaterialId_ = 0;
     uint32_t minorMaterialId_ = 0;
     uint32_t majorMaterialPercent_ = 0;
