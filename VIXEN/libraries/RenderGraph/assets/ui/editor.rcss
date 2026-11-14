@@ -73,7 +73,7 @@ body.layers .outputs-pinned:focus-within {
     overflow-y: auto;
 }
 body.layers .outputs-pinned {
-    max-height: 80px;
+    max-height: 112px;
     overflow-y: auto;
 }
 .section-summary {
@@ -94,6 +94,8 @@ body.layers .outputs-pinned {
 }
 .material-chip, .node-material-chip {
     display: inline-block;
+    flex: 1 1 auto;
+    min-width: 0;
     margin-right: 6px;
     padding: 1px 5px;
     color: #f0f2ff;
@@ -101,6 +103,7 @@ body.layers .outputs-pinned {
     border-width: 1px;
     border-color: #7f90c0;
 }
+.material-chip { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .material-coverage-percent { flex: 0 0 auto; min-width: 32px; text-align: right; }
 .material-coverage { white-space: nowrap; }
 .col-op { display: inline-block; min-width: 72px; max-width: 96px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -283,12 +286,12 @@ body.layers .ut-row {
 body.layers .ut-row > ut-toggle { flex: 0 0 auto; }
 body.layers .ut-row > ut-button.name { flex: 1 1 auto; width: auto; min-width: 34px; overflow: hidden; white-space: nowrap; }
 body.layers .ut-row > .col-op {
-    flex: 0 0 42px;
-    width: 42px;
-    min-width: 42px;
+    flex: 0 0 62px;
+    width: 62px;
+    min-width: 62px;
     overflow: hidden;
     white-space: nowrap;
-    text-overflow: clip;
+    text-overflow: ellipsis;
     padding: 1px 3px;
     color: #90c0ff;
     background-color: #252b40;

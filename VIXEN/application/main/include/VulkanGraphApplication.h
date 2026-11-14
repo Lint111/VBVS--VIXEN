@@ -168,6 +168,10 @@ public:
      */
     virtual void BuildRenderGraph();
 
+    // Editor documents keep one material-capable procedural shader variant alive from the
+    // first graph build, so assigning a layer material only updates the recipe operand tape.
+    virtual bool ForceProceduralMaterialVariant() const { return false; }
+
     // Production graph construction is split by graph family.  These seams keep the
     // registration order in BuildRenderGraph while letting the expensive recipe/SVO
     // scene authoring compile independently from the driver and lighting wiring.

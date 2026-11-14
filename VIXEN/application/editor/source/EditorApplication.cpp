@@ -17,6 +17,7 @@
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Nodes/CameraNode.h"
 #include "Nodes/InputNode.h"                  // camera input translation reads the live InputState
+#include "Nodes/StorageBufferNode.h"           // material-id debug readback from HitRecord SSBO
 #include "Nodes/SwapChainNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
@@ -396,13 +397,25 @@ bool SameProgram(const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& a,
 bool SameProceduralShaderProgram(
     const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& a,
     const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& b) {
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (a[i].opCode != b[i].opCode || a[i].inputMask != b[i].inputMask ||
-            a[i].paramMask != b[i].paramMask || a[i]._pad1 != b[i]._pad1) return false;
-        const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(a[i].opCode);
-        if (op == Vixen::SVO::Recipe::SdfOpCode::MaterialRef) continue;
-        if (std::memcmp(a[i].data, b[i].data, sizeof(a[i].data)) != 0) return false;
+    const auto geometry = [](const auto& program) {
+        using Instruction = std::decay_t<decltype(program.front())>;
+        std::vector<const Instruction*> result;
+        for (const auto& instruction : program) {
+            const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
+            if (op != Vixen::SVO::Recipe::SdfOpCode::MaterialRef &&
+                op != Vixen::SVO::Recipe::SdfOpCode::Attach) {
+                result.push_back(&instruction);
+            }
+        }
+        return result;
+    };
+    const auto ag = geometry(a);
+    const auto bg = geometry(b);
+    if (ag.size() != bg.size()) return false;
+    for (size_t i = 0; i < ag.size(); ++i) {
+        if ((*ag[i]).opCode != (*bg[i]).opCode || (*ag[i]).inputMask != (*bg[i]).inputMask ||
+            (*ag[i]).paramMask != (*bg[i]).paramMask || (*ag[i])._pad1 != (*bg[i])._pad1 ||
+            std::memcmp((*ag[i]).data, (*bg[i]).data, sizeof((*ag[i]).data)) != 0) return false;
     }
     return true;
 }
@@ -3451,6 +3464,7 @@ void EditorApplication::PostTick() {
         TraceEditorLatency("readback", "end", updateTick_ - 1);
     }
     VulkanGraphApplication::PostTick();
+    CompletePendingMaterialProbe();
     ++channelPresentedFrame_;
     ReportUiReloads();
     for (auto pending = channelActionPending_.begin(); pending != channelActionPending_.end();) {
@@ -3466,6 +3480,71 @@ void EditorApplication::PostTick() {
         StartPendingReadbacks();
         PumpAppFlowChannel();
     }
+}
+
+void EditorApplication::CompletePendingMaterialProbe() {
+    if (!pendingMaterialProbe_.has_value()) return;
+
+    auto* graph = GetRenderGraph();
+    auto* deviceNode = graph
+        ? static_cast<Vixen::RenderGraph::DeviceNode*>(graph->GetInstanceByName("main_device")) : nullptr;
+    auto* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
+    auto* hitRecord = graph
+        ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(graph->GetInstanceByName("hit_record_buffer")) : nullptr;
+    if (!graph || !device || !hitRecord) return;
+
+    // PostTick follows Render(), but the hit-record write is a compute submission. This debug
+    // channel waits before mapping the host-visible SSBO so the reported IDs belong to the frame
+    // just presented, rather than to an in-flight ring slot.
+    vkDeviceWaitIdle(device->device);
+
+    auto* targetInstance = graph->GetInstanceByName("compute_render_target");
+    auto* target = targetInstance && targetInstance->GetOutput(0, 0)
+        ? targetInstance->GetOutput(0, 0)->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>() : nullptr;
+    if (!target) return;
+    const VkExtent2D extent = target->GetExtent();
+    constexpr size_t kHitRecordStride = 64;
+    constexpr size_t kPolicyWordOffset = 48 + 8;
+    if (extent.width == 0 || extent.height == 0 ||
+        hitRecord->GetSizeBytes() < static_cast<VkDeviceSize>(extent.width) * extent.height * kHitRecordStride) {
+        return;
+    }
+
+    void* mapped = hitRecord->MapForReadback(device);
+    if (!mapped) return;
+    nlohmann::json points = nlohmann::json::array();
+    const auto* bytes = static_cast<const std::uint8_t*>(mapped);
+    for (const auto& [x, y] : pendingMaterialProbe_->pixels) {
+        if (x >= extent.width || y >= extent.height) {
+            hitRecord->UnmapReadback(device);
+            channelMaterialProbeResults_[pendingMaterialProbe_->requestKey] =
+                nlohmann::json{{"error", "material probe pixel is outside the render extent"}}.dump();
+            pendingMaterialProbe_.reset();
+            return;
+        }
+        uint32_t policyWord = 0;
+        std::memcpy(&policyWord, bytes +
+            (static_cast<size_t>(y) * extent.width + x) * kHitRecordStride + kPolicyWordOffset,
+            sizeof(policyWord));
+        uint32_t flags = 0;
+        uint32_t instanceIndex = 0;
+        std::memcpy(&flags, bytes +
+            (static_cast<size_t>(y) * extent.width + x) * kHitRecordStride + 44u,
+            sizeof(flags));
+        std::memcpy(&instanceIndex, bytes +
+            (static_cast<size_t>(y) * extent.width + x) * kHitRecordStride + 48u,
+            sizeof(instanceIndex));
+        points.push_back({{"x", x}, {"y", y},
+                          {"materialId", (policyWord >> 16u) & 0xffffu},
+                          {"rawPolicyWord", policyWord}, {"flags", flags},
+                          {"instanceIndex", instanceIndex},
+                          {"source", "HitRecord._pad0[2] bits 16..31"}});
+    }
+    hitRecord->UnmapReadback(device);
+    channelMaterialProbeResults_[pendingMaterialProbe_->requestKey] = nlohmann::json{
+        {"frame", channelPresentedFrame_}, {"width", extent.width}, {"height", extent.height},
+        {"points", std::move(points)}}.dump();
+    pendingMaterialProbe_.reset();
 }
 
 void EditorApplication::PumpAppFlowChannel() {
@@ -4374,6 +4453,45 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         }
         channelReadbacks_[requestKey] = PendingReadback{
             params.dump(), targetFrame, 0, std::chrono::steady_clock::now(), false};
+        return std::nullopt;
+    }
+
+    if (method == "appflow.material_probe") {
+        const std::string requestKey = RequestKey(request.value("id", nlohmann::json(nullptr)));
+        if (const auto ready = channelMaterialProbeResults_.find(requestKey);
+            ready != channelMaterialProbeResults_.end()) {
+            const std::string response = ready->second;
+            channelMaterialProbeResults_.erase(ready);
+            const nlohmann::json decoded = nlohmann::json::parse(response);
+            if (decoded.contains("error")) throw std::runtime_error(decoded.at("error").get<std::string>());
+            return response;
+        }
+        if (pendingMaterialProbe_.has_value()) {
+            if (pendingMaterialProbe_->requestKey != requestKey) {
+                throw std::runtime_error("another material probe is already in flight");
+            }
+            return std::nullopt;
+        }
+        if (!params.contains("points") || !params.at("points").is_array() ||
+            params.at("points").empty() || params.at("points").size() > 64) {
+            throw std::runtime_error("material_probe requires 1..64 points");
+        }
+        PendingMaterialProbe probe{requestKey, {}};
+        probe.pixels.reserve(params.at("points").size());
+        for (const auto& point : params.at("points")) {
+            if (!point.is_object() || !point.contains("x") || !point.contains("y") ||
+                !point.at("x").is_number_integer() || !point.at("y").is_number_integer()) {
+                throw std::runtime_error("material_probe points require integer x and y");
+            }
+            const int64_t x = point.at("x").get<int64_t>();
+            const int64_t y = point.at("y").get<int64_t>();
+            if (x < 0 || y < 0 || x > std::numeric_limits<uint32_t>::max() ||
+                y > std::numeric_limits<uint32_t>::max()) {
+                throw std::runtime_error("material_probe point is outside the valid pixel range");
+            }
+            probe.pixels.emplace_back(static_cast<uint32_t>(x), static_cast<uint32_t>(y));
+        }
+        pendingMaterialProbe_ = std::move(probe);
         return std::nullopt;
     }
 

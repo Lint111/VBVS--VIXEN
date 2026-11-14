@@ -572,6 +572,32 @@ void BodyOctreeSceneNode::RefreshRecipeTapeBuffer() {
     if (!device) return;
     const VkDeviceSize size = std::max<VkDeviceSize>(
         recipeTape_.size() * sizeof(YkRecipeGpuTapeInstruction), 1);
+
+    // The recipe tape is connected to the live descriptor set during graph compile. Replacing
+    // its VkBuffer here changes the Resource handle but does not rebuild that descriptor set, so
+    // a data-only material edit would leave the march reading a retired buffer (the body vanished
+    // on the first material edit). Keep the descriptor identity stable whenever the existing
+    // allocation fits and publish the new operand bytes in place.
+    if (recipeTapeBuffer_ != VK_NULL_HANDLE && recipeTapeMemory_ != VK_NULL_HANDLE &&
+        size <= recipeTapeCapacity_) {
+        if (vkQueueWaitIdle(device->queue) != VK_SUCCESS) {
+            throw std::runtime_error("[BodyOctreeSceneNode] recipe operand tape queue wait failed");
+        }
+        void* mapped = nullptr;
+        if (vkMapMemory(device->device, recipeTapeMemory_, 0, recipeTapeCapacity_, 0, &mapped) != VK_SUCCESS) {
+            throw std::runtime_error("[BodyOctreeSceneNode] recipe operand tape map failed");
+        }
+        std::memset(mapped, 0, static_cast<size_t>(recipeTapeCapacity_));
+        if (!recipeTape_.empty()) {
+            std::memcpy(mapped, recipeTape_.data(), static_cast<size_t>(size));
+        }
+        vkUnmapMemory(device->device, recipeTapeMemory_);
+        RecordWholeBufferUpload(static_cast<uint64_t>(size));
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Refreshed recipe operand tape in place (" +
+                      std::to_string(static_cast<uint64_t>(size)) + "B)");
+        return;
+    }
+
     VkBuffer replacement = VK_NULL_HANDLE;
     VkDeviceMemory replacementMemory = VK_NULL_HANDLE;
     CreateHostBuffer(device, size,
@@ -586,6 +612,7 @@ void BodyOctreeSceneNode::RefreshRecipeTapeBuffer() {
     }
     recipeTapeBuffer_ = replacement;
     recipeTapeMemory_ = replacementMemory;
+    recipeTapeCapacity_ = size;
     if (Resource* output = GetOutput(BodyOctreeSceneNodeConfig::RECIPE_TAPE_BUFFER.index, 0)) {
         output->SetHandle<VkBuffer>(VkBuffer(recipeTapeBuffer_));
     }
@@ -1676,6 +1703,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         recipeTape_.empty() ? nullptr : recipeTape_.data(),
         recipeTapeBuffer_, recipeTapeMemory_, "recipe operand tape SSBO");
+    recipeTapeCapacity_ = recipeTapeSize;
 
     // R631: the glyph outline payload is runtime data. Keeping it out of the generated GLSL
     // source prevents the driver from unrolling one large compile-time object per recipe.

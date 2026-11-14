@@ -35,7 +35,11 @@ ut-button.tool:hover { color: #ffffff; background-color: #3a4a6c; }
 ut-button.tool.close { color: #c09090; }
 ut-button.tab { display: flex; position: absolute; align-items: center; margin-left: 0; padding: 4px 6px 0px 8px; text-align: left; color: #c8d0e0; background-color: #1c2334; border-width: 0; border-right-width: 1px; border-color: #34405a; overflow: hidden; white-space: nowrap; }
 ut-button.tab .ut-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-ut-button.tab .dock-tab-title { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #c8d0e0; }
+/* Keep the declarative title as a visible flex item. The generated kit label is retained for
+   ordinary buttons, but dock tabs own their title in the caller span so the title and controls
+   share one row even when the custom element is rebuilt by a data-for clone. */
+ut-button.tab .ut-label { display: none; }
+ut-button.tab .dock-tab-title { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #e8eeff; }
 ut-button.tab > ut-button.tool { flex: 0 0 auto; }
 ut-button.tab.active { background-color: #26324c; color: #e8eeff; border-top-width: 2px; border-top-color: #5a8ae0; }
 /* the round variant (HUD): hit-mask ellipse is forced by the element; the HUD's document owns placement */

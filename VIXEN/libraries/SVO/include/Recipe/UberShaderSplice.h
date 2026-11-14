@@ -51,7 +51,8 @@ inline std::string SpliceProceduralRecipesIntoSource(
     const RecipeRegistry& registry,
     std::vector<float>* outConcatenatedOccupancyGrid = nullptr,
     std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance>* outConcatenatedGlyphInstances = nullptr,
-    std::vector<YkRecipeGpuTapeInstruction>* outConcatenatedRecipeTape = nullptr)
+    std::vector<YkRecipeGpuTapeInstruction>* outConcatenatedRecipeTape = nullptr,
+    bool forceMaterialVariant = false)
 {
     if (outConcatenatedOccupancyGrid) outConcatenatedOccupancyGrid->clear();
     if (outConcatenatedGlyphInstances) outConcatenatedGlyphInstances->clear();
@@ -85,7 +86,7 @@ inline std::string SpliceProceduralRecipesIntoSource(
         }
         return false;
     };
-    const bool materialVariant = std::any_of(ids.begin(), ids.end(), [&](uint32_t id) {
+    const bool materialVariant = forceMaterialVariant || std::any_of(ids.begin(), ids.end(), [&](uint32_t id) {
         return hasMaterialOutput(registry.Get(id));
     });
     std::vector<uint32_t> tapeBases;

@@ -600,6 +600,7 @@ private:
     std::vector<YkRecipeGpuTapeInstruction> recipeTape_;
     VkBuffer       recipeTapeBuffer_     = VK_NULL_HANDLE;
     VkDeviceMemory recipeTapeMemory_     = VK_NULL_HANDLE;
+    VkDeviceSize    recipeTapeCapacity_  = 0;
     // R631: flattened GlyphOutlineInstance SSBO (binding 51 in the shared recipe shaders).
     VkBuffer       glyphOutlineBuffer_   = VK_NULL_HANDLE;
     VkDeviceMemory glyphOutlineMemory_   = VK_NULL_HANDLE;

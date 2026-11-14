@@ -69,6 +69,7 @@ public:
     ~EditorApplication() override;
 
     void BuildRenderGraph() override;
+    bool ForceProceduralMaterialVariant() const override { return true; }
     void DeInitialize() override;  // frees the channel's readback ring before the device goes
     void PreTick() override;   // attaches the event bus; parses the capture-fixture env once
     void Update() override;
@@ -138,6 +139,7 @@ private:
     // E15: gives the AppFlow runtime the engine's event bus and mirrors its events into the channel log.
     void AttachAppFlowEventBus();
     void StartPendingReadbacks();
+    void CompletePendingMaterialProbe();
 
     // Replays the consumer-owned handler wiring after AppFlowRuntime replaces its primitives.
     void RegisterAppFlowHandlers();
@@ -356,6 +358,12 @@ private:
     std::unordered_map<std::string, PendingReadback> channelReadbacks_;
     std::unordered_map<std::string, std::string> channelReadbackResults_;
     std::unordered_map<std::string, std::string> channelDeferredDispatchResults_;
+    struct PendingMaterialProbe {
+        std::string requestKey;
+        std::vector<std::pair<uint32_t, uint32_t>> pixels;
+    };
+    std::optional<PendingMaterialProbe> pendingMaterialProbe_;
+    std::unordered_map<std::string, std::string> channelMaterialProbeResults_;
 
     std::shared_ptr<Vixen::Log::Logger> logger_ = std::make_shared<Vixen::Log::Logger>("editor", true);
 };
