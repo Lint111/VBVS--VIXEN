@@ -1372,4 +1372,36 @@ TEST(EditorDocumentModelLayerPorts, TypedAndCapacityDiagnosticsAreGeneratedAndLo
     EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::WireCapacityExceeded);
 }
 
+TEST(EditorDocumentModelLayerPorts, RemovingAReadPortNodeRemovesItsWire) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    ASSERT_GE(model.LayerCount(), 2u);
+    const uint32_t sourceId = model.LayerId(0u);
+    const uint32_t readerId = model.LayerId(1u);
+    ASSERT_TRUE(model.SetLayerProvide(sourceId, true, diagnostic)) << diagnostic.message;
+
+    ASSERT_TRUE(model.InsertPortRead(readerId, 0u, model.LayerName(0u) + ".field", diagnostic))
+        << diagnostic.message;
+    ASSERT_EQ(model.Wires().size(), 1u);
+    const auto* graph = model.GetLayerGraph(1u, diagnostic);
+    ASSERT_NE(graph, nullptr);
+    // A ReadPort is retained in the partial graph view even when the generated validator reports
+    // the surrounding program's leftover stack. Removing it must still validate the candidate.
+    ASSERT_TRUE(graph->raw);
+    EXPECT_EQ(graph->diagnostic.code,
+              Vixen::SVO::Recipe::SdfGraphDiagnosticCode::ValueStackLeftover);
+    uint32_t readNode = graph->view.nodeCount;
+    for (uint32_t i = 0u; i < graph->view.nodeCount; ++i) {
+        if (graph->view.nodes[i].opcodeInfo->opcode ==
+            static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) {
+            readNode = i;
+            break;
+        }
+    }
+    ASSERT_LT(readNode, graph->view.nodeCount);
+    ASSERT_TRUE(model.RemoveNode(1u, readNode, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(model.Wires().empty());
+}
+
 }  // namespace

@@ -460,11 +460,24 @@ void EditorApplication::RefreshLayersView() {
         Vixen::Editor::DocumentDiagnostic graphDiagnostic;
         const Vixen::Editor::LayerGraph* graph = doc_.GetLayerGraph(selectedLayer_, graphDiagnostic);
         if (graph != nullptr) {
-            graphData.rawProgram = graph->raw;
+            // ReadPort is a side-input node. The generated graph intentionally retains its
+            // emitted nodes when the surrounding program has a leftover stack, so the editor can
+            // still expose/remove the read node while the candidate program is being completed.
+            bool hasPartialReadPortGraph = false;
             if (graph->raw) {
+                for (uint32_t nodeIndex = 0u; nodeIndex < graph->view.nodeCount; ++nodeIndex) {
+                    if (graph->view.nodes[nodeIndex].opcode ==
+                        static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadPort)) {
+                        hasPartialReadPortGraph = true;
+                        break;
+                    }
+                }
+            }
+            graphData.rawProgram = graph->raw && !hasPartialReadPortGraph;
+            if (graphData.rawProgram) {
                 graphData.rawProgramDiagnostic =
                     Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(graph->diagnostic);
-            } else {
+            } else if (hasPartialReadPortGraph || !graph->raw) {
                 const auto categoryName = [](Vixen::SVO::Recipe::SdfOpCategory category) {
                     using Category = Vixen::SVO::Recipe::SdfOpCategory;
                     switch (category) {
@@ -678,7 +691,7 @@ void EditorApplication::RefreshLayersView() {
                 }
                 // The catalogue is the only source for domain choices. The generated rewrite is
                 // tried for every contiguous pair; only candidates accepted by its validation are published.
-                for (uint32_t first = 0; first < graph->view.nodeCount; ++first) {
+                for (uint32_t first = 0; !graph->raw && first < graph->view.nodeCount; ++first) {
                     for (uint32_t last = first; last < graph->view.nodeCount; ++last) {
                         for (const auto& info : Vixen::SVO::Recipe::SdfOpInfoTable) {
                             if (info.opensDomainFrame == 0u) continue;

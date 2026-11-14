@@ -2077,7 +2077,10 @@ bool EditorDocumentModel::RemoveNode(uint32_t layerIndex, uint32_t nodeIndex,
     diagnostic.Clear();
     const LayerGraph* graph = GetLayerGraph(layerIndex, diagnostic);
     if (graph == nullptr) return false;
-    if (graph->raw) {
+    // DeriveSdfGraph retains ReadPort nodes before reporting the surrounding program's leftover
+    // stack. Let removal validate the candidate in that partial view; empty/raw programs remain
+    // rejected here.
+    if (graph->raw && graph->view.nodeCount == 0u) {
         diagnostic = {DocumentDiagnosticCode::InvalidGraphEdit,
                       "generated graph diagnostic: " + GraphDiagnosticMessage(graph->diagnostic)};
         return false;
