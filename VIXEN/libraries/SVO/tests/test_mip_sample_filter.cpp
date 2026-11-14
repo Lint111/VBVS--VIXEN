@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 #include <array>
+#include <bit>
 #include <cmath>
 
 #include "MipSample.h"
@@ -178,4 +179,20 @@ TEST(MipSampleFilter, DispatchPicksMeanForDensityKind) {
 
     MipSample out = FilterMipSample(FK_DENSITY, children);
     EXPECT_NEAR(out.value, 0.5f, 1e-6f);
+}
+
+TEST(MipSampleFilter, MaterialIdUsesWeightedModeWithoutInterpolatingIds) {
+    std::array<MipChildSample, 8> children{};
+    for (int i = 0; i < 5; ++i) {
+        children[static_cast<std::size_t>(i)] =
+            MipChildSample{std::bit_cast<float>(std::uint32_t{5u}), true};
+    }
+    for (int i = 5; i < 8; ++i) {
+        children[static_cast<std::size_t>(i)] =
+            MipChildSample{std::bit_cast<float>(std::uint32_t{8u}), true};
+    }
+
+    const MipSample out = FilterMipSample(SEM_MATERIAL_ID, FK_NONE, children);
+    EXPECT_EQ(std::bit_cast<std::uint32_t>(out.value), 5u);
+    EXPECT_FLOAT_EQ(out.coverage, 1.0f);
 }

@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "Recipe/generated/VoxelDocument.g.h"
-#include "Recipe/generated/SdfOpCodes.g.h"
+#include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeRegistry.h"
 
 namespace Vixen::Editor {

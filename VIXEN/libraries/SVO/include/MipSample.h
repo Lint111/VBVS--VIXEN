@@ -21,6 +21,7 @@
 //     load-bearing).
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 
@@ -88,6 +89,26 @@ inline MipSample FilterMipMean(const std::array<MipChildSample, 8>& children) {
     return out;
 }
 
+// Generated categorical channels are reduced by weighted mode. The bitwise
+// representation is intentional: MaterialId is carried in the float channel
+// pool without ever converting an id into an interpolated numeric value.
+inline MipSample FilterMipCategorical(const std::array<MipChildSample, 8>& children) {
+    std::array<float, 8> values{};
+    std::array<float, 8> weights{};
+    std::uint32_t count = 0u;
+    float coverage = 0.0f;
+    for (const MipChildSample& child : children) {
+        if (!child.occupied) continue;
+        values[count] = child.value;
+        weights[count] = child.Weight();
+        coverage += child.Weight();
+        ++count;
+    }
+    if (count == 0u) return {};
+    return MipSample{std::bit_cast<float>(SampleCategoricalChannel(values.data(), weights.data(), count)),
+                     coverage / 8.0f};
+}
+
 // Conservative min-magnitude filter (SDF / FK_DISTANCE): pick the occupied
 // child sample with the smallest |value| (closest to the zero-crossing /
 // surface), preserving its sign. This is deliberately NOT a mean — averaging
@@ -128,6 +149,12 @@ inline MipSample FilterMipSample(FieldKind kind, const std::array<MipChildSample
         return FilterMipMinMagnitude(children);
     }
     return FilterMipMean(children);
+}
+
+inline MipSample FilterMipSample(SemanticId semantic, FieldKind kind,
+                                 const std::array<MipChildSample, 8>& children) {
+    if (ChannelIsCategorical(semantic)) return FilterMipCategorical(children);
+    return FilterMipSample(kind, children);
 }
 
 }  // namespace Vixen::SVO

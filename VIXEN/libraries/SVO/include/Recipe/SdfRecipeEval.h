@@ -54,6 +54,23 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
         const SdfInstruction& in = prog[i];
         switch (static_cast<SdfOpCode>(in.opCode)) {
 #include "Recipe/generated/SdfRecipeEvalDispatch.g.inc"
+        case SdfOpCode::ReadPort:
+        case SdfOpCode::Instance:
+            // The scalar legacy evaluator has no layer-port or instance
+            // context. Keep the distance-only oracle stack-valid; the
+            // generated SIMD evaluator owns the typed channel path.
+            assert(sp + 1 <= 64 && "typed input stack overflow");
+            stack[sp++] = 0.0f;
+            break;
+        case SdfOpCode::SampleSurface:
+            break;
+        case SdfOpCode::MaterialRef:
+            assert(sp + 1 <= 64 && "material reference stack overflow");
+            stack[sp++] = 0.0f;
+            break;
+        case SdfOpCode::Attach:
+            if (sp >= 2) --sp;  // discard the material sidecar in the scalar oracle
+            break;
         }
     }
     assert(sp == 1 && "evalRecipe: expected exactly one value on stack at return");

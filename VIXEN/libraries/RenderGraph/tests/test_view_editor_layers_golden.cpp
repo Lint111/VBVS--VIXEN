@@ -99,11 +99,9 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
                                          &primitives, &opChoices, &shape, &selectedShape, &shapeNote, &pickerFilter,
                                          &activeLayerCount, &recipes,
                                          &packRecipes,
+                                         &materials,
                                          &nodes, &nodeArguments, &nodeWrapChoices, &nodeChoices, &nodePickerActive, &rawProgram,
                                          &rawProgramDiagnostic,
-                                          &materials,
-                                          &nodes, &nodeArguments, &nodeWrapChoices, &nodeChoices, &nodePickerActive, &rawProgram,
-                                          &rawProgramDiagnostic,
                                          &statusDocument, &statusMessage, &flowState, &undoDepth, &redoDepth };
 
     Rml::DataModelConstructor c = ctx->CreateDataModel("editor_layers");

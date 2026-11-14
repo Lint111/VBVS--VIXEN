@@ -289,6 +289,31 @@ float sampleChannelScalarTrilinear(uint sem, vec3 gridPos, float missing) {
     return _interpolateTrilinearCell(f, z0, z1);
 }
 
+// Categorical channels must keep the winning stored id, rather than creating
+// an id that was never authored. The generated vocabulary owns the semantic
+// dispatch and bit-preserving categorical reduction; this function only
+// supplies the eight trilinear corner values and their footprint weights.
+float sampleChannelCategoricalTrilinear(uint sem, vec3 gridPos, float missing) {
+    uint base = channelBaseFloats(sem);
+    if (base == 0xFFFFFFFFu) return missing;
+
+    vec3 f; vec4 z0, z1; uint brickIdx; ivec3 local; bool oneBrick;
+    _loadTrilinearCellComp(base, gridPos, 0, g_octreeIdx, f, z0, z1, brickIdx, local, oneBrick);
+    float values[16];
+    float weights[16];
+    values[0] = z0.x; values[1] = z0.y; values[2] = z0.z; values[3] = z0.w;
+    values[4] = z1.x; values[5] = z1.y; values[6] = z1.z; values[7] = z1.w;
+    weights[0] = (1.0 - f.x) * (1.0 - f.y) * (1.0 - f.z);
+    weights[1] = f.x * (1.0 - f.y) * (1.0 - f.z);
+    weights[2] = (1.0 - f.x) * f.y * (1.0 - f.z);
+    weights[3] = f.x * f.y * (1.0 - f.z);
+    weights[4] = (1.0 - f.x) * (1.0 - f.y) * f.z;
+    weights[5] = f.x * (1.0 - f.y) * f.z;
+    weights[6] = (1.0 - f.x) * f.y * f.z;
+    weights[7] = f.x * f.y * f.z;
+    return sampleChannelValue(sem, values, weights, 8u);
+}
+
 // ---------------------------------------------------------------------------
 // sampleChannelVec3Trilinear: trilinear interpolation of a 3-component channel
 // (e.g. SEM_COLOR). Returns `missing` when the channel is absent.
@@ -348,9 +373,9 @@ vec3 sampleChannelVec3Trilinear(uint sem, vec3 gridPos, vec3 missing) {
 void applyStoredMaterialColor(vec3 gridPos, inout vec3 color) {
     uint materialBase = channelBaseFloats(SEM_MATERIAL_ID);
     if (materialBase == 0xFFFFFFFFu) return;
-    float rawId = sampleChannelScalarTrilinear(SEM_MATERIAL_ID, gridPos, -1.0);
-    if (rawId < 0.0 || rawId > 63.0) return;
-    uint materialId = uint(rawId + 0.5);
+    float rawId = sampleChannelCategoricalTrilinear(SEM_MATERIAL_ID, gridPos, -1.0);
+    if (rawId < 0.0) return;
+    uint materialId = floatBitsToUint(rawId);
     if (materialId == 0u) return;
     color = materials[materialId].albedo;
 }

@@ -800,6 +800,11 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     doc_ = std::move(candidate);
     documentPath_ = path;
     ClearEditorError();
+    if (doc_.MajorMaterialId() != 0u || doc_.MinorMaterialId() != 0u ||
+        doc_.MajorMaterialPercent() != 0u) {
+        ReportEditorError("legacy document material fields are ignored; author MaterialId from layer outputs",
+                          "LegacyDocumentMaterial");
+    }
     if (!pendingReferenceDiagnostic_.empty()) {
         ReportEditorError(pendingReferenceDiagnostic_, "RecipeReference");
     }
@@ -1158,29 +1163,9 @@ void EditorApplication::RegisterAppFlowHandlers() {
     const auto refuse = [this](const char* label, const std::string& why) {
         ReportEditorError(std::string(label) + ": " + why, "RefusedEdit");
     };
-    rt_.RegisterHandler(FlowActionId::SetDocumentMaterials,
-        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
-        const uint32_t major = ParseParam(p, "major");
-        const uint32_t minor = ParseParam(p, "minor");
-        float percent = 0.0f;
-        if (!ParseFloatParam(p, "majorPercent", percent) || !std::isfinite(percent) ||
-            percent < 0.0f || std::floor(percent) != percent || percent > 99.0f) {
-            refuse("SetDocumentMaterials", "majorPercent must be a finite integer from 0 to 99");
-            return;
-        }
-        const uint32_t nextPercent = static_cast<uint32_t>(percent);
-        const uint32_t oldMajor = doc_.MajorMaterialId();
-        const uint32_t oldMinor = doc_.MinorMaterialId();
-        const uint32_t oldPercent = doc_.MajorMaterialPercent();
-        if (major == oldMajor && minor == oldMinor && nextPercent == oldPercent) return;
-        recordEdit(FlowActionId::SetDocumentMaterials, "SetDocumentMaterials",
-                   [this, major, minor, nextPercent](Vixen::Editor::DocumentDiagnostic& d) {
-                       return doc_.SetDocumentMaterials(major, minor, nextPercent, d);
-                   },
-                   [this, oldMajor, oldMinor, oldPercent](Vixen::Editor::DocumentDiagnostic& d) {
-                       return doc_.SetDocumentMaterials(oldMajor, oldMinor, oldPercent, d);
-                   });
-    });
+    // R874.3: id 47 remains reserved for the retired VDC1 document-material edit.
+    // It is intentionally not registered; the generated runtime reports an
+    // unimplemented action instead of mutating the legacy header fields.
     const auto setBlend = [this, recordEdit, refuse](FlowActionId actionId, uint32_t index, float radius) {
         Vixen::Editor::DocumentDiagnostic diagnostic;
         if (index >= doc_.LayerCount()) { refuse("SetLayerBlend", "layer index " + std::to_string(index) + " is outside the document"); return; }
@@ -2011,14 +1996,10 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     TraceEditorLatency("flatten", "end", updateTick_);
     TraceEditorLatency("registry", "begin", updateTick_);
 
-    // VDC1 material fields are data carried by the stored material channel. Once a
-    // document has a material assignment, keep the already-spliced procedural
-    // program and publish the newly baked stored channel instead. This makes
-    // SetDocumentMaterials a data edit: the bake/pool and instance binding are
-    // refreshed, while the procedural shader program remains untouched.
-    const bool hasDocumentMaterials = doc_.MajorMaterialId() != 0u ||
-                                      doc_.MinorMaterialId() != 0u ||
-                                      doc_.MajorMaterialPercent() != 0u;
+    // Legacy VDC1 document material fields are read for byte-stable save/reopen,
+    // but no longer lower into the recipe. Only authored layer output channels
+    // may select the stored material provider.
+    constexpr bool hasDocumentMaterials = false;
 
     // Runtime parameter values remain per-instance data. Only a changed canonical bytecode
     // program replaces the registry entry and triggers a shader splice rebuild.

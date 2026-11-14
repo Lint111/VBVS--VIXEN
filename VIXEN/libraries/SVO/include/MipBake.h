@@ -101,6 +101,7 @@ inline MipSample ReduceBrickToMipSample(const SerializedOctree& serialized,
     octantOccupiedCount.fill(0);
     std::array<float, 8> octantBestAbs{};
     octantBestAbs.fill(-1.0f);
+    std::array<std::array<float, SerializedOctree::kVoxelsPerBrick / 8u>, 8> categoricalValues{};
 
     // Occupancy comes from the material bricks array (out.bricks), NOT from
     // "channel value != 0" — a genuinely on-surface SDF voxel can legitimately
@@ -134,6 +135,9 @@ inline MipSample ReduceBrickToMipSample(const SerializedOctree& serialized,
         } else {
             octantBestOrSum[octant] += value;
         }
+        if (ChannelIsCategorical(sem)) {
+            categoricalValues[octant][static_cast<std::size_t>(octantOccupiedCount[octant])] = value;
+        }
         ++octantOccupiedCount[octant];
     }
 
@@ -149,6 +153,13 @@ inline MipSample ReduceBrickToMipSample(const SerializedOctree& serialized,
             static_cast<float>(octantOccupiedCount[o]) / kVoxelsPerOctantGroup;
         if (octantOccupiedCount[o] == 0) {
             octantGroups[o] = MipChildSample{0.0f, false, 0.0f};
+        } else if (ChannelIsCategorical(sem)) {
+            std::array<float, SerializedOctree::kVoxelsPerBrick / 8u> weights{};
+            weights.fill(1.0f);
+            const std::uint32_t count = static_cast<std::uint32_t>(octantOccupiedCount[o]);
+            const std::uint32_t winner = SampleCategoricalChannel(
+                categoricalValues[o].data(), weights.data(), count);
+            octantGroups[o] = MipChildSample{std::bit_cast<float>(winner), true, octantCoverage};
         } else if (kind == FK_DISTANCE) {
             octantGroups[o] = MipChildSample{octantBestOrSum[o], true, octantCoverage};
         } else {
@@ -158,7 +169,7 @@ inline MipSample ReduceBrickToMipSample(const SerializedOctree& serialized,
         }
     }
 
-    return FilterMipSample(kind, octantGroups);
+    return FilterMipSample(sem, kind, octantGroups);
 }
 
 }  // namespace detail
@@ -387,7 +398,7 @@ inline MipPool BakeMipPool(const Octree& oct, const SerializedOctree& serialized
 
             if (anyChild) {
                 pool.samples[static_cast<size_t>(nodeIdx) * pool.channelCount + ch] =
-                    FilterMipSample(kind, children);
+                    FilterMipSample(sem, kind, children);
             }
         }
     }
