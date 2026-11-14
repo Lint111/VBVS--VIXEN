@@ -175,9 +175,13 @@ body.picker {
     margin-top: 1px;
 }
 
-/* Keep the generated refusal beside its disabled control so a five-node outline remains a
-   readable overview in the inspector without hiding the diagnostic or requiring a scroll. */
-.node-actions ut-button .ut-reason {
+/* Refusal text is a transient affordance: UiKit reveals it on a disabled-control hover/press
+   (or after a refused dispatch). Keeping the reason hidden in the resting row prevents every
+   node from expanding the outline into a repeated diagnostic column. */
+.node-actions ut-button .ut-reason { display: none; }
+.node-actions ut-button:hover .ut-reason,
+.node-actions ut-button:focus .ut-reason,
+.node-actions ut-button:active .ut-reason {
     display: inline;
     margin-left: 4px;
     white-space: normal;
@@ -264,13 +268,46 @@ body.layers .ut-row {
     flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
-    min-height: 24px;
+    min-height: 30px;
     margin-top: 3px;
     overflow: hidden;
 }
 body.layers .ut-row > ut-toggle { flex: 0 0 auto; }
-body.layers .ut-row > ut-button.name { flex: 0 1 92px; width: auto; min-width: 54px; overflow: hidden; white-space: nowrap; }
-body.layers .ut-row > .col-op { flex: 0 1 70px; min-width: 38px; overflow: hidden; white-space: nowrap; }
-body.layers .dependency-mark { flex: 0 0 auto; min-width: 34px; color: #9fb0d0; white-space: nowrap; }
-body.layers .layer-provide, body.layers .layer-solo { flex: 0 0 auto; }
+body.layers .ut-row > ut-button.name { flex: 1 1 auto; width: auto; min-width: 34px; overflow: hidden; white-space: nowrap; }
+body.layers .ut-row > .col-op {
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 42px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip;
+    padding: 1px 3px;
+    color: #90c0ff;
+    background-color: #252b40;
+    border-width: 1px;
+    border-color: #3d4d75;
+    font-size: 11px;
+}
+body.layers .dependency-mark { flex: 0 0 24px; width: 24px; min-width: 24px; overflow: hidden; color: #9fb0d0; white-space: nowrap; }
+body.layers .layer-icon-button {
+    flex: 0 0 18px;
+    width: 18px;
+    min-width: 18px;
+    margin-left: 2px;
+    padding: 1px 0;
+}
 body.layers .layer-diagnostic { flex: 0 1 auto; overflow: hidden; white-space: nowrap; }
+
+/* The wrap picker stays reachable below the node list without pushing the layer transform and
+   material rows below the viewport. Hover/focus expands the same control in place. */
+.wrap-picker {
+    max-height: 24px;
+    overflow: hidden;
+    border-bottom-width: 1px;
+    border-color: #303050;
+    padding-bottom: 2px;
+}
+.wrap-picker:hover, .wrap-picker:focus-within {
+    max-height: 180px;
+    overflow-y: auto;
+}

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "Recipe/RecipeBaker.h"
 
 #include "ActionStack.h"
 #include "EditorDocumentFraming.h"
@@ -17,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iostream>
 #include <limits>
 #include <string>
 #include <vector>
@@ -1497,6 +1499,245 @@ TEST(EditorDocumentModelLayerPorts, RemovingAReadPortNodeRemovesItsWire) {
     EXPECT_TRUE(model.Wires().empty());
     flattened = {};
     ASSERT_TRUE(model.FlattenToRecipeEntry(flattened, diagnostic)) << diagnostic.message;
+}
+
+TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeSlotGuard) {
+    constexpr const char* kHullPath =
+        "/home/liory/codeman-cases/undertow/reports/cx-edmat5-evidence/"
+        "pack-hullproof-final9-1280/recipes/hull.vxd";
+    EditorDocumentModel materialModel;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(materialModel.Load(kHullPath, diagnostic)) << diagnostic.message;
+
+    EditorDocumentModel neutralModel;
+    ASSERT_TRUE(neutralModel.Load(kHullPath, diagnostic)) << diagnostic.message;
+    for (uint32_t i = 0; i < neutralModel.LayerCount(); ++i)
+        ASSERT_TRUE(neutralModel.ClearLayerMaterial(neutralModel.LayerId(i), diagnostic))
+            << diagnostic.message;
+
+    const auto materialResolver = [](const std::string& id, uint32_t& slot) {
+        if (id == "core:hull_metal_major") { slot = 5u; return true; }
+        if (id == "core:emissive_trim") { slot = 8u; return true; }
+        return false;
+    };
+    Vixen::SVO::RecipeRegistry::RecipeEntry materialEntry;
+    Vixen::SVO::RecipeRegistry::RecipeEntry neutralEntry;
+    ASSERT_TRUE(materialModel.FlattenToRecipeEntry(
+        materialEntry, materialModel.CaptureBakeSnapshot(), {}, materialResolver, false, diagnostic))
+        << diagnostic.message;
+    ASSERT_TRUE(neutralModel.FlattenToRecipeEntry(neutralEntry, neutralModel.CaptureBakeSnapshot(), diagnostic))
+        << diagnostic.message;
+
+    std::array<float, 3> boundsCenter{};
+    float boundsRadius = 0.0f;
+    neutralModel.DerivePreviewBounds(boundsCenter, boundsRadius);
+    Vixen::SVO::Recipe::LoweredRecipeProgram materialSimd;
+    std::string lowerError;
+    ASSERT_TRUE(materialSimd.Lower(materialEntry.bytecode.data(),
+                                   static_cast<uint32_t>(materialEntry.bytecode.size()),
+                                   materialEntry.parameterValues, lowerError)) << lowerError;
+
+    Vixen::SVO::RecipeRegistry registry;
+    ASSERT_EQ(registry.Register(1u, materialEntry),
+              Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+    Vixen::SVO::RecipeBakeConfig config{};
+    constexpr uint32_t kBakeResolution = 64u;
+    constexpr float kRecipeUnitsPerVoxel = 0.25f;
+    config.center = glm::vec3(static_cast<float>(kBakeResolution) * 0.5f);
+    config.defaultResolution = kBakeResolution;
+    config.defaultBand = 2.5f;
+    config.recipeUnitsPerVoxel = kRecipeUnitsPerVoxel;
+    const auto bake = Vixen::SVO::BakeRegistryToPool(registry, config);
+    ASSERT_TRUE(bake.ok) << bake.err;
+    ASSERT_EQ(bake.owned.size(), 1u);
+    ASSERT_EQ(registry.Get(1u)->octreeSlot, 0u);
+    Vixen::SVO::RecipeRegistry neutralRegistry;
+    ASSERT_EQ(neutralRegistry.Register(2u, neutralEntry),
+              Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+    const auto neutralBake = Vixen::SVO::BakeRegistryToPool(neutralRegistry, config);
+    ASSERT_TRUE(neutralBake.ok) << neutralBake.err;
+    ASSERT_EQ(neutralBake.owned.size(), 1u);
+    const auto materialSerialized = Vixen::SVO::SerializeSdf(bake.owned[0]);
+    const auto neutralSerialized = Vixen::SVO::SerializeSdf(neutralBake.owned[0]);
+    EXPECT_EQ(materialSerialized.channelPool, neutralSerialized.channelPool);
+    EXPECT_EQ(materialSerialized.brickGridLookup, neutralSerialized.brickGridLookup);
+    const auto readSerializedVoxel = [](const Vixen::SVO::SerializedOctree& serialized,
+                                        const glm::ivec3& grid) -> std::optional<float> {
+        const int n = static_cast<int>(serialized.config.bricksPerAxis) * 8;
+        if (glm::any(glm::lessThan(grid, glm::ivec3(0))) ||
+            glm::any(glm::greaterThanEqual(grid, glm::ivec3(n))))
+            return std::nullopt;
+        const glm::ivec3 brick = grid / 8;
+        const uint32_t flat = static_cast<uint32_t>(brick.x +
+            brick.y * static_cast<int>(serialized.config.bricksPerAxis) +
+            brick.z * static_cast<int>(serialized.config.bricksPerAxis) *
+                static_cast<int>(serialized.config.bricksPerAxis));
+        if (static_cast<size_t>(flat + 1u) * sizeof(uint32_t) > serialized.brickGridLookup.size())
+            return std::nullopt;
+        uint32_t brickIndex = 0xFFFFFFFFu;
+        std::memcpy(&brickIndex, serialized.brickGridLookup.data() + flat * sizeof(uint32_t), sizeof(uint32_t));
+        if (brickIndex == 0xFFFFFFFFu || brickIndex >= serialized.brickCount) return std::nullopt;
+        const glm::ivec3 local = grid - brick * 8;
+        const uint32_t voxel = static_cast<uint32_t>(local.z * 64 + local.y * 8 + local.x);
+        return serialized.readPoolVoxel(Vixen::SVO::SEM_SDF, brickIndex, voxel, 0u);
+    };
+    float maxStoredVoxelVsReference = 0.0f;
+    float maxSerializedVsWorld = 0.0f;
+    glm::ivec3 storedVoxelVsReferenceAt{};
+    glm::ivec3 serializedVsWorldAt{};
+    float storedAtReferenceMax = 0.0f;
+    float referenceAtStoredMax = 0.0f;
+    uint32_t storedNegative = 0u;
+    uint32_t referenceNegative = 0u;
+    uint32_t storedReferenceSignMismatch = 0u;
+    const int bakeCenter = static_cast<int>(kBakeResolution / 2u);
+    const auto centerEntity = bake.owned[0].world->getEntityByWorldSpace(
+        glm::vec3(static_cast<float>(bakeCenter)));
+    if (bake.owned[0].world->exists(centerEntity)) {
+        const auto centerStored = bake.owned[0].world->getComponentValue<Vixen::GaiaVoxel::Density>(centerEntity);
+        ASSERT_TRUE(centerStored.has_value());
+        EXPECT_GT(centerStored.value(), 0.0f)
+            << "stored bake must keep the authored round cut open at document center";
+    }
+    for (int z = 0; z < static_cast<int>(kBakeResolution); ++z)
+    for (int y = 0; y < static_cast<int>(kBakeResolution); ++y)
+    for (int x = 0; x < static_cast<int>(kBakeResolution); ++x) {
+        const glm::ivec3 grid(x, y, z);
+        const auto entity = bake.owned[0].world->getEntityByWorldSpace(glm::vec3(grid));
+        if (!bake.owned[0].world->exists(entity)) continue;
+        const auto stored = bake.owned[0].world->getComponentValue<Vixen::GaiaVoxel::Density>(entity);
+        if (!stored.has_value()) continue;
+        const float reference = Vixen::SVO::Recipe::evalRecipe(
+            neutralEntry.bytecode.data(), static_cast<uint32_t>(neutralEntry.bytecode.size()),
+            (glm::vec3(grid) - glm::vec3(static_cast<float>(bakeCenter))) * config.recipeUnitsPerVoxel,
+            neutralEntry.parameterValues) / config.recipeUnitsPerVoxel;
+        if (stored.value() < 0.0f) ++storedNegative;
+        if (reference < 0.0f) ++referenceNegative;
+        if ((stored.value() < 0.0f) != (reference < 0.0f)) ++storedReferenceSignMismatch;
+        if (std::abs(stored.value() - reference) > maxStoredVoxelVsReference) {
+            maxStoredVoxelVsReference = std::abs(stored.value() - reference);
+            storedVoxelVsReferenceAt = grid;
+            storedAtReferenceMax = stored.value();
+            referenceAtStoredMax = reference;
+        }
+        const auto serialized = readSerializedVoxel(materialSerialized, grid);
+        if (serialized.has_value() && std::abs(serialized.value() - stored.value()) > maxSerializedVsWorld) {
+            maxSerializedVsWorld = std::abs(serialized.value() - stored.value());
+            serializedVsWorldAt = grid;
+        }
+    }
+
+    float maxMaterialVsNeutral = 0.0f;
+    float maxStoredVsNeutral = 0.0f;
+    glm::vec3 materialVsNeutralAt{};
+    glm::vec3 storedVsNeutralAt{};
+    uint32_t storedSamples = 0u;
+    float neutralAtStoredMax = 0.0f;
+    float storedAtMax = 0.0f;
+    const auto sampleStoredTrilinear = [&](const Vixen::SVO::RecipeBakeResult& bakeResult,
+                                           const glm::vec3& grid) -> std::optional<float> {
+        const glm::vec3 base = glm::floor(grid);
+        const glm::vec3 f = grid - base;
+        const glm::ivec3 i(base);
+        float sum = 0.0f;
+        for (int dz = 0; dz <= 1; ++dz)
+            for (int dy = 0; dy <= 1; ++dy)
+                for (int dx = 0; dx <= 1; ++dx) {
+                    const glm::ivec3 p = i + glm::ivec3(dx, dy, dz);
+                    const auto entity = bakeResult.owned[0].world->getEntityByWorldSpace(glm::vec3(p));
+                    if (!bakeResult.owned[0].world->exists(entity)) return std::nullopt;
+                    const auto value = bakeResult.owned[0].world->getComponentValue<Vixen::GaiaVoxel::Density>(entity);
+                    if (!value.has_value()) return std::nullopt;
+                    const float wx = dx ? f.x : 1.0f - f.x;
+                    const float wy = dy ? f.y : 1.0f - f.y;
+                    const float wz = dz ? f.z : 1.0f - f.z;
+                    sum += value.value() * wx * wy * wz;
+                }
+        return sum;
+    };
+    float maxMaterialBakeVsNeutralBake = 0.0f;
+    glm::vec3 materialBakeVsNeutralBakeAt{};
+    uint32_t neutralStoredSamples = 0u;
+    for (int z = 0; z < 17; ++z) {
+        for (int y = 0; y < 17; ++y) {
+            for (int x = 0; x < 17; ++x) {
+                const glm::vec3 local(
+                    boundsCenter[0] + (static_cast<float>(x) / 16.0f * 2.0f - 1.0f) * boundsRadius,
+                    boundsCenter[1] + (static_cast<float>(y) / 16.0f * 2.0f - 1.0f) * boundsRadius,
+                    boundsCenter[2] + (static_cast<float>(z) / 16.0f * 2.0f - 1.0f) * boundsRadius);
+                const float neutral = Vixen::SVO::Recipe::evalRecipe(
+                    neutralEntry.bytecode.data(), static_cast<uint32_t>(neutralEntry.bytecode.size()),
+                    local, neutralEntry.parameterValues);
+                const float material = Vixen::SVO::Recipe::evalRecipe(
+                    materialEntry.bytecode.data(), static_cast<uint32_t>(materialEntry.bytecode.size()),
+                    local, materialEntry.parameterValues);
+                const float materialDelta = std::abs(material - neutral);
+                if (materialDelta > maxMaterialVsNeutral) {
+                    maxMaterialVsNeutral = materialDelta;
+                    materialVsNeutralAt = local;
+                }
+                const glm::vec3 grid = glm::vec3(static_cast<float>(bakeCenter)) +
+                                       local / config.recipeUnitsPerVoxel;
+                const auto stored = sampleStoredTrilinear(bake, grid);
+                if (!stored.has_value()) continue;
+                ++storedSamples;
+                const float storedInRecipeUnits = stored.value() * config.recipeUnitsPerVoxel;
+                const float storedDelta = std::abs(storedInRecipeUnits - neutral);
+                if (storedDelta > maxStoredVsNeutral) {
+                    maxStoredVsNeutral = storedDelta;
+                    storedVsNeutralAt = local;
+                    neutralAtStoredMax = neutral;
+                    storedAtMax = storedInRecipeUnits;
+                }
+                const auto neutralStored = sampleStoredTrilinear(neutralBake, grid);
+                if (neutralStored.has_value()) {
+                    ++neutralStoredSamples;
+                    const float bakeDelta = std::abs(stored.value() - neutralStored.value());
+                    if (bakeDelta > maxMaterialBakeVsNeutralBake) {
+                        maxMaterialBakeVsNeutralBake = bakeDelta;
+                        materialBakeVsNeutralBakeAt = local;
+                    }
+                }
+            }
+        }
+    }
+    std::cout << "[material-diagnosis] program=" << materialEntry.bytecode.size()
+              << " simdInstructions=" << materialSimd.InstructionCount()
+              << " outputs=" << materialSimd.OutputCount()
+              << " outputValues=" << materialSimd.OutputValueCount()
+              << " bakePool=" << bake.pool.count
+              << " previewSlot=" << registry.Get(1u)->octreeSlot
+              << " owned=" << bake.owned.size()
+              << " storedGridSamples=" << storedSamples
+              << " neutralStoredGridSamples=" << neutralStoredSamples
+              << " maxMaterialVsNeutral=" << maxMaterialVsNeutral
+              << " at=" << materialVsNeutralAt.x << "," << materialVsNeutralAt.y << "," << materialVsNeutralAt.z
+              << " maxStoredVsNeutral=" << maxStoredVsNeutral
+              << " at=" << storedVsNeutralAt.x << "," << storedVsNeutralAt.y << "," << storedVsNeutralAt.z
+              << " neutralAtStoredMax=" << neutralAtStoredMax
+              << " storedAtMax=" << storedAtMax
+              << " maxMaterialBakeVsNeutralBake=" << maxMaterialBakeVsNeutralBake
+              << " at=" << materialBakeVsNeutralBakeAt.x << "," << materialBakeVsNeutralBakeAt.y << "," << materialBakeVsNeutralBakeAt.z
+              << " serializedChannelCount=" << materialSerialized.channelCount
+              << " serializedBrickStrideFloats=" << materialSerialized.brickStrideFloats
+              << " maxStoredVoxelVsReference=" << maxStoredVoxelVsReference
+              << " at=" << storedVoxelVsReferenceAt.x << "," << storedVoxelVsReferenceAt.y << "," << storedVoxelVsReferenceAt.z
+              << " storedAtReferenceMax=" << storedAtReferenceMax
+              << " referenceAtStoredMax=" << referenceAtStoredMax
+              << " storedNegative=" << storedNegative
+              << " referenceNegative=" << referenceNegative
+              << " storedReferenceSignMismatch=" << storedReferenceSignMismatch
+              << " maxSerializedVsWorld=" << maxSerializedVsWorld
+              << " at=" << serializedVsWorldAt.x << "," << serializedVsWorldAt.y << "," << serializedVsWorldAt.z
+              << " boundsCenter=" << boundsCenter[0] << "," << boundsCenter[1] << "," << boundsCenter[2]
+              << " boundsRadius=" << boundsRadius
+              << " outputSetResolution=" << bake.owned[0].recipeOutputSet.resolution
+              << " outputSetValues=" << bake.owned[0].recipeOutputSet.values.size()
+              << " samplesById=5:0,8:0"
+              << "\n";
+    for (const auto& instruction : materialEntry.bytecode)
+        std::cout << "[material-diagnosis] opcode=" << static_cast<unsigned>(instruction.opCode)
+                  << " data0=" << instruction.data[0] << "\n";
 }
 
 }  // namespace

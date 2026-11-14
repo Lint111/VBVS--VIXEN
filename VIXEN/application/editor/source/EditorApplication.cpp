@@ -2586,6 +2586,14 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     }
 
     Vixen::SVO::RecipeBakeConfig bakeCfg{};  // defaults: n=64, band=2.5, depth=3
+    // Editor documents are authored in compact recipe units. Keep the bake generic, but use
+    // the quarter-unit grid contract so the 64^3 stored field resolves sub-voxel hull details.
+    constexpr uint32_t kEditorBakeResolution = 64u;
+    constexpr float kEditorRecipeUnitsPerVoxel = 0.25f;
+    constexpr float kEditorStoredRenderScale = 6.4f;
+    bakeCfg.center = glm::vec3(static_cast<float>(kEditorBakeResolution) * 0.5f);
+    bakeCfg.defaultResolution = kEditorBakeResolution;
+    bakeCfg.recipeUnitsPerVoxel = kEditorRecipeUnitsPerVoxel;
     auto bakeRegistry = std::make_shared<Vixen::SVO::RecipeRegistry>(std::move(reg));
     TraceEditorLatency("publish", "begin", updateTick_);
     lastBakeSnapshot_ = snapshot;
@@ -2603,6 +2611,22 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         }
         const auto* previewEntry = bakeRegistry->Get(kRecipeId);
         if (previewEntry != nullptr && previewEntry->octreeSlot < bakeResult.owned.size()) {
+            std::ostringstream slotLine;
+            slotLine << "[EDITOR/material-bake] pool=" << bakeResult.owned.size()
+                     << " previewRecipe=" << kRecipeId
+                     << " previewSlot=" << previewEntry->octreeSlot;
+            if (!bakeResult.owned.empty()) {
+                uint32_t slotZeroRecipe = 0u;
+                for (const uint32_t id : bakeRegistry->Ids()) {
+                    const auto* candidate = bakeRegistry->Get(id);
+                    if (candidate != nullptr && candidate->octreeSlot == 0u) {
+                        slotZeroRecipe = id;
+                        break;
+                    }
+                }
+                slotLine << " slot0Recipe=" << slotZeroRecipe;
+            }
+            logger_->Info(slotLine.str());
             const auto coverage = MeasureMaterialCoverage(
                 bakeResult.owned[previewEntry->octreeSlot].recipeOutputSet);
             std::ostringstream coverageLine;
@@ -2627,7 +2651,9 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     // the camera and both providers therefore share one document-space frame when materials are
     // added or removed.
     const auto bodyPlacement = Vixen::Editor::PlaceEditorBody(
-        entry.boundCenter, entry.boundRadius, hasDocumentMaterials);
+        entry.boundCenter, entry.boundRadius, hasDocumentMaterials,
+        10.0f, static_cast<int>(kEditorBakeResolution), kEditorStoredRenderScale,
+        kEditorRecipeUnitsPerVoxel);
     Vixen::SVO::SetInstanceTranslationScale(inst, bodyPlacement.origin, bodyPlacement.renderScale);
     inst.material.color[0] = 1.0f; inst.material.color[1] = 1.0f; inst.material.color[2] = 1.0f;
     inst.material.octreeIndex = 0u;

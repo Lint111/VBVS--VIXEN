@@ -395,9 +395,14 @@ private:
         const bool disabled = Truthy(Attr("disabled"));
         const std::string reason = Attr("reason");
         SetClass("disabled", disabled);
-        SetProperty("pointer-events", disabled ? "none" : "auto");
+        // A disabled action with a reason remains hit-testable so the user can discover why it
+        // cannot be removed. The editor's action dispatcher still owns the refusal (and therefore
+        // cannot mutate the model); this only gives the row a hover/press affordance.
+        SetProperty("pointer-events", disabled && reason.empty() ? "none" : "auto");
         SetText(Part("reason"), reason);
-        SetVisible(Part("reason"), disabled && !reason.empty());
+        // Visibility is deliberately CSS-controlled. Always making the reason visible here turns
+        // every node row into a repeated diagnostic column; editor.rcss reveals it only while the
+        // disabled action is hovered/focused/pressed.
         if (disabled && !reason.empty() && GetAttribute<Rml::String>("title", "") != reason)
             SetAttribute("title", reason);
     }

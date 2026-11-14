@@ -32,9 +32,11 @@ inline EditorBodyPlacement PlaceEditorBody(const glm::vec3& recipeCenter, float 
                                            bool storedMaterialBake,
                                            float worldGridSize = 10.0f,
                                            int bakeResolution = 64,
-                                           float storedRenderScale = 6.4f) {
+                                           float storedRenderScale = 6.4f,
+                                           float recipeUnitsPerVoxel = 1.0f) {
     EditorBodyPlacement placement{};
-    if (!std::isfinite(worldGridSize) || !std::isfinite(storedRenderScale) || bakeResolution <= 0)
+    if (!std::isfinite(worldGridSize) || !std::isfinite(storedRenderScale) ||
+        !std::isfinite(recipeUnitsPerVoxel) || recipeUnitsPerVoxel <= 0.0f || bakeResolution <= 0)
         return placement;
     if (!storedMaterialBake) {
         placement.worldCenter = recipeCenter;
@@ -42,12 +44,20 @@ inline EditorBodyPlacement PlaceEditorBody(const glm::vec3& recipeCenter, float 
         return placement;
     }
 
-    const float gridToWorld = (worldGridSize / static_cast<float>(bakeResolution)) * storedRenderScale;
-    constexpr float kBakeCenter = 32.0f;
-    placement.renderScale = storedRenderScale;
+    // One recipe unit occupies 1/recipeUnitsPerVoxel bake voxels.  The instance scale
+    // shrinks the fixed [0,10] octree span by the same factor, so the two conversions
+    // cancel in document space rather than multiplying the unit scale twice.
+    const float effectiveRenderScale = storedRenderScale * recipeUnitsPerVoxel;
+    const float gridToWorld = (worldGridSize / static_cast<float>(bakeResolution)) *
+                              effectiveRenderScale;
+    const float kBakeCenter = static_cast<float>(bakeResolution) * 0.5f;
+    placement.renderScale = effectiveRenderScale;
     placement.origin = glm::vec3(-kBakeCenter * gridToWorld);
-    placement.worldCenter = placement.origin + (glm::vec3(kBakeCenter) + recipeCenter) * gridToWorld;
-    placement.worldRadius = std::max(0.01f, std::abs(recipeRadius) * gridToWorld);
+    placement.worldCenter = placement.origin +
+                            (glm::vec3(kBakeCenter) + recipeCenter / recipeUnitsPerVoxel) *
+                                gridToWorld;
+    placement.worldRadius = std::max(0.01f,
+                                     std::abs(recipeRadius / recipeUnitsPerVoxel) * gridToWorld);
     return placement;
 }
 

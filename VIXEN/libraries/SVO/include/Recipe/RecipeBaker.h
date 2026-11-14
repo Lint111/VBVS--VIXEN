@@ -45,6 +45,9 @@ struct RecipeBakeConfig {
     uint32_t  defaultResolution = 64;
     float     defaultBand       = 2.5f;
     uint32_t  defaultBrickDepth = 3;
+    // Recipe-space distance represented by one bake-grid voxel. Stored distances remain in
+    // grid units for the octree marcher; evaluators sample at this scale and convert distance.
+    float     recipeUnitsPerVoxel = 1.0f;
     // 0 = unbounded.  >0 = hard budget in bytes:
     //   sum of (nodes + bricks + channelPool + mipPool) bytes across all baked octrees.
     uint64_t  byteBudget        = 0;
@@ -72,6 +75,11 @@ struct RecipeBakeResult {
 inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
                                            const RecipeBakeConfig& cfg) {
     RecipeBakeResult res;
+    if (!(cfg.recipeUnitsPerVoxel > 0.0f) || !std::isfinite(cfg.recipeUnitsPerVoxel)) {
+        res.ok = false;
+        res.err = "recipeUnitsPerVoxel must be finite and positive";
+        return res;
+    }
     const auto ids = reg.Ids();  // ascending order guaranteed by RecipeRegistry
 
     res.owned.reserve(ids.size());
@@ -108,7 +116,8 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
             const std::span<const float> parameters(entry->parameterValues.data(),
                                                      entry->parameterValues.size());
             if (!outputProgram.Lower(entry->bytecode.data(),
-                    static_cast<std::uint32_t>(entry->bytecode.size()), parameters, lowerError)) {
+                    static_cast<std::uint32_t>(entry->bytecode.size()), parameters,
+                    lowerError)) {
                 res.ok = false;
                 res.err = "recipe output-set lowering failed for recipe " +
                           std::to_string(id) + ": " + lowerError;
@@ -120,7 +129,8 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
                           std::to_string(id);
                 return res;
             }
-            RecipeOutputSetBakeEvaluator evaluator(outputProgram, cfg.center, n);
+            RecipeOutputSetBakeEvaluator evaluator(outputProgram, cfg.center, n,
+                                                   cfg.recipeUnitsPerVoxel);
             baked = BakeSdfWorld(evaluator, cfg.center, n, band, depth);
         } else {
             baked = BakeRecipeInstructionsToSdfWorld(
@@ -128,7 +138,8 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
                 static_cast<uint32_t>(entry->bytecode.size()),
                 cfg.center, n, band, depth,
                 std::span<const float>(entry->parameterValues.data(),
-                                       entry->parameterValues.size()));
+                                       entry->parameterValues.size()), {}, {}, nullptr,
+                cfg.recipeUnitsPerVoxel);
         }
 
         res.owned.push_back(BuildSdfBodyOctree(baked, depth));

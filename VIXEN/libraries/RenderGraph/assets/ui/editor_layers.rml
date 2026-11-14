@@ -39,7 +39,7 @@
                             data-attr-style="'--material-color: ' + material.color"> </ut-button>
             </div>
             <div class="hint" data-if="materials.size == 0">No pack material table; default is neutral.</div>
-            <div class="hint" data-if="materials.size != 0">Default material is set from the material picker.</div>
+            <div class="hint" data-if="materials.size != 0">Document default is visible here but not saved with the document yet.</div>
         </div>
         <ut-list class="fill">
             <div class="ut-row" data-for="row : layers">
@@ -47,11 +47,11 @@
                 <ut-button variant="name" data-attr-id="row.selectId" data-attr-label="row.name" data-class-selected="row.isSelected"> </ut-button>
                 <span class="col-op">{{row.op}}</span>
                 <span class="dependency-mark" data-attr-title="row.dependencyTitle + (row.warningTitle == '' ? '' : ' - ' + row.warningTitle)">{{row.providesMark}} {{row.readsMark}} {{row.readByMark}} {{row.warningMark}}</span>
-                <ut-button class="layer-provide" data-attr-id="row.provideId" label="provide"> </ut-button>
-                <ut-button class="layer-solo" data-attr-id="row.soloId" label="solo" data-class-selected="row.isSolo"> </ut-button>
-                <ut-button data-attr-id="row.moveUpId" label="^" data-attr-title="'move ' + row.name + ' up"> </ut-button>
-                <ut-button data-attr-id="row.moveDownId" label="v" data-attr-title="'move ' + row.name + ' down"> </ut-button>
-                <ut-button data-attr-id="row.deleteId" label="x" data-attr-title="'remove ' + row.name"> </ut-button>
+                <ut-button class="layer-icon-button layer-provide" data-attr-id="row.provideId" label="P" data-attr-title="'provide ' + row.name"> </ut-button>
+                <ut-button class="layer-icon-button layer-solo" data-attr-id="row.soloId" label="S" data-class-selected="row.isSolo" data-attr-title="'solo ' + row.name"> </ut-button>
+                <ut-button class="layer-icon-button" data-attr-id="row.moveUpId" label="^" data-attr-title="'move ' + row.name + ' up'"> </ut-button>
+                <ut-button class="layer-icon-button" data-attr-id="row.moveDownId" label="v" data-attr-title="'move ' + row.name + ' down'"> </ut-button>
+                <ut-button class="layer-icon-button" data-attr-id="row.deleteId" label="x" data-attr-title="'remove ' + row.name"> </ut-button>
                 <div class="layer-diagnostic" data-if="row.diagnostic != ''">{{row.diagnostic}}</div>
             </div>
         </ut-list>

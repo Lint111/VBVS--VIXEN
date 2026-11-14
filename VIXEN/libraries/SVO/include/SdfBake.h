@@ -68,9 +68,12 @@ struct BakedRecipeOutputSet {
 class RecipeOutputSetBakeEvaluator {
 public:
     RecipeOutputSetBakeEvaluator(const Recipe::LoweredRecipeProgram& program,
-                                 const glm::vec3& center, int resolution)
-        : program_(&program), center_(center) {
+                                 const glm::vec3& center, int resolution,
+                                 float recipeUnitsPerVoxel = 1.0f)
+        : program_(&program), center_(center), recipeUnitsPerVoxel_(recipeUnitsPerVoxel) {
         if (resolution <= 0) throw std::invalid_argument("recipe output bake resolution must be positive");
+        if (!(recipeUnitsPerVoxel_ > 0.0f) || !std::isfinite(recipeUnitsPerVoxel_))
+            throw std::invalid_argument("recipe output bake scale must be finite and positive");
         outputSet_.resolution = resolution;
         outputSet_.valueCount = static_cast<std::uint32_t>(program.OutputValueCount());
         if (outputSet_.valueCount == 0u || outputSet_.valueCount > 64u)
@@ -99,7 +102,7 @@ public:
     void eval4(const glm::vec3* points, std::size_t count, float* distances) {
         alignas(16) glm::vec3 localPoints[4]{};
         for (std::size_t lane = 0; lane < 4; ++lane)
-            localPoints[lane] = points[lane] - center_;
+            localPoints[lane] = (points[lane] - center_) * recipeUnitsPerVoxel_;
 
         alignas(16) std::array<float, 64u * 4u> outputs{};
         std::string error;
@@ -107,7 +110,8 @@ public:
             throw std::runtime_error("generated recipe output evaluation failed: " + error);
 
         for (std::size_t lane = 0; lane < count; ++lane) {
-            distances[lane] = outputs[static_cast<std::size_t>(distanceOffset_) * 4u + lane];
+            distances[lane] = outputs[static_cast<std::size_t>(distanceOffset_) * 4u + lane] /
+                              recipeUnitsPerVoxel_;
             const glm::ivec3 gridPosition(
                 static_cast<int>(std::lround(points[lane].x)),
                 static_cast<int>(std::lround(points[lane].y)),
@@ -115,8 +119,11 @@ public:
             const float* cell = outputSet_.sample(gridPosition);
             if (cell == nullptr) continue;
             const std::size_t cellOffset = static_cast<std::size_t>(cell - outputSet_.values.data());
-            for (std::uint32_t value = 0; value < outputSet_.valueCount; ++value)
-                outputSet_.values[cellOffset + value] = outputs[static_cast<std::size_t>(value) * 4u + lane];
+            for (std::uint32_t value = 0; value < outputSet_.valueCount; ++value) {
+                float outputValue = outputs[static_cast<std::size_t>(value) * 4u + lane];
+                if (value == distanceOffset_) outputValue /= recipeUnitsPerVoxel_;
+                outputSet_.values[cellOffset + value] = outputValue;
+            }
         }
     }
 
@@ -127,6 +134,7 @@ private:
     const Recipe::LoweredRecipeProgram* program_ = nullptr;
     glm::vec3 center_{0.0f};
     std::uint8_t distanceOffset_ = kMissingOffset;
+    float recipeUnitsPerVoxel_ = 1.0f;
     BakedRecipeOutputSet outputSet_;
 };
 
@@ -214,8 +222,9 @@ inline void EvalSdfBatch4(EvalFn& eval, const glm::vec3* points,
 // their exact centre value. Broad, low-curvature surfaces also keep their exact
 // centre sample: the filter is blended in only when its footprint average
 // materially differs from that sample, which identifies curvature/detail at or
-// below the voxel scale. This keeps sub-voxel features from changing sign only
-// because they happen to align with a voxel centre.
+// below the voxel scale. A filtered value is never allowed to cross the resolved
+// sample's sign: the footprint is a smoothing aid, not permission to close an
+// authored hole or create a solid voxel on the other side of an iso-surface.
 template<class EvalFn>
 inline float FilterSubVoxelDistanceAtGridCenter(EvalFn& eval,
                                                 const glm::vec3& gridCenter,
@@ -249,7 +258,11 @@ inline float FilterSubVoxelDistanceAtGridCenter(EvalFn& eval,
     const float t = glm::clamp((correction - kCorrectionStart) /
                                (kCorrectionFull - kCorrectionStart), 0.0f, 1.0f);
     const float weight = t * t * (3.0f - 2.0f * t);
-    return centerDistance + (footprintAverage - centerDistance) * weight;
+    const float filtered = centerDistance + (footprintAverage - centerDistance) * weight;
+    if ((centerDistance > 0.0f && filtered < 0.0f) ||
+        (centerDistance < 0.0f && filtered > 0.0f))
+        return centerDistance;
+    return filtered;
 }
 
 // ---------------------------------------------------------------------------
@@ -500,10 +513,15 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstructi
                                                       std::span<const float> params = {},
                                                       std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
                                                       std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
-                                                      const RecipeRegistry* recipeRegistry = nullptr) {
+                                                      const RecipeRegistry* recipeRegistry = nullptr,
+                                                      float recipeUnitsPerVoxel = 1.0f) {
+    if (!(recipeUnitsPerVoxel > 0.0f) || !std::isfinite(recipeUnitsPerVoxel))
+        throw std::invalid_argument("recipe instruction bake scale must be finite and positive");
     return BakeSdfWorld(
         [&](const glm::vec3& p) {
-            return Recipe::evalRecipe(prog, count, p - center, params, nullptr, recipeRegistry, glyphInstances, pathInstances);
+            return Recipe::evalRecipe(prog, count, (p - center) * recipeUnitsPerVoxel,
+                                      params, nullptr, recipeRegistry, glyphInstances,
+                                      pathInstances) / recipeUnitsPerVoxel;
         },
         center, n, bandVoxels, brickDepth);
 }
