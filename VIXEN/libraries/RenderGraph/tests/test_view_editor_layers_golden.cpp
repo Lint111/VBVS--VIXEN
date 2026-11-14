@@ -85,6 +85,7 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
     int activeLayerCount = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes;
     std::vector<Vixen::Views::EditorPackRecipeRow> packRecipes;
+    std::vector<Vixen::Views::EditorMaterialRow> materials;
     std::vector<Vixen::Views::EditorNodeRow> nodes;
     std::vector<Vixen::Views::EditorNodeArgumentRow> nodeArguments;
     std::vector<Vixen::Views::EditorNodeWrapRow> nodeWrapChoices;
@@ -100,6 +101,9 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
                                          &packRecipes,
                                          &nodes, &nodeArguments, &nodeWrapChoices, &nodeChoices, &nodePickerActive, &rawProgram,
                                          &rawProgramDiagnostic,
+                                          &materials,
+                                          &nodes, &nodeArguments, &nodeWrapChoices, &nodeChoices, &nodePickerActive, &rawProgram,
+                                          &rawProgramDiagnostic,
                                          &statusDocument, &statusMessage, &flowState, &undoDepth, &redoDepth };
 
     Rml::DataModelConstructor c = ctx->CreateDataModel("editor_layers");

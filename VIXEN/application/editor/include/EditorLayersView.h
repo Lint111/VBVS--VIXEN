@@ -54,8 +54,8 @@ public:
             Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
                                             &selectedLayer_, &primitives_, &opChoices_, &shape_,
                                             &selectedShape_, &shapeNote_, &pickerFilter_, &activeLayerCountRaw_, &recipes_,
-                                            &packRecipes_, &nodes_, &nodeArguments_, &nodeWrapChoices_,
-                                            &nodeChoices_, &nodePickerActive_,
+                                            &packRecipes_, &materials_, &nodes_, &nodeArguments_,
+                                            &nodeWrapChoices_, &nodeChoices_, &nodePickerActive_,
                                             &rawProgram_, &rawProgramDiagnostic_,
                                             &statusDocument_, &statusMessage_, &flowState_,
                                             &undoDepth_, &redoDepth_ });
@@ -326,6 +326,20 @@ public:
         if (model_) model_.DirtyVariable("packRecipes");
     }
 
+    // R872.10: expose pack material rows as data for the later material-panel
+    // lane. There is intentionally no panel/action wiring here.
+    void PopulateMaterials(const std::vector<EditorMaterialData>& materialData) {
+        materials_.clear();
+        materials_.reserve(materialData.size());
+        for (const auto& material : materialData) {
+            Vixen::Views::EditorMaterialRow row;
+            row.id = Rml::String(material.id);
+            row.name = Rml::String(material.name);
+            materials_.push_back(std::move(row));
+        }
+        if (model_) model_.DirtyVariable("materials");
+    }
+
     // R766: the status-line panel's fields.
     void PopulateStatus(const EditorStatusData& status) {
         statusDocument_ = Rml::String(status.document);
@@ -357,6 +371,8 @@ public:
     size_t DebugLayerCount() const { return layers_.size(); }
     const Vixen::Views::EditorLayerRow& DebugLayer(size_t i) const { return layers_.at(i); }
     size_t DebugParameterCount() const { return parameters_.size(); }
+    size_t DebugMaterialCount() const { return materials_.size(); }
+    const Vixen::Views::EditorMaterialRow& DebugMaterial(size_t i) const { return materials_.at(i); }
     size_t DebugPrimitiveCount() const { return primitives_.size(); }
     const Vixen::Views::EditorPrimitiveRow& DebugPrimitive(size_t i) const { return primitives_.at(i); }
     size_t DebugOpChoiceCount() const { return opChoices_.size(); }
@@ -393,6 +409,7 @@ private:
     int activeLayerCountRaw_ = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes_;
     std::vector<Vixen::Views::EditorPackRecipeRow> packRecipes_;
+    std::vector<Vixen::Views::EditorMaterialRow> materials_;
     std::vector<Vixen::Views::EditorNodeRow> nodes_;
     std::vector<Vixen::Views::EditorNodeArgumentRow> nodeArguments_;
     std::vector<Vixen::Views::EditorNodeWrapRow> nodeWrapChoices_;

@@ -668,6 +668,9 @@ public:
     // swap the render source without hand-rolling a NodeTypeRegistry lookup.
     void SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool);
     void SetRecipePoolProducer(std::function<Vixen::SVO::ConcatenatedOctrees()> producer);
+    // Push the pack-owned material SSBO without rebuilding any shader pipeline. The node
+    // replaces the persistent binding at its next Execute safe point.
+    void SetMaterialTable(std::vector<std::uint8_t> tableBytes);
     // Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11: register a zero-bake procedural recipe
     // by id. Fills any unset bounds-metadata field via Recipe::ApplyRecipeBoundsDefaults
     // (Recipe/RecipeBounds.h) before registering. Safe to call BEFORE the graph's first

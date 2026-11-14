@@ -252,6 +252,15 @@ private:
     std::array<float, 6> lastPreviewParameterValues_{};
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastProceduralProgram_;
     bool proceduralPreviewRegistered_ = false;
+    struct MaterialRow {
+        uint32_t slot = 0;
+        std::string name;
+    };
+    // Pack material rows are a read-only projection for the channel witness. The generated
+    // EditorLayers view currently exposes the scalar layer-mask Data action, but has no readable
+    // Data action for its material rows; keep the same pack projection here until that view
+    // contract grows a collection-shaped read.
+    std::vector<MaterialRow> materialRows_;
     std::unordered_map<std::string, uint32_t> packRecipeRegistryIds_;
     std::unordered_map<uint32_t, Vixen::SVO::RecipeRegistry::RecipeEntry> packRecipeEntries_;
     std::unordered_set<std::string> unavailablePackReferences_;

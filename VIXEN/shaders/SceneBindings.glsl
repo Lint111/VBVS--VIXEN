@@ -1732,7 +1732,7 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     // both channels from it, instead of two independent trilinear gathers each
     // re-deriving the same brickCoord/brickLookup for the identical gridHit.
     vec3 gridHit = gridEntry + gridDirN * sHit;
-    sampleHitShadingChannels(gridHit, vec3(1.0), 0.5, hitColor, hitRoughness, hitEmission);
+    sampleHitShadingChannels(gridHit, vec3(0.5), 0.5, hitColor, hitRoughness, hitEmission);
 
     // Best-effort pick/ID: the flat grid index of the brick the crossing was ACTUALLY found in
     // (hitBrick, which may be an adjacent brick reached via the seam-spanning continuation), not
@@ -3516,7 +3516,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                 hitVoxelLinearIdx = 0u;
 
                 vec3 gridHit = gridEntry + gridDirN * sHit;
-                sampleHitShadingChannels(gridHit, vec3(1.0), 0.5, hitColor, hitRoughness, hitEmission);
+                sampleHitShadingChannels(gridHit, vec3(0.5), 0.5, hitColor, hitRoughness, hitEmission);
 
 #ifdef VIXEN_BRICKMAP_DEBUG
                 // W-BRICKMAP Gate-B bisection: overwrite hitColor with quantized

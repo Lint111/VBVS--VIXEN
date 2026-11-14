@@ -158,6 +158,13 @@ namespace Vixen.ViewSchemas
         public string elementId;
     }
 
+    // R872.10: pack-owned material rows are exposed as view data for the later
+    // material-panel lane. This section deliberately has no panel or action yet.
+    public struct EditorMaterialRow {
+        public string id;
+        public string name;
+    }
+
     // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML
     // data-model: the layer bitmask the LayerControllerViewDataProvider reads/writes through
     // IViewDataProvider. Kept as its own struct (not a field on EditorLayers) so EditorLayers.g.h's
@@ -202,6 +209,7 @@ namespace Vixen.ViewSchemas
         [ViewSection(Layout = ViewLayout.Aos)] public EditorRecipeRow[] recipes;
         // R872.6: the Add flyout's second section; the editor filters this with the same picker text.
         [ViewSection(Layout = ViewLayout.Aos)] public EditorPackRecipeRow[] packRecipes;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorMaterialRow[] materials;
 
         // R876 LM-V1: graph inspector. A raw program retains its located diagnostic and has no
         // node controls; valid programs expose generated nodes and catalogue-backed arguments.

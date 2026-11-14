@@ -982,32 +982,46 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
         std::memcpy(out.nodes.data(), descriptors.data(), out.nodes.size());
     }
 
-    // --- Channel table: canonical order SDF(1) → Color(3) → Roughness(1) → Emission(1).
-    //     This order is the SINGLE SOURCE OF TRUTH for the pool layout; the test pins it.
-    //     Emission (Sampled Lighting Inc3 M3) is SCALAR intensity, mean-filtered up the
-    //     mip pyramid like Color/Roughness (FK_NONE) — not the SDF's min-magnitude rule.
-    struct ChannelSpec {
-        SemanticId  sem;
-        uint32_t    elemCount;
-        FieldKind   fieldKind;
-    };
-    const ChannelSpec kChannelSpecs[] = {
-        { SEM_SDF,       1u, FK_DISTANCE },
-        { SEM_COLOR,     3u, FK_NONE     },
-        { SEM_ROUGHNESS, 1u, FK_NONE     },
-        { SEM_EMISSION,  1u, FK_NONE     },
-    };
-    constexpr uint32_t kNumChannels =
-        static_cast<uint32_t>(sizeof(kChannelSpecs) / sizeof(kChannelSpecs[0]));
+    // --- Channel table: the generated vocabulary owns the stored order and layout.
+    //     Runtime recipe outputs are appended only when a recipe declares them. This keeps
+    //     the no-output path byte-identical while allowing SEM_MATERIAL_ID and its sibling
+    //     channels to reach the same generic pool used by the shader.
+    std::array<const Recipe::RecipeOutputDescriptor*, kMaxChannels> outputDescriptors{};
+    std::array<const RecipeOutputChannelSpec*, kMaxChannels> outputSpecs{};
+    uint32_t outputChannelCount = 0u;
+    for (const Recipe::RecipeOutputDescriptor& descriptor : body.recipeOutputSet.outputs) {
+        const RecipeOutputChannelSpec* spec = FindRecipeOutputChannel(descriptor.channel);
+        if (spec == nullptr || spec->semantic == SEM_SDF) continue; // SDF is already stored.
+        bool duplicate = false;
+        for (uint32_t i = 0; i < outputChannelCount; ++i)
+            duplicate = duplicate || outputSpecs[i]->semantic == spec->semantic;
+        if (duplicate) continue;
+        if (kStoredChannelSpecs.size() + outputChannelCount >= kMaxChannels)
+            throw std::runtime_error("ShellOctreeGpu::SerializeSdf: recipe output channels exceed kMaxChannels");
+        outputDescriptors[outputChannelCount] = &descriptor;
+        outputSpecs[outputChannelCount] = spec;
+        ++outputChannelCount;
+    }
+    const uint32_t storedChannelCount = static_cast<uint32_t>(kStoredChannelSpecs.size());
+    const uint32_t kNumChannels = storedChannelCount + outputChannelCount;
 
     // Build out.channels[] and compute brickStrideFloats.
     uint32_t runningBase = 0u;
     for (uint32_t ci = 0; ci < kNumChannels; ++ci) {
-        out.channels[ci].semanticId        = static_cast<uint32_t>(kChannelSpecs[ci].sem);
-        out.channels[ci].elemCount         = kChannelSpecs[ci].elemCount;
+        const SemanticId semantic = ci < storedChannelCount
+            ? kStoredChannelSpecs[ci].semantic
+            : outputSpecs[ci - storedChannelCount]->semantic;
+        const uint32_t elemCount = ci < storedChannelCount
+            ? kStoredChannelSpecs[ci].elemCount
+            : outputSpecs[ci - storedChannelCount]->elemCount;
+        const uint32_t fieldKind = ci < storedChannelCount
+            ? kStoredChannelSpecs[ci].fieldKind
+            : outputSpecs[ci - storedChannelCount]->fieldKind;
+        out.channels[ci].semanticId        = static_cast<uint32_t>(semantic);
+        out.channels[ci].elemCount         = elemCount;
         out.channels[ci].channelBaseFloats = runningBase;
-        out.channels[ci].fieldKind         = static_cast<uint32_t>(kChannelSpecs[ci].fieldKind);
-        runningBase += kChannelSpecs[ci].elemCount * SerializedOctree::kVoxelsPerBrick;
+        out.channels[ci].fieldKind         = fieldKind;
+        runningBase += elemCount * SerializedOctree::kVoxelsPerBrick;
     }
     out.channelCount      = kNumChannels;
     out.brickStrideFloats = runningBase;  // total floats per brick
@@ -1070,14 +1084,29 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
                     for (uint32_t ci = 0; ci < kNumChannels; ++ci) {
                         const uint32_t base = out.channels[ci].channelBaseFloats;
                         const uint32_t ec   = out.channels[ci].elemCount;
-                        SemanticId     sem  = kChannelSpecs[ci].sem;
+                        const bool isStored = ci < storedChannelCount;
+                        SemanticId sem = isStored
+                            ? kStoredChannelSpecs[ci].semantic
+                            : outputSpecs[ci - storedChannelCount]->semantic;
 
                         if (!alive) {
                             // Leave zero (default) — no voxel here.
                             continue;
                         }
 
-                        if (sem == SEM_SDF) {
+                        if (!isStored) {
+                            const Recipe::RecipeOutputDescriptor& descriptor =
+                                *outputDescriptors[ci - storedChannelCount];
+                            const float* outputValues = body.recipeOutputSet.sample(
+                                gridOrigin + glm::ivec3(bx, by, bz));
+                            if (outputValues != nullptr) {
+                                for (uint32_t comp = 0; comp < ec; ++comp) {
+                                    pool[bi * out.brickStrideFloats + base +
+                                         comp * SerializedOctree::kVoxelsPerBrick + voxelSlot] =
+                                        outputValues[descriptor.valueOffset + comp];
+                                }
+                            }
+                        } else if (sem == SEM_SDF) {
                             const auto den = world.getComponentValue<Vixen::GaiaVoxel::Density>(entity);
                             pool[bi * out.brickStrideFloats + base + voxelSlot] =
                                 den.has_value() ? den.value() : 0.0f;

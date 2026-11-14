@@ -341,6 +341,21 @@ vec3 sampleChannelVec3Trilinear(uint sem, vec3 gridPos, vec3 missing) {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime material-table lookup.  Material id is a stored scalar channel; the
+// pack-owned SSBO at binding 3 supplies the row color.  A missing/invalid id
+// leaves the caller's neutral fallback untouched.
+// ---------------------------------------------------------------------------
+void applyStoredMaterialColor(vec3 gridPos, inout vec3 color) {
+    uint materialBase = channelBaseFloats(SEM_MATERIAL_ID);
+    if (materialBase == 0xFFFFFFFFu) return;
+    float rawId = sampleChannelScalarTrilinear(SEM_MATERIAL_ID, gridPos, -1.0);
+    if (rawId < 0.0 || rawId > 63.0) return;
+    uint materialId = uint(rawId + 0.5);
+    if (materialId == 0u) return;
+    color = materials[materialId].albedo;
+}
+
+// ---------------------------------------------------------------------------
 // sampleHitShadingChannels: resolve color (SEM_COLOR, 3 comp) AND roughness
 // (SEM_ROUGHNESS, 1 comp) at the SAME hit grid position, sharing ONE brick-
 // address resolution across both channels (audit A3: the per-channel entry
@@ -364,9 +379,11 @@ void sampleHitShadingChannels(vec3 gridPos, vec3 missingColor, float missingRoug
     outEmission = sampleChannelScalarTrilinear(SEM_EMISSION, gridPos, 0.0);
     uint colorBase = channelBaseFloats(SEM_COLOR);
     uint roughBase = channelBaseFloats(SEM_ROUGHNESS);
+    uint materialBase = channelBaseFloats(SEM_MATERIAL_ID);
     outColor     = missingColor;
     outRoughness = missingRoughness;
-    if (colorBase == 0xFFFFFFFFu && roughBase == 0xFFFFFFFFu) return;
+    if (colorBase == 0xFFFFFFFFu && roughBase == 0xFFFFFFFFu &&
+        materialBase == 0xFFFFFFFFu) return;
 
     // Resolve the shared brick address ONCE using whichever channel is present
     // (brick addressing itself doesn't depend on `base`); component 0 of that
@@ -381,12 +398,14 @@ void sampleHitShadingChannels(vec3 gridPos, vec3 missingColor, float missingRoug
         // different neighbour bricks).
         if (colorBase != 0xFFFFFFFFu) outColor = sampleChannelVec3Trilinear(SEM_COLOR, gridPos, missingColor);
         if (roughBase != 0xFFFFFFFFu) outRoughness = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridPos, missingRoughness);
+        applyStoredMaterialColor(gridPos, outColor);
         return;
     }
     if (brickIdx == 0xFFFFFFFFu) {
         // Unallocated brick: matches the per-corner path's 1e9 sentinel behavior.
         if (colorBase != 0xFFFFFFFFu) outColor = vec3(1e9);
         if (roughBase != 0xFFFFFFFFu) outRoughness = 1e9;
+        applyStoredMaterialColor(gridPos, outColor);
         return;
     }
 
@@ -424,6 +443,7 @@ void sampleHitShadingChannels(vec3 gridPos, vec3 missingColor, float missingRoug
             outRoughness = _interpolateTrilinearCell(f, rz0, rz1);
         }
     }
+    applyStoredMaterialColor(gridPos, outColor);
 }
 
 // ---------------------------------------------------------------------------

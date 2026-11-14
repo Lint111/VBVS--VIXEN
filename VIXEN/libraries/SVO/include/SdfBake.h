@@ -13,13 +13,19 @@
 #include "AttributeRegistry.h"
 #include "LaineKarrasOctree.h"
 #include "Recipe/SdfRecipeEval.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
+#include "VoxelChannelFormat.h"
 
 #include <glm/glm.hpp>
 #include <array>
 #include <memory>
 #include <optional>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <vector>
 #include <functional>
 
@@ -34,6 +40,96 @@
 
 namespace Vixen::SVO {
 
+// Dense, recipe-local sidecar for schema-declared output channels. It is kept next to the
+// baked world so CPU/oracle tests can inspect every output without inventing a second recipe
+// evaluator or a material-specific bake path.
+struct BakedRecipeOutputSet {
+    int resolution = 0;
+    std::uint32_t valueCount = 0;
+    std::vector<Recipe::RecipeOutputDescriptor> outputs;
+    std::vector<float> values;
+
+    const float* sample(const glm::ivec3& gridPosition) const {
+        if (resolution <= 0 || valueCount == 0u ||
+            gridPosition.x < 0 || gridPosition.y < 0 || gridPosition.z < 0 ||
+            gridPosition.x >= resolution || gridPosition.y >= resolution || gridPosition.z >= resolution)
+            return nullptr;
+        const std::size_t cell =
+            (static_cast<std::size_t>(gridPosition.z) * static_cast<std::size_t>(resolution) +
+             static_cast<std::size_t>(gridPosition.y)) * static_cast<std::size_t>(resolution) +
+            static_cast<std::size_t>(gridPosition.x);
+        const std::size_t offset = cell * valueCount;
+        return offset + valueCount <= values.size() ? values.data() + offset : nullptr;
+    }
+};
+
+// Adapts the generated SIMD output-set evaluator to BakeSdfWorld's existing batched distance
+// interface while retaining all declared output values in a generic per-grid sidecar.
+class RecipeOutputSetBakeEvaluator {
+public:
+    RecipeOutputSetBakeEvaluator(const Recipe::LoweredRecipeProgram& program,
+                                 const glm::vec3& center, int resolution)
+        : program_(&program), center_(center) {
+        if (resolution <= 0) throw std::invalid_argument("recipe output bake resolution must be positive");
+        outputSet_.resolution = resolution;
+        outputSet_.valueCount = static_cast<std::uint32_t>(program.OutputValueCount());
+        if (outputSet_.valueCount == 0u || outputSet_.valueCount > 64u)
+            throw std::invalid_argument("generated recipe output-set width is outside the evaluator limit");
+        outputSet_.outputs.reserve(program.OutputCount());
+        for (std::size_t index = 0; index < program.OutputCount(); ++index) {
+            const auto& descriptor = program.OutputAt(index);
+            const RecipeOutputChannelSpec* channel = FindRecipeOutputChannel(descriptor.channel);
+            if (channel == nullptr || channel->elemCount != descriptor.elementCount)
+                throw std::invalid_argument("generated recipe output descriptor has no matching channel schema");
+            if (channel->fieldKind == FK_DISTANCE) {
+                if (descriptor.elementCount != 1u)
+                    throw std::invalid_argument("generated distance output must be scalar");
+                distanceOffset_ = descriptor.valueOffset;
+            }
+            outputSet_.outputs.push_back(descriptor);
+        }
+        if (distanceOffset_ == kMissingOffset)
+            throw std::invalid_argument("generated recipe output set has no declared distance channel");
+        const std::size_t cells = static_cast<std::size_t>(resolution) *
+                                  static_cast<std::size_t>(resolution) *
+                                  static_cast<std::size_t>(resolution);
+        outputSet_.values.assign(cells * outputSet_.valueCount, 0.0f);
+    }
+
+    void eval4(const glm::vec3* points, std::size_t count, float* distances) {
+        alignas(16) glm::vec3 localPoints[4]{};
+        for (std::size_t lane = 0; lane < 4; ++lane)
+            localPoints[lane] = points[lane] - center_;
+
+        alignas(16) std::array<float, 64u * 4u> outputs{};
+        std::string error;
+        if (!program_->EvaluateOutputSet4(localPoints, outputs.data(), outputs.size(), nullptr, &error))
+            throw std::runtime_error("generated recipe output evaluation failed: " + error);
+
+        for (std::size_t lane = 0; lane < count; ++lane) {
+            distances[lane] = outputs[static_cast<std::size_t>(distanceOffset_) * 4u + lane];
+            const glm::ivec3 gridPosition(
+                static_cast<int>(std::lround(points[lane].x)),
+                static_cast<int>(std::lround(points[lane].y)),
+                static_cast<int>(std::lround(points[lane].z)));
+            const float* cell = outputSet_.sample(gridPosition);
+            if (cell == nullptr) continue;
+            const std::size_t cellOffset = static_cast<std::size_t>(cell - outputSet_.values.data());
+            for (std::uint32_t value = 0; value < outputSet_.valueCount; ++value)
+                outputSet_.values[cellOffset + value] = outputs[static_cast<std::size_t>(value) * 4u + lane];
+        }
+    }
+
+    BakedRecipeOutputSet takeOutputSet() && { return std::move(outputSet_); }
+
+private:
+    static constexpr std::uint8_t kMissingOffset = std::numeric_limits<std::uint8_t>::max();
+    const Recipe::LoweredRecipeProgram* program_ = nullptr;
+    glm::vec3 center_{0.0f};
+    std::uint8_t distanceOffset_ = kMissingOffset;
+    BakedRecipeOutputSet outputSet_;
+};
+
 // ---------------------------------------------------------------------------
 // SdfBakeResult — world + registry of narrow-band SDF voxels (no octree yet).
 // sampleStored queries the world at an integer grid position.
@@ -43,6 +139,7 @@ struct SdfBakeResult {
     std::unique_ptr<AttributeRegistry> registry;
     int n = 0;        // Grid side length; integer grid coordinates are voxel centres
     glm::vec3 center{0.0f};
+    BakedRecipeOutputSet recipeOutputSet;
 
     // Fetches the baked Density at one integer grid cell. This is a storage
     // lookup for interpolation stencils, not a fractional-position reconstruction.
@@ -348,6 +445,9 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
         }
     r.world->createVoxelsBatch(requests);
 
+    if constexpr (requires { std::move(eval).takeOutputSet(); })
+        r.recipeOutputSet = std::move(eval).takeOutputSet();
+
     return r;
 }
 
@@ -474,6 +574,7 @@ inline std::optional<float> SdfBakeResult::sampleStoredTrilinear(const glm::vec3
 struct SdfBodyOctree {
     std::unique_ptr<Vixen::GaiaVoxel::GaiaVoxelWorld> world;
     std::unique_ptr<AttributeRegistry> registry;
+    BakedRecipeOutputSet recipeOutputSet;
     std::unique_ptr<LaineKarrasOctree> octree;
 };
 
@@ -495,6 +596,7 @@ inline SdfBodyOctree BuildSdfBodyOctree(SdfBakeResult& baked, int brickDepth /*=
     // Transfer ownership from the bake result
     result.world    = std::move(baked.world);
     result.registry = std::move(baked.registry);
+    result.recipeOutputSet = std::move(baked.recipeOutputSet);
 
     const int n          = baked.n;
     const glm::vec3 worldMin(0.0f);

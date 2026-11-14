@@ -16,11 +16,26 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
 
 namespace Vixen::SVO {
+
+namespace detail {
+
+inline bool HasNonDistanceRecipeOutput(const RecipeRegistry::RecipeEntry& entry) {
+    for (const Recipe::SdfInstruction& instruction : entry.bytecode) {
+        const auto* metadata = Recipe::FindRecipeOpcodeMetadata(instruction.opCode);
+        if (metadata != nullptr && std::strcmp(metadata->name, "Output") == 0 &&
+            instruction.data[0] != 0.0f)
+            return true;
+    }
+    return false;
+}
+
+}  // namespace detail
 
 // ---------------------------------------------------------------------------
 // Config
@@ -86,12 +101,35 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
                                ? static_cast<int>(entry->brickDepth)
                                : static_cast<int>(cfg.defaultBrickDepth);
 
-        auto baked = BakeRecipeInstructionsToSdfWorld(
-            entry->bytecode.data(),
-            static_cast<uint32_t>(entry->bytecode.size()),
-            cfg.center, n, band, depth,
-            std::span<const float>(entry->parameterValues.data(),
-                                   entry->parameterValues.size()), {}, {}, &reg);
+        SdfBakeResult baked;
+        if (detail::HasNonDistanceRecipeOutput(*entry)) {
+            Recipe::LoweredRecipeProgram outputProgram;
+            std::string lowerError;
+            const std::span<const float> parameters(entry->parameterValues.data(),
+                                                     entry->parameterValues.size());
+            if (!outputProgram.Lower(entry->bytecode.data(),
+                    static_cast<std::uint32_t>(entry->bytecode.size()), parameters, lowerError)) {
+                res.ok = false;
+                res.err = "recipe output-set lowering failed for recipe " +
+                          std::to_string(id) + ": " + lowerError;
+                return res;
+            }
+            if (outputProgram.OutputCount() <= 1u) {
+                res.ok = false;
+                res.err = "recipe output marker did not produce an output set for recipe " +
+                          std::to_string(id);
+                return res;
+            }
+            RecipeOutputSetBakeEvaluator evaluator(outputProgram, cfg.center, n);
+            baked = BakeSdfWorld(evaluator, cfg.center, n, band, depth);
+        } else {
+            baked = BakeRecipeInstructionsToSdfWorld(
+                entry->bytecode.data(),
+                static_cast<uint32_t>(entry->bytecode.size()),
+                cfg.center, n, band, depth,
+                std::span<const float>(entry->parameterValues.data(),
+                                       entry->parameterValues.size()));
+        }
 
         res.owned.push_back(BuildSdfBodyOctree(baked, depth));
 

@@ -16,6 +16,7 @@ struct EditorLayerOpRow { Rml::String name; Rml::String elementId; bool isCurren
 struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool hasDefault; bool isDefault; Rml::String resetId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorPackRecipeRow { Rml::String id; Rml::String elementId; };
+struct EditorMaterialRow { Rml::String id; Rml::String name; };
 struct EditorNodeRow { int nodeIndex; Rml::String name; Rml::String category; Rml::String addOp; Rml::String summary; Rml::String elementId; Rml::String addId; Rml::String removeId; Rml::String toggleId; bool canRemove; bool isExpanded; Rml::String addReason; Rml::String removeReason; Rml::String removeTitle; int indent; };
 struct EditorNodeArgumentRow { int nodeIndex; Rml::String field; Rml::String component; Rml::String label; float value; bool hasRange; float minimum; float maximum; float defaultValue; bool hasDefault; bool isDefault; Rml::String valueId; Rml::String upId; Rml::String downId; Rml::String resetId; };
 struct EditorNodeWrapRow { int firstNode; int lastNode; Rml::String op; Rml::String label; Rml::String elementId; };
@@ -35,6 +36,7 @@ struct EditorLayersBind {
     int* activeLayerCount;
     std::vector<EditorRecipeRow>* recipes;
     std::vector<EditorPackRecipeRow>* packRecipes;
+    std::vector<EditorMaterialRow>* materials;
     std::vector<EditorNodeRow>* nodes;
     std::vector<EditorNodeArgumentRow>* nodeArguments;
     std::vector<EditorNodeWrapRow>* nodeWrapChoices;
@@ -118,6 +120,10 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("id", &EditorPackRecipeRow::id);
         sh.RegisterMember("elementId", &EditorPackRecipeRow::elementId);
     }
+    if (auto sh = c.RegisterStruct<EditorMaterialRow>()) {
+        sh.RegisterMember("id", &EditorMaterialRow::id);
+        sh.RegisterMember("name", &EditorMaterialRow::name);
+    }
     if (auto sh = c.RegisterStruct<EditorNodeRow>()) {
         sh.RegisterMember("nodeIndex", &EditorNodeRow::nodeIndex);
         sh.RegisterMember("name", &EditorNodeRow::name);
@@ -173,6 +179,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.RegisterArray<std::vector<EditorShapeFieldRow>>();
     c.RegisterArray<std::vector<EditorRecipeRow>>();
     c.RegisterArray<std::vector<EditorPackRecipeRow>>();
+    c.RegisterArray<std::vector<EditorMaterialRow>>();
     c.RegisterArray<std::vector<EditorNodeRow>>();
     c.RegisterArray<std::vector<EditorNodeArgumentRow>>();
     c.RegisterArray<std::vector<EditorNodeWrapRow>>();
@@ -191,6 +198,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
     c.Bind("recipes", b.recipes);
     c.Bind("packRecipes", b.packRecipes);
+    c.Bind("materials", b.materials);
     c.Bind("nodes", b.nodes);
     c.Bind("nodeArguments", b.nodeArguments);
     c.Bind("nodeWrapChoices", b.nodeWrapChoices);

@@ -2767,6 +2767,16 @@ void VulkanGraphApplication::SetRecipePoolProducer(
     }
 }
 
+void VulkanGraphApplication::SetMaterialTable(std::vector<std::uint8_t> tableBytes) {
+    auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (node) {
+        node->SetMaterialTable(std::move(tableBytes));
+    } else if (mainLogger) {
+        mainLogger->Warning("[VulkanGraphApplication::SetMaterialTable] bodyOctreeSceneNode_ not found — material table not applied");
+    }
+}
+
 void VulkanGraphApplication::RequestBodyBrickResidency(bool resident) {
     // Editor Brick-Residency Fix: forward to BodyOctreeSceneNode::RequestBrickResidency (stash-only
     // dirty-flag write; ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool

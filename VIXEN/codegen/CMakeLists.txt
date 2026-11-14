@@ -205,7 +205,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "abe93d9aaab5acdae76fa36bf55fa9d607e4a8dd")
+set(_vixen_tracked_yeroket_kernel_sha "6075f4129cd252faa370b3758a6bd658e75a7b2a")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -218,6 +218,9 @@ vixen_record_kernel_pin("${CMAKE_BINARY_DIR}/vixen-kernel-pin.json"
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
+set(_channel_kinds "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime/Channels")
+set(_out_channel_vocabulary_cpp "${VIXEN_ROOT}/libraries/SVO/include/Generated/VoxelChannelVocabulary.g.h")
+set(_out_channel_vocabulary_glsl "${VIXEN_ROOT}/shaders/Generated/VoxelChannelVocabulary.glsl")
 set(_recipe_simd_build_output
     "${CMAKE_BINARY_DIR}/generated/include/Recipe/generated/RecipeSimd.g.hpp")
 set(_recipe_simd_input_files
@@ -403,6 +406,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             set(${out_var} "${_translated}" PARENT_SCOPE)
         endfunction()
         _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
+        _codegen_to_wsl_path("${_channel_kinds}" _channel_kinds_run)
         _codegen_to_wsl_path("${_cg}/config-schemas" _schema_config_run)
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
         _codegen_to_wsl_path("${_schema_gpu_staged}" _schema_gpu_staged_run)
@@ -436,6 +440,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         endif()
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h" _out_octreeconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
+        _codegen_to_wsl_path("${_out_channel_vocabulary_cpp}" _out_channel_vocabulary_cpp_run)
+        _codegen_to_wsl_path("${_out_channel_vocabulary_glsl}" _out_channel_vocabulary_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl" _out_lightingconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h" _out_shadowconfig_cpp_run)
@@ -523,6 +529,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_CODEGEN_RUNNER ${WSL_EXE} --cd / -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
+        set(_channel_kinds_run "${_channel_kinds}")
         set(_schema_config_run "${_cg}/config-schemas")
         set(_schema_view_run "${_cg}/view-schemas")
         set(_schema_gpu_staged_run "${_schema_gpu_staged}")
@@ -541,6 +548,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_catalog_run "${_schema_catalog_source}")
         set(_out_octreeconfig_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h")
         set(_out_octreeconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl")
+        set(_out_channel_vocabulary_cpp_run "${_out_channel_vocabulary_cpp}")
+        set(_out_channel_vocabulary_glsl_run "${_out_channel_vocabulary_glsl}")
         set(_out_lightingconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
         set(_out_lightingconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl")
         set(_out_shadowconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h")
@@ -817,6 +826,27 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     add_custom_target(octreeconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args}
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- Channel/material vocabulary (R872.9/R872.10): the pinned kernel owns the channel
+    # declarations and the row layout. Runtime mode deliberately emits no pack rows: VIXEN's
+    # build carries only the reusable material-id channel and MaterialPackRow shape; pack data is
+    # loaded by the editor/look-dev runtime from the selected baked pack.
+    set(_channel_vocabulary_args
+        "${_yk_dll_run}"
+        --channel-vocabulary
+        --channels "${_channel_kinds_run}"
+        --material-source runtime
+        --out-header "${_out_channel_vocabulary_cpp_run}"
+        --out-glsl "${_out_channel_vocabulary_glsl_run}")
+    vixen_add_codegen_check(channel_vocabulary_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_channel_vocabulary_args} --check
+        COMMENT "[codegen] golden check: runtime channel/material vocabulary matches pinned kernel"
+        VERBATIM)
+    add_custom_target(channel_vocabulary_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_channel_vocabulary_args}
+        COMMENT "[codegen] regenerate runtime channel/material vocabulary"
         JOB_POOL msbuild
         VERBATIM)
 

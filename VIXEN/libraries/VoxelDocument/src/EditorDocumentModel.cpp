@@ -15,6 +15,7 @@
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "Recipe/generated/PathInstance.g.hpp"
+#include "VoxelChannelFormat.h"
 #include <RecipeSimd.g.hpp>
 
 namespace Vixen::Editor {
@@ -1717,6 +1718,44 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
         diagnostic = {DocumentDiagnosticCode::FlattenError,
                       "zero enabled layers — nothing to render"};
         return false;
+    }
+
+    // VDC1's document-level material pair is lowered into the generic generated Output
+    // stream. The authored percent selects a deterministic x-plane in recipe space; no
+    // material-specific evaluator or shader branch is introduced. A zero triple deliberately
+    // skips this suffix, preserving the legacy bytecode and its no-material golden path.
+    if (majorMaterialId_ != 0u || minorMaterialId_ != 0u || majorMaterialPercent_ != 0u) {
+        SdfInstruction distanceOutput{};
+        distanceOutput.opCode = static_cast<uint8_t>(SdfOpCode::Output);
+        distanceOutput.data[1] = 1.0f;
+        instructions.push_back(distanceOutput);
+
+        SdfInstruction regionPlane{};
+        regionPlane.opCode = static_cast<uint8_t>(SdfOpCode::Plane);
+        regionPlane.data[0] = 1.0f;
+        regionPlane.data[1] = 0.0f;
+        regionPlane.data[2] = 0.0f;
+        regionPlane.data[3] = 0.5f - static_cast<float>(majorMaterialPercent_) / 100.0f;
+        instructions.push_back(regionPlane);
+
+        SdfInstruction major{};
+        major.opCode = static_cast<uint8_t>(SdfOpCode::PushParam);
+        major.data[0] = static_cast<float>(majorMaterialId_);
+        instructions.push_back(major);
+        SdfInstruction minor{};
+        minor.opCode = static_cast<uint8_t>(SdfOpCode::PushParam);
+        minor.data[0] = static_cast<float>(minorMaterialId_);
+        instructions.push_back(minor);
+        SdfInstruction select{};
+        select.opCode = static_cast<uint8_t>(SdfOpCode::Select);
+        instructions.push_back(select);
+
+        SdfInstruction materialOutput{};
+        materialOutput.opCode = static_cast<uint8_t>(SdfOpCode::Output);
+        materialOutput.data[0] = static_cast<float>(Vixen::SVO::RecipeOutputSlotFor(
+            Vixen::SVO::SEM_MATERIAL_ID));
+        materialOutput.data[1] = 1.0f;
+        instructions.push_back(materialOutput);
     }
 
     outEntry = Vixen::SVO::RecipeRegistry::RecipeEntry{};
