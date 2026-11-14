@@ -2472,7 +2472,17 @@ bool EditorApplication::SaveDocument() {
     const auto snapshot = doc_.CaptureBakeSnapshot();
     Vixen::SVO::RecipeRegistry::RecipeEntry canonical;
     Vixen::Editor::DocumentDiagnostic diagnostic;
-    if (!doc_.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), true, diagnostic)) {
+    // Solo is a viewport-only projection and is not authored in VDC1.  Save the complete enabled
+    // document so a later reopen compares against the same canonical program, while restoring the
+    // user's solo selection for the live editor immediately after the snapshot.
+    const auto savedSoloLayer = doc_.SoloLayerId();
+    if (savedSoloLayer.has_value()) doc_.ClearSoloLayer();
+    const bool flattened = doc_.FlattenToRecipeEntry(canonical, snapshot, RecipeResolver(), true, diagnostic);
+    if (savedSoloLayer.has_value()) {
+        Vixen::Editor::DocumentDiagnostic restoreDiagnostic;
+        doc_.SetSoloLayer(*savedSoloLayer, restoreDiagnostic);
+    }
+    if (!flattened) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
