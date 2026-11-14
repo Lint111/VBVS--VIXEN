@@ -2,7 +2,22 @@
 
 ## STATUS
 
-STOPPED / REFER-TO-ORCHESTRATOR for the required native boot and complete look-dev/HUD witness. The d9 VIXEN opcode-owner change is committed and its codegen, Release build, CPU suite, and targeted row-51 repair are green. The remaining STOPs are provider reachability and GPU/environmental/unregistered-test findings; no boot digest delta is claimed.
+STOPPED for controller publication. The d9 VIXEN opcode-owner change is committed and its codegen, Release build, CPU suite, and targeted row-51 repair are green. The isolated GPU red is environmental: the same starfield capture failure reproduces on the landed vx8 base and on this opcode row. Native boot, complete look-dev/HUD, and provider publication remain controller follow-up after the two provider waves are reachable.
+
+## GPU CLASSIFICATION (resume)
+
+The isolated `HeadlessStarfieldGraph.CompareIndependentCaptures` case was run as six serial, queued GPU jobs with `--no-replay` (three per tree, one GPU job at a time). Every run failed, so this is not a regression in the opcode row:
+
+- vx8 base `dc324d0f582e00bd96e07e25565703a5e92d28b1`, `.tmp/build-vx8`: 3/3 failed with `first disabled capture was empty` (`offBytes.empty()`); logs `1794685436`, `1794685460`, and `1794685485` (`base-starfield-1/2/3`).
+- opcode row `.tmp/build-release`: 3/3 failed with `second disabled capture was empty` (`repeatOffBytes.empty()`); logs `1794685516`, `1794685545`, and `1794685566` (`row-starfield-1/2/3`).
+- Each queued job recorded `NPROC=32`; shell load averages were base `7.16/10.74/10.17`, `5.31/10.00/9.95`, `4.35/9.39/9.74`, and row `3.41/8.67/9.49`, `3.25/8.13/9.28`, `3.19/7.80/9.15`. The queue reported one admitted GPU job (`concurrent=0`) for each run.
+- No `VK_ERROR_DEVICE_LOST`, device-loss, or hang line occurred in any of these six isolated logs. The earlier d9 full GPU split separately recorded the environmental GPU symptoms: Presentation `night-service`, `late-afternoon`, `midday`, and `overcast` hit the GPU guard's idle/output stalls; `GlyphSdf.RtlProof.Pair` emitted `VK_ERROR_DEVICE_LOST` at `FrameSyncNode::FrameEnd vkWaitSemaphores`, then passed on the queue's exclusive retry. Evidence: `1794680888`, `1794680883`, `1794680894`, `1794680874`, and `1794680900` split logs.
+
+Register row text for `base-reds.md` / the controller's accepted-red register:
+
+> `HeadlessStarfieldGraph.CompareIndependentCaptures` is an environmental GPU capture red: the isolated case failed 3/3 on vx8 base `dc324d0f582e00bd96e07e25565703a5e92d28b1` (`first disabled capture was empty`) and 3/3 on opcode row `002a5f6b6adf53644e53ef947c16538440497411` (`second disabled capture was empty`); no device loss occurred in the isolated case. The d9 full GPU split also observed Presentation stalls and one `VK_ERROR_DEVICE_LOST` with successful exclusive retry. Do not attribute this red to the d9 recipe-opcode change.
+
+The requested optional whole-GPU rerun was not repeated after the six decisive isolated reproductions; the existing d9 split result remains recorded below, and the accepted vx8 `17/17` GPU CTest result is the prior `cx-consolvx8-r3` baseline result.
 
 ## VIXEN COMMITS
 
@@ -23,7 +38,7 @@ STOPPED / REFER-TO-ORCHESTRATOR for the required native boot and complete look-d
 - Queued native Release build passed: all 682 build tasks completed, including VIXEN and look-dev targets. Final log: `/home/liory/.local/state/undertow/undertow-box-logs/1794683480-build-cx-opcodeown2:final-release-build.log`.
 - Full CPU CTest passed: 1,738/1,738 selected tests, 0 failed, 4 declared skips. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1794680225-test-cx-opcodeown2:d9-full-cpu-final.log`.
 - Row 51 (VDC1 v2->v3 writer) now PASSes: the regenerated d9 VoxelDocument face and the minimal editor format-preservation change passed the focused VoxelDocument/editor set 3/3. The prior v2 fixture no longer promotes on save.
-- Full GPU split selected 1,620 tests. It recorded 551 passed, 1 real test failure, and 83 declared skips before four shards were stopped by the GPU guard: three Presentation cases stalled without output, and `Application.LookdevCapture.GlyphSdf.RtlProof.Pair` hit `VK_ERROR_DEVICE_LOST` during `FrameSyncNode::FrameEnd`. The remaining named failure was `HeadlessStarfieldGraph.CompareIndependentCaptures`; a single-case rerun reproduced `second disabled capture was empty`. This has no d9 register-row attribution in the current register and is therefore an unregistered finding, not silently accepted as a green witness.
+- Full GPU split selected 1,620 tests. It recorded 551 passed, 1 real test failure, and 83 declared skips before four shards were stopped by the GPU guard: three Presentation cases stalled without output, and `Application.LookdevCapture.GlyphSdf.RtlProof.Pair` hit `VK_ERROR_DEVICE_LOST` during `FrameSyncNode::FrameEnd`. The remaining named failure was `HeadlessStarfieldGraph.CompareIndependentCaptures`; the six-run base/row classification above establishes it as an environmental accepted-red candidate, not an opcode-row regression.
 - Look-dev focused capture/golden run was stopped at the checkpoint after two serial passes (`Application.LookdevCapture.Presentation.night-service` and `Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically`, both about 412 s). The full look-dev/golden matrix did not complete; no new golden was recaptured.
 - The accepted vx8 HUD reference hashes are frame 5 `754bcd8e7e3e433dfc42b5635283611d55c4b8821094699b19a70fb04c19a157`, frame 45 `7c4d3688aad930e0af47e93ce76bed92595255e4413c6be082fc5cde1b793801`, and frame 75 `cdb9b3932d7c516695690956cc6b9702667ade3a54c31427da31dfba761052a3`. This lane did not complete the supported native HUD capture because boot staging stopped at provider reachability, so byte identity is not claimed.
 
