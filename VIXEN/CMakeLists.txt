@@ -27,16 +27,28 @@ if(NOT DEFINED ENV{UNDERTOW_ROOT} AND VIXEN_AUTO_DERIVE_UNDERTOW_ROOT)
     get_filename_component(_vixen_projects_root "${_vixen_provider_repo}" DIRECTORY)
     set(_undertow_lane_candidate
         "${_vixen_projects_root}/undertow/.claude-worktrees/${_vixen_lane_name}")
-    foreach(_undertow_candidate
+    set(_undertow_candidates
         "${_undertow_lane_candidate}"
         "${_vixen_projects_root}/undertow")
-        if(EXISTS "${_undertow_candidate}/core/src/Undertow.Authoring/Schema/schemas.json")
+    # A checkout with the schema catalogue is not sufficient for the Text consumer: it also
+    # needs the paired text shader interface. If the exact lane is not generated yet, choose a
+    # complete provider from a sibling worktree instead of silently exporting an unusable root.
+    file(GLOB _undertow_sibling_candidates LIST_DIRECTORIES true
+        "${_vixen_projects_root}/undertow/.claude-worktrees/*")
+    list(SORT _undertow_sibling_candidates)
+    list(APPEND _undertow_candidates ${_undertow_sibling_candidates})
+    foreach(_undertow_candidate IN LISTS _undertow_candidates)
+        if(EXISTS "${_undertow_candidate}/core/src/Undertow.Authoring/Schema/schemas.json"
+           AND EXISTS "${_undertow_candidate}/transpiled/textshader/Text/Text.g.h"
+           AND EXISTS "${_undertow_candidate}/transpiled/textshader/Text/text.g.glsl")
             get_filename_component(_undertow_root_derived "${_undertow_candidate}" REALPATH)
             set(ENV{UNDERTOW_ROOT} "${_undertow_root_derived}")
             if("${_undertow_candidate}" STREQUAL "${_undertow_lane_candidate}")
                 message(STATUS "[vixen] using paired Undertow lane: ${_undertow_root_derived}")
+            elseif("${_undertow_candidate}" MATCHES "/undertow$" OR "${_undertow_candidate}" MATCHES "\\\\undertow$")
+                message(STATUS "[vixen] using Undertow sibling with generated text shader interface: ${_undertow_root_derived}")
             else()
-                message(STATUS "[vixen] using Undertow sibling for pinned VIXEN provider: ${_undertow_root_derived}")
+                message(STATUS "[vixen] using Undertow provider worktree with generated text shader interface: ${_undertow_root_derived}")
             endif()
             break()
         endif()
@@ -201,10 +213,10 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # shot instead of leaving multi-GB PDB/ILK files behind (see Worktree-Build-Artifact-
 # Accumulation-Audit-2026-07.md Fix 2). RUNTIME_OUTPUT_DIRECTORY is set per-target below.
 set(VIXEN_BINARIES_DIR ${CMAKE_BINARY_DIR}/binaries)
-set(VIXEN_RUNTIME_CACHE_DIR "${CMAKE_BINARY_DIR}/runtime-cache" CACHE PATH
-    "Persistent runtime cache directory (defaults to the build tree)")
+set(VIXEN_RUNTIME_CACHE_DIR "runtime-cache" CACHE STRING
+    "Persistent runtime cache directory (relative paths resolve beside the executable at runtime)")
 # Consumed only by libraries/Core/src/RuntimeCachePaths.cpp (a source-scoped definition there);
-# a global definition would put this tree's absolute path into every compile command.
+# keep the default relative so the compile definition cannot embed this build tree's path.
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
@@ -218,6 +230,8 @@ option(VULKAN_TRIMMED_BUILD "Build with Vulkan headers only (no runtime libs)" O
 
 # Enable testing early so subprojects can use BUILD_TESTING
 option(BUILD_TESTS "Build unit tests" ON)
+option(VIXEN_RENDERER_BYTE_IDENTITY_TEST
+    "Register the two-build renderer object byte-identity check (expensive; opt-in)" OFF)
 if(BUILD_TESTS)
     set(BUILD_TESTING ON CACHE BOOL "Build tests" FORCE)
 else()
@@ -246,6 +260,17 @@ else()
     add_compile_definitions(VIXEN_DEBUG_BUILD=0)
 endif()
 
+# Benchmark-only measurement hooks.  Keep the keyword shared with Undertow's native-bench
+# tooling so a benchmark selects the same instrumentation contract across the native layers.
+option(UNDERSET_NATIVE_BENCHMARK
+    "Compile benchmark/profiling hooks and diagnostic timing output" OFF)
+if(UNDERSET_NATIVE_BENCHMARK)
+    message(STATUS "Native benchmark instrumentation enabled (UNDERSET_NATIVE_BENCHMARK)")
+    add_compile_definitions(UNDERSET_NATIVE_BENCHMARK=1)
+else()
+    add_compile_definitions(UNDERSET_NATIVE_BENCHMARK=0)
+endif()
+
 # Fail-scenario simulation (Inc 1): declarations, injection seams, and the live sweep harness.
 # OFF by default — zero footprint in real builds (everything guarded compiles out). ON must be a
 # global, consistent view (nodes, app, and tests all see the same macro expansion).
@@ -259,9 +284,11 @@ endif()
 # makes RenderGraph sample them per frame (summary at graph teardown; VIXEN_LOCK_CENSUS_CSV=<path>
 # for a per-frame CSV). OFF (default) is a pure type alias: no wrapper, no counters, no code.
 option(VIXEN_LOCK_CENSUS "Count/time mutex acquisitions per lock-inventory family on the frame path" OFF)
-if(VIXEN_LOCK_CENSUS)
+if(VIXEN_LOCK_CENSUS AND UNDERSET_NATIVE_BENCHMARK)
     message(STATUS "Lock census enabled (VIXEN_LOCK_CENSUS)")
     add_compile_definitions(VIXEN_LOCK_CENSUS=1)
+elseif(VIXEN_LOCK_CENSUS)
+    message(WARNING "VIXEN_LOCK_CENSUS requires UNDERSET_NATIVE_BENCHMARK; ignoring in normal builds")
 endif()
 
 # Descriptor resource lifecycle tracking (Debug/DescriptorResourceTracker.h) - records every
@@ -445,6 +472,13 @@ endif()
 # PROJECT_VERSION*, which feeds both the generated <VixenVersion.h> (cmake/VixenVersion.h.in)
 # and the find_package(VIXEN) package-version file (cmake/VixenInstall.cmake).
 project(${Recipe_Name} VERSION 0.1.0)
+
+# Keep the language mode consistent for every target, including small tools and tests that do not
+# inherit a library's PUBLIC compile features.  In particular, filesystem and the C++17 syntax
+# used by the closure and run-data tests must not depend on each target remembering its own flag.
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Windows headers can arrive through Vulkan before the optional central PCH.
 # Preserve ordinary C++ min/max semantics in both PCH and non-PCH builds.
@@ -697,6 +731,9 @@ vixen_write_gpu_environment_script("${CMAKE_BINARY_DIR}/vixen-gpu-env.sh" ${VIXE
 # TESTING INFRASTRUCTURE section near the bottom of this file.
 if(BUILD_TESTS)
     enable_testing()
+    # CTest resource spec (slots of the `gpu` resource) lands in DartConfiguration.tcl via CTest.
+    vixen_configure_gpu_resource_spec()
+    include(CTest)
     if(UNIX AND NOT APPLE)
         add_subdirectory(tools/gpu-witness-layer)
     endif()
@@ -769,11 +806,11 @@ endif()
 # not pinned (with its inventory family) in scripts/no-new-mutex.allowlist. Needs bash + python3;
 # silently skipped where either is absent (a plain MSVC shell) — run it from WSL/CI there.
 option(VIXEN_NO_NEW_MUTEX_GATE "Check changed sources for undeclared mutex declarations" ON)
+include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 if(VIXEN_NO_NEW_MUTEX_GATE)
     find_program(VIXEN_GATE_BASH NAMES bash)
     find_program(VIXEN_GATE_PYTHON3 NAMES python3)
     if(VIXEN_GATE_BASH AND VIXEN_GATE_PYTHON3)
-        include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
         set(_mutex_inputs)
         foreach(_extension h hpp hxx cpp c cc cxx inl ipp ixx)
             file(GLOB_RECURSE _mutex_sources CONFIGURE_DEPENDS
@@ -792,6 +829,29 @@ if(VIXEN_NO_NEW_MUTEX_GATE)
     else()
         message(STATUS "no-new-mutex gate skipped: bash/python3 not found (run scripts/check-no-new-mutex.sh from WSL/CI)")
     endif()
+endif()
+
+# Windows SDK headers define short, un-namespaced macros such as near/far/min/max.  A declaration
+# using one of those spellings compiles on Linux and then fails only when MSVC sees the same header
+# graph.  Keep this source-only scan cheap and make it part of every normal build and pre-commit run.
+option(VIXEN_WINDOWS_IDENTIFIER_GATE "Reject declarations that collide with Windows SDK macros" ON)
+if(VIXEN_WINDOWS_IDENTIFIER_GATE)
+    set(_windows_identifier_inputs)
+    foreach(_extension h hpp hxx cpp c cc cxx inl ipp ixx)
+        file(GLOB_RECURSE _windows_identifier_sources CONFIGURE_DEPENDS
+            "${VIXEN_ROOT}/*.${_extension}")
+        list(APPEND _windows_identifier_inputs ${_windows_identifier_sources})
+    endforeach()
+    list(FILTER _windows_identifier_inputs EXCLUDE REGEX "/(third_party|build|archive|generated|Vixen-Docs)/")
+    list(REMOVE_DUPLICATES _windows_identifier_inputs)
+    vixen_add_checked_target(windows_identifier_check ALL
+        COMMAND "${CMAKE_COMMAND}"
+                "-DVIXEN_WINDOWS_IDENTIFIER_ROOT=${VIXEN_ROOT}"
+                -P "${VIXEN_ROOT}/cmake/check-windows-identifiers.cmake"
+        DEPENDS ${_windows_identifier_inputs}
+                "${VIXEN_ROOT}/cmake/check-windows-identifiers.cmake"
+        COMMENT "Windows SDK identifier collision gate"
+        VERBATIM)
 endif()
 
 get_property(_vixen_check_targets GLOBAL PROPERTY VIXEN_CHECK_TARGETS)

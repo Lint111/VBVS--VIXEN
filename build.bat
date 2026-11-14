@@ -43,13 +43,14 @@ REM run_build_with_summary.ps1):
 REM   VIXEN_BUILD_LOCK_TIMEOUT  seconds to wait for the machine-wide configure OR build lock
 REM                             before giving up (default 1800 = 30 min; one knob for both --
 REM                             they are separate locks, see run_configure_locked.ps1's header)
-REM   VIXEN_SKIP_BUILD_LOCK=1   bypass BOTH locks entirely
+REM   VIXEN_SKIP_BUILD_LOCK=1   bypass BOTH locks entirely (the box queue's UT_QUEUE_CREDITS bypasses only the build lock)
 REM   VIXEN_BINARY_DIR         configure and build in this directory instead of the preset's binaryDir.
 REM                             A fresh one sidesteps a build tree whose Ninja metadata is unusable
 REM                             (e.g. "ninja: error: failed recompaction: Permission denied").
 REM   VIXEN_MAX_BUILD_JOBS      cap on concurrent ninja jobs (default ~75% of
-REM                             logical cores) so a build leaves the machine
-REM                             usable instead of pegging every core
+REM                             logical cores; tools/vixen-native.sh derives it as node
+REM                             width capped by the Windows memory available when the build
+REM                             starts, R847.4; the queue grant sets admission only)
 REM   VIXEN_QUEUE_TICKET_ID     if you registered a build_queue.ps1 ticket before
 REM                             calling this script, set this to its TicketId and
 REM                             it is auto-released when the build finishes/fails/
@@ -267,6 +268,10 @@ REM ---------------------------------------------------------------------------
 if not defined VIXEN_BUILD_LOCK_TIMEOUT set "VIXEN_BUILD_LOCK_TIMEOUT=1800"
 set "SKIP_LOCK_ARG="
 if "%VIXEN_SKIP_BUILD_LOCK%"=="1" set "SKIP_LOCK_ARG=-SkipLock"
+REM Under the box queue (UT_QUEUE_CREDITS is forwarded by tools/vixen-native.sh) the queue has already
+REM admitted this as the one full-width build on the node (R847) and sized -j to its grant, so waiting on
+REM the machine-wide mutex here only adds a second, blind queue. Direct runs keep the lock.
+if defined UT_QUEUE_CREDITS set "SKIP_LOCK_ARG=-SkipLock" & echo [build] build lock skipped: running under the box queue ^(UT_QUEUE_CREDITS=%UT_QUEUE_CREDITS%^)
 set "TARGET_ARG="
 if not "%TARGET%"=="" set "TARGET_ARG=-Target \"%TARGET%\""
 set "TICKET_ARG="

@@ -657,11 +657,10 @@ else()
 endif()
 
 # ===========================================================================
-# Group 8: test_rendergraph_criticalnodes_windowedcapture — pure file-I/O
-# (stb_image) PNG-assertion tests, no Vulkan/GPU, deliberately registered
-# OUTSIDE the glslc-gated `if(VIXEN_GLSLC)` block above so they build+run on
-# the Windows/MSVC side regardless of glslc availability, matching where the
-# windowed apps that produce their input PNGs themselves build and run.
+# Group 8: test_rendergraph_criticalnodes_windowedcapture — assertions over
+# windowed GPU capture artifacts. The executable itself only reads PNG/log
+# files, but its required capture fixtures launch GPU-backed producers, so the
+# test family must use the translated-device launcher and GPU policy.
 # AppFlow Inc-2b M3 (EditorToggleUndoCapture) + View Contract Inc-2 Task 5
 # (HudRenderCapture) — same bare-plus-stb link surface, default discovery.
 # ===========================================================================
@@ -680,6 +679,9 @@ set_target_properties(test_rendergraph_criticalnodes_windowedcapture PROPERTIES 
 # The CMake paths remain the outside-queue fallback. The file-only consumers prefer
 # VIXEN_CAPTURE_ROOT (else UT_QUEUE_CAPTURE_ROOT)/<editor|hud> at test runtime, matching the GPU fixture wrappers.
 vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_windowedcapture
+    GPU
+    ON_DEMAND_TESTS
+        "^(EditorToggleUndoCapture\\..*|HudRenderCapture\\..*)$"
     FIXTURES_REQUIRED "VixenEditorCapture;VixenHudCapture"
     TEST_ENVIRONMENT
         "VIXEN_EDITOR_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/editor"
@@ -955,6 +957,7 @@ endif()
 set_target_properties(test_recipe_bucketing_perf PROPERTIES FOLDER "Tests/RenderGraph Tests")
 vixen_gtest_discover_tests(RenderGraph test_recipe_bucketing_perf
     GPU
+    BENCHMARK_TESTS "^RecipeBucketingPerfTest\\..*$"
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 

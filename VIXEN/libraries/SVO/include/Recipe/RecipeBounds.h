@@ -63,8 +63,19 @@ inline RecipeBoundsResult DeriveConservativeBounds(
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
         if (!IsValidSdfOpCode(in.opCode)) return {};
+        // The generated extent transfer intentionally treats every binary combine as the
+        // operand-union sphere.  Smooth combines also have a finite blend band, so keep
+        // those seven opcodes in the hand-written path below where the band is widened into
+        // the conservative extent instead of silently clipping the blend's zero set.
+        const auto op = static_cast<SdfOpCode>(in.opCode);
+        const bool isSmoothBlend =
+            op == SdfOpCode::SmoothUnion || op == SdfOpCode::SmoothSubtract ||
+            op == SdfOpCode::SmoothIntersect || op == SdfOpCode::SmoothMax ||
+            op == SdfOpCode::SmoothUnionCubic || op == SdfOpCode::SmoothSubtractCubic ||
+            op == SdfOpCode::SmoothIntersectCubic;
         bool handled = false;
-        if (!Yeroket::Sdf::Generated::TryRecipeExtentTransfer(in, std::span<Bound>(stk), sp, handled))
+        if (!isSmoothBlend && !Yeroket::Sdf::Generated::TryRecipeExtentTransfer(
+                in, std::span<Bound>(stk), sp, handled))
             return {};
         if (handled) continue;
         switch (static_cast<SdfOpCode>(in.opCode)) {
@@ -162,18 +173,32 @@ inline RecipeBoundsResult DeriveConservativeBounds(
             case SdfOpCode::SmoothUnionCubic: case SdfOpCode::SmoothSubtractCubic:
             case SdfOpCode::SmoothIntersectCubic: {
                 if (sp < 2) return {};
+                if (!std::isfinite(in.data[2])) return {};
                 Bound b = stk[--sp];
                 Bound a = stk[--sp];
                 if (a.scalar || b.scalar) return {};
                 // Bounding sphere of the union of two spheres.
                 glm::vec3 d = b.center - a.center;
                 float dist = glm::length(d);
-                if (dist + b.radius <= a.radius) { stk[sp++] = a; break; }        // b fully inside a
-                if (dist + a.radius <= b.radius) { stk[sp++] = b; break; }        // a fully inside b
+                const float blendRadius = std::abs(in.data[2]);
+                if (dist + b.radius <= a.radius) {
+                    a.radius += blendRadius;
+                    stk[sp++] = a;
+                    break;
+                }        // b fully inside a
+                if (dist + a.radius <= b.radius) {
+                    b.radius += blendRadius;
+                    stk[sp++] = b;
+                    break;
+                }        // a fully inside b
                 float newRadius = (a.radius + b.radius + dist) * 0.5f;
                 glm::vec3 newCenter = (dist > 1e-8f)
                     ? a.center + d * ((newRadius - a.radius) / dist)
                     : a.center;
+                // The smooth kernels can lower/raise the combined field in the blend
+                // band by O(k).  Inflating by |k| is deliberately conservative for both
+                // polynomial and cubic variants, and is cheap enough for registration.
+                newRadius += blendRadius;
                 stk[sp++] = Bound{newCenter, newRadius, false, 0.0f};
                 break;
             }

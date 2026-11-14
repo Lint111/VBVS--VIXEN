@@ -360,6 +360,13 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
     // from farFieldCandidates above (which counts candidates reaching the
     // far-field GATE specifically, several continues later). Never reset.
     uint rtLoopEntries;
+    // cx-leafinstr2: capture-only log2 histograms and path census. Keep this
+    // field order identical to DebugRaySample.h::TraceBufferHeader.
+    uint leafInstrStepsLog2[16];
+    uint leafInstrBodiesLog2[16];
+    uint leafInstrCandidatesLog2[16];
+    uint leafInstrPathClass[4];
+    uint leafInstrBrickStepsLog2[16];
     // Round-7 blocker-1 probe: does descendToNodeOrdinal+shadeFromMipSample
     // actually resolve a shaded mip sample, or fall through to the
     // vec3(0.5)/-farDirN placeholder? Bumped immediately after that check in
@@ -552,8 +559,33 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
     uint mipReadSamples[192][16];
     uint mipReadCounterOverflow;
     uint _mipReadPadding[3];
+    uint recipeRayCount;
+    uint recipeMarchCount;
+    uint recipeChunkMarchCount;
+    uint recipeStepCount;
+    uint _recipeChunkMetricsPadding[3];
     uint traceData[];
 };
+
+#ifdef VIXEN_RECIPE_CHUNK_CULL
+void recordRecipeChunkRay() {
+    atomicAdd(recipeRayCount, 1u);
+}
+void recordRecipeMarch() {
+    atomicAdd(recipeMarchCount, 1u);
+}
+void recordRecipeChunkMarch() {
+    atomicAdd(recipeChunkMarchCount, 1u);
+}
+void recordRecipeSteps(uint steps) {
+    atomicAdd(recipeStepCount, steps);
+}
+#else
+#define recordRecipeChunkRay()
+#define recordRecipeMarch()
+#define recordRecipeChunkMarch()
+#define recordRecipeSteps(steps)
+#endif
 
 // Fixed-point scale for farFieldSampleIntensityFixedSum -- luminance is a
 // small [0,~2] float (shaded mip color channel range), so this keeps ~6
@@ -689,6 +721,50 @@ void recordCompositionRelaxedRay() {
 const uint g_dispatchTag = 0u;
 #else
 const uint g_dispatchTag = 1u;
+#endif
+
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+// cx-leafinstr2: per-invocation accumulators are reset by TraceWorld and
+// reduced into the boot-lifetime binding-4 histograms at its return. The
+// histogram itself is capture-only; the default shader has no atomic writes.
+uint g_leafInstrRaySteps = 0u;
+uint g_leafInstrBodies = 0u;
+uint g_leafInstrCandidates = 0u;
+
+uint leafInstrLog2Bucket(uint value) {
+    if (value == 0u) return 0u;
+    return min(uint(findMSB(value)) + 1u, 15u);
+}
+
+void addLeafInstrSteps(uint value) { g_leafInstrRaySteps += value; }
+void incrLeafInstrBody() { ++g_leafInstrBodies; }
+void incrLeafInstrCandidate() { ++g_leafInstrCandidates; }
+
+void recordLeafInstrBrickSteps(uint value) {
+    atomicAdd(leafInstrBrickStepsLog2[leafInstrLog2Bucket(value)], 1u);
+}
+
+void recordLeafInstrRay(uint steps, uint bodies, uint candidates, uint pathClass) {
+    atomicAdd(leafInstrStepsLog2[leafInstrLog2Bucket(steps)], 1u);
+    atomicAdd(leafInstrBodiesLog2[leafInstrLog2Bucket(bodies)], 1u);
+    atomicAdd(leafInstrCandidatesLog2[leafInstrLog2Bucket(candidates)], 1u);
+    atomicAdd(leafInstrPathClass[min(pathClass, 3u)], 1u);
+}
+#else
+#define addLeafInstrSteps(value)
+#define incrLeafInstrBody()
+#define incrLeafInstrCandidate()
+#define recordLeafInstrBrickSteps(value)
+#define recordLeafInstrRay(steps, bodies, candidates, pathClass)
+#endif
+
+#ifdef VIXEN_LEAF_SHADER_CLOCK
+void recordLeafShaderClockWave(uint startTick, uint endTick) {
+    // The low 32 bits are sufficient for a single dispatch span; the host
+    // subtracts with unsigned wrap semantics when it drains the capture.
+    atomicMin(farFieldTerminalPixels[28], startTick);
+    atomicMax(farFieldTerminalPixels[29], endTick);
+}
 #endif
 
 #ifdef VIXEN_COMPOSITION_COUNTERS
@@ -1177,11 +1253,18 @@ float instanceMinimumAxisScale(uint instanceIndex) {
 float storedSdfShadowOriginBias(uint sourceInstanceIndex, float configuredBias,
                                 vec3 surfaceNormal, vec3 lightDirection,
                                 float primaryFootprint) {
-    // The primary SDF march certifies a hit at 0.25 * pixel footprint. Four
-    // such widths are the smallest normal offset that makes the secondary
-    // ray independent of that contact footprint. Keep the configured bias as
-    // the floor for callers without a camera-ray footprint.
-    float footprintBias = max(configuredBias, 4.0 * max(primaryFootprint, 0.0));
+    // The primary SDF march certifies a hit at 0.25 * pixel footprint
+    // (CONE_EPSILON_SCALE in SdfRecipes.glsl). Four such widths, one whole
+    // footprint, are the smallest normal offset that makes the secondary ray
+    // independent of that contact footprint. A larger offset slips a lit sliver
+    // under every overhang edge, as thick as the offset (night-service's
+    // worklight seam across the top box). Keep the configured bias as the floor
+    // for callers without a camera-ray footprint.
+    const float kPrimaryCertifiedFootprintFraction = 0.25;
+    const float kContactOffsetCertifiedWidths = 4.0;
+    float footprintBias = max(configuredBias,
+        kContactOffsetCertifiedWidths * kPrimaryCertifiedFootprintFraction *
+        max(primaryFootprint, 0.0));
     if (sourceInstanceIndex >= uint(bodyInstances.length())) return footprintBias;
     BodyInstance sourceInstance = bodyInstances[sourceInstanceIndex];
     uint octreeIndex = sourceInstance.octreeIndex;
@@ -1228,6 +1311,48 @@ struct ShellProxyAabb {
 layout(std430, set = 0, binding = 43) readonly buffer RtQueryProxyAabbBuffer {
     ShellProxyAabb rtQueryProxyAabbs[];
 };
+#endif
+
+// Derived procedural surface-shell chunks. The record uses the same 32-byte
+// std430 shape as ShellProxyAabb so CPU registration can upload one compact
+// vector. recipeId is the candidate's recipe identity; flags bit 0 marks the
+// coarse-parent fallback used when a recipe has no occupancy shell.
+#ifdef VIXEN_RECIPE_CHUNK_CULL
+struct RecipeChunkAabb {
+    vec3 minLocal;
+    uint recipeId;
+    vec3 maxLocal;
+    uint flags;
+};
+layout(std430, set = 0, binding = 44) readonly buffer RecipeChunkAabbBuffer {
+    RecipeChunkAabb recipeChunkAabbs[];
+};
+
+bool intersectRecipeChunkSet(uint recipeId, vec3 ro, vec3 rd, float tMin, float tMax,
+                             out float chunkEntry, out float chunkExit) {
+    bool found = false;
+    chunkEntry = tMax;
+    chunkExit = tMin;
+    for (uint i = 0u; i < recipeChunkAabbs.length(); ++i) {
+        RecipeChunkAabb chunk = recipeChunkAabbs[i];
+        if (chunk.recipeId != recipeId) continue;
+        vec3 invD = vec3(abs(rd.x) > 1e-8 ? 1.0 / rd.x : 0.0,
+                         abs(rd.y) > 1e-8 ? 1.0 / rd.y : 0.0,
+                         abs(rd.z) > 1e-8 ? 1.0 / rd.z : 0.0);
+        vec3 t0 = (chunk.minLocal - ro) * invD;
+        vec3 t1 = (chunk.maxLocal - ro) * invD;
+        vec3 lo = min(t0, t1);
+        vec3 hi = max(t0, t1);
+        float enter = max(max(lo.x, lo.y), max(lo.z, tMin));
+        float exit = min(min(hi.x, hi.y), min(hi.z, tMax));
+        if (exit >= enter) {
+            found = true;
+            chunkEntry = min(chunkEntry, enter);
+            chunkExit = max(chunkExit, exit);
+        }
+    }
+    return found;
+}
 #endif
 
 // ============================================================================
@@ -3198,6 +3323,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
     int enterAxis = -1;
     int maxIters = 3 * bpa;
     for (int iter = 0; iter < maxIters; ++iter) {
+        incrLeafInstrCandidate();
         if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(bpa)))) break;
 
         uint flatIdx = uint(cell.z * bpa * bpa + cell.y * bpa + cell.x);

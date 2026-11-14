@@ -233,7 +233,7 @@ TEST(GpuParity, AxisAlignedRaysMatchOracle) {
     ParityHarness h(6);
     const int n = h.n;
     const std::set<ICell> S = ShellSet(6);
-    const float far = float(n) + 8.0f;
+    const float farPoint = float(n) + 8.0f;
 
     int probes = 0, misses = 0, adjacentMismatch = 0, farMismatch = 0;
     int shown = 0;
@@ -241,11 +241,11 @@ TEST(GpuParity, AxisAlignedRaysMatchOracle) {
         const glm::vec3 ctr(t.x + 0.5f, t.y + 0.5f, t.z + 0.5f);
         struct P { glm::vec3 o, d; };
         const P probesList[] = {
-            { glm::vec3(far,   ctr.y, ctr.z), glm::vec3(-1,0,0) },
+            { glm::vec3(farPoint,   ctr.y, ctr.z), glm::vec3(-1,0,0) },
             { glm::vec3(-8.f,  ctr.y, ctr.z), glm::vec3( 1,0,0) },
-            { glm::vec3(ctr.x, far,   ctr.z), glm::vec3(0,-1,0) },
+            { glm::vec3(ctr.x, farPoint,   ctr.z), glm::vec3(0,-1,0) },
             { glm::vec3(ctr.x, -8.f,  ctr.z), glm::vec3(0, 1,0) },
-            { glm::vec3(ctr.x, ctr.y, far  ), glm::vec3(0,0,-1) },
+            { glm::vec3(ctr.x, ctr.y, farPoint  ), glm::vec3(0,0,-1) },
             { glm::vec3(ctr.x, ctr.y, -8.f ), glm::vec3(0,0, 1) },
         };
         for (const P& p : probesList) {

@@ -53,11 +53,13 @@ DeviceBudgetManager::DeviceBudgetManager(
 }
 
 DeviceBudgetManager::~DeviceBudgetManager() {
+#if UNDERSET_NATIVE_BENCHMARK
     if (physicalDevice_ != VK_NULL_HANDLE && std::getenv("VIXEN_MEMBUDGET_LOG")) {
         std::fprintf(stderr, "[MEMBUDGET] peak live device-local usage %llu MB of %llu MB budget (VK_EXT_memory_budget)\n",
                      static_cast<unsigned long long>(GetPeakLiveUsage() >> 20),
                      static_cast<unsigned long long>(liveBudget_.load(std::memory_order_acquire) >> 20));
     }
+#endif
     UnsubscribeFromFrameEvents();
 }
 

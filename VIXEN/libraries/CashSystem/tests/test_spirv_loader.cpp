@@ -6,17 +6,13 @@
 
 #include <gtest/gtest.h>
 #include <ShaderModuleCacher.h>
+#include <RuntimeCachePaths.h>
 
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <vector>
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace {
 
@@ -30,12 +26,7 @@ struct CompileProbe : CashSystem::ShaderModuleCacher {
 // of bug fixed in test_cache_codec.cpp's TempPath). The process id disambiguates concurrent
 // runs; the scenario name disambiguates cases within one run.
 std::filesystem::path TempPath(const char* name) {
-    const auto pid =
-#ifdef _WIN32
-        static_cast<unsigned long>(::_getpid());
-#else
-        static_cast<unsigned long>(::getpid());
-#endif
+    const auto pid = Vixen::CurrentProcessId();
     return std::filesystem::temp_directory_path() /
            (std::string("spirv_loader_test_") + std::to_string(pid) + "_" + name);
 }

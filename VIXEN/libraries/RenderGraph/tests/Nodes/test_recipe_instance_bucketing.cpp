@@ -22,7 +22,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE (mirrors CameraNode.cpp)
+#include "Headers.h"
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd

@@ -35,6 +35,13 @@ GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, std::shared_
     }
 }
 
+GPUPerformanceLogger::~GPUPerformanceLogger() {
+    if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT) {
+        queryManager_->FreeQuerySlot(querySlot_);
+        querySlot_ = GPUQueryManager::INVALID_SLOT;
+    }
+}
+
 // ============================================================================
 // COMMAND BUFFER RECORDING
 // ============================================================================
@@ -54,10 +61,15 @@ void GPUPerformanceLogger::RecordDispatchStart(VkCommandBuffer cmdBuffer, uint32
 
 void GPUPerformanceLogger::RecordDispatchEnd(VkCommandBuffer cmdBuffer, uint32_t frameIndex,
                                               uint32_t dispatchWidth, uint32_t dispatchHeight) {
+#if UNDERSET_NATIVE_BENCHMARK
     if (frameIndex < frameDispatchInfo_.size()) {
         frameDispatchInfo_[frameIndex].width = dispatchWidth;
         frameDispatchInfo_[frameIndex].height = dispatchHeight;
     }
+#else
+    (void)dispatchWidth;
+    (void)dispatchHeight;
+#endif
 
     if (queryManager_ && querySlot_ != GPUQueryManager::INVALID_SLOT && queryManager_->IsTimestampSupported()) {
         // Write end timestamp for this slot
@@ -79,20 +91,25 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
         return;  // No results ready yet (first few frames, or timestamps not written)
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
     // Get dispatch dimensions for this frame
     uint32_t width = 0, height = 0;
     if (frameIndex < frameDispatchInfo_.size()) {
         width = frameDispatchInfo_[frameIndex].width;
         height = frameDispatchInfo_[frameIndex].height;
     }
+#endif
 
     // Calculate timing from query manager
     lastDispatchMs_ = queryManager_->GetElapsedMs(frameIndex, querySlot_);
 
+#if UNDERSET_NATIVE_BENCHMARK
     // Task 0.1: raw absolute ticks for cross-pass whole-frame GPU span computation.
     lastStartTicks_ = queryManager_->GetRawStartTicks(frameIndex, querySlot_);
     lastEndTicks_ = queryManager_->GetRawEndTicks(frameIndex, querySlot_);
+#endif
 
+#if UNDERSET_NATIVE_BENCHMARK
     // Calculate Mrays/sec
     uint64_t elapsedNs = queryManager_->GetElapsedNs(frameIndex, querySlot_);
     if (elapsedNs > 0 && width > 0 && height > 0) {
@@ -116,6 +133,7 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
             Info("[GPU Perf] " + summary);
         }
     }
+#endif
 }
 
 // ============================================================================

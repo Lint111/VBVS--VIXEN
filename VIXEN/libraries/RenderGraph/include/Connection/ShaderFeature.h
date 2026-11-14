@@ -40,6 +40,17 @@ inline constexpr ShaderFeature kFeatureGpuTraceHooks{"VIXEN_GPU_TRACE_HOOKS"};
 // E1-T1 stencil slice 0: image-inert composition histograms in the existing
 // TraceBufferHeader terminal-pixel ring. Env-gated; no capability requirement.
 inline constexpr ShaderFeature kFeatureCompositionCounters{"VIXEN_COMPOSITION_COUNTERS"};
+// fl-leafinstr1: measurement-only march variants for the search/march/shade time split.
+// Env-gated (VIXEN_LEAF_INSTR=search|march), default off, interface-invariant (no binding
+// change). Output is NOT pixel-valid: the variants early-return before the HitRecord write.
+inline constexpr ShaderFeature kFeatureLeafVariantSearch{"VIXEN_LEAF_VARIANT_SEARCH"};
+inline constexpr ShaderFeature kFeatureLeafVariantMarch{"VIXEN_LEAF_VARIANT_MARCH"};
+// cx-leafinstr2: capture-only per-ray leaf traversal histograms. This axis is
+// intentionally separate from the non-pixel-valid search/march timing modes.
+inline constexpr ShaderFeature kFeatureLeafInstrCounters{"VIXEN_LEAF_INSTR_COUNTERS"};
+// cx-leafinstr2 item 4: opt-in shader realtime-clock probes for the shadow wave
+// and shade pass, stored in the existing binding-4 diagnostic ring.
+inline constexpr ShaderFeature kFeatureLeafShaderClock{"VIXEN_LEAF_SHADER_CLOCK"};
 // E7-T1: materialize the primary ray's policy stencil in HitRecord._pad0[2]
 // bits 8..15 and preserve/read back that byte across both shadow writers.
 // Env-gated; no capability or descriptor-interface requirement.
@@ -63,6 +74,9 @@ inline constexpr ShaderFeature kFeatureB2ProxyPrepass{"VIXEN_B2_PROXY_PREPASS"};
 // The analytic gradient remains the twin when this requirement-free feature
 // is absent or a shell config has no baked-normal descriptor.
 inline constexpr ShaderFeature kFeatureShellNormals{"VIXEN_SHELL_NORMALS"};
+// Procedural recipe surface-shell chunks: binding 44 plus hardware/software
+// candidate culling. Disabled by default to preserve the legacy image path.
+inline constexpr ShaderFeature kFeatureRecipeChunkCull{"VIXEN_RECIPE_CHUNK_CULL"};
 // Wavefront W2a: ShadowVisibilityWave's SECOND dispatch — the post-gather
 // reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined
 // reservoir). Same program, own compiled variant; no device requirement.

@@ -214,19 +214,19 @@ struct VolumeTransform : public Transform {
 struct AABB {
     static constexpr const char* Name = "aabb";
 
-    glm::vec3 min = glm::vec3(FLT_MAX);
-    glm::vec3 max = glm::vec3(-FLT_MAX);
+    glm::vec3 minCorner = glm::vec3(FLT_MAX);
+    glm::vec3 maxCorner = glm::vec3(-FLT_MAX);
 
     bool isInitialized() const {
-        return min.x != FLT_MAX && glm::all(glm::lessThanEqual(min, max));
+        return minCorner.x != FLT_MAX && glm::all(glm::lessThanEqual(minCorner, maxCorner));
     }
 
     glm::vec3 getSize() const {
-        return isInitialized() ? max - min : glm::vec3(0.0f);
+        return isInitialized() ? maxCorner - minCorner : glm::vec3(0.0f);
     }
 
     glm::vec3 getCenter() const {
-        return isInitialized() ? (min + max) * 0.5f : glm::vec3(0.0f);
+        return isInitialized() ? (minCorner + maxCorner) * 0.5f : glm::vec3(0.0f);
     }
 
     bool contains(const glm::vec3& point) const {
@@ -234,18 +234,18 @@ struct AABB {
             return false;
         }
 
-        return glm::all(glm::lessThanEqual(min, point)) && glm::all(glm::lessThanEqual(point, max));
+        return glm::all(glm::lessThanEqual(minCorner, point)) && glm::all(glm::lessThanEqual(point, maxCorner));
     }
 
     void expandToContain(const glm::vec3& point) {
         if(!isInitialized()) {
-            min = point;
-            max = point;
+            minCorner = point;
+            maxCorner = point;
             return;
         }
 
-        min = (glm::min)(min, point);
-        max = (glm::max)(max, point);
+        minCorner = (glm::min)(minCorner, point);
+        maxCorner = (glm::max)(maxCorner, point);
     
     }
 
@@ -253,8 +253,8 @@ struct AABB {
         if(!other.isInitialized()) {
             return;
         }
-        expandToContain(other.min);
-        expandToContain(other.max);
+        expandToContain(other.minCorner);
+        expandToContain(other.maxCorner);
     }
 
     bool contains(const AABB& other) {
@@ -262,7 +262,8 @@ struct AABB {
             return false;
         }
 
-        return glm::all(glm::lessThanEqual(min, other.min)) && glm::all(glm::lessThanEqual(other.max, max));
+        return glm::all(glm::lessThanEqual(minCorner, other.minCorner)) &&
+               glm::all(glm::lessThanEqual(other.maxCorner, maxCorner));
 
     }
 };
@@ -425,8 +426,8 @@ struct VolumeGrid {
     AABB toWorldAABB() const {
         AABB aabb;
         if (isInitialized()) {
-            aabb.min = glm::vec3(gridMin);
-            aabb.max = glm::vec3(gridMax);
+            aabb.minCorner = glm::vec3(gridMin);
+            aabb.maxCorner = glm::vec3(gridMax);
         }
         return aabb;
     }
@@ -435,8 +436,8 @@ struct VolumeGrid {
     static VolumeGrid fromWorldAABB(const AABB& aabb) {
         VolumeGrid grid;
         if (aabb.isInitialized()) {
-            grid.gridMin = quantize(aabb.min);
-            grid.gridMax = quantize(aabb.max) + glm::ivec3(1);  // Exclusive max
+            grid.gridMin = quantize(aabb.minCorner);
+            grid.gridMax = quantize(aabb.maxCorner) + glm::ivec3(1);  // Exclusive max
         }
         return grid;
     }

@@ -33,6 +33,28 @@
 // Defined once in TraceWorld.glsl, included after this file by SceneBindings.glsl.
 bool isCloserHit(float candidateT, uint candidateInstIdx, float bestT, uint bestInstIdx);
 
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+bool recipeChunkRayInterval(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax,
+                            float tMin, float tMax, out float entry, out float exit) {
+    float lo = tMin;
+    float hi = tMax;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (abs(rd[axis]) < 1e-8) {
+            if (ro[axis] < bmin[axis] || ro[axis] > bmax[axis]) return false;
+            continue;
+        }
+        float a = (bmin[axis] - ro[axis]) / rd[axis];
+        float b = (bmax[axis] - ro[axis]) / rd[axis];
+        lo = max(lo, min(a, b));
+        hi = min(hi, max(a, b));
+        if (hi < lo) return false;
+    }
+    entry = lo;
+    exit = hi;
+    return true;
+}
+#endif
+
 // #extension GL_EXT_ray_query moved to SceneBindings.glsl's file head (fix 5):
 // this file is #included ~400 lines into SceneBindings.glsl, well after other
 // includes/declarations have already emitted tokens into the translation unit
@@ -116,6 +138,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
     uint  bestInstIdx = 0xFFFFFFFFu;
     int   bestOctreeIdx = -1;
     ivec3 bestCell = ivec3(0);
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+    bool  bestProcedural = false;
+#endif
 
     // Same g_octreeIdx/g_brickArrayBase save/restore discipline as the prior
     // per-instance-loop version (fix 1): marchBrickSdfCell's internal
@@ -124,6 +149,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
     // before any sampling call.
     const int savedOctreeIdx      = g_octreeIdx;
     const int savedBrickArrayBase = g_brickArrayBase;
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+    uint recipeMarchMask[6] = uint[6](0u, 0u, 0u, 0u, 0u, 0u);
+#endif
 
     while (rayQueryProceedEXT(rq)) {
         // ROUND-6 blocker-2 localization probe: unconditional counter as the
@@ -136,6 +164,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         // (round-5's gate-reaching tally, called later at :248) so the two
         // numbers aren't conflated.
         incrRtLoopEntries();
+        incrLeafInstrCandidate();
         if (rayQueryGetIntersectionTypeEXT(rq, false) != gl_RayQueryCandidateIntersectionAABBEXT) {
             continue;
         }
@@ -146,9 +175,71 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         const uint ci = packedIndex & 0xFFu;
         const uint proxyBase = packedIndex >> 8u;
         const uint brickIdx = rayQueryGetIntersectionPrimitiveIndexEXT(rq, false);
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+        if (ci >= bodyInstances.length()) {
+            continue;
+        }
+        const BodyInstance candidateInst = bodyInstances[ci];
+        if (candidateInst.providerKind == 1u) {
+            if (proxyBase + brickIdx >= recipeChunkAabbs.length()) continue;
+            const RecipeChunkAabb chunk = recipeChunkAabbs[proxyBase + brickIdx];
+            if (chunk.recipeId != candidateInst.recipeId) continue;
+            const vec3 objOrigin = rayQueryGetIntersectionObjectRayOriginEXT(rq, false);
+            const vec3 objDir = rayQueryGetIntersectionObjectRayDirectionEXT(rq, false);
+            const float dirLen = length(objDir);
+            if (dirLen < 1e-12) continue;
+            const vec3 gridDirN = objDir / dirLen;
+            float chunkEntry; float chunkExit;
+            if (!recipeChunkRayInterval(objOrigin, gridDirN, chunk.minLocal, chunk.maxLocal,
+                                        0.0, bestT * dirLen, chunkEntry, chunkExit)) continue;
+            vec3 boundCenter; float boundRadius; float relaxation;
+            getRecipeBoundSphere(candidateInst.recipeId, boundCenter, boundRadius, relaxation);
+            float recipeParams[6];
+            for (int p = 0; p < 6; ++p) recipeParams[p] = candidateInst.recipeParams[p];
+            vec3 candidateNormal; float candidateT; uint candidateSteps;
+            if (ci < 192u) {
+                const uint recipeMarchWord = ci >> 5u;
+                const uint recipeMarchBit = 1u << (ci & 31u);
+                if ((recipeMarchMask[recipeMarchWord] & recipeMarchBit) == 0u) {
+                    recordRecipeMarch();
+                    recipeMarchMask[recipeMarchWord] |= recipeMarchBit;
+                }
+            } else {
+                recordRecipeMarch();
+            }
+            recordRecipeChunkMarch();
+            bool candidateHit = traceUberRecipeBody(candidateInst.recipeId, boundCenter, boundRadius, relaxation,
+                                    objOrigin, gridDirN, 1.0, 0.0, recipeParams,
+                                    chunkEntry, min(chunkExit, bestT * dirLen),
+                                    candidateNormal, candidateT, candidateSteps);
+            recordRecipeSteps(candidateSteps);
+            if (candidateHit) {
+                const float worldT = candidateT / dirLen;
+                if (isCloserHit(worldT, ci, bestT, bestInstIdx)) {
+                    bestT = worldT;
+                    bestInstIdx = ci;
+                    bestProcedural = true;
+                    // TraceWorld applies the winning instance tint after the ray-query
+                    // hit record is returned, just as it does for stored-SDF hits.
+                    // Returning the tint here would multiply procedural materials twice
+                    // only when recipe-chunk culling is enabled.
+                    hitColor = vec3(1.0);
+                    hitNormal = instanceLocalToWorldNormal(ci, candidateNormal);
+                    hitRoughness = 0.5;
+                    hitEmission = candidateInst.recipeParams[3];
+                    rayQueryGenerateIntersectionEXT(rq, worldT);
+                }
+            }
+            continue;
+        }
+#else
         if (ci >= bodyInstances.length() || proxyBase + brickIdx >= rtQueryProxyAabbs.length()) {
             continue;
         }
+#endif
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+        if (proxyBase + brickIdx >= rtQueryProxyAabbs.length()) continue;
+#endif
         const int  oi       = int(bodyInstances[ci].octreeIndex);
         if (oi < 0 || uint(oi) >= configs.length()) continue;
         // ROUND-17 probe: octree-3-only loop-entry tally, taken as early as
@@ -315,6 +406,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 bestT = tCellEnter;
                 bestInstIdx = ci;
                 bestOctreeIdx = oi;
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+                bestProcedural = false;
+#endif
                 bestCell = cell;
                 hitNormal = -gridDirN;
 #ifdef VIXEN_COMPOSITION_COUNTERS
@@ -394,6 +488,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 bestT = tWorld;
                 bestInstIdx = ci;
                 bestOctreeIdx = oi;
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+                bestProcedural = false;
+#endif
                 bestCell = cell;
                 hitNormal = nrm;
                 g_lastHitWasFarField = false;  // round-7 blocker-1 probe #3: a closer
@@ -411,7 +508,11 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         }
     }
 
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+    if (bestOctreeIdx < 0 && !bestProcedural) {
+#else
     if (bestOctreeIdx < 0) {
+#endif
         g_octreeIdx      = savedOctreeIdx;
         g_brickArrayBase = savedBrickArrayBase;
         debugInfo.exitCode = DEBUG_EXIT_NONE;
@@ -420,6 +521,14 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
 
     hitT              = bestT;
     hitInstanceIdx    = bestInstIdx;
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+    if (bestProcedural) {
+        hitBrickIndex = 0u;
+        hitVoxelLinearIdx = 0u;
+        debugInfo.hitFlag = 1u;
+        return true;
+    }
+#endif
     // The proxy primitive identifies a compact candidate, while the shared
     // compact grid lookup remains the authoritative cell -> shell-slot map.
     // Keep this final addressing identical to the DDA twin.
@@ -458,6 +567,9 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
 
     const int savedOctreeIdx      = g_octreeIdx;
     const int savedBrickArrayBase = g_brickArrayBase;
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+    uint recipeMarchMask[6] = uint[6](0u, 0u, 0u, 0u, 0u, 0u);
+#endif
 
     while (rayQueryProceedEXT(rq)) {
         if (rayQueryGetIntersectionTypeEXT(rq, false) != gl_RayQueryCandidateIntersectionAABBEXT) {
@@ -467,9 +579,16 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
         const uint ci = packedIndex & 0xFFu;
         const uint proxyBase = packedIndex >> 8u;
         const uint brickIdx = rayQueryGetIntersectionPrimitiveIndexEXT(rq, false);
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+        if (ci >= bodyInstances.length()) {
+            continue;
+        }
+        const BodyInstance candidateInst = bodyInstances[ci];
+#else
         if (ci >= bodyInstances.length() || proxyBase + brickIdx >= rtQueryProxyAabbs.length()) {
             continue;
         }
+#endif
         if (skipPointLightSource) {
             vec3 sourceOrigin = instanceLocalToWorldPoint(ci, vec3(0.0));
             vec3 sourceCenter = instanceLocalToWorldPoint(ci, vec3(0.5));
@@ -479,6 +598,55 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
                 continue;
             }
         }
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+        if (candidateInst.providerKind == 1u) {
+            if (proxyBase + brickIdx >= recipeChunkAabbs.length()) continue;
+            const RecipeChunkAabb chunk = recipeChunkAabbs[proxyBase + brickIdx];
+            if (chunk.recipeId != candidateInst.recipeId) continue;
+            const vec3 objOrigin = rayQueryGetIntersectionObjectRayOriginEXT(rq, false);
+            const vec3 objDir = rayQueryGetIntersectionObjectRayDirectionEXT(rq, false);
+            const float dirLen = length(objDir);
+            if (dirLen < 1e-12) continue;
+            const vec3 gridDirN = objDir / dirLen;
+            float chunkEntry; float chunkExit;
+            if (!recipeChunkRayInterval(objOrigin, gridDirN, chunk.minLocal, chunk.maxLocal,
+                                        max(tmin, 0.0) * dirLen, tmax * dirLen,
+                                        chunkEntry, chunkExit)) continue;
+            vec3 boundCenter; float boundRadius; float relaxation;
+            getRecipeBoundSphere(candidateInst.recipeId, boundCenter, boundRadius, relaxation);
+            float recipeParams[6];
+            for (int p = 0; p < 6; ++p) recipeParams[p] = candidateInst.recipeParams[p];
+            vec3 candidateNormal; float candidateT; uint candidateSteps;
+            if (ci < 192u) {
+                const uint recipeMarchWord = ci >> 5u;
+                const uint recipeMarchBit = 1u << (ci & 31u);
+                if ((recipeMarchMask[recipeMarchWord] & recipeMarchBit) == 0u) {
+                    recordRecipeMarch();
+                    recipeMarchMask[recipeMarchWord] |= recipeMarchBit;
+                }
+            } else {
+                recordRecipeMarch();
+            }
+            recordRecipeChunkMarch();
+            g_recipeProvenStepOnly = true;
+            bool recipeHit = traceUberRecipeBody(candidateInst.recipeId, boundCenter, boundRadius, relaxation,
+                                                 objOrigin, gridDirN, 1.0, VIXEN_QUERY_RAY_SIZE_COEF,
+                                                 recipeParams, chunkEntry, min(chunkExit, tmax * dirLen),
+                                                 candidateNormal, candidateT, candidateSteps);
+            recordRecipeSteps(candidateSteps);
+            g_recipeProvenStepOnly = false;
+            const float worldT = candidateT / dirLen;
+            if (recipeHit && worldT >= tmin && worldT <= tmax) {
+                g_octreeIdx = savedOctreeIdx;
+                g_brickArrayBase = savedBrickArrayBase;
+                return true;
+            }
+            continue;
+        }
+#endif
+#if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
+        if (proxyBase + brickIdx >= rtQueryProxyAabbs.length()) continue;
+#endif
         const int  oi       = int(bodyInstances[ci].octreeIndex);
         if (oi < 0 || uint(oi) >= configs.length()) continue;
 

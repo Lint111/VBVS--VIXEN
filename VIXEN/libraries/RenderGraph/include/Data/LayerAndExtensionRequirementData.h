@@ -1,6 +1,8 @@
 #pragma once
 
-#include "Headers.h"
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace Vixen::RenderGraph {
 

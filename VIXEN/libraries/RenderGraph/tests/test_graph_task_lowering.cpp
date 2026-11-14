@@ -1,5 +1,6 @@
 #include "ScopedEnvironment.h"
 #include "Nodes/Common/GpuChunkCost.h"
+#include "Nodes/Common/GpuDeviceClass.h"
 #include <gtest/gtest.h>
 
 #include "Core/GraphTaskLowering.h"
@@ -378,6 +379,7 @@ uint64_t fakeCounter = 0;
 int fakeWaitCalls = 0;
 int failFakeWait = -1;
 std::vector<uint64_t> fakeWaitedValues;
+int lateWaitCalls = 0;
 VKAPI_ATTR VkResult VKAPI_CALL CaptureNativeSubmit(
     VkQueue, uint32_t count, const VkSubmitInfo2* infos, VkFence fence) {
     EXPECT_EQ(count, 1u);
@@ -402,11 +404,17 @@ VkResult FakeWait(VkDevice, VkSemaphore, uint64_t value, uint64_t) {
     fakeCounter = std::max(fakeCounter, value);
     return VK_SUCCESS;
 }
+VkResult LateWait(VkDevice, VkSemaphore, uint64_t, uint64_t) {
+    ++lateWaitCalls;
+    if (lateWaitCalls >= 2) fakeCounter = 1;
+    return VK_SUCCESS;
+}
 QueueTimeline FakeTimeline() {
     nativeSubmitCalls.clear();
     failNativeSubmit = -1;
     fakeCounter = 0;
     fakeWaitCalls = 0;
+    lateWaitCalls = 0;
     failFakeWait = -1;
     fakeWaitedValues.clear();
     QueueTimeline timeline;
@@ -507,6 +515,183 @@ TEST(SubmitRecord, ReachedOldestBatchIsPolledNotWaited) {
     EXPECT_EQ(fakeWaitCalls, 0);
     EXPECT_EQ(timeline.blockingWaits, 0u);
     EXPECT_EQ(timeline.outstanding.size(), 2u);
+}
+
+TEST(QueueTimeline, NoFillerKeepsOneBoundedWaitPerCapHit) {
+    QueueTimeline timeline = FakeTimeline();
+    timeline.Issued(1, 10'000'000, 10'000'000);
+    timeline.Issued(2, 10'000'000, 10'000'000);
+
+    ASSERT_EQ(timeline.ReserveBatch(2), VK_SUCCESS);
+    EXPECT_EQ(fakeWaitCalls, 1);
+    EXPECT_EQ(timeline.blockingWaits, 1u);
+}
+
+// Fill command `key`'s history so its window is no longer warm-up. Raw predictions equal the
+// actual waits, so the derived bounds do not shrink the window.
+void WarmMargin(QueueTimeline& timeline, uint64_t key, uint64_t waitNs = 100'000'000) {
+    for (std::size_t i = 0; i < QueueTimeline::kPredictionWarmup; ++i)
+        timeline.ObservePredictionError(key, false, waitNs, waitNs);
+}
+
+TEST(QueueTimeline, FillerReceivesCostMinusDerivedMarginAndClosesOnReach) {
+    QueueTimeline timeline = FakeTimeline();
+    WarmMargin(timeline, 1);
+    timeline.Issued(1, 100'000'000, 70'000'000);
+    timeline.Issued(2, 100'000'000, 70'000'000);
+    FrameWaitLedger ledger;
+    timeline.frameLedger = &ledger;
+    uint64_t predicted = 0;
+    std::stop_token closed;
+    int fillerCalls = 0;
+    IdleWindowFiller filler = [&](const IdleWindow& window) {
+        ++fillerCalls;
+        EXPECT_EQ(window.kind, IdleWindow::Kind::GpuRetire);
+        EXPECT_EQ(window.waitValue, 1u);
+        predicted = window.predictedNs;
+        closed = window.closed;
+        fakeCounter = 1;
+    };
+    timeline.idleWindowFiller = &filler;
+
+    ASSERT_EQ(timeline.ReserveBatch(2), VK_SUCCESS);
+    EXPECT_EQ(fillerCalls, 1);
+    EXPECT_GT(predicted, 0u);
+    EXPECT_LE(predicted, 70'000'000u);
+    EXPECT_TRUE(closed.stop_requested());
+    ASSERT_EQ(ledger.gpuRetireWaitCount, 1u);
+    ASSERT_EQ(ledger.waitSampleCount, 1u);
+    EXPECT_EQ(ledger.waits[0].kind, IdleWindow::Kind::GpuRetire);
+}
+
+TEST(FrameCommandTimingLedger, RotatesRowsAndRejectsReshapedCommands) {
+    FrameCommandTimingLedger ledger;
+    ledger.Record(0, 0, 49, 1'200'000);
+    EXPECT_EQ(ledger.Last(0, 0, 49), 1'200'000u);
+    EXPECT_EQ(ledger.Last(0, 0, 64), 0u);
+    ledger.Begin(0);
+    EXPECT_EQ(ledger.Last(0, 0, 49), 0u);
+    ledger.Record(0, 0, 49, 1'300'000);
+    ledger.Record(1, 0, 49, 2'000'000);
+    EXPECT_EQ(ledger.Last(0, 0, 49), 1'300'000u);
+    EXPECT_EQ(ledger.Last(1, 0, 49), 2'000'000u);
+}
+
+TEST(FrameWaitLedger, ReportsErrorViolationsUnusedAndUtilisationPerWindow) {
+    FrameWaitLedger ledger;
+    ledger.RecordWait(IdleWindow::Kind::GpuRetire, 100, 125, 7);  // safe: 25 unused
+    ledger.RecordWait(IdleWindow::Kind::GpuRetire, 100, 75, 8);   // violation: window outlives GPU by 25
+    EXPECT_DOUBLE_EQ(ledger.ErrorP50Relative(), 0.25);
+    EXPECT_DOUBLE_EQ(ledger.ErrorP95Relative(), 0.25);
+    EXPECT_DOUBLE_EQ(ledger.ErrorP50Ms(), 0.000025);
+    EXPECT_EQ(ledger.violationCount, 1u);
+    EXPECT_EQ(ledger.violationNs, 25u);
+    EXPECT_EQ(ledger.unusedNs, 25u);
+    EXPECT_EQ(ledger.usedNs, 175u);
+    EXPECT_DOUBLE_EQ(ledger.Utilisation(), 175.0 / 200.0);
+    EXPECT_EQ(ledger.waits[0].errorNs, 25);
+    EXPECT_FALSE(ledger.waits[0].violation);
+    EXPECT_EQ(ledger.waits[1].errorNs, -25);
+    EXPECT_TRUE(ledger.waits[1].violation);
+    EXPECT_EQ(ledger.waits[1].commandKey, 8u);
+}
+
+TEST(QueueTimeline, WindowIsWarmUpThenBoundedByWorstEarlyRetireAndShrink) {
+    QueueTimeline timeline = FakeTimeline();
+    const auto now = QueueTimeline::Clock::now();
+    timeline.Issued(1, 100, 100, now + std::chrono::seconds(1));
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);  // no history: no window
+    for (std::size_t i = 0; i + 1 < QueueTimeline::kPredictionWarmup; ++i)
+        timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);  // warm-up not yet complete
+    timeline.ObservePredictionError(1, true, 1'000'000'000, 1);  // cold: ignored
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    const uint64_t raw = timeline.PredictRetireRawNs(1, now);
+    // Exact history: nothing to cover beyond the last observed wait (1 s) bounding the raw value.
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 1'000'000'000u);
+
+    // One window retired at 80% of its prediction: q ranges over [0.8, 1], so the window ends one
+    // observed range (0.2) times kPredictionRangeFactor below the lowest q: raw * (0.8 - 2.4 * 0.2) = 0.32 raw.
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 800'000'000);
+    const uint64_t covered = timeline.PredictRetireNs(1, now);
+    EXPECT_LE(covered, static_cast<uint64_t>(0.32 * static_cast<double>(raw)) + 1);
+    EXPECT_GT(covered, 0u);
+
+    // The large error leaves the ring and the window recovers (decay).
+    for (std::size_t i = 0; i < QueueTimeline::kPredictionHistory; ++i)
+        timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 1'000'000'000u);
+
+    // A falling wait (4 -> 1 s) bounds the window by the last wait times the shrink ratio.
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 250'000'000);
+    EXPECT_LE(timeline.PredictRetireNs(1, now), 62'500'001u);
+    timeline.ResetPredictionHistory();
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);
+}
+
+TEST(QueueTimeline, SpreadWidensTheMarginWhetherTheOutlierIsEarlyOrLate) {
+    QueueTimeline timeline = FakeTimeline();
+    const auto now = QueueTimeline::Clock::now();
+    timeline.Issued(1, 100, 100, now + std::chrono::seconds(1));
+    for (std::size_t i = 0; i < QueueTimeline::kPredictionWarmup; ++i)
+        timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    const uint64_t steady = timeline.PredictRetireNs(1, now);
+    EXPECT_GT(steady, 0u);
+    // A wait three times the raw prediction (q = 3) never retired early, but the spread of q is 2:
+    // the factor times that range below the lowest q (1) is negative, so no window opens until the outlier leaves.
+    timeline.ObservePredictionError(1, false, 1'000'000'000, 3'000'000'000);
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), 0u);
+    for (std::size_t i = 0; i < QueueTimeline::kPredictionHistory; ++i)
+        timeline.ObservePredictionError(1, false, 1'000'000'000, 1'000'000'000);
+    EXPECT_EQ(timeline.PredictRetireNs(1, now), steady);
+}
+
+TEST(QueueTimeline, EarlyGpuReturnsAfterFirstPollWithoutAnotherWait) {
+    QueueTimeline timeline = FakeTimeline();
+    WarmMargin(timeline, 1);
+    timeline.Issued(1, 10'000'000, 10'000'000);
+    timeline.Issued(2, 10'000'000, 10'000'000);
+    int fillerCalls = 0;
+    IdleWindowFiller filler = [&](const IdleWindow&) {
+        ++fillerCalls;
+        fakeCounter = 1;
+    };
+    timeline.idleWindowFiller = &filler;
+
+    ASSERT_EQ(timeline.ReserveBatch(2), VK_SUCCESS);
+    EXPECT_EQ(fillerCalls, 1);
+    EXPECT_EQ(fakeWaitCalls, 0);
+}
+
+TEST(QueueTimeline, LateGpuGetsARePredictedRemainder) {
+    QueueTimeline timeline = FakeTimeline();
+    WarmMargin(timeline, 1);
+    timeline.waitFn = LateWait;
+    timeline.Issued(1, 100'000'000, 100'000'000);
+    timeline.Issued(2, 100'000'000, 100'000'000);
+    std::vector<uint64_t> predictions;
+    IdleWindowFiller filler = [&](const IdleWindow& window) {
+        predictions.push_back(window.predictedNs);
+    };
+    timeline.idleWindowFiller = &filler;
+
+    ASSERT_EQ(timeline.ReserveBatch(2), VK_SUCCESS);
+    ASSERT_EQ(predictions.size(), 2u);
+    EXPECT_LE(predictions[1], predictions[0]);
+    EXPECT_EQ(lateWaitCalls, 2);
+}
+
+TEST(QueueTimeline, PredictorChainsTwoOutstandingBatches) {
+    QueueTimeline timeline = FakeTimeline();
+    const auto now = QueueTimeline::Clock::now();
+    timeline.Issued(1, 100, 100, now + std::chrono::seconds(1));
+    timeline.Issued(2, 200, 200, now + std::chrono::seconds(1));
+
+    const uint64_t predicted = timeline.PredictRetireRawNs(2, now);
+    EXPECT_GE(predicted, 1'000'000'299u);
+    EXPECT_LE(predicted, 1'000'000'301u);
 }
 
 TEST(SubmitRecord, ReleaseRunsOnlyOnceItsValueIsReached) {
@@ -634,6 +819,13 @@ TEST(GpuChunkCost, ClippedLatencyDoesNotAmplifyThroughputCost) {
     EXPECT_GE(cost.Estimate(1), 880'000u);
     EXPECT_GE(cost.Estimate(49), 1'320'000u);
 }
+
+TEST(GpuChunkCost, MeanEstimateKeepsExpectedTimeUnbiased) {
+    GpuChunkCost cost;
+    cost.Observe(100, 100, 1'000'000);
+    EXPECT_EQ(cost.MeanEstimate(100), 1'000'000u);
+    EXPECT_EQ(cost.Estimate(100), 1'100'000u);
+}
 TEST(GpuChunkCost, LargerLaunchRetainsEveryEarlierSampleBound) {
     GpuChunkCost cost;
     cost.Observe(49, 49, 20'000);
@@ -676,9 +868,43 @@ TEST(GpuChunkCost, SmallerFullTilesUpdateThroughputAfterLargerCalibration) {
     cost.Observe(64, 64, 1'500'000);
     cost.Observe(49, 49, 4'000'000);
     EXPECT_GE(cost.Estimate(49), 4'400'000u);
-    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+    // Tiles are sized from the mean of the two samples (5x5 projects ~1.4 ms), not the slower one (4x4).
+    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 5u);
     cost.Observe(16, 16, 1'000'000);
-    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 5u);
+}
+
+TEST(GpuChunkCost, MeasuredLaunchLatencyRaisesAnUnattainableBudgetOnly) {
+    // Dozen: cost(w) = 5.4 ms + 0.32 ms * w. A 49-workgroup tile costs 21 ms against a 2 ms budget, so
+    // splitting to the cold launch pays 5.4 ms of latency per command for nothing.
+    GpuChunkCost dozen;
+    dozen.Observe(49, 49, 21'000'000);
+    EXPECT_EQ(dozen.LaunchLatencyNs(), 0.0);
+    EXPECT_EQ(dozen.Edge(2'000'000, 63, 7), 14u);                 // probe a second scale
+    dozen.ObserveScale(49, 21'000'000);
+    dozen.ObserveScale(196, 68'000'000);                          // 5.4 + 0.32 * 196 ~= 68 ms
+    EXPECT_NEAR(dozen.LaunchLatencyNs(), 5.4e6, 0.6e6);
+    EXPECT_GT(dozen.SubmissionBudgetNs(2'000'000), 80'000'000u);
+    EXPECT_LE(dozen.SubmissionBudgetNs(2'000'000), 200'000'000u);
+    dozen.Observe(196, 196, 68'000'000);
+    EXPECT_GT(dozen.Edge(2'000'000, 63, 7), 9u);
+    // Native: 30 us of latency is nowhere near the budget; nothing moves.
+    GpuChunkCost native;
+    native.Observe(49, 49, 900'000);
+    native.ObserveScale(49, 900'000);
+    native.ObserveScale(196, 3'520'000);
+    EXPECT_LT(native.LaunchLatencyNs(), 100'000.0);
+    EXPECT_EQ(native.SubmissionBudgetNs(2'000'000), 2'000'000u);
+    // A stalled measurement cannot request an unbounded submission.
+    GpuChunkCost stalled;
+    stalled.ObserveScale(49, 1.0e9);
+    stalled.ObserveScale(196, 1.5e9);
+    EXPECT_EQ(stalled.SubmissionBudgetNs(2'000'000), 200'000'000u);
+    // Two scales closer than 2x are not enough to separate latency from throughput.
+    GpuChunkCost close;
+    close.ObserveScale(49, 20e6);
+    close.ObserveScale(64, 25e6);
+    EXPECT_EQ(close.LaunchLatencyNs(), 0.0);
 }
 
 TEST(GpuChunkCost, ImportedEnvelopeStartsWarmAndRejectsEmptyState) {
@@ -705,7 +931,8 @@ TEST(GpuChunkCost, EdgeNeverSubdividesBelowTheColdLaunch) {
     EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
     cost.Observe(49, 49, 1'000'000);
     cost.Observe(49, 49, 50'000'000);
-    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
+    // Over budget at the cold launch with no latency measured: one probe scale up, never below the launch.
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 14u);
     EXPECT_EQ(cost.Edge(2'000'000, 5, 7), 5u);
     EXPECT_GE(cost.Estimate(49), 55'000'000u);
 }
@@ -726,4 +953,83 @@ TEST(QueueOwnerFixture, DrainsPublishedRequestIntoOwnerRecord) {
     EXPECT_EQ(owner.Records().front().device, &device);
     EXPECT_EQ(owner.Records().front().completion, completion);
     EXPECT_EQ(owner.Records().front().commandBuffers.size(), 0u);
+}
+
+TEST(GpuChunkCost, NativeUntilesWhenWholePassFitsAndUsesMeanNotMax) {
+    // look-dev 63x63: one dense 7x7 tile (1.69 ms) among 0.6 ms tiles pinned the edge at 7.
+    constexpr uint64_t whole = 63 * 63;
+    GpuChunkCost cost;
+    cost.Observe(49, 49, 1'690'000);
+    for (int i = 0; i < 80; ++i) cost.Observe(49, 49, 550'000);
+    // One rule for both device classes: the tile is sized from the mean cost, so a translated device
+    // (no WholePass) grows past the cold floor but still tiles.
+    const uint32_t translatedEdge = cost.Edge(2'000'000, 63, 7);
+    EXPECT_GT(translatedEdge, 7u);
+    EXPECT_LT(translatedEdge, 63u);
+    const uint64_t window = NativeWholePassWindowNs(2'000'000, 16'666'666);
+    EXPECT_GE(window, 239'000'000u);
+    EXPECT_LE(window, 241'000'000u);
+    const GpuChunkCost::WholePass fits{whole, window};
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7, &fits), 63u);  // one dispatch
+    const GpuChunkCost::WholePass tooLong{whole, 20'000'000};  // projected ~45 ms
+    const uint32_t grown = cost.Edge(2'000'000, 63, 7, &tooLong);
+    EXPECT_GT(grown, 7u);  // genuine long pass still tiles, by the mean cost
+    EXPECT_LT(grown, 63u);
+}
+
+TEST(GpuChunkCost, TranslatedAndOverWindowNativeShareLatencyDerivedTiling) {
+    // Dozen-like: 5.4 ms launch latency + 0.32 ms/workgroup. Both classes raise the budget from the
+    // measured latency; only the native class with a fitting window collapses to one dispatch.
+    const auto dozen = [] {
+        GpuChunkCost cost;
+        cost.Observe(49, 49, 21'000'000);
+        cost.ObserveScale(49, 21'000'000);
+        cost.ObserveScale(196, 68'000'000);
+        cost.Observe(196, 196, 68'000'000);
+        return cost;
+    };
+    const GpuChunkCost translated = dozen();
+    const uint32_t translatedEdge = translated.Edge(2'000'000, 63, 7);
+    EXPECT_GT(translatedEdge, 9u);
+    EXPECT_LT(translatedEdge, 63u);  // still tiles
+    const GpuChunkCost::WholePass tooLong{3969, 240'000'000};  // ~1.3 s projected
+    EXPECT_EQ(translated.Edge(2'000'000, 63, 7, &tooLong), translatedEdge);  // same sizing on a long native pass
+    const GpuChunkCost::WholePass fits{3969, 2'000'000'000};
+    EXPECT_EQ(translated.Edge(2'000'000, 63, 7, &fits), 63u);
+}
+
+TEST(GpuChunkCost, ColdFrameSeedFromAnotherExtentUntilesAtFirstFrame) {
+    // A known device at a new resolution: the envelope learned at 63x63 seeds 135x240 so the first
+    // frame (before any ring readback) is already one dispatch.
+    GpuChunkCost learned;
+    learned.Observe(3969, 3969, 12'000'000);
+    GpuChunkCost seeded;
+    seeded.Import(learned.AnchorUnits(), learned.UnitNs(), learned.FixedNs());
+    const GpuChunkCost::WholePass window{135ull * 240, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    EXPECT_EQ(seeded.Edge(2'000'000, 240, 7, &window), 240u);
+    GpuChunkCost cold;
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window), 7u);
+}
+
+TEST(GpuChunkCost, PersistedMeanLetsAKnownDeviceUntileFromFrameOne) {
+    // The previous run ended tiled: one dense tile set a 77 us/unit max, but tiles averaged 3 us/unit.
+    // Persisting the mean means the next start projects the whole pass from it.
+    const GpuChunkCost::WholePass window{14400, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    GpuChunkCost maxOnly;
+    maxOnly.Import(14400, 77'000.0, 770'000.0);
+    EXPECT_LT(maxOnly.Edge(2'000'000, 160, 7, &window), 160u);
+    GpuChunkCost withMean;
+    withMean.Import(14400, 77'000.0, 770'000.0, 3'000.0);
+    EXPECT_EQ(withMean.Edge(2'000'000, 160, 7, &window), 160u);
+    EXPECT_EQ(withMean.MeanUnitNs(), 3'000.0);
+}
+
+TEST(GpuChunkCost, DeviceClassDecidesWhichDevicesUntile) {
+    EXPECT_TRUE(GpuDeviceClassIsNative("integrated"));
+    EXPECT_TRUE(GpuDeviceClassIsNative("discrete"));
+    EXPECT_FALSE(GpuDeviceClassIsNative("translated"));
+    EXPECT_FALSE(GpuDeviceClassIsNative("cpu"));
+    GpuChunkCost cold;
+    const GpuChunkCost::WholePass any{3969, 240'000'000};
+    EXPECT_EQ(cold.Edge(2'000'000, 63, 7, &any), 7u);  // uncalibrated stays at the cold floor
 }

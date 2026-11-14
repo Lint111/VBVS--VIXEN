@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include "ShaderCompiler.h"
+#include "RuntimeCachePaths.h"
+#include "ScopedEnvironment.h"
 #include <filesystem>
 #include <fstream>
 
@@ -9,7 +11,13 @@ using namespace ShaderManagement;
 class ShaderCompilerTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testDir = std::filesystem::temp_directory_path() / "shader_compiler_test";
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        const auto testName = info != nullptr ? info->name() : "unknown";
+        // CTest runs these cases in separate processes. A fixed directory lets a parallel case
+        // remove files while another case is compiling, which turns a cache test into a flaky
+        // missing-include or pipeline-validation failure.
+        testDir = std::filesystem::temp_directory_path() /
+                  ("shader_compiler_test_" + std::to_string(Vixen::CurrentProcessId()) + "_" + testName);
         std::filesystem::create_directories(testDir);
     }
 
@@ -323,21 +331,12 @@ TEST_F(ShaderCompilerTest, CompileCache_SecondCompileIsServedFromCache) {
 
 TEST_F(ShaderCompilerTest, DumpDir_WritesGlslAndSpirvForFreshAndCachedCompiles) {
     const std::filesystem::path dumpDir = testDir / "dump";
-#ifdef _WIN32
-    _putenv_s("VIXEN_SHADER_DUMP_DIR", dumpDir.string().c_str());
-#else
-    setenv("VIXEN_SHADER_DUMP_DIR", dumpDir.string().c_str(), 1);
-#endif
+    Vixen::Core::Env::ScopedEnvironment environment("VIXEN_SHADER_DUMP_DIR", dumpDir.string().c_str());
     ShaderCacheManager cache([&] { ShaderCacheConfig c; c.cacheDirectory = testDir / "spirv"; return c; }());
     ShaderCompiler compiler;
     compiler.SetCache(&cache);
     auto fresh = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
     auto cached = compiler.Compile(ShaderStage::Compute, kCacheComputeSource);
-#ifdef _WIN32
-    _putenv_s("VIXEN_SHADER_DUMP_DIR", "");
-#else
-    unsetenv("VIXEN_SHADER_DUMP_DIR");
-#endif
     ASSERT_TRUE(fresh.success) << fresh.errorLog;
     EXPECT_TRUE(cached.fromCache);
 

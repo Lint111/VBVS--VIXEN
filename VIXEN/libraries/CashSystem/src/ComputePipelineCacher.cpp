@@ -219,8 +219,10 @@ void ComputePipelineCacher::CreateComputePipeline(
 
     const VkPipelineCache cacheToUse = SharedPipelineCache();
 
+#if UNDERSET_NATIVE_BENCHMARK
     const bool timePipeline = std::getenv("VIXEN_PHASE_TIMING") != nullptr;
     const auto createStart = std::chrono::steady_clock::now();
+#endif
     VkResult result = vkCreateComputePipelines(
         m_device->device,
         cacheToUse,
@@ -229,12 +231,14 @@ void ComputePipelineCacher::CreateComputePipeline(
         nullptr,
         &wrapper.pipeline
     );
+#if UNDERSET_NATIVE_BENCHMARK
     if (timePipeline) {
         std::fprintf(stderr, "[PHASE] stage=vkCreateComputePipelines shader=%s ms=%.3f warm_cache=%d\n",
             ci.shaderKey.c_str(),
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - createStart).count(),
             m_warmCacheLoaded.load(std::memory_order_acquire) ? 1 : 0);
     }
+#endif
 
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputePipelineCacher::CreateComputePipeline] Failed to create compute pipeline: " + std::to_string(result));

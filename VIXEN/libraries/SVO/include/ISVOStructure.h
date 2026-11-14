@@ -68,8 +68,8 @@ public:
      * For octrees this is a cube, but could be tighter (e.g., with contours).
      */
     struct VoxelBounds {
-        glm::vec3 min;
-        glm::vec3 max;
+        glm::vec3 minCorner;
+        glm::vec3 maxCorner;
         // Optional tighter representation (e.g., oriented slab from contour)
         std::optional<std::pair<glm::vec3, glm::vec3>> orientedBounds;
     };

@@ -1,4 +1,5 @@
 #pragma once
+#include <string_view>
 #include <variant>
 #include "VulkanDevice.h"
 
@@ -25,6 +26,20 @@ inline const char* GpuDeviceClassName(VkPhysicalDeviceType type, uint32_t driver
         case VK_PHYSICAL_DEVICE_TYPE_CPU:            return "cpu";
         default:                                     return "other";
     }
+}
+
+// Native devices (a real driver on real silicon) have a loss window set by the OS watchdog;
+// translated and CPU devices keep the per-submission budget.
+inline bool GpuDeviceClassIsNative(const std::string_view name) {
+    return name == "integrated" || name == "discrete";
+}
+
+// Longest projected single dispatch a native device may run untiled: the Windows watchdog
+// window (TDR, ~2 s, see GpuFault.h) scaled by the share of a frame one submission may take
+// (submission budget / frame budget). Defaults give 2 s * 2 ms / 16.67 ms = 240 ms.
+inline uint64_t NativeWholePassWindowNs(uint64_t submissionBudgetNs, uint64_t frameBudgetNs) {
+    constexpr double kWatchdogNs = 2.0e9;
+    return frameBudgetNs ? static_cast<uint64_t>(kWatchdogNs * double(submissionBudgetNs) / double(frameBudgetNs)) : 0;
 }
 
 inline const char* GpuDeviceClassName(const Vixen::Vulkan::Resources::VulkanDevice& device) {

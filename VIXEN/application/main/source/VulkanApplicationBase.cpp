@@ -1,5 +1,6 @@
 #include "VulkanApplicationBase.h"
 #include "VulkanGlobalNames.h"
+#include "FrameTrace.h"
 
 #include <array>
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <string>
 
 namespace {
+#if UNDERSET_NATIVE_BENCHMARK
 // Encapsulates the standalone app's rolling CPU frame-time instrumentation (relocated from
 // application/main/source/main.cpp so it isn't copy-pasted per entry point). Behavior-identical:
 // avg/p99/FPS summary every 120 frames + a per-frame OUTLIER line when a frame costs >3x the prior
@@ -52,6 +54,7 @@ private:
     std::chrono::steady_clock::time_point lastFrameStart_ = std::chrono::steady_clock::now();
     double lastWindowMedian_ = 0.0;
 };
+#endif
 }  // namespace
 
 VulkanApplicationBase::VulkanApplicationBase()
@@ -151,10 +154,26 @@ void VulkanApplicationBase::InitializeVulkanCore() {
 }
 
 TickStatus VulkanApplicationBase::Tick() {
-    PreTick();                 // host prologue (default no-op)
-    Update();                  // existing per-frame update (derived)
-    const bool ok = Render();  // existing per-frame render + device-loss policy (derived)
-    PostTick();                // host epilogue (default no-op)
+    ::Vixen::FrameTrace::SetFrame(frameCounter_);
+    VIXEN_FRAME_TRACE_BEGIN(tickTrace, "app", "tick");
+    {
+        VIXEN_FRAME_TRACE_SCOPE("app", "pre-tick");
+        PreTick();             // host prologue (default no-op)
+    }
+    {
+        VIXEN_FRAME_TRACE_SCOPE("app", "update");
+        Update();              // existing per-frame update (derived)
+    }
+    bool ok;
+    {
+        VIXEN_FRAME_TRACE_SCOPE("app", "render");
+        ok = Render();         // existing per-frame render + device-loss policy (derived)
+    }
+    {
+        VIXEN_FRAME_TRACE_SCOPE("app", "post-tick");
+        PostTick();            // host epilogue (default no-op)
+    }
+    VIXEN_FRAME_TRACE_END(tickTrace);
     ++frameCounter_;
 
     if (ok) {
@@ -185,11 +204,15 @@ int VulkanApplicationBase::Run(const RunOptions& opts) {
         // the limit too, matching the old main.cpp where the timer block ran unconditionally
         // before the exitAfterFrames check. A condition-gated while would skip recording on the
         // terminal tick, silently dropping the "frames 0-120" summary line on an exact-120 run.
+#if UNDERSET_NATIVE_BENCHMARK
         FrameTimer frameTimer;
+#endif
         TickStatus st;
         do {
             st = Tick();
+#if UNDERSET_NATIVE_BENCHMARK
             if (opts.enableFrameTimer) frameTimer.Record(frameCounter_, mainLogger.get());
+#endif
         } while (st == TickStatus::Running);
 
         if (mainLogger) {

@@ -203,8 +203,8 @@ void VoxelAABBCacher::ExtractAABBsFromSceneData(
                     const float minZ = brickOriginZ + static_cast<float>(lz) * aabbVoxelSize;
 
                     VoxelAABB aabb;
-                    aabb.min = glm::vec3(minX, minY, minZ);
-                    aabb.max = glm::vec3(minX + aabbVoxelSize, minY + aabbVoxelSize, minZ + aabbVoxelSize);
+                    aabb.minCorner = glm::vec3(minX, minY, minZ);
+                    aabb.maxCorner = glm::vec3(minX + aabbVoxelSize, minY + aabbVoxelSize, minZ + aabbVoxelSize);
                     outAABBs.push_back(aabb);
 
                     outMaterialIds.push_back(materialId);

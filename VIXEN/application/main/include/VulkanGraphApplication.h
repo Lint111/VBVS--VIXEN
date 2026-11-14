@@ -425,6 +425,10 @@ private:
     NodeHandle computeShaderLibNode_{};              // stored so RecompileProceduralShader can MarkNodeNeedsRecompile
     // Registered source families share the recipe registry and its live invalidation.
     std::vector<NodeHandle> proceduralShaderLibNodes_;
+    bool lockstepProceduralRecompile_ = false;
+    bool proceduralSwapPending_ = false;             // precompiles running; swap at the next update tick when done
+    void MarkProceduralShaderLibsDirty();            // drain GPU, then mark the libraries for recompile
+    void PollProceduralShaderSwap();                 // per update tick: swap when every precompile finished
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live orchestration state for the opt-in
     // VIXEN_RECIPE_BUCKETED_DISPATCH gate. Node handles are default-constructed/invalid when
@@ -605,10 +609,8 @@ private:
     // Update() re-places them when the layout or window size changes.
     std::unique_ptr<Vixen::RenderGraph::PanelDockHost> panelDock_ = std::make_unique<Vixen::RenderGraph::PanelDockHost>();
 
-    // Inc1 M4 Task 6b: perf-CSV recorder + the steady_clock timestamp of the previous
-    // PostTick call (for measuring this tick's CPU frame time). No-op object when
-    // VIXEN_PERF_CSV is unset (IsEnabled()==false), so construction/RecordFrame/Flush are
-    // all cheap no-ops on every run that doesn't opt in.
+    // Inc1 M4 Task 6b: perf-CSV recorder. The type is empty when the benchmark keyword is
+    // off, so normal builds have no CSV state or environment read.
     PerfCsvWriter perfCsvWriter_;
     // Render-path modules publish their timed passes through the module build contract, so the
     // per-frame recorder never looks up a module's private graph members by name.
@@ -619,7 +621,9 @@ private:
     std::vector<UpscalerPassMetric> upscalerPerfPasses_;
     // The vixen: composition's generated GPU systems (BuildRenderGraph); each stage is a perf column.
     Vixen::RenderGraph::GeneratedSystemStages generatedSystems_;
+#if UNDERSET_NATIVE_BENCHMARK
     std::chrono::steady_clock::time_point lastPostTickTime_ = std::chrono::steady_clock::now();
+#endif
 
     // Task 5: scripted HUD-inject + byte-exact capture harness (mirrors EditorApplication's
     // VIXEN_EDITOR_SCRIPT/_CAPTURE_FRAMES/_CAPTURE_DIR harness — this app has no subclass, so it
@@ -654,6 +658,8 @@ public:
     // M-wire: push the current per-body instance list into BodyOctreeSceneNode so it re-uploads the
     // SSBO on the next compile tick. Replaces the StarSystemGenerator + MarkVoxelSceneDirty flow.
     void SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
+    // R802.1 external scene seam: drive the existing ray-march camera from a facade camera row.
+    void SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up, float verticalFov);
     // Spec B I3/Task 6 (= main's I4.1 passthrough — both lines converged on this API): push a
     // boot-baked recipe pool (RecipeBootIngest -> BakeRegistryToPool) into BodyOctreeSceneNode,
     // which then serves octree slots 0..N-1 for the render_recipe blob ids the bridge resolves in
@@ -681,7 +687,18 @@ public:
     // handle). No-op (logs a warning) if the graph hasn't been compiled yet -- there is
     // nothing to mark dirty before the first Compile(), which will pick up whatever is
     // registered at that point anyway.
+    // The shader compile runs OFF the frame thread: the call starts the compile of every procedural
+    // shader library on worker threads (filling the shader cache) and returns; the old pipelines
+    // keep rendering. The first update tick after all compiles have finished marks the libraries
+    // dirty and the graph rebuilds them in one frame-boundary swap (a cache hit). A capture request
+    // (CaptureFrameToPng and friends) first completes a pending swap, so captures are deterministic.
     void RecompileProceduralShader();
+    // Finishes a pending procedural shader swap now (waits for the compiles, swaps, recompiles).
+    // No-op when none is pending. Capture entry points call it; hosts may too.
+    void FlushProceduralShaderSwap();
+    // Lockstep: RecompileProceduralShader waits for the compile and marks the libraries dirty at once,
+    // so the swap lands on a fixed frame (the pre-async behaviour). For deterministic captures/replays.
+    void SetLockstepProceduralRecompile(bool lockstep) { lockstepProceduralRecompile_ = lockstep; }
     // Editor Brick-Residency Fix: forwards to BodyOctreeSceneNode::RequestBrickResidency (stash-only,
     // dirty-flag pattern -- safe to call any time, including right after SetRecipePool/SetBodyInstances;
     // ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool's passthrough above --

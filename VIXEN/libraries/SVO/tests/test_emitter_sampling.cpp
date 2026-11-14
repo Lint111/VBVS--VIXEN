@@ -21,6 +21,7 @@
 #include "EmitterSampling.h"
 #include "MipBake.h"
 #include "Recipe/RecipeBounds.h"
+#include "Recipe/RecipeChunkBounds.h"
 #include "Recipe/RecipeOccupancy.h"
 #include "Recipe/RecipeRegistry.h"
 #include "SdfBake.h"
@@ -93,6 +94,57 @@ RecipeRegistry MakeRegistry() {
         EXPECT_EQ(reg.Register(kFallbackRecipe, e), RecipeRegistry::RegisterResult::Ok);
     }
     return reg;
+}
+
+TEST(RecipeChunkBounds, EmitsGridShellAndCoarseFallback) {
+    const RecipeRegistry registry = MakeRegistry();
+    const auto chunks = DeriveRecipeChunkBoxes(registry);
+    ASSERT_FALSE(chunks.empty());
+
+    bool sawGrid = false;
+    bool sawCoarseFallback = false;
+    for (const auto& chunk : chunks) {
+        EXPECT_LE(chunk.minLocal[0], chunk.maxLocal[0]);
+        EXPECT_LE(chunk.minLocal[1], chunk.maxLocal[1]);
+        EXPECT_LE(chunk.minLocal[2], chunk.maxLocal[2]);
+        if (chunk.recipeId == kGridRecipe) {
+            sawGrid = true;
+            EXPECT_EQ(chunk.flags & kRecipeChunkCoarseParent, 0u);
+        } else if (chunk.recipeId == kFallbackRecipe) {
+            sawCoarseFallback = true;
+            EXPECT_EQ(chunk.flags & kRecipeChunkCoarseParent, kRecipeChunkCoarseParent);
+            EXPECT_FLOAT_EQ(chunk.minLocal[0], -kFallbackRadius);
+            EXPECT_FLOAT_EQ(chunk.maxLocal[0], kFallbackRadius);
+        } else {
+            ADD_FAILURE() << "unexpected recipe id " << chunk.recipeId;
+        }
+    }
+    EXPECT_TRUE(sawGrid);
+    EXPECT_TRUE(sawCoarseFallback);
+}
+
+TEST(RecipeChunkBounds, KeepsRecipeRangesContiguousForBlasPrimitiveLookup) {
+    const auto chunks = DeriveRecipeChunkBoxes(MakeRegistry());
+    ASSERT_FALSE(chunks.empty());
+
+    // BodyOctreeSceneNode builds one BLAS per contiguous recipe range and stores
+    // the first record as proxyBase. Keep this ordering stable so a TLAS hit's
+    // primitive index can recover the same RecipeChunkAabb without a side table.
+    uint32_t previousRecipe = chunks.front().recipeId;
+    bool closedGridRange = false;
+    for (const auto& chunk : chunks) {
+        EXPECT_GE(chunk.recipeId, previousRecipe);
+        if (chunk.recipeId != previousRecipe) {
+            closedGridRange = previousRecipe == kGridRecipe;
+            previousRecipe = chunk.recipeId;
+        }
+        if (closedGridRange) {
+            EXPECT_EQ(chunk.recipeId, kFallbackRecipe);
+        }
+    }
+    EXPECT_EQ(chunks.front().recipeId, kGridRecipe);
+    EXPECT_EQ(chunks.back().recipeId, kFallbackRecipe);
+    EXPECT_TRUE(closedGridRange);
 }
 
 // Mixed scene: 3 recipe emitters (one dark, filtered), 2 stored octrees (one dark).

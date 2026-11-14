@@ -1,0 +1,132 @@
+cmake_minimum_required(VERSION 3.15)
+
+if(NOT DEFINED VIXEN_WINDOWS_IDENTIFIER_ROOT OR
+   NOT IS_DIRECTORY "${VIXEN_WINDOWS_IDENTIFIER_ROOT}")
+    message(FATAL_ERROR
+        "VIXEN_WINDOWS_IDENTIFIER_ROOT must name the VIXEN source directory")
+endif()
+
+# These are un-namespaced macros supplied by the Windows SDK headers. Keep the scan source-only:
+# it catches declarations on Linux before a native MSVC build expands the same names.
+set(_windows_identifiers
+    near far min max small interface ERROR DELETE GetMessage CreateWindow SendMessage
+    MessageBox Yield IN OUT OPTIONAL TRUE FALSE NULL)
+set(_source_extensions h hpp hxx cpp c cc cxx inl ipp ixx)
+set(_sources)
+foreach(_extension IN LISTS _source_extensions)
+    file(GLOB_RECURSE _extension_sources
+        "${VIXEN_WINDOWS_IDENTIFIER_ROOT}/*.${_extension}")
+    list(APPEND _sources ${_extension_sources})
+endforeach()
+list(FILTER _sources EXCLUDE REGEX "/(third_party|build|archive|generated|Vixen-Docs)/")
+list(REMOVE_DUPLICATES _sources)
+
+set(_identifier_pattern "(near|far|min|max|small|interface|ERROR|DELETE|GetMessage|CreateWindow|SendMessage|MessageBox|Yield|IN|OUT|OPTIONAL|TRUE|FALSE|NULL)")
+set(_declaration_type
+    "(auto|bool|char|short|int|long|float|double|void|size_t|ptrdiff_t|[u]?int[0-9]*_t|std::[A-Za-z_][A-Za-z0-9_:<>]*|glm::[A-Za-z_][A-Za-z0-9_:<>]*|[A-Z][A-Za-z0-9_:<>]*)")
+set(_declaration_pattern
+    "(^|[\\n({;,])[ \t]*(const[ \t]+|static[ \t]+|constexpr[ \t]+|volatile[ \t]+|mutable[ \t]+|inline[ \t]+|unsigned[ \t]+|signed[ \t]+|short[ \t]+|long[ \t]+)*${_declaration_type}[ \t]+(const[ \t]+)?[*&]?[ \t]*${_identifier_pattern}([^A-Za-z0-9_]|$)")
+set(_alias_pattern
+    "(^|[\\n{;(])[ \t]*(using|typedef|struct|class|enum)[ \t]+${_identifier_pattern}([^A-Za-z0-9_]|$)")
+set(_macro_pattern
+    "(^|[\\n])[ \t]*#[ \t]*define[ \t]+${_identifier_pattern}([^A-Za-z0-9_]|$)")
+
+set(_failures)
+foreach(_source IN LISTS _sources)
+    # CMake's native line filter keeps this check in seconds even on the full source tree. Include
+    # comment/raw-string delimiters in the candidate set so the small state machine can mask them.
+    file(STRINGS "${_source}" _candidate_lines
+        REGEX "${_identifier_pattern}|/\\*|\\*/|R\"|\\)[A-Za-z0-9_]*\"")
+    set(_in_block_comment FALSE)
+    set(_in_raw_string FALSE)
+    set(_raw_terminator)
+    foreach(_line IN LISTS _candidate_lines)
+        set(_scan "${_line}")
+        if(_in_raw_string)
+            string(FIND "${_scan}" "${_raw_terminator}" _raw_end)
+            if(_raw_end EQUAL -1)
+                set(_scan "")
+            else()
+                string(LENGTH "${_raw_terminator}" _raw_terminator_length)
+                math(EXPR _raw_after_end "${_raw_end} + ${_raw_terminator_length}")
+                string(SUBSTRING "${_scan}" ${_raw_after_end} -1 _scan)
+                set(_in_raw_string FALSE)
+            endif()
+        endif()
+        if(NOT _scan STREQUAL "")
+            string(FIND "${_scan}" "R\"" _raw_start)
+            if(_raw_start GREATER -1)
+                math(EXPR _raw_after_quote "${_raw_start} + 2")
+                string(SUBSTRING "${_scan}" ${_raw_after_quote} -1 _raw_header)
+                string(FIND "${_raw_header}" "(" _raw_open)
+                if(_raw_open GREATER -1)
+                    string(SUBSTRING "${_raw_header}" 0 ${_raw_open} _raw_delimiter)
+                    set(_raw_terminator ")${_raw_delimiter}\"")
+                    string(FIND "${_raw_header}" "${_raw_terminator}" _raw_end)
+                    if(_raw_end EQUAL -1)
+                        string(SUBSTRING "${_scan}" 0 ${_raw_start} _scan)
+                        set(_in_raw_string TRUE)
+                    else()
+                        string(LENGTH "${_raw_terminator}" _raw_terminator_length)
+                        math(EXPR _raw_after_end "${_raw_after_quote} + ${_raw_end} + ${_raw_terminator_length}")
+                        string(SUBSTRING "${_scan}" 0 ${_raw_start} _raw_prefix)
+                        string(SUBSTRING "${_scan}" ${_raw_after_end} -1 _raw_suffix)
+                        set(_scan "${_raw_prefix} ${_raw_suffix}")
+                    endif()
+                endif()
+            endif()
+        endif()
+
+        if(_in_block_comment)
+            string(FIND "${_scan}" "*/" _comment_end)
+            if(_comment_end EQUAL -1)
+                set(_scan "")
+            else()
+                math(EXPR _after_comment "${_comment_end} + 2")
+                string(SUBSTRING "${_scan}" ${_after_comment} -1 _scan)
+                set(_in_block_comment FALSE)
+            endif()
+        endif()
+        if(NOT _scan STREQUAL "")
+            string(FIND "${_scan}" "/*" _comment_start)
+            if(_comment_start GREATER -1)
+                string(FIND "${_scan}" "*/" _comment_end)
+                if(_comment_end EQUAL -1 OR _comment_end LESS _comment_start)
+                    string(SUBSTRING "${_scan}" 0 ${_comment_start} _scan)
+                    set(_in_block_comment TRUE)
+                else()
+                    math(EXPR _comment_after "${_comment_end} + 2")
+                    string(SUBSTRING "${_scan}" 0 ${_comment_start} _comment_prefix)
+                    string(SUBSTRING "${_scan}" ${_comment_after} -1 _comment_suffix)
+                    set(_scan "${_comment_prefix} ${_comment_suffix}")
+                endif()
+            endif()
+            string(FIND "${_scan}" "//" _line_comment)
+            if(_line_comment GREATER -1)
+                string(SUBSTRING "${_scan}" 0 ${_line_comment} _scan)
+            endif()
+            string(REGEX REPLACE "\"([^\"\\]|\\.)*\"" " " _scan "${_scan}")
+            string(REGEX REPLACE "'([^'\\]|\\.)*'" " " _scan "${_scan}")
+            string(STRIP "${_scan}" _trimmed)
+            if(NOT _trimmed STREQUAL "" AND
+               NOT _trimmed MATCHES "^/\\*" AND NOT _trimmed MATCHES "^\\*")
+                if(_scan MATCHES "${_declaration_pattern}" OR
+                   _scan MATCHES "${_alias_pattern}" OR
+                   _scan MATCHES "${_macro_pattern}")
+                    list(APPEND _failures "${_source}: Windows macro-like declaration (inspect the matching declaration)")
+                endif()
+            endif()
+        endif()
+    endforeach()
+endforeach()
+
+if(_failures)
+    foreach(_failure IN LISTS _failures)
+        message(SEND_ERROR "${_failure}")
+    endforeach()
+    list(LENGTH _failures _failure_count)
+    message(FATAL_ERROR
+        "check-windows-identifiers: FAIL (${_failure_count} collision(s))")
+endif()
+
+message(STATUS "check-windows-identifiers: PASS")

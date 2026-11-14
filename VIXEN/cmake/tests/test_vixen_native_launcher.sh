@@ -20,6 +20,8 @@ fake="$scratch/fake/Windows/System32"
 mkdir -p "$fake"
 cat > "$fake/cmd.exe" <<'STUB'
 #!/usr/bin/env bash
+# The build-width probe (echo %NUMBER_OF_PROCESSORS%) answers with the fake core count and is not a build call.
+if [[ "$*" == *NUMBER_OF_PROCESSORS* ]]; then echo "${FAKE_CORES:-8}"; exit 0; fi
 printf '%s\n' "$@" > "$FAKE_ARGV"
 echo "$*" >> "$FAKE_CALLS"
 pwd > "$FAKE_CWD"
@@ -46,12 +48,16 @@ export FAKE_TASKKILL="$scratch/taskkill.txt" FAKE_STARTED="$scratch/started.flag
 export FAKE_ARGV="$scratch/argv.txt" FAKE_CWD="$scratch/cwd.txt" FAKE_CALLS="$scratch/calls.txt"
 export FAKE_WSLENV="$scratch/wslenv.txt" FAKE_LANE_ENV="$scratch/laneenv.txt"
 export VIXEN_NATIVE_SYSTEM32="$fake"
+# Build width inputs are fixed: 8 Windows cores, 20000 MB available, an empty queue state dir (no other holders).
+mkdir -p "$scratch/state"
+export VIXEN_NATIVE_AVAILABLE_MB=20000 UT_QUEUE_STATE_DIR="$scratch/state"
 # A PATH with no Windows entries, as in an SSH shell.
 export PATH="/usr/bin:/bin"
 
 lane_repo="$scratch/lane-a"
 mkdir -p "$lane_repo/tools" "$lane_repo/VIXEN"
 cp "$repo_root/tools/vixen-native.sh" "$lane_repo/tools/vixen-native.sh"
+cp "$repo_root/tools/node-width.sh" "$lane_repo/tools/node-width.sh"
 git -C "$lane_repo" init -q -b lane-a
 git -C "$lane_repo" config user.email test@example.invalid
 git -C "$lane_repo" config user.name test
@@ -95,12 +101,52 @@ mkdir -p "$native/lane-a/VIXEN/.win-native-toolchain"
 touch "$native/lane-a/VIXEN/.win-native-toolchain/ninja-bin.txt" "$native/lane-a/VIXEN/.win-native-toolchain/cmake-exe.txt"
 check "build passes the action, preset and target to build.bat with a Windows batch path" \
     bash -c '"$0" build all vixen-ninja VixenApp >/dev/null; mapfile -t a < "$FAKE_ARGV"; test "${a[0]}" = /c && [[ "${a[1]}" == *build.bat ]] && [[ "${a[1]}" == *\\* ]] && test "${a[2]}" = all && test "${a[3]}" = vixen-ninja && test "${a[4]}" = VixenApp' "$launcher"
+check "provision then build: each step re-derives the width; only a caller-set value is an override" \
+    bash -c 'rm -rf "$1/lane-a/VIXEN/.win-native-toolchain"; out="$("$0" build all vixen-ninja VixenApp 2>&1)"; test "$(grep -c "build jobs: 8 (source=" <<<"$out")" = 2 && ! grep -q "explicit VIXEN_MAX_BUILD_JOBS" <<<"$out"' "$launcher" "$native"
 check "an argument with spaces stays one argument" \
     bash -c '"$0" bat build.bat "two words" >/dev/null; mapfile -t a < "$FAKE_ARGV"; test "${#a[@]}" = 3 && test "${a[2]}" = "two words"' "$launcher"
 check "YEROKET_ROOT is forwarded into the Windows process as a path" \
     bash -c 'YEROKET_ROOT=/home/x/Yeroket-Fantasy "$0" bat build.bat >/dev/null; tr ":" "\n" < "$FAKE_WSLENV" | grep -qx "YEROKET_ROOT/p"' "$launcher"
-check "build defaults the four-job cap and a checkout-local fetch cache (T-2955)" \
-    bash -c '"$0" build >/dev/null; test "$(cat "$FAKE_LANE_ENV")" = "4 $1/lane-a/.tmp/fetch" && test -d "$1/lane-a/.tmp/fetch"' "$launcher" "$native"
+check "build sizes the job count at node width (8 cores) and defaults a checkout-local fetch cache (R847.4, T-2955)" \
+    bash -c '"$0" build >/dev/null; test "$(cat "$FAKE_LANE_ENV")" = "8 $1/lane-a/.tmp/fetch" && test -d "$1/lane-a/.tmp/fetch"' "$launcher" "$native"
+check "a one-token queue grant does not narrow the job count" \
+    bash -c 'UT_QUEUE_CREDITS=1 UT_QUEUE_CPUS=2 UT_QUEUE_GRANTED_CPUS=2 "$0" jobs 2>/dev/null | tail -1 | grep -qx 8' "$launcher"
+check "available memory caps the job count: (3000 - 1024 headroom) / 900 = 2" \
+    bash -c 'VIXEN_NATIVE_AVAILABLE_MB=3000 "$0" jobs 2>/dev/null | tail -1 | grep -qx 2' "$launcher"
+check "another holder's unspent reservation (Linux-side admission) does not come off the Windows budget" \
+    bash -c 'sleep 30 & other=$!; trap "kill $other" EXIT
+        t="$(sed "s/.*) //" /proc/$other/stat | awk "{print \$20}")"
+        printf "9000\npid=%s\ncurrent=1000\nstart_ticks=%s\n" "$other" "$t" > "$UT_QUEUE_STATE_DIR/undertow-box-memory-reservation.$other"
+        # (20000 - 1024) / 4000 = 4; the 8000 unspent MB is not subtracted
+        out="$(VIXEN_BUILD_MB_PER_JOB=4000 "$0" jobs 2>&1)"; rm -f "$UT_QUEUE_STATE_DIR/undertow-box-memory-reservation.$other"
+        echo "$out" | tail -1 | grep -qx 4 && echo "$out" | grep -q "other_claims_mb=0 other_holders=0"' "$launcher"
+check "a claim older than the ramp window is not subtracted (the build is already in the Windows counter)" \
+    bash -c 'sleep 30 & other=$!; trap "kill $other" EXIT
+        t="$(sed "s/.*) //" /proc/$other/stat | awk "{print \$20}")"
+        printf "39528\npid=%s\nstart_ticks=%s\n" "$other" "$t" > "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        touch -d "10 minutes ago" "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        out="$(UT_QUEUE_HOLDER_PID=$$ VIXEN_NATIVE_AVAILABLE_MB=6456 "$0" jobs 2>&1)"; rm -f "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        echo "$out" | tail -1 | grep -qx 6 && echo "$out" | grep -q "other_claims_mb=0 other_holders=0"' "$launcher"
+check "another native build's width claim comes off the budget" \
+    bash -c 'sleep 30 & other=$!; trap "kill $other" EXIT
+        t="$(sed "s/.*) //" /proc/$other/stat | awk "{print \$20}")"
+        printf "8000\npid=%s\nstart_ticks=%s\n" "$other" "$t" > "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        # 20000 - 8000 claimed = 12000; (12000 - 1024) / 4000 = 2
+        out="$(VIXEN_BUILD_MB_PER_JOB=4000 "$0" jobs 2>&1)"; rm -f "$UT_QUEUE_STATE_DIR/undertow-width-claim.$other"
+        echo "$out" | tail -1 | grep -qx 2 && echo "$out" | grep -q "other_claims_mb=8000 other_holders=1"' "$launcher"
+check "sn-landvx5 23:07 fixture (windows 8019 MB, 7 holders, 45589 MB Linux-side unspent) sizes 7 jobs, not 1" \
+    bash -c 'pids=(); for i in 1 2 3 4 5 6 7; do sleep 30 & pids+=($!); done; trap "kill ${pids[*]}" EXIT
+        for p in "${pids[@]}"; do t="$(sed "s/.*) //" /proc/$p/stat | awk "{print \$20}")"
+            printf "10000\npid=%s\ncurrent=3500\nstart_ticks=%s\n" "$p" "$t" > "$UT_QUEUE_STATE_DIR/undertow-box-memory-reservation.$p"; done
+        out="$(UT_QUEUE_HOLDER_PID=$$ VIXEN_NATIVE_AVAILABLE_MB=8019 UT_QUEUE_RESERVED_OTHERS_MB=45589 "$0" jobs 2>&1)"
+        rm -f "$UT_QUEUE_STATE_DIR"/undertow-box-memory-reservation.*
+        echo "$out" | tail -1 | grep -qx 7 && echo "$out" | grep -q "windows_available_mb=8019 other_claims_mb=0"' "$launcher"
+check "a queue-admitted build keeps the 4-job floor while Windows memory covers 4 * per_job" \
+    bash -c 'UT_QUEUE_HOLDER_PID=$$ VIXEN_NATIVE_AVAILABLE_MB=3700 "$0" jobs 2>/dev/null | tail -1 | grep -qx 4' "$launcher"
+check "the floor yields when Windows memory is below 4 * per_job (3500 < 3600 -> 2 jobs by memory)" \
+    bash -c 'UT_QUEUE_HOLDER_PID=$$ VIXEN_NATIVE_AVAILABLE_MB=3500 "$0" jobs 2>/dev/null | tail -1 | grep -qx 2' "$launcher"
+check "a queue holder claims its width for the build and releases it afterwards" \
+    bash -c 'UT_QUEUE_HOLDER_PID=$$ "$0" build >/dev/null; test ! -e "$UT_QUEUE_STATE_DIR/undertow-width-claim.$$"' "$launcher"
 check "explicit job cap and fetch cache are kept" \
     bash -c 'VIXEN_MAX_BUILD_JOBS=2 VIXEN_FETCHCONTENT_CACHE=/tmp/x-fetch-$$ "$0" build >/dev/null; test "$(cat "$FAKE_LANE_ENV")" = "2 /tmp/x-fetch-$$"; rmdir /tmp/x-fetch-$$' "$launcher"
 check "bat refuses a path that leaves the worktree" \

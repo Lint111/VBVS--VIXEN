@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include "Nodes/VoxelGridNode.h"
 #include "Core/NodeRegistration.h"
 #include "SceneGenerator.h"
@@ -15,6 +16,7 @@
 #include <fstream>
 #include <iostream>  // [FarFieldCount] boot-summary print (round-3 fix item 3)
 #include <span>
+#include <string_view>
 
 // New SVO library integration
 #include "SVOBuilder.h"
@@ -142,6 +144,7 @@ void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[VoxelGridNode] COMMAND_POOL is null");
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
     // memoryLogger_ here is used ONLY for GPUPerformanceLogger's memory-tracking API
     // (RegisterBufferAllocation/GetMemorySummary — see PrintGPUMemorySummary below), never for
     // GPU timestamp recording: this node never calls BeginFrame/RecordDispatchStart/
@@ -159,6 +162,7 @@ void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
     if (nodeLogger) {
         nodeLogger->AddChild(memoryLogger_);
     }
+#endif
 
     // Register VoxelSceneCacher with CashSystem (idempotent)
     RegisterVoxelSceneCacher();
@@ -304,6 +308,7 @@ void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_INFO("Uploaded octree buffers successfully");
 
+#if UNDERSET_NATIVE_BENCHMARK
     // Print memory summary for Week 3 benchmarking
     if (memoryLogger_) {
         NODE_LOG_INFO("GPU MEMORY SUMMARY:\n" + memoryLogger_->GetMemorySummary() +
@@ -311,6 +316,7 @@ void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
     } else {
         NODE_LOG_WARNING("[VoxelGridNode] WARNING: memoryLogger_ is null, cannot print memory summary");
     }
+#endif
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] COMPLETED");
 }
@@ -367,9 +373,16 @@ void VoxelGridNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Re-output debug capture buffer (wrapper with conversion_type = VkBuffer). See CompileImpl's
     // comment above: OutWithInterface is required (not plain ctx.Out()) so the resource keeps
     // being detected as debug-capturable by DescriptorResourceGathererNode every frame.
+    // R851.7: the per-frame resets only serve an active debug capture (VIXEN_DEBUG_CAPTURE); with
+    // capture off nothing reads the sample region or the shader counters, so the two buffer
+    // writes (about 0.2 ms per frame) are skipped.
+    const bool debugCaptureActive = debugCaptureResource_ && debugCaptureResource_->IsCaptureEnabled();
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         // Reset buffer before each frame to allow fresh capture
-        debugCaptureResource_->Reset(vulkanDevice->device);
+        if (debugCaptureActive) {
+            VIXEN_FRAME_TRACE_SCOPE("debug", "debug-capture-reset");
+            debugCaptureResource_->Reset(vulkanDevice->device);
+        }
         ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER, debugCaptureResource_.get(),
                              static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
     }
@@ -377,7 +390,10 @@ void VoxelGridNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Re-output shader counters buffer (wrapper with conversion_type = VkBuffer)
     if (shaderCountersResource_ && shaderCountersResource_->IsValid()) {
         // Reset counters before each frame
-        shaderCountersResource_->Reset(vulkanDevice->device);
+        if (debugCaptureActive) {
+            VIXEN_FRAME_TRACE_SCOPE("debug", "shader-counters-reset");
+            shaderCountersResource_->Reset(vulkanDevice->device);
+        }
         ctx.Out(VoxelGridNodeConfig::SHADER_COUNTERS_BUFFER, shaderCountersResource_.get());
     }
 
@@ -463,6 +479,21 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         const uint32_t farFieldCount = debugCaptureResource_->ReadFarFieldCount(vulkanDevice->device);
         std::cout << "[FarFieldCount] n=" << farFieldCount
                    << " (" << perFrame(farFieldCount) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+#if UNDERSET_NATIVE_BENCHMARK
+        {
+            const auto recipeMetrics = debugCaptureResource_->ReadRecipeChunkMetrics(vulkanDevice->device);
+            std::cout << "[RecipeChunkMetrics] rays=" << recipeMetrics.rays
+                      << " recipes=" << recipeMetrics.recipes
+                      << " chunks=" << recipeMetrics.chunks
+                      << " recipesPerRay=" << (recipeMetrics.rays ?
+                          static_cast<double>(recipeMetrics.recipes) / recipeMetrics.rays : 0.0)
+                      << " chunksPerRay=" << (recipeMetrics.rays ?
+                          static_cast<double>(recipeMetrics.chunks) / recipeMetrics.rays : 0.0)
+                      << " stepsPerRay=" << (recipeMetrics.rays ?
+                          static_cast<double>(recipeMetrics.steps) / recipeMetrics.rays : 0.0)
+                      << std::endl;
+        }
+#endif  // UNDERSET_NATIVE_BENCHMARK
 
         // Round-6 blocker-1 probe: min/max of both far-field gate operands.
         // Not a count -- no per-frame division applies.
@@ -608,14 +639,14 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         const double sampledLevelMean = sampledLevel.count > 0
             ? static_cast<double>(sampledLevel.sum) / static_cast<double>(sampledLevel.count)
             : 0.0;
-        std::cout << "[FarFieldSampledLevel] min=" << sampledLevel.min
-                   << " max=" << sampledLevel.max
+        std::cout << "[FarFieldSampledLevel] min=" << sampledLevel.minValue
+                   << " max=" << sampledLevel.maxValue
                    << " mean=" << sampledLevelMean
                    << " n=" << sampledLevel.count
                    << " (" << perFrame(sampledLevel.count) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
         // Standing rule (batch-13 postmortem): min seeded 0xFFFFFFFF at
         // Create(); a real min of 0 is only credible with count > 0.
-        if (sampledLevel.count == 0u && sampledLevel.min != 0xFFFFFFFFu) {
+        if (sampledLevel.count == 0u && sampledLevel.minValue != 0xFFFFFFFFu) {
             std::cout << "[FarFieldSampledLevel] SEEDED-SANITY WARNING: "
                           "count=0 but min!=0xFFFFFFFF -- looks like an "
                           "unseeded/stale atomicMin. Verify Create() seeds this field."
@@ -629,8 +660,8 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         // policy (rect mean 244.3->149.9) while FarFieldSampledLevel/count
         // stayed flat.
         const auto sampleIntensity = debugCaptureResource_->ReadFarFieldSampleIntensityStats(vulkanDevice->device);
-        std::cout << "[FarFieldSampleIntensity] min=" << sampleIntensity.min
-                   << " max=" << sampleIntensity.max
+        std::cout << "[FarFieldSampleIntensity] min=" << sampleIntensity.minValue
+                   << " max=" << sampleIntensity.maxValue
                    << " mean=" << sampleIntensity.mean
                    << " n=" << sampledLevel.count << std::endl;
 
@@ -805,6 +836,40 @@ void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         std::cout << "[FarFieldColorFallbackByTag] primary=" << tagStats.colorFallback[0]
                    << " (" << perFrame(tagStats.colorFallback[0]) << "/frame) not-primary=" << tagStats.colorFallback[1]
                    << " (" << perFrame(tagStats.colorFallback[1]) << "/frame) over " << exitAfterFrames << " frames" << std::endl;
+
+        // cx-leafinstr2: the leaf histogram is intentionally drained only on
+        // the capture path. Timing runs leave VIXEN_LEAF_COUNTERS unset, so
+        // this readback cannot perturb their measurements or their logs.
+        if (std::getenv("VIXEN_LEAF_COUNTERS") != nullptr) {
+            if (debugCaptureResource_) {
+                const auto leaf = debugCaptureResource_->ReadLeafInstrumentationStats(vulkanDevice->device);
+                auto printHistogram = [](const char* metric, const auto& values) {
+                    std::cout << "[LeafInstrHistogram] metric=" << metric;
+                    for (size_t i = 0; i < values.size(); ++i) {
+                        std::cout << " b" << i << "=" << values[i];
+                    }
+                    std::cout << std::endl;
+                };
+                printHistogram("steps", leaf.steps);
+                printHistogram("bodies", leaf.bodies);
+                printHistogram("candidates", leaf.candidates);
+                printHistogram("path_class", leaf.pathClass);
+                printHistogram("brick_steps", leaf.brickSteps);
+            }
+        }
+        if (std::getenv("VIXEN_SHADER_CLOCK") != nullptr) {
+            if (debugCaptureResource_) {
+                const auto clock = debugCaptureResource_->ReadLeafShaderClockStats(vulkanDevice->device);
+                const uint32_t waveTicks = clock.waveEndMax - clock.waveStartMin;
+                const uint32_t shadeTicks = clock.shadeEndMax - clock.shadeStartMin;
+                std::cout << "[LeafShaderClock] wave_start_min=" << clock.waveStartMin
+                          << " wave_end_max=" << clock.waveEndMax
+                          << " wave_ticks=" << waveTicks
+                          << " shade_start_min=" << clock.shadeStartMin
+                          << " shade_end_max=" << clock.shadeEndMax
+                          << " shade_ticks=" << shadeTicks << std::endl;
+            }
+        }
 
         // Round 12 instrument fix (b): the 32-slot pixel decode ring is
         // REMOVED. It decodes the TAIL of atomicAdd dispatch order (last-32

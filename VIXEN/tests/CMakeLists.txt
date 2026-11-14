@@ -102,6 +102,9 @@ if(UNIX)
         COMMAND bash "${VIXEN_ROOT}/cmake/tests/test_vixen_native_launcher.sh" "${VIXEN_ROOT}/.."
                 "${CMAKE_CURRENT_BINARY_DIR}/wsl-route-launcher")
     set_tests_properties(Native.WslRouteLauncher PROPERTIES LABELS "cpu")
+    add_test(NAME Native.NodeWidth
+        COMMAND bash "${VIXEN_ROOT}/cmake/tests/test_node_width.sh" "${VIXEN_ROOT}/..")
+    set_tests_properties(Native.NodeWidth PROPERTIES LABELS "cpu")
 endif()
 
 # Common test compile options
@@ -163,3 +166,29 @@ add_test(NAME Native.CaptureRootContract
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_CAPTURE_ROOT_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/capture-root-contract"
             -P "${VIXEN_ROOT}/cmake/tests/test_capture_root.cmake")
 set_tests_properties(Native.CaptureRootContract PROPERTIES LABELS "cpu")
+
+add_test(NAME Native.AutoMessageTypeUnique
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_LIBRARIES_DIR=${VIXEN_ROOT}/libraries"
+            "-DVIXEN_APPLICATION_DIR=${VIXEN_ROOT}/application"
+            -P "${VIXEN_ROOT}/cmake/tests/test_auto_message_type_unique.cmake")
+set_tests_properties(Native.AutoMessageTypeUnique PROPERTIES LABELS "cpu")
+
+add_test(NAME Native.VixenTestClassApplyLoadContext
+    COMMAND "${CMAKE_COMMAND}"
+            "-DVIXEN_TEST_CLASS_APPLY=${VIXEN_ROOT}/cmake/VixenTestClassApply.cmake"
+            "-DVIXEN_TEST_APPLY_ROOT=${CMAKE_CURRENT_BINARY_DIR}/vixen-test-class-apply"
+            -P "${VIXEN_ROOT}/cmake/tests/test_vixen_test_class_apply.cmake")
+set_tests_properties(Native.VixenTestClassApplyLoadContext PROPERTIES LABELS "cpu")
+
+if(VIXEN_RENDERER_BYTE_IDENTITY_TEST)
+    set(_renderer_identity_undertow_root "$ENV{UNDERTOW_ROOT}")
+    add_test(NAME Native.RendererObjectByteIdentity
+        COMMAND "${CMAKE_COMMAND}"
+                "-DVIXEN_SOURCE_DIR=${VIXEN_ROOT}"
+                "-DVIXEN_BYTE_IDENTITY_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/renderer-object-byte-identity"
+                "-DVIXEN_IDENTITY_UNDERTOW_ROOT=${_renderer_identity_undertow_root}"
+                "-DVIXEN_IDENTITY_FETCHCONTENT_BASE_DIR=${FETCHCONTENT_BASE_DIR}"
+                "-DVIXEN_IDENTITY_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+                -P "${VIXEN_ROOT}/cmake/tests/test_renderer_object_byte_identity.cmake")
+    set_tests_properties(Native.RendererObjectByteIdentity PROPERTIES LABELS "cpu")
+endif()

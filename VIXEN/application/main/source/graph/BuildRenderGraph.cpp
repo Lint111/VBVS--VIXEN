@@ -26,6 +26,7 @@
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>  // Baked-Perf M7 Task 7.2: ConcatenateSdfWithMips precomputed-serialize map
+#include <unordered_set>
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
 #include "graph/CornellBoxSceneDefinition.h"
 #include "graph/AntiAliasingModule.h"
@@ -579,7 +580,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("compute_shader_lib");
     computeShaderLibNode_ = computeShaderLib;
-    proceduralShaderLibNodes_.push_back(computeShaderLib);
+    proceduralShaderLibNodes_.push_back(computeShaderLib);  // the march owns the registry splice and grid upload
     NodeHandle descriptorGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("compute_desc_gatherer");  // Phase H
     NodeHandle pushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("push_constant_gatherer");  // Phase H
     NodeHandle computeDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("compute_descriptors");
@@ -2056,6 +2057,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
             if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
                     renderGraph->GetInstance(bodyOctreeSceneNode_))) {
                 bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
+                bodyScene->SetRecipeChunkBoxes(envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")
+                    ? Vixen::SVO::Recipe::DeriveRecipeChunkBoxes(proceduralRecipes_)
+                    : std::vector<Vixen::SVO::Recipe::RecipeChunkAabb>{});
                 bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
                 bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
             }
@@ -2226,6 +2230,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         marchShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
+    if (envFlagEnabled("VIXEN_LEAF_COUNTERS")) {
+        marchShaderFeatures.push_back(kFeatureLeafInstrCounters.define);
+    }
+    if (const char* leafInstr = std::getenv("VIXEN_LEAF_INSTR"); leafInstr && *leafInstr) {
+        const std::string mode = leafInstr;
+        if (mode == "search") {
+            marchShaderFeatures.push_back(kFeatureLeafVariantSearch.define);
+        } else if (mode == "march") {
+            marchShaderFeatures.push_back(kFeatureLeafVariantMarch.define);
+        } else {
+            throw std::runtime_error("VIXEN_LEAF_INSTR must be search or march");
+        }
+        std::cout << "[LeafInstr] march variant=" << mode << " (not pixel-valid)" << std::endl;
+    }
     const bool policyStencilTilesEnabled =
         envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES");
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
@@ -2248,6 +2266,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
         marchShaderFeatures.push_back(kFeatureShellNormals.define);
+    }
+    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+        marchShaderFeatures.push_back(kFeatureRecipeChunkCull.define);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_CHUNK_CULL: procedural surface-shell chunk TLAS/software culling ENGAGED");
+        }
     }
     if (envFlagEnabled("VIXEN_BRICKMAP_DEBUG")) {  // W-BRICKMAP Gate-B bisection
         marchShaderFeatures.push_back(kFeatureBrickmapDebug.define);
@@ -2420,25 +2444,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // lands directly after #version, before the provider's M10 inserts, where the old
     // LIFO hand order put TRACE last — same defines, different byte order, so that one
     // debug-debug combo mints a distinct cache entry (functionally identical GLSL).
-    const auto makeLightingFamily = [this](const std::string& shaderName,
-                                            const std::string& programName) {
+    // Recipe-registry consumers are derived, not listed: a family whose source carries the
+    // uber-recipe splice marker compiles the registry's emitted fields, so its library node is
+    // marked dirty by RecompileProceduralShader. Registration helpers call
+    // noteRecipeRegistryConsumer(libHandle, family); makeLightingFamily records which families
+    // qualify from the shader file itself.
+    auto recipeConsumerFamilies = std::make_shared<std::unordered_set<const ShaderManagement::ShaderFamily*>>();
+    const auto findLightingShaderPath = [](const std::string& shaderName) {
+        std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            ShaderSourceDir() + "/" + shaderName,
+#endif
+            std::string("shaders/") + shaderName,
+            std::string("../shaders/") + shaderName,
+            shaderName
+        };
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) return path;
+        }
+        return std::filesystem::path{};
+    };
+    const auto makeLightingFamily = [this, recipeConsumerFamilies, findLightingShaderPath](
+                                        const std::string& shaderName,
+                                        const std::string& programName) {
         ShaderManagement::ShaderFamily::Config cfg;
         cfg.name = programName;
         cfg.stage = ShaderManagement::ShaderStage::Compute;
-        return std::make_shared<ShaderManagement::ShaderFamily>(cfg,
-            [this, shaderName]() {
-                std::vector<std::filesystem::path> possiblePaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-                    ShaderSourceDir() + "/" + shaderName,
-#endif
-                    std::string("shaders/") + shaderName,
-                    std::string("../shaders/") + shaderName,
-                    shaderName
-                };
-                std::filesystem::path compPath;
-                for (const auto& path : possiblePaths) {
-                    if (std::filesystem::exists(path)) { compPath = path; break; }
-                }
+        auto family = std::make_shared<ShaderManagement::ShaderFamily>(cfg,
+            [this, shaderName, findLightingShaderPath]() {
+                const std::filesystem::path compPath = findLightingShaderPath(shaderName);
                 if (compPath.empty()) {
                     throw std::runtime_error(std::string(shaderName) +
                                              " not found - check shader search paths");
@@ -2482,6 +2516,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
                 return source;
             });
+        const std::filesystem::path sourcePath = findLightingShaderPath(shaderName);
+        if (!sourcePath.empty()) {
+            std::ifstream in(sourcePath);
+            std::stringstream buf;
+            buf << in.rdbuf();
+            if (buf.str().find("// VIXEN_UBER_RECIPE_SPLICE_MARKER") != std::string::npos) {
+                recipeConsumerFamilies->insert(family.get());
+            }
+        }
+        return family;
+    };
+    const auto noteRecipeRegistryConsumer = [this, recipeConsumerFamilies](
+        NodeHandle libHandle, const std::shared_ptr<ShaderManagement::ShaderFamily>& family) {
+        if (recipeConsumerFamilies->count(family.get()) != 0) proceduralShaderLibNodes_.push_back(libHandle);
     };
     std::vector<std::string> lightingShaderFeatures;
     if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
@@ -2490,8 +2538,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         lightingShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
+    if (envFlagEnabled("VIXEN_SHADER_CLOCK")) {
+        lightingShaderFeatures.push_back(kFeatureLeafShaderClock.define);
+    }
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
         lightingShaderFeatures.push_back(kFeaturePolicyStencil.define);
+    }
+    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+        lightingShaderFeatures.push_back(kFeatureRecipeChunkCull.define);
     }
     if (envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES")) {
         // E11-T1: only ShadowVisibilityWave.comp #includes PolicyStencilTileBuffer;
@@ -2499,11 +2553,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // kFeaturePolicyStencil's own broad share above).
         lightingShaderFeatures.push_back(kFeaturePolicyStencilTiles.define);
     }
-    const auto registerLightingFamilyWithFeatures = [this](
+    const auto registerLightingFamilyWithFeatures = [this, noteRecipeRegistryConsumer](
         NodeHandle libHandle,
         std::shared_ptr<ShaderManagement::ShaderFamily> family,
         std::vector<std::string> shaderFeatures) {
-        proceduralShaderLibNodes_.push_back(libHandle);
+        noteRecipeRegistryConsumer(libHandle, family);
         auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
         libNode->RegisterShaderBuilder([this, family, shaderFeatures](int vulkanVer, int spirvVer) {
             auto builder = family->MakeBuilder(shaderFeatures);
@@ -2559,10 +2613,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
         }
         return std::pair<std::vector<std::string>, bool>{std::move(features), useRayQuery};
     };
-    const auto registerWaveLightingFamily = [this, waveShaderFeatures, resolveWaveFeatures](
+    const auto registerWaveLightingFamily = [this, waveShaderFeatures, resolveWaveFeatures, noteRecipeRegistryConsumer](
                                                 NodeHandle libHandle,
                                                 std::shared_ptr<ShaderManagement::ShaderFamily> family) {
-        proceduralShaderLibNodes_.push_back(libHandle);
+        noteRecipeRegistryConsumer(libHandle, family);
         auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
         libNode->RegisterShaderBuilder([this, family, waveShaderFeatures, resolveWaveFeatures](int vulkanVer, int spirvVer) {
             auto [resolvedFeatures, useRayQuery] = resolveWaveFeatures(waveShaderFeatures);
@@ -2707,7 +2761,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // it — the ProbeApply precedent).
     if (hitAccumResolveEnabled) {
         auto cellShadeFamily = makeLightingFamily("HitAccumCellShade.comp", "HitAccumCellShade");
-        proceduralShaderLibNodes_.push_back(hitAccumCellShadeShaderLib);
+        noteRecipeRegistryConsumer(hitAccumCellShadeShaderLib, cellShadeFamily);
         auto* cellLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(hitAccumCellShadeShaderLib));
         cellLibNode->RegisterShaderBuilder([this, cellShadeFamily, lightingShaderFeatures](int vulkanVer, int spirvVer) {
             auto builder = cellShadeFamily->MakeBuilder(lightingShaderFeatures);
@@ -2740,7 +2794,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (waveSlotSwizzleEnabled) {
             waveReservoirFeatures.push_back(kFeatureWaveSlotSwizzle.define);
         }
-        proceduralShaderLibNodes_.push_back(waveReservoirShaderLib);
+        noteRecipeRegistryConsumer(waveReservoirShaderLib, waveReservoirFamily);
         auto* waveResLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(waveReservoirShaderLib));
         waveResLibNode->RegisterShaderBuilder([this, waveReservoirFamily, waveReservoirFeatures, resolveWaveFeatures](int vulkanVer, int spirvVer) {
             auto [resolvedFeatures, useRayQuery] = resolveWaveFeatures(waveReservoirFeatures);
@@ -4437,6 +4491,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // has. The provider therefore carries the block name, not the member array name.
     sceneProviders.Provide("RtQueryProxyAabbBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER, kSceneRoles);
+    sceneProviders.Provide("RecipeChunkAabbBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER, kSceneRoles);
     sceneProviders.Provide("historyImage", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
                            SlotRole::Execute);
@@ -4566,6 +4622,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
         marchFeatures.Enable(kFeatureShellNormals);
+    }
+    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+        marchFeatures.Enable(kFeatureRecipeChunkCull);
     }
     // W-RTQUERY Slice A: gate the rtQueryTlas member (binding 40) the SAME way
     // B1's depthDistanceImage gates binding 36 above -- the merged-SDI MEMBERS table
@@ -4976,8 +5035,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sdiHazardCensus_, spatialReuseNode, sceneProviders, srsSdiFeatures,
         &sdiCensusExclusions);
 
-    const auto registerModuleShaderFamily = [this, graph = renderGraph](
+    const auto registerModuleShaderFamily = [this, graph = renderGraph, noteRecipeRegistryConsumer](
         NodeHandle libHandle, std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        noteRecipeRegistryConsumer(libHandle, family);
         auto* libNode = static_cast<ShaderLibraryNode*>(graph->GetInstance(libHandle));
         libNode->RegisterShaderBuilder([this, family](int vulkanVer, int spirvVer) {
             auto builder = family->MakeBuilder({});
@@ -5779,6 +5839,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     SdiFeatureSet waveSdiFeatures;
     if (rtLightingMode != RtLightingMode::Off) {
         waveSdiFeatures.Enable(kFeatureRayQueryLighting);
+    }
+    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+        waveSdiFeatures.Enable(kFeatureRecipeChunkCull);
     }
     if (waveSlotSwizzleEnabled) {
         waveSdiFeatures.Enable(kFeatureWaveSlotSwizzle);

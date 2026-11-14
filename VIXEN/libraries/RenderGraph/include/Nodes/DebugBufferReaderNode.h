@@ -85,7 +85,7 @@ public:
     /**
      * @brief Set maximum traces to read (0 = all)
      */
-    void SetMaxTraces(uint32_t max) { maxTraces = max; }
+    void SetMaxTraces(uint32_t maxValue) { maxTraces = maxValue; }
 
     /**
      * @brief Enable/disable automatic export on execute

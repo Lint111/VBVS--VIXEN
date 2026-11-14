@@ -1,10 +1,13 @@
 #include "Core/ImageUsage.h"
 #include "Core/VariadicTypedNode.h"
 #include "Core/RenderGraph.h"
+#include "KernelDispatch/FramePipeline.h"
+#include "Core/CalibrationStore.h"
 #include "Data/Core/ResourceConfig.h"
 #include "CapabilityGraph.h"
 #include "Core/IGraphCompilable.h"
 #include "Core/PhaseTiming.h"
+#include "FrameTrace.h"
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "KernelDispatch/TaskExecutor.h"
 #include "VulkanDevice.h"
@@ -43,7 +46,7 @@
 namespace Vixen::RenderGraph {
 
 namespace {
-void PaceFrameUntil(std::chrono::steady_clock::time_point deadline) {
+void WaitUntil(std::chrono::steady_clock::time_point deadline) {
 #ifdef _WIN32
     struct Timer {
         HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr,
@@ -165,11 +168,79 @@ RenderGraph::RenderGraph(
     taskProfileRegistry_.Init();
 }
 
+void RenderGraph::SetIdleWindowFiller(IdleWindowFiller filler) {
+    idleWindowFiller_ = std::move(filler);
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        timeline.idleWindowFiller = &idleWindowFiller_;
+    }
+}
+
+void RenderGraph::PaceFrameUntil(std::chrono::steady_clock::time_point deadline) {
+    FrameWaitLedger& ledger = frameWaitLedgers_[activeWaitLedgerIndex_];
+    const auto windowStarted = std::chrono::steady_clock::now();
+    const auto remaining = deadline - windowStarted;
+    if (remaining <= std::chrono::steady_clock::duration::zero()) return;
+    const uint64_t initialPrediction = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count());
+    const uint64_t frameIndex = ledger.frameIndex;
+    const bool hasFiller = static_cast<bool>(idleWindowFiller_);
+    if (!hasFiller) {
+        WaitUntil(deadline);
+        ledger.RecordWait(IdleWindow::Kind::FramePace, initialPrediction,
+                          static_cast<uint64_t>(std::max<int64_t>(0,
+                              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::steady_clock::now() - windowStarted).count())));
+        return;
+    }
+
+    for (;;) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            ledger.RecordWait(IdleWindow::Kind::FramePace, initialPrediction,
+                              static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  now - windowStarted).count()));
+            return;
+        }
+        const uint64_t predicted = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(deadline - now).count());
+        std::stop_source closed;
+        const IdleWindow window{IdleWindow::Kind::FramePace, frameIndex, predicted, 0,
+                                closed.get_token()};
+        if (predicted > 0) idleWindowFiller_(window);
+        const auto afterFill = std::chrono::steady_clock::now();
+        if (afterFill >= deadline) {
+            closed.request_stop();
+            ledger.RecordWait(IdleWindow::Kind::FramePace, initialPrediction,
+                              static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  afterFill - windowStarted).count()));
+            return;
+        }
+        const uint64_t boundNs = std::min(predicted, GpuWaitBoundNs());
+        WaitUntil(std::min(deadline, afterFill + std::chrono::nanoseconds(boundNs)));
+    }
+}
+
+size_t RenderGraph::LoadCalibration(const std::filesystem::path& baseDir, const GPUIdentifier& gpu) {
+    calibrationStore_ = std::make_unique<CalibrationStore>(baseDir);
+    calibrationStore_->SetGPU(gpu);
+    auto result = calibrationStore_->Load(taskProfileRegistry_);
+    return result.profileCount;
+}
+
+bool RenderGraph::SaveCalibration() {
+    if (!calibrationStore_) return false;
+    auto result = calibrationStore_->Save(taskProfileRegistry_);
+    return result.success;
+}
+
 RenderGraph::~RenderGraph() {
     PhaseTiming::PrintSummary();
     // Lock census summary (VIXEN_LOCK_CENSUS builds only; a no-op otherwise). Printed before the
     // shutdown event so the numbers cover exactly the frames RenderFrame() sampled.
+#if VIXEN_LOCK_CENSUS
     lockCensus_.Report();
+#endif
 
     // Sprint 6.5: Publish shutdown event for CalibrationStore auto-save
     if (messageBus) {
@@ -1333,6 +1404,9 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
         return VK_ERROR_INITIALIZATION_FAILED;
     }
     QueueTimeline& timeline = queueTimelines_[device->queue];
+    timeline.frameIndex = frameWaitLedgers_[activeWaitLedgerIndex_].frameIndex;
+    timeline.frameLedger = &frameWaitLedgers_[activeWaitLedgerIndex_];
+    timeline.idleWindowFiller = &idleWindowFiller_;
     if (timeline.semaphore == VK_NULL_HANDLE) {
         VkSemaphoreTypeCreateInfo typeInfo{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
         typeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
@@ -1365,12 +1439,16 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
             presentInfo.swapchainCount = 1;
             presentInfo.pSwapchains = &rec.swapchain;
             presentInfo.pImageIndices = &rec.imageIndex;
+#if UNDERSET_NATIVE_BENCHMARK
             const auto started = std::chrono::steady_clock::now();
+#endif
             if (rec.presentFn) {
+                VIXEN_FRAME_TRACE_SCOPE("present", "vkQueuePresentKHR");
                 result = rec.presentFn(device->queue, &presentInfo);
             } else {
                 result = VK_ERROR_INITIALIZATION_FAILED;
             }
+#if UNDERSET_NATIVE_BENCHMARK
             if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
                 const auto completed = std::chrono::steady_clock::now();
                 std::fprintf(stderr, "[GPUYIELD_HOST] operation=present-owner start_ns=%lld end_ns=%lld result=%d\n",
@@ -1378,6 +1456,7 @@ VkResult RenderGraph::IssueRecord(SubmitRecord& rec) {
                     static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count()),
                     static_cast<int>(result));
             }
+#endif
         } else {
             const PFN_vkQueueSubmit2 submit2 = device->fpQueueSubmit2;
             const VkQueue queue = device->queue;
@@ -1645,13 +1724,16 @@ VkResult RenderGraph::RenderFrame() {
     // rendering is paused (minimize / swapchain recreation) — the whole point of decoupling the
     // 30Hz logic cadence from render fps. globalFrameIndex is incremented at frame-end (below), so
     // only SetCurrentFrame is called here, not another increment.
-    loopManager.SetCurrentFrame(globalFrameIndex);
-    loopManager.UpdateLoops(frameTimer.GetDeltaTime());
+    {
+        VIXEN_FRAME_TRACE_SCOPE("graph", "loops-commit");
+        loopManager.SetCurrentFrame(globalFrameIndex);
+        loopManager.UpdateLoops(frameTimer.GetDeltaTime());
 
-    // Publish completed immutable-snapshot work from the preceding frame in submission order.
-    // Multi-rate domains are admitted by their LoopDomainMetadata; no worker may publish directly
-    // into live graph state between these graph-owned boundaries.
-    if (framePipeline_) framePipeline_->CommitReady(false);
+        // Publish completed immutable-snapshot work from the preceding frame in submission order.
+        // Multi-rate domains are admitted by their LoopDomainMetadata; no worker may publish directly
+        // into live graph state between these graph-owned boundaries.
+        if (framePipeline_) framePipeline_->CommitReady(false);
+    }
 
     // Event processing now handled in application's Update() phase
     // This allows updating without rendering and different frame rates
@@ -1666,6 +1748,8 @@ VkResult RenderGraph::RenderFrame() {
     // Sprint 4 Phase B: Per-frame resource lifecycle management
     // Sprint 6.3 Phase 6: Event-driven systems handle their own lifecycle
     // ========================================================================
+
+    VIXEN_FRAME_TRACE_BEGIN(frameStartTrace, "graph", "frame-start");
 
     // Process deferred destructions from previous frames
     // When event-driven (autoPressureAdjustment_), handled by FrameStartEvent subscription
@@ -1691,10 +1775,22 @@ VkResult RenderGraph::RenderFrame() {
         messageBus->Publish(std::make_unique<EventBus::FrameStartEvent>(0, globalFrameIndex));
         messageBus->ProcessMessages();  // Process immediately so listeners capture state
     }
+    activeWaitLedgerIndex_ = static_cast<std::size_t>(globalFrameIndex % FrameWaitLedger::kFlightCount);
+    frameWaitLedgers_[activeWaitLedgerIndex_].Reset(globalFrameIndex);
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        timeline.frameIndex = globalFrameIndex;
+        timeline.frameLedger = &frameWaitLedgers_[activeWaitLedgerIndex_];
+        timeline.idleWindowFiller = &idleWindowFiller_;
+    }
+    VIXEN_FRAME_TRACE_END(frameStartTrace);
     // R723 fixed queue-owner phase: requests published by workers or caches are issued before this
     // frame's graph work. Queue order therefore preserves producer-before-consumer semantics while
     // no producer needs a queue mutex or a host wait.
-    DrainOffGraphSubmits();
+    {
+        VIXEN_FRAME_TRACE_SCOPE("graph", "drain-offgraph");
+        DrainOffGraphSubmits();
+    }
 
     // The render graph orchestrates the frame by calling specialized nodes:
     //
@@ -1719,7 +1815,10 @@ VkResult RenderGraph::RenderFrame() {
     frameFault_ = VK_SUCCESS;
     BeginExecutionEpoch();
     // Owner phase, graph thread, before any node runs: release the one-shots the GPU has finished.
-    RetireCompletedSubmissions();
+    {
+        VIXEN_FRAME_TRACE_SCOPE("graph", "retire-completed");
+        RetireCompletedSubmissions();
+    }
 
     // Lock census (phase 0): wall time of the node-execution span, sampled with the per-family
     // counters at frame end. Two clock reads per frame; kept unconditional so the CSV columns
@@ -1728,6 +1827,7 @@ VkResult RenderGraph::RenderFrame() {
 
     // The default path remains the comparison oracle; the opt-in path runs the compiled node DAG
     // through KernelDispatch and commits effects in the same graph order below.
+    VIXEN_FRAME_TRACE_BEGIN(executeTrace, "graph", "execute-nodes");
     if (UseLoweredGraph()) {
         frameResult = ExecuteLoweredFrame();
     } else {
@@ -1756,6 +1856,7 @@ VkResult RenderGraph::RenderFrame() {
                 const auto executeStart = PhaseTiming::Enabled() ? PhaseTiming::Clock::now()
                                                                  : PhaseTiming::Clock::time_point{};
                 try {
+                    VIXEN_FRAME_TRACE_SCOPE("node", node->GetInstanceName());
                     node->Execute();  // Pass VK_NULL_HANDLE - nodes manage their own command buffers
                     if (PhaseTiming::Enabled())
                         PhaseTiming::AddExecute(node->GetInstanceName(), PhaseTiming::MsSince(executeStart));
@@ -1790,9 +1891,13 @@ VkResult RenderGraph::RenderFrame() {
         }
     }
 
+    VIXEN_FRAME_TRACE_END(executeTrace);
+
     // ========================================================================
     // Sprint 4 Phase B: End frame scope and cleanup
     // ========================================================================
+
+    VIXEN_FRAME_TRACE_BEGIN(frameEndTrace, "graph", "frame-end");
 
     // Publish FrameEndEvent for allocation tracking and other frame-aware systems
     // In event-driven mode (autoPressureAdjustment_), this triggers:
@@ -1828,13 +1933,18 @@ VkResult RenderGraph::RenderFrame() {
     // that is not ready remains queued for the next frame and can overlap the next admission.
     if (framePipeline_) framePipeline_->CommitReady(false);
 
+    VIXEN_FRAME_TRACE_END(frameEndTrace);
+
     // Lock census sample for this frame (no-op unless VIXEN_LOCK_CENSUS). Taken after the frame's
     // own bus dispatch/cleanup so the per-frame deltas include every acquisition the frame caused.
+#if VIXEN_LOCK_CENSUS
     frameWaveStats_.frameCpuMs = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - frameExecuteStart).count();
     lockCensus_.Sample(globalFrameIndex, frameWaveStats_);
+#endif
 
     // Increment frame counter for next frame
+    lastWaitLedgerIndex_ = activeWaitLedgerIndex_;
     globalFrameIndex++;
 
     // AR#1 Phase 3: if a node latched device-loss mid-frame (e.g. a submit/wait returned
@@ -1853,12 +1963,15 @@ VkResult RenderGraph::RenderFrame() {
     if (frameResult == VK_SUCCESS && !frameAborted_) {
         const auto frameBudget = std::chrono::nanoseconds(
             capacityTracker_.GetConfig().gpuTimeBudgetNs);
+#if UNDERSET_NATIVE_BENCHMARK
         const bool traceYield = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
         const auto paceStart = std::chrono::steady_clock::now();
+#endif
         {
-            PhaseTiming::ScopedWait paceTimer("frame-pace");
+            PhaseTiming::ScopedWait paceTimer("frame-pace");  // also traced as a "wait" interval
             PaceFrameUntil(frameExecuteStart + frameBudget);
         }
+#if UNDERSET_NATIVE_BENCHMARK
         if (traceYield) {
             const auto paceEnd = std::chrono::steady_clock::now();
             const auto ticks = [](auto time) {
@@ -1870,6 +1983,7 @@ VkResult RenderGraph::RenderFrame() {
             std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-pace start_ns=%lld end_ns=%lld result=0\n",
                 ticks(paceStart), ticks(paceEnd));
         }
+#endif
     }
 
     return frameResult;  // Phase 2a: VK_SUCCESS, or the failure recorded if a node's Execute threw
@@ -2532,12 +2646,14 @@ void RenderGraph::RecompileDirtyNodes() {
         return;  // All dirty nodes are still executing
     }
 
+#if UNDERSET_NATIVE_BENCHMARK
     if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
         const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
         std::fprintf(stderr, "[RECIPE/latency] phase=compile edge=begin wall_us=%lld\n",
             static_cast<long long>(wallUs));
     }
+#endif
 
     // This recompile owns a fresh epoch. Any token retained by work from the previous graph shape
     // is stopped before cleanup begins; compile-time slot tasks below receive the new live token.
@@ -2668,12 +2784,14 @@ void RenderGraph::RecompileDirtyNodes() {
             GRAPH_LOG_WARNING("[RenderGraph] Some nodes failed to recompile - graph remains uncompiled");
         }
     }
+#if UNDERSET_NATIVE_BENCHMARK
     if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
         const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
         std::fprintf(stderr, "[RECIPE/latency] phase=compile edge=end wall_us=%lld\n",
             static_cast<long long>(wallUs));
     }
+#endif
 }
 
 void RenderGraph::MarkNodeNeedsRecompile(NodeHandle nodeHandle) {
@@ -2724,6 +2842,11 @@ void RenderGraph::HandleWindowResize(const EventTypes::WindowResizedMessage& msg
     // subscribe to WindowResizedMessage and mark themselves dirty.
     // Downstream consumers (DepthBufferNode, FramebufferNode, etc.) are automatically
     // marked dirty by the recompilation system when their dependencies change.
+    // The new resolution changes every command's cost: the learned window margins are warm-up again.
+    for (auto& [queue, timeline] : queueTimelines_) {
+        (void)queue;
+        timeline.ResetPredictionHistory();
+    }
 }
 
 void RenderGraph::HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg) {

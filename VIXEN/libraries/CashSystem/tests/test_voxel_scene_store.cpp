@@ -8,12 +8,13 @@
 
 #include <gtest/gtest.h>
 #include <VoxelSceneCacher.h>
+#include "ScopedEnvironment.h"
 #include "SvoGeneratorFingerprint.h"
 #include "VoxelSceneCacherFingerprint.h"
 
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 
 using CashSystem::CacheFileStatus;
@@ -32,18 +33,10 @@ protected:
                  "-" + ::testing::UnitTest::GetInstance()->current_test_info()->name());
         std::filesystem::remove_all(root_);
         std::filesystem::create_directories(root_);
-#ifdef _WIN32
-        _putenv_s("VIXEN_SHARED_CACHE_DIR", root_.string().c_str());
-#else
-        ::setenv("VIXEN_SHARED_CACHE_DIR", root_.string().c_str(), 1);
-#endif
+        environment_.emplace("VIXEN_SHARED_CACHE_DIR", root_.string().c_str());
     }
     void TearDown() override {
-#ifdef _WIN32
-        _putenv_s("VIXEN_SHARED_CACHE_DIR", "");
-#else
-        ::unsetenv("VIXEN_SHARED_CACHE_DIR");
-#endif
+        environment_.reset();
         std::filesystem::remove_all(root_);
     }
 
@@ -65,6 +58,7 @@ protected:
         return d;
     }
 
+    std::optional<Vixen::Core::Env::ScopedEnvironment> environment_;
     std::filesystem::path root_;
 };
 

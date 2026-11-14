@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FrameTrace.h"
 #include "TypedNodeInstance.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 #include "Data/Core/SlotInfo.h"  // SlotState previously lived here; now unified in Data/Core/SlotInfo.h
@@ -219,9 +220,9 @@ public:
      * @param min Minimum required inputs (inclusive)
      * @param max Maximum allowed inputs (inclusive)
      */
-    void SetVariadicInputConstraints(size_t min, size_t max = SIZE_MAX) {
-        minVariadicInputs_ = min;
-        maxVariadicInputs_ = max;
+    void SetVariadicInputConstraints(size_t minValue, size_t maxValue = SIZE_MAX) {
+        minVariadicInputs_ = minValue;
+        maxVariadicInputs_ = maxValue;
     }
 
     /**
@@ -621,7 +622,10 @@ protected:
     }
 
     void ExecuteImpl() override {
-        RefreshExecuteSlotsFromSources();
+        {
+            VIXEN_FRAME_TRACE_SCOPE("variadic", "refresh-slots");
+            RefreshExecuteSlotsFromSources();
+        }
         // Sequential execution over all tasks
         uint32_t taskCount = this->DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {

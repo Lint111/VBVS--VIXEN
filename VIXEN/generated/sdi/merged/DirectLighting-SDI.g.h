@@ -227,6 +227,16 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
+    struct Binding44 {
+        static constexpr const char* NAME = "RecipeChunkAabbBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 44;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RECIPE_CHUNK_CULL"};
+    };
+
     struct Binding47 {
         static constexpr const char* NAME = "BodyInstanceTransformBuffer";
         static constexpr uint32_t SET = 0;
@@ -289,6 +299,7 @@ using LightTreeBufferSSBO = Set0::Binding24;
 using ReservoirBufferA = Set0::Binding25;
 using ReservoirBufferB = Set0::Binding26;
 using InstanceSkipMaskBuffer = Set0::Binding35;
+using RecipeChunkAabbBuffer = Set0::Binding44;
 using BodyInstanceTransformBuffer = Set0::Binding47;
 using OccupancyGridBuffer = Set0::Binding48;
 using GlyphOutlineBuffer = Set0::Binding51;
@@ -425,6 +436,7 @@ struct MemberInfo {
 };
 
 inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRACE_HOOKS"};
+inline constexpr const char* const kFeatures_Set0_Binding44[] = {"VIXEN_RECIPE_CHUNK_CULL"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"outputImage", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
@@ -450,6 +462,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"ReservoirBufferA", false, 0, 25, 0, Access::ReadWrite, 0, nullptr},
     {"ReservoirBufferB", false, 0, 26, 0, Access::ReadWrite, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
+    {"RecipeChunkAabbBuffer", false, 0, 44, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding44},
     {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
     {"OccupancyGridBuffer", false, 0, 48, 0, Access::ReadOnly, 0, nullptr},
     {"GlyphOutlineBuffer", false, 0, 51, 0, Access::ReadOnly, 0, nullptr},
@@ -472,8 +485,8 @@ inline constexpr MemberInfo MEMBERS[] = {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "DirectLighting";
-    static constexpr uint32_t NUM_MEMBERS = 41;
-    static constexpr uint32_t NUM_FEATURES = 1;
+    static constexpr uint32_t NUM_MEMBERS = 42;
+    static constexpr uint32_t NUM_FEATURES = 2;
 };
 
 } // namespace DirectLighting

@@ -6,6 +6,7 @@
 #include "IDebugCapture.h"
 #include "DebugRaySample.h"
 #include <vulkan/vulkan.h>
+#include <array>
 #include <vector>
 #include <span>
 #include <any>
@@ -78,6 +79,13 @@ struct FarFieldByTagStats {
     uint32_t colorFallback[2] = {0, 0};
 };
 
+struct RecipeChunkMetrics {
+    uint32_t rays = 0;
+    uint32_t recipes = 0;
+    uint32_t chunks = 0;
+    uint32_t steps = 0;
+};
+
 /**
  * @brief Batch-24 FARGEN readback (see rectRays/rectCellEntries/rectGateCross
  * in DebugRaySample.h): rect-scoped generation funnel over the far clusters
@@ -141,8 +149,8 @@ struct EsvoMipArmStats {
  * farFieldSampledLevelMin/Max/Sum/Count field comment, DebugRaySample.h).
  */
 struct FarFieldSampledLevelStats {
-    uint32_t min = 0;
-    uint32_t max = 0;
+    uint32_t minValue = 0;
+    uint32_t maxValue = 0;
     uint32_t sum = 0;
     uint32_t count = 0;
 };
@@ -155,8 +163,8 @@ struct FarFieldSampledLevelStats {
  * See DebugRaySample.h's farFieldSampleIntensity* field comment.
  */
 struct FarFieldSampleIntensityStats {
-    float min = 0.0f;
-    float max = 0.0f;
+    float minValue = 0.0f;
+    float maxValue = 0.0f;
     float mean = 0.0f;
 };
 
@@ -212,6 +220,23 @@ struct WalkCovStats {
 struct CompositeBlendStats {
     uint32_t blends = 0;
     float behindMax = 0.0f;
+};
+
+/** Capture-only leaf traversal histograms (binding-4 TraceBufferHeader). */
+struct LeafInstrumentationStats {
+    std::array<uint32_t, LEAF_INSTR_LOG2_BINS> steps{};
+    std::array<uint32_t, LEAF_INSTR_LOG2_BINS> bodies{};
+    std::array<uint32_t, LEAF_INSTR_LOG2_BINS> candidates{};
+    std::array<uint32_t, LEAF_INSTR_PATH_CLASSES> pathClass{};
+    std::array<uint32_t, LEAF_INSTR_LOG2_BINS> brickSteps{};
+};
+
+/** Raw low-32-bit shader realtime-clock spans for the item-4 A/B. */
+struct LeafShaderClockStats {
+    uint32_t waveStartMin = 0xFFFFFFFFu;
+    uint32_t waveEndMax = 0u;
+    uint32_t shadeStartMin = 0xFFFFFFFFu;
+    uint32_t shadeEndMax = 0u;
 };
 
 /** E1-T1 stencil slice 0 composition census. Indices are
@@ -391,6 +416,8 @@ public:
 
     /// Read the per-frame fixed-capacity E6-T2 body x mip-level byte ledger.
     MipReadByteCounters ReadMipReadByteCounters(VkDevice device) const;
+
+    RecipeChunkMetrics ReadRecipeChunkMetrics(VkDevice device) const;
     [[nodiscard]] const std::vector<MipReadByteCounters>& GetMipReadSnapshots() const {
         return mipReadSnapshots_;
     }
@@ -515,6 +542,12 @@ public:
 
     /** Read the env-gated E7-T1 policy-stencil parity summary. */
     PolicyStencilStats ReadPolicyStencilStats(VkDevice device) const;
+
+    /** Read the capture-only leaf traversal histograms. */
+    LeafInstrumentationStats ReadLeafInstrumentationStats(VkDevice device) const;
+
+    /** Read the opt-in shadow-wave and shade shader-clock spans. */
+    LeafShaderClockStats ReadLeafShaderClockStats(VkDevice device) const;
 
     std::any GetData() const override;
 

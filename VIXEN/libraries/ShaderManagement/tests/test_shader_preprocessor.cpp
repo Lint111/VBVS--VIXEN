@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "ShaderPreprocessor.h"
+#include "RuntimeCachePaths.h"
 #include <filesystem>
 #include <fstream>
 
@@ -13,7 +14,12 @@ using namespace ShaderManagement;
 class ShaderPreprocessorTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testDir = std::filesystem::temp_directory_path() / "shader_preprocessor_test";
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        const auto testName = info != nullptr ? info->name() : "unknown";
+        // CTest runs each case in its own process. Keep parallel cases from deleting one
+        // another's include graph while the preprocessor is reading it.
+        testDir = std::filesystem::temp_directory_path() /
+                  ("shader_preprocessor_test_" + std::to_string(Vixen::CurrentProcessId()) + "_" + testName);
         std::filesystem::create_directories(testDir);
     }
 

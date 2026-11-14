@@ -35,6 +35,66 @@ bool isCloserHit(float candidateT, uint candidateInstIdx, float bestT, uint best
     return candidateT == bestT && candidateInstIdx < bestInstIdx;
 }
 
+#ifdef VIXEN_UBER_RECIPE_SPLICED
+bool recipeChunkInterval(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax,
+                         float tMin, float tMax, out float entry, out float exit) {
+    vec3 lo = vec3(tMin);
+    vec3 hi = vec3(tMax);
+    if (abs(rd.x) < 1e-8) { if (ro.x < bmin.x || ro.x > bmax.x) return false; }
+    else { float a = (bmin.x - ro.x) / rd.x; float b = (bmax.x - ro.x) / rd.x; lo.x = max(tMin, min(a, b)); hi.x = min(tMax, max(a, b)); }
+    if (abs(rd.y) < 1e-8) { if (ro.y < bmin.y || ro.y > bmax.y) return false; }
+    else { float a = (bmin.y - ro.y) / rd.y; float b = (bmax.y - ro.y) / rd.y; lo.y = max(tMin, min(a, b)); hi.y = min(tMax, max(a, b)); }
+    if (abs(rd.z) < 1e-8) { if (ro.z < bmin.z || ro.z > bmax.z) return false; }
+    else { float a = (bmin.z - ro.z) / rd.z; float b = (bmax.z - ro.z) / rd.z; lo.z = max(tMin, min(a, b)); hi.z = min(tMax, max(a, b)); }
+    entry = max(max(lo.x, lo.y), lo.z);
+    exit = min(min(hi.x, hi.y), hi.z);
+    return exit >= entry;
+}
+
+// The same recipe chunk records drive hardware ray-query candidates and the
+// software/DDA fallback. Each interval is marched independently, so a ray
+// never pays for the gaps between surface-shell chunks. The kernel march is
+// still the sole hit authority; chunk boxes only bound its [entry, exit].
+bool traceRecipeChunks(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
+                       vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
+                       float params[6], float tMaxWorld,
+                       out vec3 hitNormal, out float hitT, out uint stepsUsed) {
+#ifdef VIXEN_RECIPE_CHUNK_CULL
+    bool found = false;
+    recordRecipeMarch();
+    float closest = tMaxWorld;
+    uint totalSteps = 0u;
+    for (uint i = 0u; i < recipeChunkAabbs.length(); ++i) {
+        RecipeChunkAabb chunk = recipeChunkAabbs[i];
+        if (chunk.recipeId != recipeId) continue;
+        float entry; float exit;
+        if (!recipeChunkInterval(ro, rd, chunk.minLocal, chunk.maxLocal, 0.0, closest, entry, exit)) continue;
+        vec3 candidateNormal; float candidateT; uint candidateSteps;
+        recordRecipeChunkMarch();
+        bool candidateHit = traceUberRecipeBody(recipeId, boundCenter, boundRadius, relaxation,
+                                ro, rd, conservativeStepScale, pixelAngle, params,
+                                entry, min(exit, closest), candidateNormal, candidateT, candidateSteps);
+        recordRecipeSteps(candidateSteps);
+        totalSteps += candidateSteps;
+        if (candidateHit) {
+            if (!found || candidateT < closest) {
+                found = true;
+                closest = candidateT;
+                hitNormal = candidateNormal;
+                hitT = candidateT;
+            }
+        }
+    }
+    stepsUsed = totalSteps;
+    return found;
+#else
+    return traceUberRecipeBody(recipeId, boundCenter, boundRadius, relaxation,
+                               ro, rd, conservativeStepScale, pixelAngle, params,
+                               0.0, tMaxWorld, hitNormal, hitT, stepsUsed);
+#endif
+}
+#endif
+
 // ============================================================================
 // WorldHit - what the march produces at a hit
 // ============================================================================
@@ -117,8 +177,17 @@ bool getOctreeTraceBounds(uint octreeIdx, out vec3 boundsMin, out vec3 boundsMax
 // proxy-union interval; without B2 they retain the caller's full ray range.
 // Returns true if any instance was hit; B2 enforces the proxy-union tmax.
 bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit) {
+#ifdef VIXEN_RECIPE_CHUNK_CULL
+    recordRecipeChunkRay();
+#endif
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
+
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+    g_leafInstrRaySteps = 0u;
+    g_leafInstrBodies = 0u;
+    g_leafInstrCandidates = 0u;
+#endif
 
     bool  anyHit          = false;
     float bestT           = 1e30;
@@ -148,6 +217,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     float bestEmission    = 0.0;          // M11.2: winning instance's emission intensity
     bool  bestWasFarField = false;        // round 9: see WorldHit.wasFarField
     uint  bestFootprintRegime = 1u;
+    uint  bestPathClass = 0u;             // 0=miss, 1=recipe, 2=stored, 3=far-field
     uint  sourceMask = 0u;
 
 #ifdef VIXEN_RTQUERY_TRAVERSAL
@@ -217,6 +287,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestEmission   = rqEmission;
             bestWasFarField = rqWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = rqFootprintRegime;
+            bestPathClass = rqWasFarField ? 3u : 2u;
             sourceMask |= 2u;
             anyHit         = true;
         }
@@ -299,6 +370,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // main() (git history) for the original inline version this was ported from when
         // TraceWorld.glsl (Sampled Lighting Inc1 M1) was merged with this branch's Inc0 M5/M6.
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
+#if defined(VIXEN_RTQUERY_TRAVERSAL) && defined(VIXEN_RECIPE_CHUNK_CULL)
+            if (inst.recipeId >= 2u) continue; // the TLAS ray query already owns this recipe
+#endif
             vec3 pNormal;
             float pT;
             bool pHit = false;
@@ -372,6 +446,11 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     farSubPixel = footprint >= 2.0 * boundRadius * worldUnitsPerInstUnit;
                 }
 
+#ifdef VIXEN_LEAF_VARIANT_SEARCH
+                // fl-leafinstr1 measurement variant (not pixel-valid): search only, the bound
+                // sphere test above is the whole per-body cost; take the flat-shade exit.
+                farSubPixel = true;
+#endif
                 if (farSubPixel) {
 #ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = 1u;  // flat-shaded, not a full march — nonzero proves it wasn't rejected
@@ -381,6 +460,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pNormal = normalize(-instDir);  // local-space normal; transformed after the march
                 } else {
                     uint pSteps;
+                    incrLeafInstrBody();
                     // Recipe-Parameterization M2 Task 6: read inst.recipeParams[] out of the
                     // SSBO once here and pass it down as a plain argument — same convention
                     // the legacy recipeId<2 branch above already uses for pParams, not a
@@ -388,11 +468,14 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     float uberParams[6] = float[6](
                         inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                         inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
-                    pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                               instOrigin, instDir, conservativeSdfStepScale,
-                                               VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                    pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
+                                             instOrigin, instDir, conservativeSdfStepScale,
+                                             VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
+                                             bestT / worldUnitsPerInstUnit, pNormal, pT, pSteps);
+                    addLeafInstrSteps(pSteps);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
-                    // step count (>=1, even on a miss that exhausted its ray-interval budget or exited tFar) —
+                    // step count (>=1, even on a miss that exhausted its ray-interval budget or exited
+                    // min(tFar,tMaxWorld)) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
                     // early-reject fired," matching the ESVO branch's own convention exactly.
 #ifdef VIXEN_GPU_TRACE_HOOKS
@@ -429,6 +512,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // every non-emissive body) without a new BodyInstance field.
                 bestEmission   = inst.recipeParams[3];
                 bestFootprintRegime = 1u;
+                bestPathClass = 1u;
                 anyHit         = true;
             }
             continue;  // procedural body fully handled; skip the ESVO path
@@ -702,6 +786,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // ray-vs-AABB math a second time — a single "beam test" pre-pass result shared by
         // both the cull check and the traversal, so they can never disagree at the AABB
         // silhouette (see traverseOctreeInstanced's own comment for why that mattered).
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+        incrLeafInstrBody();
+#endif
 #ifdef VIXEN_RTQUERY_TRAVERSAL
         // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: FORMAT_STORED_SDF
         // instances never reach this call site anymore (skipped above, covered by
@@ -797,6 +884,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestEmission    = hitEmission;
             bestWasFarField = instWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = instFootprintRegime;
+            bestPathClass = instWasFarField ? 3u : 2u;
             anyHit          = true;
         }
 #ifdef VIXEN_REGIME3_COMPOSITE
@@ -829,6 +917,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.wasFarField = anyHit && bestWasFarField;
     hit.footprintRegime = bestFootprintRegime;
     hit.sourceMask = sourceMask;
+#ifdef VIXEN_LEAF_INSTR_COUNTERS
+    recordLeafInstrRay(g_leafInstrRaySteps, g_leafInstrBodies, g_leafInstrCandidates, bestPathClass);
+#endif
 #ifdef VIXEN_REGIME3_COMPOSITE
     hit.residualT   = bestResidualT;
     hit.behindColor = secondColor;
@@ -889,6 +980,9 @@ bool isPointLightSourceInstance(uint instanceIndex, BodyInstance inst, vec3 sour
 bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                           bool skipPointLightSource, vec3 pointLightPosition,
                           float footprintBase, float footprintPerT) {
+#ifdef VIXEN_RECIPE_CHUNK_CULL
+    recordRecipeChunkRay();
+#endif
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
     g_lastShadowCompositionRegime = 1u;
@@ -958,6 +1052,9 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
         // Any-hit semantics mean no bound-sphere/far-subpixel early-outs are needed here —
         // this is already cheaper than TraceWorld's nearest-hit accumulation.
         if (inst.providerKind == PROVIDER_PROCEDURAL) {
+#if defined(VIXEN_RTQUERY_TRAVERSAL) && defined(VIXEN_RECIPE_CHUNK_CULL)
+            if (inst.recipeId >= 2u) continue; // the TLAS ray query already owns this recipe
+#endif
             vec3 pNormal;
             float pT;
             bool pHit = false;
@@ -987,9 +1084,10 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                     inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                     inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                 g_recipeProvenStepOnly = true;
-                pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                           instOrigin, instDir, conservativeSdfStepScale,
-                                           VIXEN_QUERY_RAY_SIZE_COEF, uberParams, pNormal, pT, pSteps);
+                pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
+                                         instOrigin, instDir, conservativeSdfStepScale,
+                                         VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
+                                         tmax / worldUnitsPerInstUnit, pNormal, pT, pSteps);
                 g_recipeProvenStepOnly = false;
             }
 #endif

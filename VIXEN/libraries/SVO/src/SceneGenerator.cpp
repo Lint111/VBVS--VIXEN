@@ -323,12 +323,12 @@ void CornellBoxSceneGenerator::GenerateCube(
     const glm::vec3& size,
     uint8_t material)
 {
-    glm::ivec3 min = glm::ivec3(center - size * 0.5f);
-    glm::ivec3 max = glm::ivec3(center + size * 0.5f);
+    glm::ivec3 minCorner = glm::ivec3(center - size * 0.5f);
+    glm::ivec3 maxCorner = glm::ivec3(center + size * 0.5f);
 
-    for (int x = min.x; x <= max.x; ++x) {
-        for (int y = min.y; y <= max.y; ++y) {
-            for (int z = min.z; z <= max.z; ++z) {
+    for (int x = minCorner.x; x <= maxCorner.x; ++x) {
+        for (int y = minCorner.y; y <= maxCorner.y; ++y) {
+            for (int z = minCorner.z; z <= maxCorner.z; ++z) {
                 if (x >= 0 && y >= 0 && z >= 0 &&
                     x < static_cast<int>(grid.GetResolution()) &&
                     y < static_cast<int>(grid.GetResolution()) &&

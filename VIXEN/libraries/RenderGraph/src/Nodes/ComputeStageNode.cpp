@@ -1,3 +1,4 @@
+#include "FrameTrace.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // auto-sync FrameGraph P5b M2: generic single-compute-pass submit node.
@@ -120,7 +121,7 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
     if (!gpuPerfLogger_) {
         auto* queryMgrPtr = static_cast<GPUQueryManager*>(GetDevice()->GetQueryManager());
         if (queryMgrPtr) {
-            auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+            auto queryManager = std::shared_ptr<GPUQueryManager>(GetDevice()->GetQueryManagerShared(), queryMgrPtr);
             gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(GetInstanceName(), queryManager);
             gpuPerfLogger_->SetEnabled(true);
             gpuPerfLogger_->SetLogFrequency(120);  // ~2s at 60fps, matches ComputeDispatchNode
@@ -172,6 +173,7 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Collect GPU performance results for this frame-in-flight (after fence wait) — same
     // placement as ComputeDispatchNode::ExecuteImpl.
     if (gpuPerfLogger_) {
+        VIXEN_FRAME_TRACE_SCOPE("perf", GetInstanceName());
         gpuPerfLogger_->CollectResults(currentFrameIndex);
     }
 
@@ -190,7 +192,12 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
     // completion timeline wait; RecordComputeCommands still selects image-derived values by imageIndex.
     VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
-    if (!RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer)) {
+    bool recorded;
+    {
+        VIXEN_FRAME_TRACE_SCOPE("record", GetInstanceName());
+        recorded = RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer);
+    }
+    if (!recorded) {
         return;  // fault already reported (R213); nothing recorded to submit this frame.
     }
     commandBuffers_.MarkReady(currentFrameIndex);
@@ -276,7 +283,13 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // R715: the graph's single submission point (published on the lowered executor, issued by the
     // owner at once on the sequential one).
-    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, SubmitRecord::FromSubmitInfo2(si, submitFence));
+    auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
+    if (gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
+        const uint64_t expectedNs = static_cast<uint64_t>(gpuPerfLogger_->GetLastDispatchMs() * 1'000'000.0f);
+        record.commandCostMeanNs.push_back(expectedNs);
+        record.commandCostUpperBoundsNs.push_back(expectedNs + expectedNs / 10 + 1);
+    }
+    if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
         result != VK_SUCCESS) {
         NODE_LOG_ERROR("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " + std::to_string(result));
         GetOwningGraph()->ReportGpuFault("ComputeStageNode::ExecuteImpl vkQueueSubmit2", result);
@@ -299,6 +312,7 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
                                              uint32_t imageIndex, uint32_t frameIndex, bool isConsumer) {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    VIXEN_FRAME_COUNT(CommandRecordings, 1);
     if (const VkResult beginResult = vkBeginCommandBuffer(cmd, &beginInfo); beginResult != VK_SUCCESS) {
         GetOwningGraph()->ReportGpuFault("ComputeStageNode::RecordComputeCommands vkBeginCommandBuffer",
                                          beginResult);
@@ -387,6 +401,11 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     VkPipeline pipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout layout = ctx.In(ComputeStageNodeConfig::PIPELINE_LAYOUT);
     std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeStageNodeConfig::DESCRIPTOR_SETS);
+    if (pipeline == VK_NULL_HANDLE || layout == VK_NULL_HANDLE) {
+        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] stage '" + GetInstanceName() +
+                                 "' has no compute pipeline/layout wired and no external command recorder; "
+                                 "wire it through SynthesizeComputeStage or call SetExternalCommandRecorder");
+    }
 
     // Descriptor SET OBJECTS are frame-indexed by DescriptorSetNode (set ring at flight depth,
     // set[frameIndex]) whenever its CURRENT_FRAME_INDEX is wired, else set[imageIndex]. Bind the

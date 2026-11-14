@@ -1,11 +1,14 @@
 # Runs at CTest load time, once per GoogleTest target, after the target's discovery include has
 # created its cases. Inputs (set by the generated stub): VIXEN_CLASS_TARGET, VIXEN_CLASS_LINK (the
 # target's link-closure class), VIXEN_CLASS_FINGERPRINT (hash of its sources), VIXEN_CLASS_TESTS
-# (the discovered case names) and VIXEN_CLASS_MANIFEST.
+# (the discovered case names), VIXEN_CLASS_MANIFEST, VIXEN_GPU_RESOURCE_GROUPS and the cases the
+# registration declared GPU: VIXEN_CLASS_DECLARED_GPU (all) / VIXEN_CLASS_DECLARED_GPU_PATTERNS (regexes).
 #
 # Each case takes the manifest class when the manifest has an entry for it written against the same
-# target sources; otherwise it keeps the link-closure class. CTest property commands add to
-# LABELS, ENVIRONMENT_MODIFICATION and RESOURCE_LOCK, and ignore names that do not exist.
+# target sources; otherwise it keeps the link-closure class. The discovery include supplies only
+# suite/executable metadata. This hook writes the complete label and environment values in one
+# operation because CTest's load context cannot read TEST or DIRECTORY TESTS properties and LABELS
+# writes append there. RESOURCE_GROUPS appends too, so a GPU case gets its one request exactly once.
 #
 # Manifest columns: test, class, target, source-fingerprint, evidence.
 
@@ -23,6 +26,11 @@ if(VIXEN_CLASS_TESTS)
     endif()
 
     foreach(_vixen_test IN LISTS VIXEN_CLASS_TESTS)
+        if(_vixen_test MATCHES "_NOT_BUILT$")
+            # The configure-time registered-tests.tsv entry owns target selection for this
+            # placeholder. There is no real case to label until the selected target is built.
+            continue()
+        endif()
         set(_vixen_class "${_vixen_link_class}")
         set(_vixen_source classified-by-link)
         string(FIND "${_vixen_manifest}" "\n${_vixen_test}\t" _vixen_position)
@@ -38,11 +46,48 @@ if(VIXEN_CLASS_TESTS)
             endif()
         endif()
 
+        set(_vixen_extra_labels)
+        if(_vixen_test IN_LIST _vixen_policy_benchmark_tests)
+            list(APPEND _vixen_extra_labels benchmark)
+        endif()
+        if(_vixen_test IN_LIST _vixen_policy_on_demand_tests)
+            list(APPEND _vixen_extra_labels on_demand)
+        endif()
+        if(_vixen_test IN_LIST _vixen_policy_gpu_smoke_tests)
+            list(APPEND _vixen_extra_labels gpu_smoke)
+        endif()
+        set(_vixen_extra_modification)
+        if(_vixen_test IN_LIST _vixen_policy_gpu_smoke_tests)
+            list(APPEND _vixen_extra_modification "VIXEN_GPU_TEST_SMOKE=set:1")
+        endif()
+
+        set(_vixen_labels
+            "${VIXEN_CLASS_SUITE}" "${_vixen_class}" "${_vixen_source}" "exe:${VIXEN_CLASS_TARGET}"
+            ${_vixen_extra_labels})
+        set(_vixen_environment_modification
+            "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test}"
+            ${_vixen_extra_modification})
         set_tests_properties("${_vixen_test}" PROPERTIES
-            LABELS "${_vixen_class};${_vixen_source}"
-            ENVIRONMENT_MODIFICATION "VIXEN_TEST_CLASS=set:${_vixen_class};VIXEN_TEST_NAME=set:${_vixen_test}")
-        if(_vixen_class STREQUAL "gpu")
-            set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_LOCK vixen_gpu_device)
+            LABELS "${_vixen_labels}"
+            ENVIRONMENT_MODIFICATION "${_vixen_environment_modification}")
+        set(_vixen_gpu_case OFF)
+        if(_vixen_class STREQUAL "gpu" OR VIXEN_CLASS_DECLARED_GPU)
+            set(_vixen_gpu_case ON)
+        endif()
+        foreach(_vixen_pattern IN LISTS VIXEN_CLASS_DECLARED_GPU_PATTERNS)
+            if(_vixen_test MATCHES "${_vixen_pattern}")
+                set(_vixen_gpu_case ON)
+            endif()
+        endforeach()
+        # One request per case: every CTest-time set_tests_properties appends another resource group,
+        # also when two targets of this directory list the same case name.
+        if(_vixen_gpu_case AND NOT "${_vixen_test}" IN_LIST _VIXEN_GPU_REQUESTED)
+            list(APPEND _VIXEN_GPU_REQUESTED "${_vixen_test}")
+            set_tests_properties("${_vixen_test}" PROPERTIES RESOURCE_GROUPS "${VIXEN_GPU_RESOURCE_GROUPS}")
         endif()
     endforeach()
 endif()
+
+unset(_vixen_policy_benchmark_tests)
+unset(_vixen_policy_on_demand_tests)
+unset(_vixen_policy_gpu_smoke_tests)

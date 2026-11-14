@@ -50,6 +50,7 @@ target_compile_definitions(VulkanResources PUBLIC
     VIXEN_CONFIGURED_FSR3_UPSCALER=${_vixen_fsr3_configured})
 
 set(VIXEN_APP_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/BodyInstanceScene.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplicationLifecycle.cpp
@@ -293,6 +294,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_ui_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_cornell_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_starfield_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_lookdev_capture.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/tests/test_load_scenario.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_planet_capture.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_cel_shading_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_traversal_capture.cmake)

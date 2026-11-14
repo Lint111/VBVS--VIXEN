@@ -2,10 +2,10 @@
 #include "ShaderBundleBuilder.h"
 #include "ShaderCacheManager.h"
 #include "ShaderReflectionCache.h"
+#include "RuntimeCachePaths.h"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <unistd.h>
 
 using namespace ShaderManagement;
 
@@ -48,7 +48,7 @@ protected:
     void SetUp() override {
         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
         root = std::filesystem::temp_directory_path() /
-               ("shader_reflection_cache_" + std::to_string(::getpid()) + "_" + info->name());
+               ("shader_reflection_cache_" + std::to_string(Vixen::CurrentProcessId()) + "_" + info->name());
         std::filesystem::remove_all(root);
         std::filesystem::create_directories(root);
         ShaderCacheConfig config;

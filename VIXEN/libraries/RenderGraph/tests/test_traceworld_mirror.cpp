@@ -99,8 +99,8 @@ std::optional<float> RayAabbEntry(const glm::vec3& origin, const glm::vec3& dir,
     for (int axis = 0; axis < 3; ++axis) {
         float o = origin[axis];
         float d = dir[axis];
-        float lo = box.min[axis];
-        float hi = box.max[axis];
+        float lo = box.minCorner[axis];
+        float hi = box.maxCorner[axis];
 
         if (std::abs(d) < 1e-8f) {
             // Ray parallel to this slab: must already lie within it.

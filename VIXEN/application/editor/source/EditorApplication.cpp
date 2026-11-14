@@ -56,11 +56,18 @@
 namespace {
 // R463 capture instrumentation only; steady timestamps correlate with shared backend spans.
 void TraceEditorLatency(const char* phase, const char* edge, long tick, int action = -1) {
+#if UNDERSET_NATIVE_BENCHMARK
     if (!std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) return;
     const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
     std::fprintf(stderr, "[RECIPE/latency] phase=%s edge=%s tick=%ld action=%d wall_us=%lld\n",
         phase, edge, tick, action, static_cast<long long>(wallUs));
+#else
+    (void)phase;
+    (void)edge;
+    (void)tick;
+    (void)action;
+#endif
 }
 
 // Parses selector-equivalent editor operations such as

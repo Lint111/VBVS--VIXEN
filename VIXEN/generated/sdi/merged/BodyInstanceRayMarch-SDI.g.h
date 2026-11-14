@@ -259,6 +259,16 @@ namespace Set0 {
         static constexpr const char* FEATURES[1] = {"VIXEN_RTQUERY_TRAVERSAL"};
     };
 
+    struct Binding44 {
+        static constexpr const char* NAME = "RecipeChunkAabbBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 44;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RECIPE_CHUNK_CULL"};
+    };
+
     struct Binding47 {
         static constexpr const char* NAME = "BodyInstanceTransformBuffer";
         static constexpr uint32_t SET = 0;
@@ -345,6 +355,7 @@ using rtQueryTlas = Set0::Binding40;
 using PolicyStencilTileBuffer = Set0::Binding41;
 using ProxyIntervalBuffer = Set0::Binding42;
 using RtQueryProxyAabbBuffer = Set0::Binding43;
+using RecipeChunkAabbBuffer = Set0::Binding44;
 using BodyInstanceTransformBuffer = Set0::Binding47;
 using motionVectorImage = Set0::Binding48;
 using motionValidityImage = Set0::Binding49;
@@ -497,6 +508,7 @@ inline constexpr const char* const kFeatures_Set0_Binding40[] = {"VIXEN_RTQUERY_
 inline constexpr const char* const kFeatures_Set0_Binding41[] = {"VIXEN_POLICY_STENCIL", "VIXEN_POLICY_STENCIL_TILES"};
 inline constexpr const char* const kFeatures_Set0_Binding42[] = {"VIXEN_B2_PROXY_PREPASS"};
 inline constexpr const char* const kFeatures_Set0_Binding43[] = {"VIXEN_RTQUERY_TRAVERSAL"};
+inline constexpr const char* const kFeatures_Set0_Binding44[] = {"VIXEN_RECIPE_CHUNK_CULL"};
 inline constexpr const char* const kFeatures_Set0_Binding48[] = {"VIXEN_RECONSTRUCTION_INPUTS"};
 inline constexpr const char* const kFeatures_Set0_Binding49[] = {"VIXEN_RECONSTRUCTION_INPUTS"};
 inline constexpr const char* const kFeatures_Set0_Binding50[] = {"VIXEN_RECONSTRUCTION_INPUTS"};
@@ -529,6 +541,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"PolicyStencilTileBuffer", false, 0, 41, 0, Access::ReadWrite, 2, kFeatures_Set0_Binding41},
     {"ProxyIntervalBuffer", false, 0, 42, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding42},
     {"RtQueryProxyAabbBuffer", false, 0, 43, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding43},
+    {"RecipeChunkAabbBuffer", false, 0, 44, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding44},
     {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
     {"motionVectorImage", false, 0, 48, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding48},
     {"motionValidityImage", false, 0, 49, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding49},
@@ -554,8 +567,8 @@ inline constexpr MemberInfo MEMBERS[] = {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "BodyInstanceRayMarch";
-    static constexpr uint32_t NUM_MEMBERS = 47;
-    static constexpr uint32_t NUM_FEATURES = 7;
+    static constexpr uint32_t NUM_MEMBERS = 48;
+    static constexpr uint32_t NUM_FEATURES = 8;
 };
 
 } // namespace BodyInstanceRayMarch

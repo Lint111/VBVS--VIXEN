@@ -6,6 +6,7 @@
 #include "Core/TaskQueue.h"  // Sprint 6.2: Task #341
 #include "Core/GPUQueryManager.h"  // Sprint 6.3: Phase 2.2
 #include "Core/TimelineCapacityTracker.h"  // Sprint 6.3: Phase 2.2
+#include "Core/SubmitChannel.h"
 #include "State/StatefulContainer.h"
 #include "Data/DispatchPass.h"
 #include "Data/Nodes/MultiDispatchNodeConfig.h"
@@ -274,6 +275,7 @@ private:
     StatefulContainer<VkCommandBuffer> commandBuffers_;
     std::vector<std::vector<VkCommandBuffer>> chunkBuffers_;
     std::vector<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>> chunkQueries_;
+    FrameCommandTimingLedger frameCommandTimings_;
     std::vector<uint32_t> chunkCounts_;
 
     // Sprint 6.2: Budget-aware task queue (replaces dispatchQueue_)

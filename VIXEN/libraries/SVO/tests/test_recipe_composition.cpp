@@ -47,26 +47,26 @@ TEST(RecipeComposition, ResolvesVariantAndTwoMaskBlockSelectionByBand) {
     };
     ASSERT_EQ(registry.Register(20u, parent), RecipeRegistry::RegisterResult::Ok);
 
-    const auto near = registry.ResolveSdfComposite(20u, 0u);
-    ASSERT_TRUE(near.has_value());
-    EXPECT_TRUE(near->HasField());
-    EXPECT_EQ(near->fieldRecipeId, 20u);
-    ASSERT_EQ(near->blocks.size(), 3u);
-    EXPECT_EQ(near->blocks[0]->recipeId, 10u);
-    EXPECT_EQ(near->blocks[1]->recipeId, 11u);
-    EXPECT_EQ(near->blocks[2]->recipeId, 12u);
-    EXPECT_EQ(near->activeBlockMask, 0x7u);
+    const auto nearResult = registry.ResolveSdfComposite(20u, 0u);
+    ASSERT_TRUE(nearResult.has_value());
+    EXPECT_TRUE(nearResult->HasField());
+    EXPECT_EQ(nearResult->fieldRecipeId, 20u);
+    ASSERT_EQ(nearResult->blocks.size(), 3u);
+    EXPECT_EQ(nearResult->blocks[0]->recipeId, 10u);
+    EXPECT_EQ(nearResult->blocks[1]->recipeId, 11u);
+    EXPECT_EQ(nearResult->blocks[2]->recipeId, 12u);
+    EXPECT_EQ(nearResult->activeBlockMask, 0x7u);
 
     // q selects the coarser band, which redirects the field and drops the
     // interval block through the intersection of the two authoring masks.
-    const auto far = registry.ResolveSdfCompositeAtQ(20u, 0.75f);
-    ASSERT_TRUE(far.has_value());
-    EXPECT_EQ(far->bandIndex, 1u);
-    EXPECT_EQ(far->fieldRecipeId, 11u);
-    ASSERT_EQ(far->blocks.size(), 2u);
-    EXPECT_EQ(far->blocks[0]->recipeId, 10u);
-    EXPECT_EQ(far->blocks[1]->recipeId, 12u);
-    EXPECT_EQ(far->activeBlockMask, 0x5u);
+    const auto farResult = registry.ResolveSdfCompositeAtQ(20u, 0.75f);
+    ASSERT_TRUE(farResult.has_value());
+    EXPECT_EQ(farResult->bandIndex, 1u);
+    EXPECT_EQ(farResult->fieldRecipeId, 11u);
+    ASSERT_EQ(farResult->blocks.size(), 2u);
+    EXPECT_EQ(farResult->blocks[0]->recipeId, 10u);
+    EXPECT_EQ(farResult->blocks[1]->recipeId, 12u);
+    EXPECT_EQ(farResult->activeBlockMask, 0x5u);
 }
 
 TEST(RecipeComposition, SkipBandHasNoFieldOrBlocks) {

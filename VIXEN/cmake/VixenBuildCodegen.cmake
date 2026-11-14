@@ -24,15 +24,16 @@ if(NOT EXISTS "${_ready}" OR NOT EXISTS "${VIXEN_CODEGEN_CACHED_BIN}/CodegenTool
 else()
     message(STATUS "[codegen] reused shared CodegenTool: ${VIXEN_CODEGEN_CACHED_BIN}")
 endif()
-file(GLOB_RECURSE _binaries RELATIVE "${VIXEN_CODEGEN_CACHED_BIN}" "${VIXEN_CODEGEN_CACHED_BIN}/*")
-foreach(_binary IN LISTS _binaries)
-    get_filename_component(_subdir "${_binary}" DIRECTORY)
-    file(MAKE_DIRECTORY "${VIXEN_CODEGEN_LOCAL_BIN}/${_subdir}")
-    execute_process(COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-        "${VIXEN_CODEGEN_CACHED_BIN}/${_binary}" "${VIXEN_CODEGEN_LOCAL_BIN}/${_binary}"
-        RESULT_VARIABLE _copied)
-    if(NOT _copied EQUAL 0)
-        message(FATAL_ERROR "[codegen] failed to copy cached tool binary: ${_binary}")
+# One file(COPY) replaces the former per-file `cmake -E copy_if_different` child processes (47
+# processes per fresh build tree); it skips files whose timestamp and size already match. The stamp
+# records the cache entry (its directory name is the kernel/tool/RID/SDK/recipe identity key), so a
+# build tree states which immutable tool it consumes. Checks and regen targets depend on this
+# stamp and never restore or build the tool themselves.
+file(COPY "${VIXEN_CODEGEN_CACHED_BIN}/." DESTINATION "${VIXEN_CODEGEN_LOCAL_BIN}")
+foreach(_required CodegenTool.dll CodegenTool.deps.json CodegenTool.runtimeconfig.json)
+    if(NOT EXISTS "${VIXEN_CODEGEN_LOCAL_BIN}/${_required}")
+        message(FATAL_ERROR "[codegen] failed to copy cached tool binary: ${_required}")
     endif()
 endforeach()
-file(WRITE "${VIXEN_CODEGEN_LOCAL_STAMP}" "complete\n")
+get_filename_component(_tool_key "${VIXEN_CODEGEN_CACHE_DIR}" NAME)
+file(WRITE "${VIXEN_CODEGEN_LOCAL_STAMP}" "complete\ntool-key ${_tool_key}\n")

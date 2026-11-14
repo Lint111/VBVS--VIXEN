@@ -137,7 +137,7 @@ void MvpUniformNode::CreateBuffer(VulkanDevice* device) {
     }
 
     // --- Compute mvp = proj * view ---
-    // Model is per-instance in the shader; Draw.vert applies the Vulkan Y-flip + Z remap.
+    // Model is per-instance in the shader; Draw.vert applies the Vulkan Y-flip; proj is already [0,1] depth.
     glm::mat4 proj = glm::perspective(glm::radians(fovDegrees_), aspect_, nearZ_, farZ_);
     glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -cameraDistance_));
     glm::mat4 mvp  = proj * view;

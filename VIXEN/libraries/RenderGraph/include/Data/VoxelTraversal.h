@@ -42,40 +42,40 @@ struct Ray {
  * @brief Axis-Aligned Bounding Box (AABB)
  */
 struct AABB {
-    glm::vec3 min;  // Minimum corner
-    glm::vec3 max;  // Maximum corner
+    glm::vec3 minCorner;  // Minimum corner
+    glm::vec3 maxCorner;  // Maximum corner
 
-    AABB() : min(0.0f), max(0.0f) {}
-    AABB(const glm::vec3& minPt, const glm::vec3& maxPt) : min(minPt), max(maxPt) {}
+    AABB() : minCorner(0.0f), maxCorner(0.0f) {}
+    AABB(const glm::vec3& minPt, const glm::vec3& maxPt) : minCorner(minPt), maxCorner(maxPt) {}
 
     /**
      * @brief Get center point of AABB
      */
     glm::vec3 Center() const {
-        return (min + max) * 0.5f;
+        return (minCorner + maxCorner) * 0.5f;
     }
 
     /**
      * @brief Get extents (half-size) of AABB
      */
     glm::vec3 Extents() const {
-        return (max - min) * 0.5f;
+        return (maxCorner - minCorner) * 0.5f;
     }
 
     /**
      * @brief Get full size of AABB
      */
     glm::vec3 Size() const {
-        return max - min;
+        return maxCorner - minCorner;
     }
 
     /**
      * @brief Check if point is inside AABB
      */
     bool Contains(const glm::vec3& point) const {
-        return (point.x >= min.x && point.x <= max.x &&
-                point.y >= min.y && point.y <= max.y &&
-                point.z >= min.z && point.z <= max.z);
+        return (point.x >= minCorner.x && point.x <= maxCorner.x &&
+                point.y >= minCorner.y && point.y <= maxCorner.y &&
+                point.z >= minCorner.z && point.z <= maxCorner.z);
     }
 };
 
@@ -114,8 +114,8 @@ inline RayAABBHit IntersectRayAABB(const Ray& ray, const AABB& aabb) {
     );
 
     // Compute intersection distances for each axis
-    glm::vec3 t0 = (aabb.min - ray.origin) * invDir;
-    glm::vec3 t1 = (aabb.max - ray.origin) * invDir;
+    glm::vec3 t0 = (aabb.minCorner - ray.origin) * invDir;
+    glm::vec3 t1 = (aabb.maxCorner - ray.origin) * invDir;
 
     // Find min/max per axis (account for negative direction)
     glm::vec3 tmin = glm::min(t0, t1);
@@ -155,8 +155,8 @@ inline bool IntersectsRayAABB(const Ray& ray, const AABB& aabb) {
     );
 
     // Compute intersection distances
-    glm::vec3 t0 = (aabb.min - ray.origin) * invDir;
-    glm::vec3 t1 = (aabb.max - ray.origin) * invDir;
+    glm::vec3 t0 = (aabb.minCorner - ray.origin) * invDir;
+    glm::vec3 t1 = (aabb.maxCorner - ray.origin) * invDir;
 
     glm::vec3 tmin = glm::min(t0, t1);
     glm::vec3 tmax = glm::max(t0, t1);

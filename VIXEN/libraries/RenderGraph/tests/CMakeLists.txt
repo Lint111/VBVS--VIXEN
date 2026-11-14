@@ -1123,7 +1123,8 @@ if(TARGET GTest::gtest_main)
     endif()
     set_target_properties(test_rendergraph_nodes PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_rendergraph_nodes
-        GPU_TESTS "^(PartialBrickUploadTest\\..*|BandwidthAbMeasurementTest\\..*)$")
+        GPU_TESTS "^(PartialBrickUploadTest\\..*|BandwidthAbMeasurementTest\\..*)$"
+        BENCHMARK_TESTS "^BandwidthAbMeasurementTest\\..*$")
     message(STATUS "✓ test_rendergraph_nodes configured (PartialBrickUpload/BandwidthAbMeasurement/BufferSyncGathererNode/ProbeGridConfigLayout)")
 else()
     message(STATUS "⊗ test_rendergraph_nodes skipped (GoogleTest not available)")

@@ -1,5 +1,7 @@
 #include "VulkanGraphApplication.h"
 #include "Logger.h"
+#include "FrameTrace.h"
+#include <map>
 #include <algorithm>   // std::min for the Tiered-ESVO Inc2 M5 scripted zoom clamp
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <cstdio>      // std::sscanf for VIXEN_TIER_M8_FLIGHT_AIM_OFFSET (M8 Task 23)
@@ -132,22 +134,26 @@ bool VulkanGraphApplication::Render() {
 
         // Render a complete frame via the graph (it internally handles event processing + deferred
         // recompilation, image acquisition, command recording, queue submission with semaphores, present).
+#if UNDERSET_NATIVE_BENCHMARK
         if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
             const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             std::fprintf(stderr, "[RECIPE/latency] phase=render edge=begin wall_us=%lld\n",
                 static_cast<long long>(wallUs));
         }
+#endif
         auto* historyWriter = dynamic_cast<Vixen::RenderGraph::ComputeStageNode*>(
             renderGraph->GetInstanceByName("render_path/reconstruction_history/seed"));
         const uint64_t historySerial = historyWriter ? historyWriter->GetSubmissionSerial() : 0;
         VkResult result = renderGraph->RenderFrame();
+#if UNDERSET_NATIVE_BENCHMARK
         if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
             const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             std::fprintf(stderr, "[RECIPE/latency] phase=render edge=end wall_us=%lld\n",
                 static_cast<long long>(wallUs));
         }
+#endif
 
 
         // A provider record fault aborted this frame inside the graph, so nothing new was presented
@@ -539,7 +545,10 @@ void VulkanGraphApplication::RunB1OcclusionCullPreTick() {
 }
 
 void VulkanGraphApplication::PostTick() {
-    PollPendingCaptures();
+    {
+        VIXEN_FRAME_TRACE_SCOPE("post", "poll-captures");
+        PollPendingCaptures();
+    }
     if (std::getenv("VIXEN_HDR_METER_DEBUG")) {
         RunHdrMeterDebugReadback();
     }
@@ -574,9 +583,8 @@ void VulkanGraphApplication::PostTick() {
         RunPhotonCellDiagReadback(photonParams->Configuration().diagnosticFrame);
     }
 
-    if (!perfCsvWriter_.IsEnabled() || !renderGraph) {
-        return;
-    }
+#if UNDERSET_NATIVE_BENCHMARK
+    if (!perfCsvWriter_.IsEnabled() || !renderGraph) return;
 
     const auto now = std::chrono::steady_clock::now();
     const double cpuFrameTimeMs = std::chrono::duration<double, std::milli>(now - lastPostTickTime_).count();
@@ -655,6 +663,22 @@ void VulkanGraphApplication::PostTick() {
         }
     }
 
+    // Frame trace: each pass's latest GPU interval as raw device ticks, once per distinct reading;
+    // the reader maps them to the host clock with the calibration pairs. Measurement only.
+    if (Vixen::FrameTrace::Enabled()) {
+        static std::map<std::string, uint64_t> lastEmittedStart;
+        for (const auto& pass : passes) {
+            if (!pass.logger) continue;
+            const uint64_t startTicks = pass.logger->GetLastStartTicks();
+            const uint64_t endTicks = pass.logger->GetLastEndTicks();
+            if ((startTicks == 0 && endTicks == 0) || endTicks < startTicks) continue;
+            auto& last = lastEmittedStart[pass.columnName];
+            if (last == startTicks) continue;
+            last = startTicks;
+            Vixen::FrameTrace::AddGpuRaw(pass.columnName, startTicks, endTicks);
+        }
+    }
+
     uint64_t bootBytes = 0, steadyBytes = 0;
     PerfCsvWriter::WholesaleMetrics wholesale;
     if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode_))) {
@@ -696,7 +720,49 @@ void VulkanGraphApplication::PostTick() {
         wholesale.residentSignatureFnv64 = signature;
     }
 
-    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs, wholesale);
+    const auto& waitLedger = renderGraph->GetLastFrameWaitLedger();
+    const double gpuWaitMs = static_cast<double>(waitLedger.gpuRetireWaitNs) / 1'000'000.0;
+    const double paceWaitMs = static_cast<double>(waitLedger.framePaceWaitNs) / 1'000'000.0;
+    const PerfCsvWriter::WindowMetrics windowMetrics{
+        gpuWaitMs,
+        paceWaitMs,
+        cpuFrameTimeMs > 0.0 ? gpuWaitMs / cpuFrameTimeMs : 0.0,
+        waitLedger.windowCount,
+        static_cast<double>(waitLedger.windowPredictedNs) / 1'000'000.0,
+        static_cast<double>(waitLedger.windowActualNs) / 1'000'000.0,
+        waitLedger.ErrorP95Ms(),
+        waitLedger.ErrorP50Relative(),
+        waitLedger.ErrorP95Relative(),
+        waitLedger.ErrorP50Ms(),
+        waitLedger.violationCount,
+        static_cast<double>(waitLedger.violationNs) / 1'000'000.0,
+        static_cast<double>(waitLedger.unusedNs) / 1'000'000.0,
+        waitLedger.Utilisation()};
+    const auto taken = Vixen::FrameTrace::TakeFrameCounts();
+    using Vixen::FrameTrace::Counter;
+    const auto counted = [&taken](Counter c) { return taken.value[static_cast<uint32_t>(c)]; };
+    const PerfCsvWriter::FrameCounters frameCounters{
+        counted(Counter::MappedBufferAccesses), counted(Counter::MappedBufferBytes),
+        counted(Counter::DescriptorUpdates),    counted(Counter::CommandRecordings),
+        counted(Counter::QueueSubmits),         waitLedger.gpuRetireWaitCount,
+        waitLedger.framePaceWaitNs > 0 ? 1u : 0u};
+    {
+        VIXEN_FRAME_TRACE_SCOPE("post", "perf-csv-frame");
+        perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs,
+                                   windowMetrics, wholesale, frameCounters);
+    }
+    std::vector<PerfCsvWriter::WindowSample> windowSamples;
+    windowSamples.reserve(waitLedger.waitSampleCount);
+    for (uint32_t i = 0; i < waitLedger.waitSampleCount; ++i) {
+        const auto& w = waitLedger.waits[i];
+        windowSamples.push_back(PerfCsvWriter::WindowSample{0,
+            w.kind == Vixen::RenderGraph::IdleWindow::Kind::GpuRetire ? "gpu-retire" : "frame-pace",
+            w.commandKey, w.cold, static_cast<double>(w.rawPredictedNs) / 1'000'000.0,
+            static_cast<double>(w.predictedNs) / 1'000'000.0,
+            static_cast<double>(w.actualNs) / 1'000'000.0, w.violation});
+    }
+    perfCsvWriter_.RecordWindowSamples(windowSamples);
+#endif  // UNDERSET_NATIVE_BENCHMARK
 }
 
 void VulkanGraphApplication::Update() {
@@ -2534,6 +2600,7 @@ void VulkanGraphApplication::Update() {
         // constructed, GetInstance returns null, and this is skipped, matching windowNode_'s
         // existing convention just above).
         if (renderGraph) {
+            VIXEN_FRAME_TRACE_SCOPE("update", "input");
             if (auto* input = static_cast<InputNode*>(renderGraph->GetInstance(inputNode_))) {
                 input->ProcessPendingInput();
             }
@@ -2542,8 +2609,15 @@ void VulkanGraphApplication::Update() {
         // Process events + deferred recompilation here (not in render) so updates run without rendering
         // (minimized windows), at a different rate, and event-driven invalidation is handled.
         if (renderGraph) {
-            renderGraph->ProcessEvents();
-            renderGraph->RecompileDirtyNodes();
+            {
+                VIXEN_FRAME_TRACE_SCOPE("update", "process-events");
+                renderGraph->ProcessEvents();
+            }
+            PollProceduralShaderSwap();  // swap point: a finished off-thread shader compile is applied here
+            {
+                VIXEN_FRAME_TRACE_SCOPE("update", "recompile-dirty");
+                renderGraph->RecompileDirtyNodes();
+            }
         }
 
         // Sparse-Mip ESVO LOD Inc1 M4c: re-evaluate the brick-residency trigger + re-sort
@@ -2553,6 +2627,7 @@ void VulkanGraphApplication::Update() {
         // resize) while rendering is paused, and this call is cheap/no-op unless the camera
         // actually moved (change-detection lives inside the method itself).
         if (renderGraph) {
+            VIXEN_FRAME_TRACE_SCOPE("update", "body-residency");
             UpdateBodySceneResidency();
         }
 
@@ -2651,6 +2726,14 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
     } else if (mainLogger) {
         mainLogger->Warning("[VulkanGraphApplication::SetBodyInstances] bodyOctreeSceneNode_ not found — bodies not updated");
     }
+}
+
+void VulkanGraphApplication::SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up,
+                                              float verticalFov) {
+    auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_));
+    if (camera) camera->SetExternalCamera(eye, target, up, verticalFov);
+    else if (mainLogger)
+        mainLogger->Warning("[VulkanGraphApplication::SetSessionCamera] camera node not found");
 }
 
 void VulkanGraphApplication::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {

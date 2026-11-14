@@ -39,7 +39,7 @@
 
 #include <gtest/gtest.h>
 
-#include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE (mirrors CameraNode.cpp)
+#include "Headers.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeStack.h"
 #include "Recipe/SdfInstruction.h"
@@ -275,7 +275,9 @@ std::string EmitSwitchShader(
     std::ostringstream out;
     out << "#version 460\n\n";
     out << "layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\n\n";
-    out << sdfCoreKernelsGlsl << "\n\n";
+    // This synthetic harness never emits a glyph instruction. Drop the unused glyph helper so
+    // the inlined kernel does not require the production glyph SSBO declaration/binding.
+    out << Vixen::SVO::Recipe::WithoutGlyphOutlineKernel(sdfCoreKernelsGlsl) << "\n\n";
 
     for (const auto& [id, prog] : recipes) {
         out << EmitProceduralFieldFunctionGlsl(prog.data(), static_cast<uint32_t>(prog.size()), id) << "\n";

@@ -2,8 +2,8 @@
 #include <gtest/gtest.h>
 
 #include "Core/ShaderSourceDir.h"
+#include "ScopedEnvironment.h"
 
-#include <cstdlib>
 #include <filesystem>
 
 using Vixen::RenderGraph::ResolveShaderSourceDir;
@@ -11,33 +11,26 @@ using Vixen::RenderGraph::ResolveShaderSourceDir;
 namespace {
 constexpr const char* kVar = "VIXEN_SHADER_SOURCE_DIR_OVERRIDE";
 
-struct EnvGuard {
-    ~EnvGuard() { unsetenv(kVar); }
-};
 }  // namespace
 
 TEST(ShaderSourceDir, UsesCompiledDirWhenNoOverride) {
-    EnvGuard guard;
-    unsetenv(kVar);
+    Vixen::Core::Env::ScopedEnvironment guard(kVar, nullptr);
     EXPECT_EQ(ResolveShaderSourceDir("/compiled/shaders"), "/compiled/shaders");
 }
 
 TEST(ShaderSourceDir, EmptyOverrideIsIgnored) {
-    EnvGuard guard;
-    setenv(kVar, "", 1);
+    Vixen::Core::Env::ScopedEnvironment guard(kVar, "");
     EXPECT_EQ(ResolveShaderSourceDir("/compiled/shaders"), "/compiled/shaders");
 }
 
 TEST(ShaderSourceDir, ExistingOverrideWins) {
-    EnvGuard guard;
     const auto dir = std::filesystem::temp_directory_path();
-    setenv(kVar, dir.c_str(), 1);
+    Vixen::Core::Env::ScopedEnvironment guard(kVar, dir.string().c_str());
     EXPECT_EQ(ResolveShaderSourceDir("/compiled/shaders"), dir.string());
 }
 
 TEST(ShaderSourceDir, MissingOverrideDirectoryThrowsWithFix) {
-    EnvGuard guard;
-    setenv(kVar, "/nonexistent/vixen/shaders", 1);
+    Vixen::Core::Env::ScopedEnvironment guard(kVar, "/nonexistent/vixen/shaders");
     try {
         ResolveShaderSourceDir("/compiled/shaders");
         FAIL() << "expected a throw";

@@ -1,4 +1,4 @@
-#include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include "Headers.h"
 #include "Nodes/CameraNode.h"
 #include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
@@ -144,13 +144,19 @@ void CameraNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     // Compute initial camera vectors
     glm::vec3 forward;
-    forward.x = cos(pitch) * sin(yaw);
-    forward.y = sin(pitch);
-    forward.z = -cos(pitch) * cos(yaw);
-    forward = glm::normalize(forward);
+    if (externalCameraActive_) {
+        cameraPosition = externalEye_;
+        forward = glm::normalize(externalTarget_ - externalEye_);
+    } else {
+        forward.x = cos(pitch) * sin(yaw);
+        forward.y = sin(pitch);
+        forward.z = -cos(pitch) * cos(yaw);
+        forward = glm::normalize(forward);
+    }
 
     glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
-    glm::vec3 up = glm::normalize(glm::cross(right, forward));
+    glm::vec3 up = externalCameraActive_ ? glm::normalize(externalUp_)
+                                        : glm::normalize(glm::cross(right, forward));
 
     // Create projection and view matrices
     glm::mat4 projection = glm::perspective(
@@ -163,8 +169,8 @@ void CameraNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Vulkan Y-flip: Vulkan's clip space has Y pointing down, unlike OpenGL
     projection[1][1] *= -1.0f;
 
-    glm::vec3 target = cameraPosition + forward;
-    glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::vec3 target = externalCameraActive_ ? externalTarget_ : cameraPosition + forward;
+    glm::mat4 view = glm::lookAt(cameraPosition, target, up);
 
     // Fill initial camera data
     // MUST match shader PushConstants layout in VoxelRayMarch.comp!
@@ -334,7 +340,11 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     // without silently teleporting the camera to orbitCenter+orbitDistance.
     glm::vec3 forward;
     glm::vec3 lookTarget;
-    if (orbitActive_) {
+    if (externalCameraActive_) {
+        cameraPosition = externalEye_;
+        lookTarget = externalTarget_;
+        forward = glm::normalize(lookTarget - cameraPosition);
+    } else if (orbitActive_) {
         // ORBIT MODE: Camera orbits around orbitCenter
         // yaw/pitch control the orbit angle, camera looks at orbitCenter
         // Camera position is computed from orbit parameters
@@ -366,10 +376,11 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
         }
     }
 
-    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
-    glm::vec3 up = glm::normalize(glm::cross(right, forward));
+    glm::vec3 right = glm::normalize(glm::cross(forward, externalCameraActive_ ? externalUp_ : glm::vec3(0.0f, 1.0f, 0.0f)));
+    glm::vec3 up = externalCameraActive_ ? glm::normalize(externalUp_)
+                                        : glm::normalize(glm::cross(right, forward));
 
-    glm::mat4 view = glm::lookAt(cameraPosition, lookTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 view = glm::lookAt(cameraPosition, lookTarget, up);
 
     // Update camera data struct
     // MUST match shader PushConstants layout in VoxelRayMarch.comp!
