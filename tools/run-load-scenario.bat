@@ -39,7 +39,19 @@ for /f "tokens=1,* delims=:" %%A in ("%~1") do set "%%A=%%B"
 shift
 goto args
 :run
+REM sn-gpumem1: tell the queue which Windows tree this run is, so its per-job CPU and VRAM are attributed (no-op when run by hand).
+if defined UT_QUEUE_WINROOT_FILE powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\VIXEN\scripts\build\Register-NativeRunRoot.ps1" >nul 2>&1
+REM sn-gpumem1: VIXEN_GPU_LEDGER:1 loads the GPU ledger layer (benchmark builds) and writes its CSVs next to perf.csv. An elevated
+REM process ignores VK_LAYER_PATH, so the layer manifest is registered (HKLM ExplicitLayers) for the length of this run only.
+set "LEDGER_JSON=%ROOT%\build\ninja-release\gpu-ledger-layer\VkLayer_vixen_gpu_ledger.json"
+if defined VIXEN_GPU_LEDGER (
+    set "VIXEN_GPU_LEDGER_DIR=%OUT%"
+    set "VK_INSTANCE_LAYERS=VK_LAYER_VIXEN_gpu_ledger"
+    reg add "HKLM\SOFTWARE\Khronos\Vulkan\ExplicitLayers" /v "%LEDGER_JSON%" /t REG_DWORD /d 0 /f >nul 2>&1
+)
 cd /d "%ROOT%\build\ninja-release\application\main"
 "%EXE%" --out "%OUT%" %LOAD_SCENARIO_ARGS% > "%OUT%\run.log" 2>&1
-echo exit %errorlevel%
-exit /b %errorlevel%
+set RC=%errorlevel%
+if defined VIXEN_GPU_LEDGER reg delete "HKLM\SOFTWARE\Khronos\Vulkan\ExplicitLayers" /v "%LEDGER_JSON%" /f >nul 2>&1
+echo exit %RC%
+exit /b %RC%

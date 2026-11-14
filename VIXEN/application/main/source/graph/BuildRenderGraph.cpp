@@ -431,6 +431,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
     const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
+    const bool accumulationHistoryEnabled = ResolveAccumulationEnabled();
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
     // Explicit 0 selects the system tone map (same contract as VIXEN_HDR_EXPOSURE), not the reference.
     const bool exposureReference = envFlagEnabledOrDefault("VIXEN_EXPOSURE_TONEMAP_REFERENCE", false);
@@ -4531,11 +4532,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // beams. ExposureTonemapSystem consumes the matching current scene-radiance image so the
     // same-frame beam is displayed without feeding the beam into temporal history input.
     if (hdrExposureEnabled) {
-        sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
-                               AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
-                               SlotRole::Execute);
-        sceneProviders.Provide("sceneRadianceHistoryOutput_current", sceneRadianceNode,
-                               SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+        if (accumulationHistoryEnabled) {
+            sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
+                                   AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
+                                   SlotRole::Execute);
+            sceneProviders.Provide("sceneRadianceHistoryOutput_current", sceneRadianceNode,
+                                   SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+        } else {
+            // With temporal accumulation disabled, SpatialReuseShade writes the full-size
+            // scene-radiance image but does not write the 1x1 history placeholder. Keep HDR
+            // exposure on that same full-size signal so default pixels remain unchanged.
+            sceneProviders.Provide("sceneRadianceHistoryOutput", sceneRadianceNode,
+                                   SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+            sceneProviders.Provide("sceneRadianceHistoryOutput_current", sceneRadianceNode,
+                                   SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
+        }
     } else {
         sceneProviders.Provide("sceneRadianceHistoryOutput", accumulationHistoryNode,
                                AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
@@ -6368,6 +6379,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // frame on every path regardless. ResolveReservoirEnabled() is the SAME accessor
     // ReservoirConfigNode's own per-frame GPU upload calls, so this CPU-side skip can
     // never disagree with the GPU-side config it is skipping around.
+    // Resource liveness follows the same resolved admissions. The nodes remain present so the
+    // descriptor graph and resize cascade stay stable, but an unadmitted writer gets exactly one
+    // element/pixel of its declared descriptor type rather than owning per-pixel memory.
+    const bool reservoirExtentEnabled = ResolveReservoirEnabled();
+    static_cast<StorageBufferNode*>(renderGraph->GetInstance(reservoirBufferA))
+        ->SetParameter(StorageBufferNodeConfig::PARAM_EXTENT_ENABLED, reservoirExtentEnabled);
+    static_cast<StorageBufferNode*>(renderGraph->GetInstance(reservoirBufferB))
+        ->SetParameter(StorageBufferNodeConfig::PARAM_EXTENT_ENABLED, reservoirExtentEnabled);
+    static_cast<StorageBufferNode*>(renderGraph->GetInstance(spatialReservoirDebugBuffer))
+        ->SetParameter(StorageBufferNodeConfig::PARAM_EXTENT_ENABLED, reservoirExtentEnabled);
+    static_cast<AccumulationHistoryNode*>(renderGraph->GetInstance(accumulationHistoryNode))
+        ->SetParameter(AccumulationHistoryNodeConfig::PARAM_EXTENT_ENABLED,
+                       ResolveAccumulationEnabled());
+    static_cast<WorldPosHistoryNode*>(renderGraph->GetInstance(worldPosHistoryNode))
+        ->SetParameter(WorldPosHistoryNodeConfig::PARAM_EXTENT_ENABLED,
+                       ResolveAccumulationReprojectionEnabled());
+
     FinalizeLightingShadowDispatches(directLightingNode, probeGatherNode,
                                      shadowRayTraceNode, probeApplyNode);
     // probe_gather/shadow_ray_trace/probe_apply: same reasoning, gated on

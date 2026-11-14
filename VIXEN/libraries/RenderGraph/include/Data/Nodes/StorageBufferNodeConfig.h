@@ -43,7 +43,7 @@ namespace StorageBufferNodeCounts {
  *   - STORAGE_BUFFER (VkBuffer)  - Zero-initialised storage buffer
  *   - BUFFER_SIZE    (uint32_t)  - Allocated size in bytes
  *   - FRAME_STORAGE_BUFFER (VkBuffer) - Current slot when frameRingSize is nonzero
- * Parameters: sizeBytes, elementCount, elementStride, bytesPerPixel, frameRingSize
+ * Parameters: sizeBytes, elementCount, elementStride, bytesPerPixel, frameRingSize, extentEnabled
  */
 CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
                       StorageBufferNodeCounts::INPUTS,
@@ -55,6 +55,8 @@ CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
     static constexpr const char* PARAM_ELEMENT_COUNT   = "elementCount";   // number of elements
     static constexpr const char* PARAM_ELEMENT_STRIDE  = "elementStride";  // bytes per element
     static constexpr const char* PARAM_BYTES_PER_PIXEL = "bytesPerPixel";  // extent-driven: bytes per swapchain pixel
+    // False keeps a one-element placeholder of the extent-driven element type.
+    static constexpr const char* PARAM_EXTENT_ENABLED = "extentEnabled";
     // Row A: optional persistent frame-indexed storage-buffer ring. Zero preserves the original
     // single-buffer behavior for every existing consumer.
     static constexpr const char* PARAM_FRAME_RING_SIZE = "frameRingSize";

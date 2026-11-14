@@ -9,6 +9,10 @@
 
 namespace Vixen::RenderGraph {
 
+// Shared admission decisions for the per-frame config and extent-driven resources.
+bool ResolveAccumulationEnabled();
+bool ResolveAccumulationReprojectionEnabled();
+
 /**
  * @brief Node type for AccumulationConfigNode.
  */
