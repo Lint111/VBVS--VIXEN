@@ -16,15 +16,19 @@
 #include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Push/BuildingInspectorAsView seam (gaia-free)
 #include "Ui/PanelDockHost.h"  // R766: the app's docked panels (RmlUi-free header)
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
+#include "RecipePreviewFence.h"  // editor recipe-edit serial -> GPU-fence completion
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
 #include "Nodes/GeneratedSystemStage.h"  // renderbridge S1: generated GPU systems instantiated from the composition manifest
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <future>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <stdexcept>
 #include <unordered_map>  // Inc4 M3: recipeSpecializedPipelineCache_
@@ -45,6 +49,7 @@ namespace Vixen::RenderGraph { class PhotonCellTableNode; }
 namespace Vixen::RenderGraph { class PhotonCellParamsConfigNode; }
 namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
+namespace Vixen::SVO { struct BodyInstanceRowDelta; }  // RE5: one edited row of the staged instance list
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
 #include "Recipe/RecipeRegistry.h"  // Lazy-Procedural-Delta-Baseline Inc0 M5: zero-bake uber-shader recipes.
 // Real include (not forward-declared like the two lines above) -- RecipeEntry is a NESTED type of
@@ -430,6 +435,43 @@ private:
     void MarkProceduralShaderLibsDirty();            // drain GPU, then mark the libraries for recompile
     void PollProceduralShaderSwap();                 // per update tick: swap when every precompile finished
 
+    // Ready-fence state: an edit serial is covered only after analysis and the worker-side shader
+    // swap have settled. The serial is then attached to the next submitted frame and published
+    // when that frame's ordinary in-flight fence signals.
+    struct PendingRecipePreviewFrame {
+        VulkanDevice* device = nullptr;
+        VkFence fence = VK_NULL_HANDLE;
+        uint64_t serial = 0;
+        uint64_t frame = 0;
+    };
+    uint64_t recipeEditSerial_ = 0;
+    uint64_t recipeEditCoveredSerial_ = 0;
+    uint64_t recipeCompilePendingSerial_ = 0;
+    bool recipeCompileFailureForced_ = false;
+    std::vector<PendingRecipePreviewFrame> pendingRecipePreviewFrames_;
+    RecipePreviewFence recipePreviewFence_;
+    std::atomic<uint64_t> recipePreviewFrame_{0};
+    void AdvanceRecipeEditSerial();
+    void PollRecipePreviewFences();
+    void StampRecipePreviewFrame();
+    void PublishRecipeCompileFailure();
+
+    // RE8: bound/occupancy analysis of a runtime recipe edit runs on a worker. The registry holds a
+    // provisional entry (old analysis fields) at once; the analysed entry is published on the frame
+    // thread when ready, and the shader precompile starts only after the last publish.
+    struct PendingRecipeAnalysis {
+        uint64_t generation = 0;
+        std::future<Vixen::SVO::RecipeRegistry::RecipeEntry> analysed;
+    };
+    std::unordered_map<uint32_t, PendingRecipeAnalysis> pendingRecipeAnalyses_;
+    uint64_t recipeAnalysisGeneration_ = 0;
+    bool recompileAfterAnalysis_ = false;
+    Vixen::SVO::RecipeRegistry::RegisterResult SubmitRecipeMutation(
+        uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry, bool replace);
+    void RegisterRecipeContent(uint32_t recipeId, const Vixen::SVO::RecipeRegistry::RecipeEntry& entry);
+    void PublishReadyRecipeAnalyses(bool wait);      // frame thread: apply finished analyses
+    void StartProceduralPrecompile();
+
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live orchestration state for the opt-in
     // VIXEN_RECIPE_BUCKETED_DISPATCH gate. Node handles are default-constructed/invalid when
     // the flag is unset (BuildRenderGraph.cpp never creates these nodes in that case) --
@@ -658,6 +700,12 @@ public:
     // M-wire: push the current per-body instance list into BodyOctreeSceneNode so it re-uploads the
     // SSBO on the next compile tick. Replaces the StarSystemGenerator + MarkVoxelSceneDirty flow.
     void SetBodyInstances(std::vector<Vixen::SVO::BodyInstanceGpu> instances);
+    // RE5: update only the listed rows of the staged instance list (parameter/transform/material
+    // edits). Returns false when the rows do not fit the staged list; the caller then uses
+    // SetBodyInstances. The TLAS epoch moves only when a row's geometry (transform/provider) changed.
+    // Diagnostic: the RT-query TLAS instance epoch (moves once per requested TLAS rebuild).
+    uint64_t BodyInstanceEpoch() const;
+    bool UpdateBodyInstanceRows(std::span<const Vixen::SVO::BodyInstanceRowDelta> rows);
     // R802.1 external scene seam: drive the existing ray-march camera from a facade camera row.
     void SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up, float verticalFov);
     // Spec B I3/Task 6 (= main's I4.1 passthrough — both lines converged on this API): push a
@@ -701,6 +749,19 @@ public:
     void SetLockstepProceduralRecompile(bool lockstep) { lockstepProceduralRecompile_ = lockstep; }
     // True while an off-thread procedural shader compile is running and its swap has not happened yet.
     [[nodiscard]] bool IsProceduralShaderSwapPending() const { return proceduralSwapPending_; }
+    // Ready-fence channel API. Wait is bounded and may be called by non-frame hosts; the editor
+    // channel itself uses the same serial as a non-blocking request so it never stalls rendering.
+    [[nodiscard]] uint64_t RecipeEditSerial() const noexcept { return recipeEditSerial_; }
+    [[nodiscard]] uint64_t RecipePreviewSerial() const noexcept { return recipePreviewFence_.PublishedSerial(); }
+    [[nodiscard]] uint64_t RecipePreviewFrame() const noexcept {
+        return recipePreviewFrame_.load(std::memory_order_acquire);
+    }
+    [[nodiscard]] bool WaitRecipePreview(uint64_t serial, std::chrono::milliseconds timeout) const {
+        return recipePreviewFence_.Wait(serial, timeout);
+    }
+    [[nodiscard]] bool RecipePreviewSucceeded(uint64_t serial) const noexcept {
+        return recipePreviewFence_.Succeeded(serial);
+    }
     // Editor Brick-Residency Fix: forwards to BodyOctreeSceneNode::RequestBrickResidency (stash-only,
     // dirty-flag pattern -- safe to call any time, including right after SetRecipePool/SetBodyInstances;
     // ExecuteImpl performs the actual upload next frame). Mirrors SetRecipePool's passthrough above --

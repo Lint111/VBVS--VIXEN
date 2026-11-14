@@ -288,6 +288,52 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
     }
 }
 
+bool BodyOctreeSceneNode::UpdateInstanceRows(std::span<const Vixen::SVO::BodyInstanceRowDelta> rows) {
+    if (instanceTransforms_.size() != instances_.size() ||
+        instanceMaterials_.size() != instances_.size()) {
+        return false;
+    }
+    for (const Vixen::SVO::BodyInstanceRowDelta& delta : rows) {
+        if (delta.row >= instances_.size()) return false;
+    }
+    bool geometryChanged = false;
+    bool materialChanged = false;
+    uint32_t lo = ~0u;
+    uint32_t hi = 0;
+    for (const Vixen::SVO::BodyInstanceRowDelta& delta : rows) {
+        const uint32_t row = delta.row;
+        const Vixen::SVO::BodyInstanceGpu& next = delta.instance;
+        const Vixen::SVO::BodyInstanceGpu& cur = instances_[row];
+        const bool transformChanged = std::memcmp(&next.transform, &cur.transform, sizeof(next.transform)) != 0;
+        const bool materialRowChanged = std::memcmp(&next.material, &cur.material, sizeof(next.material)) != 0;
+        if (!transformChanged && !materialRowChanged) continue;
+        geometryChanged |= transformChanged ||
+            next.material.providerKind != cur.material.providerKind ||
+            next.material.octreeIndex != cur.material.octreeIndex ||
+            next.material.recipeId != cur.material.recipeId;
+        instanceTransforms_[row] = next.transform;
+        if (motionGuidesEnabled_ && row < instanceMotions_.size()) instanceMotions_[row] = next.motion;
+        if (materialRowChanged) {
+            instanceMaterials_[row] = next.material;
+            materialChanged = true;
+            lo = std::min(lo, row);
+            hi = std::max(hi, row + 1u);
+        }
+        instances_[row] = next;
+    }
+    if (materialChanged) {
+        if (materialDirtyRows_.size() < kRingSize) materialDirtyRows_.resize(kRingSize, {0u, 0u});
+        for (auto& range : materialDirtyRows_) {
+            range = range.first >= range.second ? std::pair<uint32_t, uint32_t>{lo, hi}
+                                                : std::pair<uint32_t, uint32_t>{std::min(range.first, lo),
+                                                                                std::max(range.second, hi)};
+        }
+    }
+    if (materialChanged || geometryChanged) emitterTableDirty_ = true;
+    if (geometryChanged) ++rtQueryInstanceEpoch_;
+    return true;
+}
+
 void BodyOctreeSceneNode::RefreshInstanceStreams() {
     instanceTransforms_.clear();
     instanceTransforms_.reserve(instances_.size());
@@ -940,7 +986,20 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
                         std::min(static_cast<size_t>(materialRingCapacity_), materialSourceBytes));
             VIXEN_LEDGER_WRITTEN(materialMapped, std::min(static_cast<size_t>(materialRingCapacity_), materialSourceBytes));
             materialDirty_[frameIndex] = false;
+            if (frameIndex < materialDirtyRows_.size()) materialDirtyRows_[frameIndex] = {0u, 0u};
         }
+    } else if (frameIndex < materialDirtyRows_.size() &&
+               materialDirtyRows_[frameIndex].first < materialDirtyRows_[frameIndex].second) {
+        auto& range = materialDirtyRows_[frameIndex];
+        constexpr size_t kRow = sizeof(Vixen::SVO::BodyInstanceMaterialGpu);
+        void* materialMapped = materialPerFrame_.GetUniformBufferMapped(frameIndex);
+        const size_t end = std::min(static_cast<size_t>(range.second),
+                                    static_cast<size_t>(materialRingCapacity_ / kRow));
+        if (materialMapped && range.first < end) {
+            std::memcpy(static_cast<char*>(materialMapped) + range.first * kRow,
+                        instanceMaterials_.data() + range.first, (end - range.first) * kRow);
+        }
+        if (materialMapped) range = {0u, 0u};
     }
 
     // Emit this frame's paired buffers so every consumer sees matching record order.
@@ -1677,6 +1736,7 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device,
     materialRingCapacity_ = materialCapacity;
     motionRingCapacity_ = motionCapacity;
     materialDirty_.assign(kRingSize, true);
+    materialDirtyRows_.assign(kRingSize, {0u, 0u});
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Allocated instance rings: " +
                   std::to_string(kRingSize) + " x " +
@@ -2872,6 +2932,7 @@ void BodyOctreeSceneNode::DestroyBuffers() {
     transformRingCapacity_ = 0;
     materialRingCapacity_ = 0;
     materialDirty_.clear();
+    materialDirtyRows_.clear();
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] All buffers destroyed");
 }
