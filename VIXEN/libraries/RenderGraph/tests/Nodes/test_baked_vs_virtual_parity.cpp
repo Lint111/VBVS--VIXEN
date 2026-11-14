@@ -1776,6 +1776,10 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
     constexpr float kSmoothUnionRadius = 0.15f;
     constexpr float kCylinderHalfHeight = 1.5f;
     constexpr float kCylinderRadius = 0.35f;
+    // The SDF marcher certifies a hit once the field is within EPS_MIN of the surface (SdfRecipes.glsl:
+    // `if (d <= EPS_MIN)`, EPS_MIN = 5e-6 world units). A false hit is only a mismatch when the analytic
+    // surface is farther than that from the reported hit point.
+    constexpr float kMarcherHitEpsilon = 5e-6f;
 
     // This is the exact default sample_tri_layer.vxd program at editor frame 5:
     // Box(1,1,1), Sphere(0,0,0,0) - ReadParam(0) => radius .6,
@@ -1830,7 +1834,7 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
                                           /*useOccupancyGrid=*/false, &unguardedTraces));
 
     size_t openingPixels = 0, cavityWallPixels = 0, throughEscapePixels = 0;
-    size_t analyticMismatches = 0, guardedMisses = 0, guardedFalseHits = 0;
+    size_t analyticMismatches = 0, guardedMisses = 0, guardedFalseHits = 0, epsilonBandHits = 0;
     size_t guardOraclePixelDifferences = 0, rgbaPixelDifferences = 0;
     size_t hitRecordFieldDifferences = 0;
     uint32_t maximumSteps = 0;
@@ -1876,12 +1880,11 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
                 if (!analytic.hit) ++throughEscapePixels;
             }
             if (guarded != analytic.hit) {
-                ++analyticMismatches;
                 if (analytic.hit) {
+                    ++analyticMismatches;
                     ++guardedMisses;
                     if (surfaceMissPixels.size() < 8) surfaceMissPixels.push_back(index);
                 } else {
-                    ++guardedFalseHits;
                     const glm::vec3 hitPosition(guardedHits[index].worldPos[0],
                                                 guardedHits[index].worldPos[1],
                                                 guardedHits[index].worldPos[2]);
@@ -1890,7 +1893,15 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
                                                               kCylinderRadius);
                     minFalseHitSdf = std::min(minFalseHitSdf, hitSdf);
                     maxFalseHitSdf = std::max(maxFalseHitSdf, hitSdf);
-                    if (falseHitPixels.size() < 8) falseHitPixels.push_back(index);
+                    if (hitSdf <= kMarcherHitEpsilon) {
+                        // A ray that passes within the marcher's own hit tolerance of an edge is certified a hit
+                        // by design; the exact analytic oracle calls the same ray a miss.
+                        ++epsilonBandHits;
+                    } else {
+                        ++analyticMismatches;
+                        ++guardedFalseHits;
+                        if (falseHitPixels.size() < 8) falseHitPixels.push_back(index);
+                    }
                 }
             }
             if (guarded != unguarded) {
@@ -1912,9 +1923,10 @@ TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOcc
                 openingPixels, cavityWallPixels, throughEscapePixels, kW * kH,
                 cameraBounds.radius, cameraDistance);
     std::printf("[R464_EDITOR_MASK] analyticMismatches=%zu guardedMisses=%zu guardedFalseHits=%zu "
+                "epsilonBandHits=%zu "
                 "falseHitSdf=[%.9g,%.9g] guardVsOraclePixels=%zu rgbaPixelDifferences=%zu "
                 "hitRecordFieldDifferences=%zu averageSteps=%.6g maximumSteps=%u\n",
-                analyticMismatches, guardedMisses, guardedFalseHits,
+                analyticMismatches, guardedMisses, guardedFalseHits, epsilonBandHits,
                 minFalseHitSdf, maxFalseHitSdf, guardOraclePixelDifferences,
                 rgbaPixelDifferences, hitRecordFieldDifferences,
                 static_cast<double>(totalSteps) / static_cast<double>(size_t(kW) * kH),

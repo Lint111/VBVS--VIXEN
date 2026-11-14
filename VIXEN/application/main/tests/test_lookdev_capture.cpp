@@ -2912,6 +2912,79 @@ SaturationStats MeasureSaturation(const DecodedPng& image) {
     return stats;
 }
 
+// The tone-map stage scales chroma about the scene luma in LINEAR radiance, then applies the per-channel ACES curve
+// (ExposureTonemapReference.comp; ExposureTonemapSystem.comp is the same arithmetic). That preserves SCENE luma, not
+// the luma of the displayed frame: the curve is concave, so a grey pixel displays brighter than the same scene luma
+// spread over colour. The luma of a saturated capture is therefore predicted from the neutral capture by inverting
+// the curve per channel, applying the stage's saturation and re-applying the curve, instead of being asserted equal
+// to the neutral frame's luma.
+float AcesFitted(float x) {
+    return std::clamp((x * (2.51f * x + 0.03f)) / (x * (2.43f * x + 0.59f) + 0.14f), 0.0f, 1.0f);
+}
+
+// Exact inverse of AcesFitted on [0, 1): the root of (2.43t - 2.51)x^2 + (0.59t - 0.03)x + 0.14t = 0 that is >= 0.
+float InverseAcesFitted(float t) {
+    const double a = 2.43 * t - 2.51, b = 0.59 * t - 0.03, c = 0.14 * t;
+    return static_cast<float>((-b - std::sqrt(b * b - 4.0 * a * c)) / (2.0 * a));
+}
+
+double DisplayLuma(float r, float g, float b) { return 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+
+struct ModelledLuma {
+    double predicted = 0.0;  // mean display-linear luma the stage's arithmetic gives from the neutral frame
+    double displayReferred = 0.0;  // the same, had saturation been applied after the curve (display luma preserved)
+    double measured = 0.0;   // mean display-linear luma of the captured frame over the same pixels
+    size_t pixels = 0;
+    size_t totalPixels = 0;
+};
+
+// Pixels whose neutral display-linear value is above this sit on the curve's shoulder, where the inverse is
+// ill-conditioned (the curve clips at 1.0 and cannot be inverted); they are left out of both means.
+constexpr float kInvertibleDisplayLinear = 0.9f;
+// Bound on |measured - predicted| / predicted. Measured on ws (AMD 8060S, native Release): 0.03-0.04% with the system
+// shader (its dither averages the 8-bit quantisation out) and 0.10-0.39% with the undithered reference shader, the
+// same on every run (the frames are bit-identical run to run). The scene-referred and display-referred predictions
+// differ by 1.5-1.6% at saturation 0 and 4.3-4.4% at saturation 2 on this frame, so 1% separates the two stage
+// orders; the EXPECT_LT on the two distances is the order check that does not depend on this number.
+constexpr double kSaturationLumaModelTolerance = 0.01;
+
+ModelledLuma ModelSaturatedLuma(const DecodedPng& neutral, const DecodedPng& frame, float saturation) {
+    ModelledLuma out;
+    out.totalPixels = static_cast<size_t>(neutral.width) * neutral.height;
+    for (size_t i = 0; i < out.totalPixels; ++i) {
+        float display[3], radiance[3];
+        bool invertible = true;
+        for (int channel = 0; channel < 3; ++channel) {
+            display[channel] = SrgbToLinear(neutral.rgba[i * 4 + channel]);
+            invertible = invertible && display[channel] <= kInvertibleDisplayLinear;
+        }
+        if (!invertible) continue;
+        for (int channel = 0; channel < 3; ++channel) radiance[channel] = InverseAcesFitted(display[channel]);
+        const float luma = static_cast<float>(DisplayLuma(radiance[0], radiance[1], radiance[2]));
+        float shown[3];
+        for (int channel = 0; channel < 3; ++channel) {
+            shown[channel] = AcesFitted(std::max(radiance[channel] * saturation + luma * (1.0f - saturation), 0.0f));
+        }
+        out.predicted += DisplayLuma(shown[0], shown[1], shown[2]);
+        const float displayLuma = static_cast<float>(DisplayLuma(display[0], display[1], display[2]));
+        float afterCurve[3];
+        for (int channel = 0; channel < 3; ++channel) {
+            afterCurve[channel] = std::clamp(
+                std::max(display[channel] * saturation + displayLuma * (1.0f - saturation), 0.0f), 0.0f, 1.0f);
+        }
+        out.displayReferred += DisplayLuma(afterCurve[0], afterCurve[1], afterCurve[2]);
+        out.measured += DisplayLuma(SrgbToLinear(frame.rgba[i * 4]), SrgbToLinear(frame.rgba[i * 4 + 1]),
+                                    SrgbToLinear(frame.rgba[i * 4 + 2]));
+        ++out.pixels;
+    }
+    if (out.pixels > 0) {
+        out.predicted /= static_cast<double>(out.pixels);
+        out.displayReferred /= static_cast<double>(out.pixels);
+        out.measured /= static_cast<double>(out.pixels);
+    }
+    return out;
+}
+
 }  // namespace
 
 // The saturation channel (S1): one midday frame at saturation 1 (the default), 0 and 2, switched live through
@@ -2948,11 +3021,31 @@ TEST(LookdevCapture, SaturationChannel) {
         g.meanLinearLuma, n.meanLinearLuma, b.meanLinearLuma);
     std::fflush(stdout);
 
+    // The reference shader writes the tone-mapped value as is, so greyscale is exact (1 code of rounding). The system
+    // shader adds presentation dither to each channel independently (look-dev declares PresentationMode::Presentation):
+    // an offset of up to +-4 codes (ditherStep 8/255 in ExposureTonemapSystem.comp) plus rounding, so two channels of a
+    // grey pixel can differ by up to 8 + 1 codes.
+    const char* referenceFlag = std::getenv("VIXEN_EXPOSURE_TONEMAP_REFERENCE");
+    const bool referenceToneMap = referenceFlag != nullptr && std::string_view(referenceFlag) == "1";
+    const int greyscaleSpreadCodes = referenceToneMap ? 1 : 9;
     EXPECT_GT(n.meanSpread, 1.0) << "the neutral frame must carry colour for this test to mean anything";
-    EXPECT_LE(g.maxChannelSpread, 1) << "saturation 0 is greyscale";
+    EXPECT_LE(g.maxChannelSpread, greyscaleSpreadCodes) << "saturation 0 is greyscale";
     EXPECT_GT(b.meanSpread, n.meanSpread * 1.3) << "saturation 2 boosts chroma";
-    EXPECT_NEAR(g.meanLinearLuma, n.meanLinearLuma, n.meanLinearLuma * 0.02) << "luminance is preserved";
-    EXPECT_NEAR(b.meanLinearLuma, n.meanLinearLuma, n.meanLinearLuma * 0.05) << "luminance is preserved";
+
+    // Scene luma is preserved by construction; the displayed luma follows the tone curve (see ModelSaturatedLuma).
+    const ModelledLuma greyModel = ModelSaturatedLuma(neutral, grey, 0.0f);
+    const ModelledLuma boostedModel = ModelSaturatedLuma(neutral, boosted, 2.0f);
+    std::printf("[SATURATION_MODEL] pixels=%zu/%zu sat0 predicted=%.5f measured=%.5f displayReferred=%.5f sat2 predicted=%.5f measured=%.5f displayReferred=%.5f\n",
+        greyModel.pixels, greyModel.totalPixels, greyModel.predicted, greyModel.measured, greyModel.displayReferred,
+        boostedModel.predicted, boostedModel.measured, boostedModel.displayReferred);
+    std::fflush(stdout);
+    ASSERT_GT(greyModel.pixels, greyModel.totalPixels / 2) << "too few invertible pixels for the luma model to mean anything";
+    EXPECT_LT(std::abs(greyModel.measured - greyModel.predicted), std::abs(greyModel.measured - greyModel.displayReferred))
+        << "saturation is applied to scene radiance before the tone curve, not to the displayed frame";
+    EXPECT_NEAR(greyModel.measured, greyModel.predicted, greyModel.predicted * kSaturationLumaModelTolerance)
+        << "saturation 0 luma follows the tone curve applied to scene-luma-preserved radiance";
+    EXPECT_NEAR(boostedModel.measured, boostedModel.predicted, boostedModel.predicted * kSaturationLumaModelTolerance)
+        << "saturation 2 luma follows the tone curve applied to scene-luma-preserved radiance";
 }
 
 TEST(LookdevCapture, RendersExposureRoomAcceptance) {

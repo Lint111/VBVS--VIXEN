@@ -51,8 +51,16 @@ endforeach()
  # example --expect-file), not environment variables. Keep those arguments in the same runtime root
  # as the rebased capture environment.
 set(_rebased_command)
+# An option spelled --name=<path> keeps its name and rebases its value. (A command that takes a path option must spell it
+# this way: cmake itself reads the arguments after -P, so a bare cmake option such as --fresh <dir> is rejected by cmake
+# before this script runs.)
 foreach(_arg IN LISTS _command)
-    vixen_capture_runtime_rebase("${_arg}" "${VIXEN_CAPTURE_DEFAULT_ROOT}" _value)
+    if("${_arg}" MATCHES "^(--[^=]+=)(.*)$")
+        vixen_capture_runtime_rebase("${CMAKE_MATCH_2}" "${VIXEN_CAPTURE_DEFAULT_ROOT}" _value)
+        set(_value "${CMAKE_MATCH_1}${_value}")
+    else()
+        vixen_capture_runtime_rebase("${_arg}" "${VIXEN_CAPTURE_DEFAULT_ROOT}" _value)
+    endif()
     list(APPEND _rebased_command "${_value}")
 endforeach()
 set(_command "${_rebased_command}")
