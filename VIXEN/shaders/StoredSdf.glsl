@@ -311,6 +311,23 @@ float sampleChannelCategoricalTrilinear(uint sem, vec3 gridPos, float missing) {
     weights[5] = f.x * (1.0 - f.y) * f.z;
     weights[6] = (1.0 - f.x) * f.y * f.z;
     weights[7] = f.x * f.y * f.z;
+    // The generated categorical reducer is bit-preserving for stored integer payloads. Recipe
+    // output channels are emitted through a float recipe value, however, so MaterialId arrives
+    // here as numeric 5.0/8.0. Reduce those numeric categorical values before palette lookup.
+    if (sem == SEM_MATERIAL_ID) {
+        uint best = 0u;
+        float bestWeight = -1.0;
+        for (uint i = 0u; i < 8u; ++i) {
+            uint candidate = uint(max(values[i], 0.0) + 0.5);
+            float total = 0.0;
+            for (uint j = 0u; j < 8u; ++j) {
+                uint other = uint(max(values[j], 0.0) + 0.5);
+                if (other == candidate) total += weights[j];
+            }
+            if (total > bestWeight) { bestWeight = total; best = candidate; }
+        }
+        return float(best);
+    }
     return sampleChannelValue(sem, values, weights, 8u);
 }
 
@@ -375,7 +392,11 @@ void applyStoredMaterialColor(vec3 gridPos, inout vec3 color) {
     if (materialBase == 0xFFFFFFFFu) return;
     float rawId = sampleChannelCategoricalTrilinear(SEM_MATERIAL_ID, gridPos, -1.0);
     if (rawId < 0.0) return;
-    uint materialId = floatBitsToUint(rawId);
+    // Recipe output channels store MaterialId as the generated evaluator's numeric scalar
+    // (for example 5.0 and 8.0), not as an IEEE-754 bit pattern. Decode the categorical
+    // value numerically so the pack palette is selected instead of indexing with the float's
+    // representation and falling through to undefined/fallback colors.
+    uint materialId = uint(max(rawId, 0.0) + 0.5);
     if (materialId == 0u) return;
     color = materials[materialId].albedo;
 }

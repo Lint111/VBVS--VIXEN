@@ -812,8 +812,11 @@ void EditorApplication::RefreshLayersView() {
                                     candidateCount, wrapDiagnostic)) continue;
                             const auto duplicate = std::find_if(graphData.wrapChoices.begin(), graphData.wrapChoices.end(),
                                 [&](const Vixen::App::EditorNodeWrapData& choice) {
-                                    return choice.firstNode == static_cast<int>(first) &&
-                                           choice.lastNode == static_cast<int>(last) && choice.op == info.name;
+                                    // The inspector is a compact operation picker, not a list of every
+                                    // contiguous range that the rewrite validator happens to accept. Keep
+                                    // one representative range per domain operation; publishing every
+                                    // valid range rendered the same "wrap in..." choices repeatedly.
+                                    return choice.op == info.name;
                                 });
                             if (duplicate == graphData.wrapChoices.end()) {
                                 graphData.wrapChoices.push_back({static_cast<int>(first), static_cast<int>(last),
@@ -2600,10 +2603,14 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         }
         const auto* previewEntry = bakeRegistry->Get(kRecipeId);
         if (previewEntry != nullptr && previewEntry->octreeSlot < bakeResult.owned.size()) {
-            std::atomic_store_explicit(&materialCoverage_,
-                                       MeasureMaterialCoverage(
-                                           bakeResult.owned[previewEntry->octreeSlot].recipeOutputSet),
-                                       std::memory_order_release);
+            const auto coverage = MeasureMaterialCoverage(
+                bakeResult.owned[previewEntry->octreeSlot].recipeOutputSet);
+            std::ostringstream coverageLine;
+            coverageLine << "[EDITOR/material-coverage] total=" << coverage->totalSurfaceSamples;
+            for (const auto& [slot, count] : coverage->counts)
+                coverageLine << " slot" << slot << "=" << count;
+            logger_->Info(coverageLine.str());
+            std::atomic_store_explicit(&materialCoverage_, coverage, std::memory_order_release);
         }
         return std::move(bakeResult.pool);
     });
