@@ -13,9 +13,9 @@ STOPPED / REFER-TO-ORCHESTRATOR for the required native boot and complete look-d
 
 ## PIN-CHAIN COMMITS
 
-- KFR `lane-d9kfr`: `1113413f64cdc4030d9c878e5fee3142f32883d6` from `0e1e9a1380d38a9d6a7d7b31f0aaf24be6c5ef3a`; `vixen.pin -> f9230d0b1eafcc3979631c375fe8cdbdd6aea844`.
-- Launcher `lane-d9l`: `4d7c0161ccb6106d8965754cb6c457497547d666` from `8cdb9c8cb5041c8a2fa2e823387d92db7f5bddfe`; `kfr.pin -> 1113413f64cdc4030d9c878e5fee3142f32883d6`.
-- Undertow `lane-d9brow` pin commit: `9714cb3aef4525708d848eda0ea07fc5ea0d32e5`; `kernel.pin -> 597757236569835a7b40ed01ec04c06e286af723`, `launcher.pin -> 4d7c0161ccb6106d8965754cb6c457497547d666`, `vixen.pin -> f9230d0b1eafcc3979631c375fe8cdbdd6aea844`.
+- KFR `lane-d9kfr`: `3d36f1d82931b0f9568687f1ad8347ef0af4673a` (from `0e1e9a1380d38a9d6a7d7b31f0aaf24be6c5ef3a`); `vixen.pin -> 002a5f6b6adf53644e53ef947c16538440497411`.
+- Launcher `lane-d9l`: `6f53334e28a0db824494c5a497055c39a539d127` (from `8cdb9c8cb5041c8a2fa2e823387d92db7f5bddfe`); `kfr.pin -> 3d36f1d82931b0f9568687f1ad8347ef0af4673a`.
+- Undertow `lane-d9brow` pin commit: `50ec5098e84d75b2c2fb008196c093c6fa96ccdf`; `kernel.pin -> 597757236569835a7b40ed01ec04c06e286af723`, `launcher.pin -> 6f53334e28a0db824494c5a497055c39a539d127`, `vixen.pin -> 002a5f6b6adf53644e53ef947c16538440497411`.
 
 ## WITNESS
 
@@ -38,10 +38,10 @@ The documented d9 `tools/check-native-boot.sh --kernel-root ... --agent cx-opcod
 
 The controller must fast-forward/publish these exact tips on the provider waves before the boot can resolve the chain:
 
-- VIXEN wave: `f9230d0b1eafcc3979631c375fe8cdbdd6aea844`.
-- KFR wave: `1113413f64cdc4030d9c878e5fee3142f32883d6`.
+- VIXEN wave: `002a5f6b6adf53644e53ef947c16538440497411`.
+- KFR wave: `3d36f1d82931b0f9568687f1ad8347ef0af4673a`.
 
-After reachability is repaired, rerun both default and composition boots and the complete native look-dev/HUD witness. The exact Undertow pin commit to use is `9714cb3aef4525708d848eda0ea07fc5ea0d32e5`.
+After reachability is repaired, rerun both default and composition boots and the complete native look-dev/HUD witness. The exact Undertow pin commit to use is `50ec5098e84d75b2c2fb008196c093c6fa96ccdf`.
 
 Recovery record: A resolved the global queue path and paired d9 kernel root; B regenerated all affected VIXEN faces through normal targets plus the documented d9 VoxelDocument generator; C isolated the remaining native failure to provider reachability and the GPU guard/device environment. The generated VoxelDocument output contains an emitter-provided trailing-whitespace line; it was preserved rather than hand-edited.
 
