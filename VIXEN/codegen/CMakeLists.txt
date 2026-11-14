@@ -205,7 +205,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "23f8eb553236df9908b1cc735fc4b38cc4a8e9e3")
+set(_vixen_tracked_yeroket_kernel_sha "c58af88807988233be1d01fbede80779452a96c7")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -897,6 +897,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     set(_recipe_simd_build_args
         "${_yk_dll_run}"
         --recipe-simd-cpp
+        --carry-output MaterialId
         --namespace Vixen::SVO::Recipe
         --include <glm/glm.hpp>
         --include Recipe/RecipeRegistry.h

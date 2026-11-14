@@ -20,6 +20,7 @@
 #include <initializer_list>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -1511,6 +1512,10 @@ TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeS
 
     EditorDocumentModel neutralModel;
     ASSERT_TRUE(neutralModel.Load(kHullPath, diagnostic)) << diagnostic.message;
+    // The shipped fixture defaults the bulge radius to 0.6, fully inside the base box. Raise it
+    // for this material witness so both authored layer materials reach the stored surface.
+    ASSERT_TRUE(materialModel.SetParameterValue(0u, 1.2f, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(neutralModel.SetParameterValue(0u, 1.2f, diagnostic)) << diagnostic.message;
     for (uint32_t i = 0; i < neutralModel.LayerCount(); ++i)
         ASSERT_TRUE(neutralModel.ClearLayerMaterial(neutralModel.LayerId(i), diagnostic))
             << diagnostic.message;
@@ -1535,8 +1540,8 @@ TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeS
     std::string lowerError;
     ASSERT_TRUE(materialSimd.Lower(materialEntry.bytecode.data(),
                                    static_cast<uint32_t>(materialEntry.bytecode.size()),
-                                   materialEntry.parameterValues, lowerError)) << lowerError;
-
+                                   materialEntry.parameterValues, true,
+                                   Vixen::SVO::kMaterialRefNone, lowerError)) << lowerError;
     Vixen::SVO::RecipeRegistry registry;
     ASSERT_EQ(registry.Register(1u, materialEntry),
               Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
@@ -1547,6 +1552,7 @@ TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeS
     config.defaultResolution = kBakeResolution;
     config.defaultBand = 2.5f;
     config.recipeUnitsPerVoxel = kRecipeUnitsPerVoxel;
+    config.defaultMaterialId = Vixen::SVO::kMaterialRefNone;
     const auto bake = Vixen::SVO::BakeRegistryToPool(registry, config);
     ASSERT_TRUE(bake.ok) << bake.err;
     ASSERT_EQ(bake.owned.size(), 1u);
@@ -1559,8 +1565,43 @@ TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeS
     ASSERT_EQ(neutralBake.owned.size(), 1u);
     const auto materialSerialized = Vixen::SVO::SerializeSdf(bake.owned[0]);
     const auto neutralSerialized = Vixen::SVO::SerializeSdf(neutralBake.owned[0]);
-    EXPECT_EQ(materialSerialized.channelPool, neutralSerialized.channelPool);
+    EXPECT_GT(materialSerialized.channelCount, neutralSerialized.channelCount);
+    EXPECT_NE(materialSerialized.channelPool, neutralSerialized.channelPool);
     EXPECT_EQ(materialSerialized.brickGridLookup, neutralSerialized.brickGridLookup);
+
+    const auto& materialOutput = bake.owned[0].recipeOutputSet;
+    const Vixen::SVO::Recipe::RecipeOutputDescriptor* distanceOutput = nullptr;
+    const Vixen::SVO::Recipe::RecipeOutputDescriptor* materialOutputDescriptor = nullptr;
+    for (const auto& descriptor : materialOutput.outputs) {
+        if (descriptor.channel == static_cast<uint32_t>(Vixen::SVO::SEM_SDF))
+            distanceOutput = &descriptor;
+        if (descriptor.channel == static_cast<uint32_t>(Vixen::SVO::SEM_MATERIAL_ID))
+            materialOutputDescriptor = &descriptor;
+    }
+    ASSERT_NE(distanceOutput, nullptr);
+    ASSERT_NE(materialOutputDescriptor, nullptr);
+    EXPECT_TRUE(materialOutputDescriptor->materialSidecar);
+    EXPECT_TRUE(Vixen::SVO::ChannelIsCategorical(Vixen::SVO::SEM_MATERIAL_ID));
+    std::map<uint32_t, uint64_t> materialSamplesById;
+    uint64_t totalMaterialSurfaceSamples = 0u;
+    for (int z = 0; z < materialOutput.resolution; ++z)
+    for (int y = 0; y < materialOutput.resolution; ++y)
+    for (int x = 0; x < materialOutput.resolution; ++x) {
+        const float* values = materialOutput.sample({x, y, z});
+        if (values == nullptr) continue;
+        if (!std::isfinite(values[distanceOutput->valueOffset]) ||
+            std::abs(values[distanceOutput->valueOffset]) > 0.5f) continue;
+        const float rawId = values[materialOutputDescriptor->valueOffset];
+        ASSERT_TRUE(std::isfinite(rawId));
+        ASSERT_EQ(std::floor(rawId), rawId);
+        ++materialSamplesById[static_cast<uint32_t>(rawId)];
+        ++totalMaterialSurfaceSamples;
+    }
+    EXPECT_GT(totalMaterialSurfaceSamples, 0u);
+    EXPECT_EQ(materialSamplesById.size(), 2u);
+    EXPECT_EQ(materialSamplesById[5u] + materialSamplesById[8u], totalMaterialSurfaceSamples);
+    EXPECT_GT(materialSamplesById[5u], 0u);
+    EXPECT_GT(materialSamplesById[8u], 0u);
     const auto readSerializedVoxel = [](const Vixen::SVO::SerializedOctree& serialized,
                                         const glm::ivec3& grid) -> std::optional<float> {
         const int n = static_cast<int>(serialized.config.bricksPerAxis) * 8;
@@ -1733,7 +1774,11 @@ TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeS
               << " boundsRadius=" << boundsRadius
               << " outputSetResolution=" << bake.owned[0].recipeOutputSet.resolution
               << " outputSetValues=" << bake.owned[0].recipeOutputSet.values.size()
-              << " samplesById=5:0,8:0"
+              << " samplesById=";
+    for (const auto& [id, count] : materialSamplesById)
+        std::cout << id << ":" << count << ",";
+    std::cout
+              << " totalMaterialSurfaceSamples=" << totalMaterialSurfaceSamples
               << "\n";
     for (const auto& instruction : materialEntry.bytecode)
         std::cout << "[material-diagnosis] opcode=" << static_cast<unsigned>(instruction.opCode)

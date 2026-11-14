@@ -81,7 +81,7 @@ public:
         outputSet_.outputs.reserve(program.OutputCount());
         for (std::size_t index = 0; index < program.OutputCount(); ++index) {
             const auto& descriptor = program.OutputAt(index);
-            const RecipeOutputChannelSpec* channel = FindRecipeOutputChannel(descriptor.channel);
+            const RecipeOutputChannelSpec* channel = FindRecipeOutputChannelForDescriptor(descriptor.channel);
             if (channel == nullptr || channel->elemCount != descriptor.elementCount)
                 throw std::invalid_argument("generated recipe output descriptor has no matching channel schema");
             if (channel->fieldKind == FK_DISTANCE) {

@@ -435,7 +435,7 @@ inline HullCoverageMeasurement MeasureHullMaterialCoverage(
     std::uint8_t distanceOffset = std::numeric_limits<std::uint8_t>::max();
     std::uint8_t materialOffset = std::numeric_limits<std::uint8_t>::max();
     for (const auto& output : outputSet.outputs) {
-        const auto* channel = Vixen::SVO::FindRecipeOutputChannel(output.channel);
+        const auto* channel = Vixen::SVO::FindRecipeOutputChannelForDescriptor(output.channel);
         if (channel == nullptr) continue;
         if (channel->semantic == Vixen::SVO::SEM_SDF) distanceOffset = output.valueOffset;
         if (channel->semantic == Vixen::SVO::SEM_MATERIAL_ID) materialOffset = output.valueOffset;

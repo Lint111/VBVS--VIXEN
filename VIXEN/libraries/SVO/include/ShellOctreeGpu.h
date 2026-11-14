@@ -990,7 +990,7 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     std::array<const RecipeOutputChannelSpec*, kMaxChannels> outputSpecs{};
     uint32_t outputChannelCount = 0u;
     for (const Recipe::RecipeOutputDescriptor& descriptor : body.recipeOutputSet.outputs) {
-        const RecipeOutputChannelSpec* spec = FindRecipeOutputChannel(descriptor.channel);
+        const RecipeOutputChannelSpec* spec = FindRecipeOutputChannelForDescriptor(descriptor.channel);
         if (spec == nullptr || spec->semantic == SEM_SDF) continue; // SDF is already stored.
         bool duplicate = false;
         for (uint32_t i = 0; i < outputChannelCount; ++i)

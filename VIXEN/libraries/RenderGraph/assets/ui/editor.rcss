@@ -175,22 +175,23 @@ body.picker {
     margin-top: 1px;
 }
 
-/* Refusal text is a transient affordance: UiKit reveals it on a disabled-control hover/press
-   (or after a refused dispatch). Keeping the reason hidden in the resting row prevents every
-   node from expanding the outline into a repeated diagnostic column. */
+/* A refused remove is reported by the editor status line and remains available as the button
+   title. Keep the generated reason part out of the resting row: an empty reason span must not
+   become a disabled text-box-looking column beside every node. */
 .node-actions ut-button .ut-reason { display: none; }
-.node-actions ut-button:hover .ut-reason,
-.node-actions ut-button:focus .ut-reason,
-.node-actions ut-button:active .ut-reason {
-    display: inline;
-    margin-left: 4px;
-    white-space: normal;
-}
 
 .node-actions .node-action:last-child {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
-    text-align: left;
+}
+
+.node-actions .node-remove {
+    flex: 0 0 18px;
+    width: 18px;
+    min-width: 18px;
+    margin-left: 3px;
+    padding: 1px 2px;
+    text-align: center;
 }
 
 .node-fields {

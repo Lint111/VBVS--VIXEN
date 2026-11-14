@@ -22,6 +22,19 @@ static SdfInstruction sphereInstr(glm::vec3 c, float r) {
     return in;
 }
 
+static SdfInstruction materialRefInstr(uint32_t materialId) {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(SdfOpCode::MaterialRef);
+    in.data[0] = static_cast<float>(materialId);
+    return in;
+}
+
+static SdfInstruction attachInstr() {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(SdfOpCode::Attach);
+    return in;
+}
+
 static std::optional<float> SampleDensity(const SdfBodyOctree& body, const glm::vec3& gridPos) {
     const auto entity = body.world->getEntityByWorldSpace(gridPos);
     if (!body.world->exists(entity)) return std::nullopt;
@@ -127,6 +140,69 @@ TEST(RecipeBaker, GenericRegistryBakeUsesEntryParameterSnapshot) {
     ASSERT_TRUE(inside.has_value());
     EXPECT_GT(*outside, 0.0f);
     EXPECT_LT(*inside, 0.0f);
+}
+
+TEST(RecipeBaker, MaterialRefAttachStoresCategoricalSurfaceSamples) {
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode = {
+        sphereInstr(glm::vec3(0.0f), 4.0f),
+        materialRefInstr(5u),
+        attachInstr(),
+    };
+    ASSERT_EQ(reg.Register(1u, entry), RecipeRegistry::RegisterResult::Ok);
+
+    RecipeBakeConfig cfg{};
+    cfg.center = glm::vec3(8.0f);
+    cfg.defaultResolution = 16u;
+    cfg.defaultMaterialId = kMaterialRefNone;
+    const RecipeBakeResult result = BakeRegistryToPool(reg, cfg);
+    ASSERT_TRUE(result.ok) << result.err;
+    ASSERT_EQ(result.owned.size(), 1u);
+
+    const auto& output = result.owned.front().recipeOutputSet;
+    ASSERT_GT(output.resolution, 0);
+    const Recipe::RecipeOutputDescriptor* distance = nullptr;
+    const Recipe::RecipeOutputDescriptor* material = nullptr;
+    for (const auto& descriptor : output.outputs) {
+        if (descriptor.channel == static_cast<uint32_t>(SEM_SDF)) distance = &descriptor;
+        if (descriptor.channel == static_cast<uint32_t>(SEM_MATERIAL_ID)) material = &descriptor;
+    }
+    ASSERT_NE(distance, nullptr) << "material-bearing bake must retain its distance output";
+    ASSERT_NE(material, nullptr) << "MaterialId sidecar must be requested for MaterialRef/Attach";
+    EXPECT_TRUE(material->materialSidecar);
+    EXPECT_TRUE(ChannelIsCategorical(SEM_MATERIAL_ID));
+
+    uint64_t surfaceSamples = 0u;
+    uint64_t materialFive = 0u;
+    for (int z = 0; z < output.resolution; ++z) {
+        for (int y = 0; y < output.resolution; ++y) {
+            for (int x = 0; x < output.resolution; ++x) {
+                const float* values = output.sample({x, y, z});
+                if (values == nullptr || std::abs(values[distance->valueOffset]) > 0.5f) continue;
+                ++surfaceSamples;
+                if (values[material->valueOffset] == 5.0f) ++materialFive;
+            }
+        }
+    }
+    EXPECT_GT(surfaceSamples, 0u);
+    EXPECT_EQ(materialFive, surfaceSamples)
+        << "every stored surface sample must carry the authored material reference";
+
+    const SerializedOctree serialized = SerializeSdf(result.owned.front());
+    EXPECT_GT(serialized.channelCount, static_cast<uint32_t>(kStoredChannelSpecs.size()));
+    bool sawMaterialFive = false;
+    for (uint32_t brick = 0; brick < serialized.brickCount && !sawMaterialFive; ++brick) {
+        for (uint32_t voxel = 0; voxel < SerializedOctree::kVoxelsPerBrick; ++voxel) {
+            if (serialized.bricks[static_cast<size_t>(brick) * SerializedOctree::kVoxelsPerBrick + voxel] == 0u)
+                continue;
+            if (serialized.readPoolVoxel(SEM_MATERIAL_ID, brick, voxel, 0u) == 5.0f) {
+                sawMaterialFive = true;
+                break;
+            }
+        }
+    }
+    EXPECT_TRUE(sawMaterialFive) << "serialized stored material channel must contain the layer id";
 }
 
 TEST(RecipeRegistry, ReplaceValidatesAndPublishesProgramAtomically) {

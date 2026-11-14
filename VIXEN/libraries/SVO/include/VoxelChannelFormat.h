@@ -16,4 +16,16 @@ namespace Vixen::SVO {
 constexpr uint32_t kVoxelsPerBrick = 512u;          // 8^3, no apron (Inc2 as-built)
 constexpr uint32_t kMaxChannels    = 8u;            // fits the OctreeConfig tail (<= ~12)
 using Vixen::Gpu::ChannelDesc;   // was a hand-written struct; now the generated single-source type (Phase C)
+
+// Recipe output descriptors carry the shipped semantic channel ordinal (MaterialId = 7),
+// while the generated vocabulary's outputSlot is the compact output-mask bit. Resolve through
+// the generated semantic/slot helpers so categorical sidecars reach the matching storage spec.
+constexpr const RecipeOutputChannelSpec* FindRecipeOutputChannelForDescriptor(
+    std::uint32_t channel) noexcept {
+    const auto semantic = static_cast<SemanticId>(channel);
+    const auto slot = RecipeOutputSlotFor(semantic);
+    if (const auto* spec = FindRecipeOutputChannel(slot); spec != nullptr && spec->semantic == semantic)
+        return spec;
+    return FindRecipeOutputChannel(channel);
+}
 }  // namespace Vixen::SVO

@@ -28,8 +28,10 @@ namespace detail {
 inline bool HasNonDistanceRecipeOutput(const RecipeRegistry::RecipeEntry& entry) {
     for (const Recipe::SdfInstruction& instruction : entry.bytecode) {
         const auto* metadata = Recipe::FindRecipeOpcodeMetadata(instruction.opCode);
-        if (metadata != nullptr && std::strcmp(metadata->name, "Output") == 0 &&
-            instruction.data[0] != 0.0f)
+        if (metadata == nullptr) continue;
+        if ((std::strcmp(metadata->name, "MaterialRef") == 0 ||
+             std::strcmp(metadata->name, "Attach") == 0) ||
+            (std::strcmp(metadata->name, "Output") == 0 && instruction.data[0] != 0.0f))
             return true;
     }
     return false;
@@ -48,6 +50,9 @@ struct RecipeBakeConfig {
     // Recipe-space distance represented by one bake-grid voxel. Stored distances remain in
     // grid units for the octree marcher; evaluators sample at this scale and convert distance.
     float     recipeUnitsPerVoxel = 1.0f;
+    // Material sidecars use an explicit document default when no carried ref is present.
+    // VDC1 has no persisted document default yet, so the editor passes the generated none value.
+    uint32_t  defaultMaterialId = 0u;
     // 0 = unbounded.  >0 = hard budget in bytes:
     //   sum of (nodes + bricks + channelPool + mipPool) bytes across all baked octrees.
     uint64_t  byteBudget        = 0;
@@ -117,7 +122,7 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
                                                      entry->parameterValues.size());
             if (!outputProgram.Lower(entry->bytecode.data(),
                     static_cast<std::uint32_t>(entry->bytecode.size()), parameters,
-                    lowerError)) {
+                    true, cfg.defaultMaterialId, lowerError)) {
                 res.ok = false;
                 res.err = "recipe output-set lowering failed for recipe " +
                           std::to_string(id) + ": " + lowerError;

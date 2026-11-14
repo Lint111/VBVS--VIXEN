@@ -397,12 +397,12 @@ private:
         SetClass("disabled", disabled);
         // A disabled action with a reason remains hit-testable so the user can discover why it
         // cannot be removed. The editor's action dispatcher still owns the refusal (and therefore
-        // cannot mutate the model); this only gives the row a hover/press affordance.
+        // cannot mutate the model); the title and editor status line carry the explanation.
         SetProperty("pointer-events", disabled && reason.empty() ? "none" : "auto");
         SetText(Part("reason"), reason);
         // Visibility is deliberately CSS-controlled. Always making the reason visible here turns
-        // every node row into a repeated diagnostic column; editor.rcss reveals it only while the
-        // disabled action is hovered/focused/pressed.
+        // every node row into a repeated diagnostic column; the editor keeps this part hidden and
+        // exposes the explanation through the title/status line after a refused action.
         if (disabled && !reason.empty() && GetAttribute<Rml::String>("title", "") != reason)
             SetAttribute("title", reason);
     }

@@ -235,7 +235,7 @@ std::shared_ptr<const EditorMaterialCoverageSnapshot> MeasureMaterialCoverage(
     const Vixen::SVO::Recipe::RecipeOutputDescriptor* distance = nullptr;
     const Vixen::SVO::Recipe::RecipeOutputDescriptor* material = nullptr;
     for (const auto& descriptor : output.outputs) {
-        const auto* spec = Vixen::SVO::FindRecipeOutputChannel(descriptor.channel);
+        const auto* spec = Vixen::SVO::FindRecipeOutputChannelForDescriptor(descriptor.channel);
         if (spec == nullptr) continue;
         if (spec->fieldKind == Vixen::SVO::FK_DISTANCE) distance = &descriptor;
         if (spec->semantic == Vixen::SVO::SEM_MATERIAL_ID) material = &descriptor;
@@ -2594,6 +2594,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     bakeCfg.center = glm::vec3(static_cast<float>(kEditorBakeResolution) * 0.5f);
     bakeCfg.defaultResolution = kEditorBakeResolution;
     bakeCfg.recipeUnitsPerVoxel = kEditorRecipeUnitsPerVoxel;
+    bakeCfg.defaultMaterialId = Vixen::SVO::kMaterialRefNone;
     auto bakeRegistry = std::make_shared<Vixen::SVO::RecipeRegistry>(std::move(reg));
     TraceEditorLatency("publish", "begin", updateTick_);
     lastBakeSnapshot_ = snapshot;
