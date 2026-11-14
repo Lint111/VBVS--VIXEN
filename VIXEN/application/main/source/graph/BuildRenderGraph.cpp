@@ -2054,9 +2054,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             std::string splicedSource;
             std::vector<float> occupancyGridBlob;
             std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphOutlineBlob;
+            std::vector<YkRecipeGpuTapeInstruction> recipeTapeBlob;
             try {
                 splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
-                    rawSource, proceduralRecipes_, &occupancyGridBlob, &glyphOutlineBlob);
+                    rawSource, proceduralRecipes_, &occupancyGridBlob, &glyphOutlineBlob, &recipeTapeBlob);
             } catch (const std::exception& e) {
                 if (mainLogger && mainLogger->IsEnabled()) {
                     mainLogger->Error(std::string("[BuildRenderGraph] procedural recipe splice failed: ") + e.what());
@@ -2070,6 +2071,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     ? Vixen::SVO::Recipe::DeriveRecipeChunkBoxes(proceduralRecipes_)
                     : std::vector<Vixen::SVO::Recipe::RecipeChunkAabb>{});
                 bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
+                bodyScene->SetRecipeTape(std::move(recipeTapeBlob));
                 bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
             }
 
@@ -4502,6 +4504,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER, kSceneRoles);
     sceneProviders.Provide("RecipeChunkAabbBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER, kSceneRoles);
+    sceneProviders.Provide("RecipeTapeBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::RECIPE_TAPE_BUFFER, kSceneRoles);
     sceneProviders.Provide("historyImage", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
                            SlotRole::Execute);

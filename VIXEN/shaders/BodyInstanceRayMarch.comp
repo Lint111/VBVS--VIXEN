@@ -453,6 +453,11 @@ void main() {
             worldHit.footprintRegime, worldHit.sourceMask);
     }
 #endif
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+    if (anyHit) {
+        policyStencilWord |= (worldHit.materialId & HITRECORD_MATERIAL_MASK) << HITRECORD_MATERIAL_SHIFT;
+    }
+#endif
     rec._pad0       = uint[3](worldHit.instIdx, floatBitsToUint(worldHit.emission), policyStencilWord);
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);

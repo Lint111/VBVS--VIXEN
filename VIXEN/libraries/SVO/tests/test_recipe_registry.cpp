@@ -252,26 +252,32 @@ TEST(RecipeRegistry, ReadParamStackArityAtBoundary) {
 }
 
 TEST(RecipeRegistry, ArityTableCoversAllValidOpcodes) {
-    constexpr uint8_t kLegitimateNoOps[] = {
-        (uint8_t)SdfOpCode::Output,
-        (uint8_t)SdfOpCode::ComposeFloat3,
-    };
-    auto isLegitNoOp = [&](uint8_t v) {
-        for (auto n : kLegitimateNoOps) if (v == n) return true;
-        return false;
-    };
-
-    std::vector<uint8_t> missing;
+    // Zero is a generated declaration, not a missing entry: set producers consume no value or
+    // position stack slots. Compare the consumer arity table against the generated opcode
+    // declarations instead of asserting that every valid opcode has a non-zero delta.
     for (int raw = 0; raw < 256; ++raw) {
         uint8_t v = static_cast<uint8_t>(raw);
         if (!IsValidSdfOpCode(v)) continue;
-        if (isLegitNoOp(v)) continue;
-        auto a = RecipeStackStaticArity(static_cast<SdfOpCode>(v));
-        if (a.vPop == 0 && a.vPush == 0 && a.pPop == 0 && a.pPush == 0)
-            missing.push_back(v);
+        const auto* generated = Recipe::FindRecipeOpcodeStackInfo(v);
+        const auto* declaration = Recipe::FindSdfOpInfo(static_cast<SdfOpCode>(v));
+        ASSERT_NE(generated, nullptr) << "valid opcode has no generated stack declaration: " << int(v);
+        ASSERT_NE(declaration, nullptr) << "valid opcode has no generated opcode declaration: " << int(v);
+        const auto a = RecipeStackStaticArity(static_cast<SdfOpCode>(v));
+        EXPECT_EQ(a.vPop, declaration->valuePop) << "opcode " << int(v);
+        EXPECT_EQ(a.vPush, declaration->valuePush) << "opcode " << int(v);
+        EXPECT_EQ(a.pPop, declaration->positionPop) << "opcode " << int(v);
+        EXPECT_EQ(a.pPush, declaration->positionPush) << "opcode " << int(v);
+        EXPECT_EQ(a.vPop, generated->vPop) << "opcode " << int(v);
+        EXPECT_EQ(a.vPush, generated->vPush) << "opcode " << int(v);
     }
-
-    for (uint8_t v : missing)
-        ADD_FAILURE() << "opcode " << (int)v << " is valid but has zero arity — add to RecipeStackStaticArity";
-    EXPECT_TRUE(missing.empty());
+    const auto sampleSurface = RecipeStackStaticArity(SdfOpCode::SampleSurface);
+    EXPECT_EQ(sampleSurface.vPop, 0);
+    EXPECT_EQ(sampleSurface.vPush, 0);
+    EXPECT_EQ(sampleSurface.pPop, 0);
+    EXPECT_EQ(sampleSurface.pPush, 0);
+    const auto instance = RecipeStackStaticArity(SdfOpCode::Instance);
+    EXPECT_EQ(instance.vPop, 0);
+    EXPECT_EQ(instance.vPush, 1);
+    EXPECT_EQ(instance.pPop, 0);
+    EXPECT_EQ(instance.pPush, 0);
 }

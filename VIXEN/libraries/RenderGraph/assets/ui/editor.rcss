@@ -72,6 +72,10 @@ body.layers .outputs-pinned:focus-within {
     max-height: 180px;
     overflow-y: auto;
 }
+body.layers .outputs-pinned {
+    max-height: 80px;
+    overflow-y: auto;
+}
 .section-summary {
     display: block;
     min-height: 18px;
@@ -97,6 +101,9 @@ body.layers .outputs-pinned:focus-within {
     border-width: 1px;
     border-color: #7f90c0;
 }
+.material-coverage-percent { flex: 0 0 auto; min-width: 32px; text-align: right; }
+.material-coverage { white-space: nowrap; }
+.col-op { display: inline-block; min-width: 72px; max-width: 96px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .node-material-chip { flex: 0 0 auto; margin-top: 4px; font-size: 11px; }
 
 /* The Add flyout: a filter field above the matching catalogue primitives (R872.1 rows, ranked by match). */

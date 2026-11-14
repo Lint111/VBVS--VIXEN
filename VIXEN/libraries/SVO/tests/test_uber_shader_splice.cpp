@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <filesystem>
 #include <cstdlib>
+#include <string_view>
 #include <spirv/unified1/spirv.hpp>
 #include "ShaderCompiler.h"
 #include "Recipe/UberShaderSplice.h"
@@ -54,6 +55,15 @@ std::size_t CountOccurrences(const std::string& haystack, const std::string& nee
     return count;
 }
 
+std::uint64_t Fnv1a(std::string_view text) {
+    std::uint64_t hash = 1469598103934665603ull;
+    for (const unsigned char byte : text) {
+        hash ^= byte;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
 SdfInstruction sphere(glm::vec3 c, float r) {
     SdfInstruction in{};
     in.opCode = (uint8_t)SdfOpCode::Sphere;
@@ -80,6 +90,19 @@ SdfInstruction glyph(uint32_t index) {
     SdfInstruction in{};
     in.opCode = static_cast<uint8_t>(SdfOpCode::GlyphOutline);
     in.data[0] = std::bit_cast<float>(index);
+    return in;
+}
+
+SdfInstruction materialRef(uint32_t materialId) {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(SdfOpCode::MaterialRef);
+    in.data[0] = static_cast<float>(materialId);
+    return in;
+}
+
+SdfInstruction attach() {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(SdfOpCode::Attach);
     return in;
 }
 
@@ -161,6 +184,42 @@ TEST(UberShaderSplice, SingleRegisteredRecipeCompiles) {
     EXPECT_TRUE(result.success) << result.errorMessage
         << "\n--- spliced source (first 4000 chars after marker) ---\n"
         << spliced.substr(spliced.find("VIXEN_UBER_RECIPE_SPLICE_MARKER"), 4000);
+}
+
+TEST(UberShaderSplice, NeutralRecipeKeepsPreMaterialShaderDigest) {
+    const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+    ASSERT_FALSE(raw.empty());
+
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode = {sphere({0.f, 0.f, 0.f}, 1.f)};
+    ASSERT_EQ(registry.Register(2u, entry), RecipeRegistry::RegisterResult::Ok);
+
+    const std::string spliced = SpliceProceduralRecipesIntoSource(raw, registry);
+    EXPECT_EQ(Fnv1a(spliced), 0x34f08d40ca26d63cull)
+        << "digest=" << std::hex << Fnv1a(spliced);
+    EXPECT_EQ(spliced.find("VIXEN_UBER_RECIPE_MATERIAL"), std::string::npos);
+}
+
+TEST(UberShaderSplice, MaterialRecipeCarriesTapeAndCompiles) {
+    const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+    ASSERT_FALSE(raw.empty());
+
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode = {sphere({0.f, 0.f, 0.f}, 1.f), materialRef(2u), attach()};
+    ASSERT_EQ(registry.Register(2u, entry), RecipeRegistry::RegisterResult::Ok);
+
+    std::vector<YkRecipeGpuTapeInstruction> tape;
+    const std::string spliced = SpliceProceduralRecipesIntoSource(raw, registry,
+                                                                    nullptr, nullptr, &tape);
+    EXPECT_NE(spliced.find("VIXEN_UBER_RECIPE_MATERIAL"), std::string::npos);
+    EXPECT_NE(spliced.find("RecipeTapeBuffer"), std::string::npos);
+    ASSERT_EQ(tape.size(), entry.bytecode.size());
+    EXPECT_EQ(tape[1].opCode & 0xffu, static_cast<std::uint32_t>(SdfOpCode::MaterialRef));
+
+    const auto result = CompileSource(spliced);
+    EXPECT_TRUE(result.success) << result.errorMessage;
 }
 
 // T-2895: the shared SdfTraceProbe.glsl contract must compile into the real march shader when

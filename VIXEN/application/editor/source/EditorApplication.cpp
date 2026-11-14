@@ -388,6 +388,24 @@ bool SameProgram(const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& a,
     return a.size() == b.size() && (a.empty() ||
         std::memcmp(a.data(), b.data(), a.size() * sizeof(a.front())) == 0);
 }
+
+// MaterialRef/Attach are carried by the runtime tape, not by generated shader source. Keep
+// their data edits on the data-only path while retaining the old compile behavior for every
+// geometry/operator/parameter edit. This is intentionally stricter than comparing opcodes: a
+// changed MaterialRef operand is the only permitted source-preserving difference.
+bool SameProceduralShaderProgram(
+    const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& a,
+    const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].opCode != b[i].opCode || a[i].inputMask != b[i].inputMask ||
+            a[i].paramMask != b[i].paramMask || a[i]._pad1 != b[i]._pad1) return false;
+        const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(a[i].opCode);
+        if (op == Vixen::SVO::Recipe::SdfOpCode::MaterialRef) continue;
+        if (std::memcmp(a[i].data, b[i].data, sizeof(a[i].data)) != 0) return false;
+    }
+    return true;
+}
 }  // namespace
 
 EditorApplication::EditorApplication(std::string documentPath)
@@ -2508,12 +2526,6 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     TraceEditorLatency("flatten", "end", updateTick_);
     TraceEditorLatency("registry", "begin", updateTick_);
 
-    // Legacy VDC1 document material fields are read for byte-stable save/reopen,
-    // but no longer lower into the recipe. Authored layer MaterialRef outputs select
-    // the stored provider; the provider swap is a data update and does not recompile
-    // the procedural shader.
-    const bool hasDocumentMaterials = doc_.HasLayerMaterials();
-
     // Runtime parameter values remain per-instance data. Only a changed canonical bytecode
     // program replaces the registry entry and triggers a shader splice rebuild.
     if (!proceduralPreviewRegistered_) {
@@ -2528,7 +2540,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         TraceEditorLatency("shader_request", "begin", updateTick_);
         RecompileProceduralShader();
         TraceEditorLatency("shader_request", "end", updateTick_);
-    } else if (!hasDocumentMaterials && !SameProgram(entry.bytecode, lastProceduralProgram_)) {
+    } else if (!SameProgram(entry.bytecode, lastProceduralProgram_)) {
+        const bool tapeOnlyMaterialEdit = SameProceduralShaderProgram(entry.bytecode, lastProceduralProgram_);
         const auto result = ReplaceProceduralRecipe(kEditorProceduralRecipeId, entry);
         if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
             ReportEditorError("ReplaceProceduralRecipe failed (code " +
@@ -2536,9 +2549,14 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
             return false;
         }
         lastProceduralProgram_ = entry.bytecode;
-        TraceEditorLatency("shader_request", "begin", updateTick_);
-        RecompileProceduralShader();
-        TraceEditorLatency("shader_request", "end", updateTick_);
+        if (tapeOnlyMaterialEdit) {
+            RefreshProceduralRecipeOperands();
+            logger_->Info("[EditorApplication] material edit refreshed procedural tape without shader compile");
+        } else {
+            TraceEditorLatency("shader_request", "begin", updateTick_);
+            RecompileProceduralShader();
+            TraceEditorLatency("shader_request", "end", updateTick_);
+        }
     }
 
     TraceEditorLatency("registry", "end", updateTick_);
@@ -2641,9 +2659,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     });
     TraceEditorLatency("bake", "end", updateTick_);
 
-    // A material-bearing document uses the freshly produced stored octree so its generic
-    // material-id channel is visible immediately without changing the procedural shader.
-    // Documents without material fields retain the virtual provider's parameter-edit behavior.
+    // The viewport is always the crisp procedural field. The stored bake above is an off-screen
+    // coverage producer only; it never becomes the editor instance's geometry provider.
     Vixen::SVO::BodyInstanceGpu inst{};
     // RecipeBakeConfig stores an object-centered document at grid center (32,32,32), while the
     // stored octree's fixed local frame maps that center to world (5,5,5). Use the normalized
@@ -2652,26 +2669,22 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     // the camera and both providers therefore share one document-space frame when materials are
     // added or removed.
     const auto bodyPlacement = Vixen::Editor::PlaceEditorBody(
-        entry.boundCenter, entry.boundRadius, hasDocumentMaterials,
+        entry.boundCenter, entry.boundRadius, /*storedProvider=*/false,
         10.0f, static_cast<int>(kEditorBakeResolution), kEditorStoredRenderScale,
         kEditorRecipeUnitsPerVoxel);
     Vixen::SVO::SetInstanceTranslationScale(inst, bodyPlacement.origin, bodyPlacement.renderScale);
     inst.material.color[0] = 1.0f; inst.material.color[1] = 1.0f; inst.material.color[2] = 1.0f;
     inst.material.octreeIndex = 0u;
-    inst.material.providerKind = hasDocumentMaterials ? Vixen::SVO::PROVIDER_STORED
-                                                      : Vixen::SVO::PROVIDER_PROCEDURAL;
-    inst.material.recipeId = hasDocumentMaterials ? 0u : kEditorProceduralRecipeId;
-    if (!hasDocumentMaterials) {
-        for (size_t i = 0; i < snapshot.parameterValues.size(); ++i)
-            inst.material.recipeParams[i] = snapshot.parameterValues[i];
-    }
+    inst.material.providerKind = Vixen::SVO::PROVIDER_PROCEDURAL;
+    inst.material.recipeId = kEditorProceduralRecipeId;
+    for (size_t i = 0; i < snapshot.parameterValues.size(); ++i)
+        inst.material.recipeParams[i] = snapshot.parameterValues[i];
     SetBodyInstances({inst});
     TraceEditorLatency("publish", "end", updateTick_);
 
-    if (!hasDocumentMaterials &&
-        (entry.parameterValues.size() != snapshot.parameterValues.size() ||
+    if (entry.parameterValues.size() != snapshot.parameterValues.size() ||
          !std::equal(snapshot.parameterValues.begin(), snapshot.parameterValues.end(),
-                     entry.parameterValues.begin()))) {
+                     entry.parameterValues.begin())) {
         ReportEditorError("CPU bake and virtual preview parameter snapshots diverged");
         return false;
     }
@@ -2688,7 +2701,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         values << lastPreviewParameterValues_[i];
     }
     values << "] programInstructions=" << entry.bytecode.size()
-           << " materialProvider=" << (hasDocumentMaterials ? "stored" : "procedural");
+           << " materialProvider=procedural coverageProvider=stored-offscreen";
     logger_->Info(values.str());
 
     if (reframeCamera) {

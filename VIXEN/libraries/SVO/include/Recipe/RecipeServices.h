@@ -346,7 +346,10 @@ struct RecipeSceneAnalysis {
     bool declaredPositionOutParam,
     std::span<const Yeroket::Sdf::Kernels::PathInstance> pathRows = {},
     std::uint32_t glyphIndexBase = 0u,
-    bool boundedGlyph = false) {
+    bool boundedGlyph = false,
+    bool readInstructionOperands = false,
+    bool carryMaterialId = false,
+    std::uint32_t materialDefault = 0u) {
     const auto& services = GetRecipeServiceApis();
     if (!services.available || services.gpu.lower == nullptr || services.gpu.text == nullptr) return {};
 
@@ -354,9 +357,12 @@ struct RecipeSceneAnalysis {
     request.structSize = sizeof(request);
     request.backend = YK_RECIPE_GPU_BACKEND_GLSL_FIELD;
     request.flags = (declaredPositionOutParam ? YK_RECIPE_GPU_FIELD_DECLARED_POSITION : 0u) |
-                    (boundedGlyph ? YK_RECIPE_GPU_FIELD_BOUNDED_GLYPH : 0u);
+                    (boundedGlyph ? YK_RECIPE_GPU_FIELD_BOUNDED_GLYPH : 0u) |
+                    (readInstructionOperands ? YK_RECIPE_GPU_FIELD_TAPE_OPERANDS : 0u);
     request.alias = recipeId;
     request.glyphIndexBase = glyphIndexBase;
+    request.outputChannelMask = carryMaterialId ? (1u << 7u) : 0u;
+    request.materialDefault = materialDefault;
     YkRecipeGpuModule* module = nullptr;
     YkRecipeGpuDiagnostic diagnostic{};
     const auto status = services.gpu.lower(
@@ -470,11 +476,14 @@ inline std::string WithoutGlyphOutlineKernel(const std::string& source) {
     std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> /*glyphInstances*/ = {},
     std::uint32_t glyphIndexBase = 0u,
     std::span<const Yeroket::Sdf::Kernels::PathInstance> pathRows = {},
-    bool /*readInstructionOperands*/ = false,
-    bool boundedGlyph = false) {
+    bool readInstructionOperands = false,
+    bool boundedGlyph = false,
+    bool carryMaterialId = false,
+    std::uint32_t materialDefault = 0u) {
     return RecipeGpuField(
         std::span<const SdfInstruction>(instructions, count), recipeId, declaredPositionOutParam,
-        pathRows, glyphIndexBase, boundedGlyph);
+        pathRows, glyphIndexBase, boundedGlyph, readInstructionOperands, carryMaterialId,
+        materialDefault);
 }
 
 } // namespace Vixen::SVO::Recipe

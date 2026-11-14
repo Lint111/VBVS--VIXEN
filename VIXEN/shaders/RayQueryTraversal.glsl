@@ -122,6 +122,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
     hitEmission = 0.0;
     hitBrickIndex = 0u; hitVoxelLinearIdx = 0u; hitInstanceIdx = 0xFFFFFFFFu;
     g_lastFootprintRegime = 1u;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+    g_lastRecipeMaterialId = 0u;
+#endif
     debugInfo.hitFlag = 0u;
     debugInfo.exitCode = DEBUG_EXIT_NONE;
 
@@ -140,6 +143,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
     ivec3 bestCell = ivec3(0);
 #if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
     bool  bestProcedural = false;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+    uint  bestMaterialId = 0u;
+#endif
 #endif
 
     // Same g_octreeIdx/g_brickArrayBase save/restore discipline as the prior
@@ -227,6 +233,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                     hitNormal = instanceLocalToWorldNormal(ci, candidateNormal);
                     hitRoughness = 0.5;
                     hitEmission = candidateInst.recipeParams[3];
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+                    bestMaterialId = g_lastRecipeMaterialId;
+#endif
                     rayQueryGenerateIntersectionEXT(rq, worldT);
                 }
             }
@@ -523,11 +532,17 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
     hitInstanceIdx    = bestInstIdx;
 #if defined(VIXEN_RECIPE_CHUNK_CULL) && defined(VIXEN_UBER_RECIPE_SPLICED)
     if (bestProcedural) {
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+        g_lastRecipeMaterialId = bestMaterialId;
+#endif
         hitBrickIndex = 0u;
         hitVoxelLinearIdx = 0u;
         debugInfo.hitFlag = 1u;
         return true;
     }
+#endif
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+    g_lastRecipeMaterialId = 0u;
 #endif
     // The proxy primitive identifies a compact candidate, while the shared
     // compact grid lookup remains the authoritative cell -> shell-slot map.

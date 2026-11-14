@@ -13,6 +13,7 @@
 #include "BrickConfigUpload.h" // generation-keyed brick/config dirty ranges
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
 #include "Recipe/RecipeChunkBounds.h" // optional procedural RT/software chunk candidates
+#include "Recipe/RecipeServices.h" // material-capable procedural operand tape ABI
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "RecipeEmitterTable.h" // R502.2: Vixen::SVO::{EmitterTable, RecipeEmitterShapes}
@@ -222,6 +223,10 @@ public:
     void SetGlyphOutlineInstances(
         std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances);
 
+    // Runtime operand tape for material-capable procedural fields. A material-only edit refreshes
+    // this SSBO and leaves the generated shader/pipeline untouched.
+    void SetRecipeTape(std::vector<YkRecipeGpuTapeInstruction> tape);
+
     /**
      * @brief R502.2 (count-agnostic lighting S0) — per-recipe surface-cell lists and areas the
      * emitter table needs, built from the RecipeRegistry by BuildRecipeEmitterShapes. Called
@@ -370,6 +375,7 @@ private:
     void RefreshGlyphOutlineBuffer();                                  // replace the shader-build payload only
     void RefreshMaterialTableBuffer();                                 // replace the runtime material table only
     void RefreshRecipeChunkBuffer();
+    void RefreshRecipeTapeBuffer();
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize transformCapacity,
                              VkDeviceSize materialCapacity);           // allocate/grow both instance rings
@@ -591,6 +597,9 @@ private:
     VkDeviceSize   recipeChunkCapacity_ = 0;
     uint32_t       recipeChunkCount_    = 0;
     std::vector<Vixen::SVO::Recipe::RecipeChunkAabb> recipeChunkBoxes_;
+    std::vector<YkRecipeGpuTapeInstruction> recipeTape_;
+    VkBuffer       recipeTapeBuffer_     = VK_NULL_HANDLE;
+    VkDeviceMemory recipeTapeMemory_     = VK_NULL_HANDLE;
     // R631: flattened GlyphOutlineInstance SSBO (binding 51 in the shared recipe shaders).
     VkBuffer       glyphOutlineBuffer_   = VK_NULL_HANDLE;
     VkDeviceMemory glyphOutlineMemory_   = VK_NULL_HANDLE;

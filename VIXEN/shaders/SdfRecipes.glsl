@@ -196,6 +196,17 @@ const float kNoGridSentinel = 1.0e30;
 // Shadow any-hit rays set this so the relaxed-step boost applies only to a real per-cell bound,
 // never to the no-grid sentinel; an unproven boost overshoots distant occluders.
 bool g_recipeProvenStepOnly = false;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+// Set by the last successful procedural field evaluation. TraceWorld and the ray-query twin
+// read it only after a certified hit, so the material id follows the winning surface sample.
+uint g_lastRecipeMaterialId = 0u;
+
+uint recipeMaterialAt(uint recipeId, vec3 p, float params[6]) {
+    uint materialId = 0u;
+    float unusedDistance = evalRecipeField(recipeId, p, params, materialId);
+    return materialId;
+}
+#endif
 
 float sampleRecipeOccupancy(uint gridOffset, uint gridDim, vec3 gridAabbMin, float gridCellSize,
                             vec3 p) {
@@ -226,6 +237,9 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
     stepsUsed = 0u;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+    g_lastRecipeMaterialId = 0u;
+#endif
 
     vec3  oc   = ro - boundCenter;
     float b    = dot(oc, rd);
@@ -291,6 +305,9 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
             vec3 gradient = recipeFieldGradient(recipeId, p, params);
             hitNormal = normalize(gradient);
             hitT      = t;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+            g_lastRecipeMaterialId = recipeMaterialAt(recipeId, p, params);
+#endif
 #ifdef VIXEN_SDF_TRACE_PROBE
             sdfTraceProbeRecord(ivec2(gl_GlobalInvocationID.xy), stepsUsed, SDF_TRACE_TERM_HIT, recipeId,
                                   gridDim, t, d, p, gradient, traceLastGridBound,
@@ -375,6 +392,9 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                     vec3 gradient = recipeFieldGradient(recipeId, p, params);
                     hitNormal = normalize(gradient);
                     hitT = t;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+                    g_lastRecipeMaterialId = recipeMaterialAt(recipeId, p, params);
+#endif
 #ifdef VIXEN_SDF_TRACE_PROBE
                     traceLastT = t;
                     traceLastD = evalRecipeField(recipeId, p, params);

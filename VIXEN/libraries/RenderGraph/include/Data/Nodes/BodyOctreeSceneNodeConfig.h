@@ -16,7 +16,7 @@ namespace BodyOctreeSceneNodeCounts {
     // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
     // + raster-proxy AABB buffer and its exact live element count (Slice B2 binder seam).
     // + flattened runtime glyph-outline buffer (R631) + packed glyph words (R768).
-    static constexpr size_t OUTPUTS = 21;
+    static constexpr size_t OUTPUTS = 22;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -147,6 +147,12 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
 
     // Optional procedural recipe surface-shell chunks (shader binding 44).
     OUTPUT_SLOT(RECIPE_CHUNK_BUFFER, VkBuffer, 20,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    // Material-capable procedural field operands (binding 53). Material edits refresh this
+    // buffer without recompiling the generated field.
+    OUTPUT_SLOT(RECIPE_TAPE_BUFFER, VkBuffer, 21,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -283,6 +289,10 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         glyphOutlineFlatDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(GLYPH_OUTLINE_FLAT_BUFFER, "glyph_outline_flat_buffer", ResourceLifetime::Persistent, glyphOutlineFlatDesc);
 
+        BufferDescriptor recipeTapeDesc{};
+        recipeTapeDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(RECIPE_TAPE_BUFFER, "recipe_tape_buffer", ResourceLifetime::Persistent, recipeTapeDesc);
+
         // W-RTQUERY Slice A: TLAS handle output — HandleDescriptor mirrors
         // AccelerationStructureNodeConfig::TLAS_HANDLE exactly (same handle-passthrough
         // convention as VULKAN_DEVICE_IN above; not a buffer-usage resource).
@@ -328,6 +338,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(GLYPH_OUTLINE_BUFFER_Slot::index == 18, "GLYPH_OUTLINE_BUFFER must be at index 18");
     static_assert(GLYPH_OUTLINE_FLAT_BUFFER_Slot::index == 19, "GLYPH_OUTLINE_FLAT_BUFFER must be at index 19");
     static_assert(RECIPE_CHUNK_BUFFER_Slot::index == 20, "RECIPE_CHUNK_BUFFER must be at index 20");
+    static_assert(RECIPE_TAPE_BUFFER_Slot::index == 21, "RECIPE_TAPE_BUFFER must be at index 21");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -352,6 +363,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<PROXY_AABB_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<PROXY_AABB_COUNT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<RECIPE_CHUNK_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<RECIPE_TAPE_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

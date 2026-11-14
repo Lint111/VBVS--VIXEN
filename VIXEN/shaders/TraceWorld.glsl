@@ -77,11 +77,17 @@ bool traceRecipeChunks(uint recipeId, vec3 boundCenter, float boundRadius, float
         recordRecipeSteps(candidateSteps);
         totalSteps += candidateSteps;
         if (candidateHit) {
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+            const uint candidateMaterial = g_lastRecipeMaterialId;
+#endif
             if (!found || candidateT < closest) {
                 found = true;
                 closest = candidateT;
                 hitNormal = candidateNormal;
                 hitT = candidateT;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+                g_lastRecipeMaterialId = candidateMaterial;
+#endif
             }
         }
     }
@@ -140,6 +146,9 @@ struct WorldHit {
     // E1-T1 probe-only terminal classification; not serialized into HitRecord.
     uint footprintRegime;
     uint sourceMask;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+    uint materialId;
+#endif
 };
 
 // ============================================================================
@@ -219,6 +228,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     uint  bestFootprintRegime = 1u;
     uint  bestPathClass = 0u;             // 0=miss, 1=recipe, 2=stored, 3=far-field
     uint  sourceMask = 0u;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+    uint  bestMaterialId = 0u;
+#endif
 
 #ifdef VIXEN_RTQUERY_TRAVERSAL
     // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: search every
@@ -256,6 +268,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         bool rqHit = traverseRayQueryWorld(rayOrigin, normalize(rayDir),
                                             rqColor, rqNormal, rqT, rqRoughness, rqEmission,
                                             rqBrick, rqVoxel, rqInstIdx, rqDbg);
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+        const uint rqMaterialId = g_lastRecipeMaterialId;
+#endif
         bool rqWasFarField = g_lastHitWasFarField;
         uint rqFootprintRegime = g_lastFootprintRegime;
         if (rqHit && isCloserHit(rqT, rqInstIdx, bestT, bestInstIdx)) {
@@ -288,6 +303,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestWasFarField = rqWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = rqFootprintRegime;
             bestPathClass = rqWasFarField ? 3u : 2u;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+            bestMaterialId = rqMaterialId;
+#endif
             sourceMask |= 2u;
             anyHit         = true;
         }
@@ -446,6 +464,10 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     farSubPixel = footprint >= 2.0 * boundRadius * worldUnitsPerInstUnit;
                 }
 
+                float uberParams[6] = float[6](
+                    inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
+                    inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
+
 #ifdef VIXEN_LEAF_VARIANT_SEARCH
                 // fl-leafinstr1 measurement variant (not pixel-valid): search only, the bound
                 // sphere test above is the whole per-body cost; take the flat-shade exit.
@@ -458,6 +480,10 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pHit    = true;
                     pT      = entryT;
                     pNormal = normalize(-instDir);  // local-space normal; transformed after the march
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+                    g_lastRecipeMaterialId = recipeMaterialAt(
+                        inst.recipeId, instOrigin + instDir * entryT, uberParams);
+#endif
                 } else {
                     uint pSteps;
                     incrLeafInstrBody();
@@ -465,9 +491,6 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     // SSBO once here and pass it down as a plain argument — same convention
                     // the legacy recipeId<2 branch above already uses for pParams, not a
                     // re-index inside the emitted field-function bodies.
-                    float uberParams[6] = float[6](
-                        inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
-                        inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                     pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
                                              instOrigin, instDir, conservativeSdfStepScale,
                                              VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
@@ -513,6 +536,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bestEmission   = inst.recipeParams[3];
                 bestFootprintRegime = 1u;
                 bestPathClass = 1u;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+                bestMaterialId = g_lastRecipeMaterialId;
+                if (bestMaterialId != 0u && bestMaterialId < materials.length()) {
+                    bestColor = materials[bestMaterialId].albedo * inst.color;
+                }
+#endif
                 anyHit         = true;
             }
             continue;  // procedural body fully handled; skip the ESVO path
@@ -917,6 +946,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.wasFarField = anyHit && bestWasFarField;
     hit.footprintRegime = bestFootprintRegime;
     hit.sourceMask = sourceMask;
+#ifdef VIXEN_UBER_RECIPE_MATERIAL
+    hit.materialId = anyHit ? bestMaterialId : 0u;
+#endif
 #ifdef VIXEN_LEAF_INSTR_COUNTERS
     recordLeafInstrRay(g_leafInstrRaySteps, g_leafInstrBodies, g_leafInstrCandidates, bestPathClass);
 #endif

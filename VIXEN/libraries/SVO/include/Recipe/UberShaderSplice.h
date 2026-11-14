@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -49,10 +50,12 @@ inline std::string SpliceProceduralRecipesIntoSource(
     const std::string& rawSource,
     const RecipeRegistry& registry,
     std::vector<float>* outConcatenatedOccupancyGrid = nullptr,
-    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance>* outConcatenatedGlyphInstances = nullptr)
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance>* outConcatenatedGlyphInstances = nullptr,
+    std::vector<YkRecipeGpuTapeInstruction>* outConcatenatedRecipeTape = nullptr)
 {
     if (outConcatenatedOccupancyGrid) outConcatenatedOccupancyGrid->clear();
     if (outConcatenatedGlyphInstances) outConcatenatedGlyphInstances->clear();
+    if (outConcatenatedRecipeTape) outConcatenatedRecipeTape->clear();
     static const std::string kMarker = "// VIXEN_UBER_RECIPE_SPLICE_MARKER";
     const size_t markerPos = rawSource.find(kMarker);
     if (markerPos == std::string::npos) {
@@ -74,8 +77,43 @@ inline std::string SpliceProceduralRecipesIntoSource(
     // Bounds and grid metadata obey the same binary32 transport contract as operands.
     const auto f = RecipeGlslFloatLiteral;
 
+    const auto hasMaterialOutput = [](const RecipeRegistry::RecipeEntry* entry) {
+        if (!entry) return false;
+        for (const auto& instruction : entry->bytecode) {
+            const auto op = static_cast<SdfOpCode>(instruction.opCode);
+            if (op == SdfOpCode::MaterialRef || op == SdfOpCode::Attach) return true;
+        }
+        return false;
+    };
+    const bool materialVariant = std::any_of(ids.begin(), ids.end(), [&](uint32_t id) {
+        return hasMaterialOutput(registry.Get(id));
+    });
+    std::vector<uint32_t> tapeBases;
+    tapeBases.reserve(ids.size());
+    uint32_t tapeOffset = 0u;
+    for (uint32_t id : ids) {
+        const auto* entry = registry.Get(id);
+        tapeBases.push_back(tapeOffset);
+        if (!materialVariant || !entry) continue;
+        const auto tape = RecipeGpuTape(entry->bytecode);
+        if (tape.status != YK_RECIPE_GPU_OK || tape.instructions.size() != entry->bytecode.size()) {
+            throw std::runtime_error("SpliceProceduralRecipesIntoSource: recipe " + std::to_string(id) +
+                " tape lowering refused (" + (tape.diagnostic.empty() ? "no diagnostic" : tape.diagnostic) + ")");
+        }
+        if (outConcatenatedRecipeTape) {
+            outConcatenatedRecipeTape->insert(outConcatenatedRecipeTape->end(),
+                tape.instructions.begin(), tape.instructions.end());
+        }
+        tapeOffset += static_cast<uint32_t>(tape.instructions.size());
+    }
+
     std::ostringstream out;
     out << "\n#define VIXEN_UBER_RECIPE_SPLICED 1\n";
+    if (materialVariant) {
+        out << "#define VIXEN_UBER_RECIPE_MATERIAL 1\n"
+               "struct RecipeTapeInstruction { uint opCode; float data[32]; };\n"
+               "layout(std430, binding = 53) readonly buffer RecipeTapeBuffer { RecipeTapeInstruction recipeTape[]; };\n";
+    }
 
     // Recipe-Diversity-Stress-Scene Inc6 M2: a recipe containing DeclarePosition (M1's
     // spatial-contract opcode) MUST be emitted with emitDeclaredPositionOutParam=true —
@@ -105,8 +143,19 @@ inline std::string SpliceProceduralRecipesIntoSource(
         const bool declaredPosition = usesDeclarePosition(entry);
         std::string field = RecipeGpuField(entry->bytecode, id, declaredPosition,
                                            entry->pathInstances, /*glyphInstanceBase=*/0,
-                                           /*boundedGlyph=*/true);
+                                           /*boundedGlyph=*/true,
+                                           /*readInstructionOperands=*/materialVariant,
+                                           /*carryMaterialId=*/materialVariant,
+                                           /*materialDefault=*/0u);
         if (field.empty()) {
+            for (std::size_t instructionIndex = 0; instructionIndex < entry->bytecode.size(); ++instructionIndex) {
+                const auto op = static_cast<SdfOpCode>(entry->bytecode[instructionIndex].opCode);
+                if (op == SdfOpCode::SampleSurface || op == SdfOpCode::Instance) {
+                    throw std::runtime_error("SpliceProceduralRecipesIntoSource: recipe " + std::to_string(id) +
+                        " refused at instruction " + std::to_string(instructionIndex) + " (" +
+                        std::string(SdfOpCodeName(op)) + "): GLSL field consumer cannot expand set operands");
+                }
+            }
             throw std::runtime_error("SpliceProceduralRecipesIntoSource: recipe GPU service returned no field");
         }
         out << field << "\n";
@@ -122,21 +171,32 @@ inline std::string SpliceProceduralRecipesIntoSource(
     // read out of the SSBO once at the call site, passed down as an argument — not re-indexed
     // from the SSBO inside deeply-nested functions). Every case takes it uniformly even though
     // only ReadParam/ReadParamFloat3-using recipes reference it.
-    out << "float evalRecipeField(uint recipeId, vec3 p, float params[6]) {\n"
-           "  vec3 unusedDeclaredPos;\n"  // Inc6 M2: throwaway sink for DeclarePosition-using cases below
+    out << "float evalRecipeField(uint recipeId, vec3 p, float params[6]"
+        << (materialVariant ? ", out uint materialId" : "") << ") {\n"
+           "  vec3 unusedDeclaredPos;\n"
            "  switch (recipeId) {\n";
     for (uint32_t id : ids) {
         const RecipeRegistry::RecipeEntry* entry = registry.Get(id);
         if (!entry) continue;
+        const auto idIt = std::find(ids.begin(), ids.end(), id);
+        const uint32_t tapeBase = tapeBases[static_cast<std::size_t>(idIt - ids.begin())];
+        out << "    case " << id << "u: return sdfRecipe_" << id << "(p, params";
+        if (materialVariant) out << ", " << tapeBase << "u";
         if (usesDeclarePosition(entry)) {
-            out << "    case " << id << "u: return sdfRecipe_" << id << "(p, params, unusedDeclaredPos);\n";
-        } else {
-            out << "    case " << id << "u: return sdfRecipe_" << id << "(p, params);\n";
+            out << ", unusedDeclaredPos";
         }
+        if (materialVariant) out << ", materialId";
+        out << ");\n";
     }
     out << "    default: return 0.0;\n"
            "  }\n"
            "}\n";
+    if (materialVariant) {
+        out << "float evalRecipeField(uint recipeId, vec3 p, float params[6]) {\n"
+               "  uint unusedMaterial;\n"
+               "  return evalRecipeField(recipeId, p, params, unusedMaterial);\n"
+               "}\n";
+    }
 
     out << "void getRecipeBoundSphere(uint recipeId, out vec3 center, out float radius, "
            "out float relaxation) {\n"

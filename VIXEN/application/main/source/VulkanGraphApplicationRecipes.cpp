@@ -903,6 +903,30 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::ReplaceProced
     return result;
 }
 
+void VulkanGraphApplication::RefreshProceduralRecipeOperands() {
+    if (!renderGraph || !bodyOctreeSceneNode_.IsValid()) return;
+    auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    if (!bodyScene) return;
+
+    std::vector<YkRecipeGpuTapeInstruction> tape;
+    for (const uint32_t recipeId : proceduralRecipes_.Ids()) {
+        const auto* entry = proceduralRecipes_.Get(recipeId);
+        if (!entry) continue;
+        const auto lowered = Vixen::SVO::Recipe::RecipeGpuTape(entry->bytecode);
+        if (lowered.status != YK_RECIPE_GPU_OK || lowered.instructions.size() != entry->bytecode.size()) {
+            if (mainLogger) {
+                mainLogger->Error("[VulkanGraphApplication::RefreshProceduralRecipeOperands] recipe " +
+                    std::to_string(recipeId) + " refused: " +
+                    (lowered.diagnostic.empty() ? "GPU tape lowering failed" : lowered.diagnostic));
+            }
+            return;
+        }
+        tape.insert(tape.end(), lowered.instructions.begin(), lowered.instructions.end());
+    }
+    bodyScene->SetRecipeTape(std::move(tape));
+}
+
 void VulkanGraphApplication::StartProceduralPrecompile() {
     // Compile off the frame thread: the builders run here (they read the live recipe table), their
     // Build() runs on workers and fills the shader cache; the swap happens in PollProceduralShaderSwap.

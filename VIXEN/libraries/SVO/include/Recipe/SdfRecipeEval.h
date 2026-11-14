@@ -20,6 +20,8 @@
 #include <cassert>
 #include <cstdint>
 #include <span>
+#include <string>
+#include <stdexcept>
 
 namespace Vixen::SVO::Recipe {
 
@@ -55,15 +57,18 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
         switch (static_cast<SdfOpCode>(in.opCode)) {
 #include "Recipe/generated/SdfRecipeEvalDispatch.g.inc"
         case SdfOpCode::ReadPort:
-        case SdfOpCode::Instance:
             // The scalar legacy evaluator has no layer-port or instance
             // context. Keep the distance-only oracle stack-valid; the
             // generated SIMD evaluator owns the typed channel path.
             assert(sp + 1 <= 64 && "typed input stack overflow");
             stack[sp++] = 0.0f;
             break;
+        case SdfOpCode::Instance:
+            throw std::runtime_error("evalRecipe: opcode Instance (116) at instruction " +
+                                     std::to_string(i) + " requires set expansion; scalar consumer refused");
         case SdfOpCode::SampleSurface:
-            break;
+            throw std::runtime_error("evalRecipe: opcode SampleSurface (115) at instruction " +
+                                     std::to_string(i) + " requires set expansion; scalar consumer refused");
         case SdfOpCode::MaterialRef:
             assert(sp + 1 <= 64 && "material reference stack overflow");
             stack[sp++] = 0.0f;

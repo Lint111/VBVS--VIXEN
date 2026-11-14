@@ -223,6 +223,16 @@ TEST_F(PanelDockDocumentsTest, EditorPanelsShareOneModelAndLandInTheirRegions) {
     EXPECT_FALSE(Shown(chromeDoc_, "panel-status-close"));
 }
 
+TEST_F(PanelDockDocumentsTest, DockTabRendersBoundTitleText) {
+    Layout();
+    Rml::Element* tab = chromeDoc_->GetElementById("panel-inspector-tab");
+    ASSERT_NE(tab, nullptr);
+    Rml::ElementList titles;
+    tab->GetElementsByClassName(titles, "dock-tab-title");
+    ASSERT_EQ(titles.size(), 1u);
+    EXPECT_EQ(titles.front()->GetInnerRML(), "inspector");
+}
+
 // R872.1: the layers panel keeps its content width when the primitive picker is populated and the rows outgrow
 // the panel. RmlUi gives an unstyled vertical scrollbar the whole width, which collapsed the first Dozen run's
 // panel to 20 px once a fourth layer was added (editor.rcss now sizes the scrollbar).

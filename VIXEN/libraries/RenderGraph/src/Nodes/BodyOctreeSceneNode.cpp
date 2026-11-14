@@ -560,6 +560,40 @@ void BodyOctreeSceneNode::RefreshRecipeChunkBuffer() {
                   std::to_string(static_cast<uint64_t>(size)) + "B)");
 }
 
+void BodyOctreeSceneNode::SetRecipeTape(std::vector<YkRecipeGpuTapeInstruction> tape) {
+    recipeTape_ = std::move(tape);
+    if (GetDevice() != nullptr) RefreshRecipeTapeBuffer();
+    NODE_LOG_INFO("[BodyOctreeSceneNode] SetRecipeTape: " +
+                  std::to_string(recipeTape_.size()) + " instructions staged");
+}
+
+void BodyOctreeSceneNode::RefreshRecipeTapeBuffer() {
+    VulkanDevice* device = GetDevice();
+    if (!device) return;
+    const VkDeviceSize size = std::max<VkDeviceSize>(
+        recipeTape_.size() * sizeof(YkRecipeGpuTapeInstruction), 1);
+    VkBuffer replacement = VK_NULL_HANDLE;
+    VkDeviceMemory replacementMemory = VK_NULL_HANDLE;
+    CreateHostBuffer(device, size,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        recipeTape_.empty() ? nullptr : recipeTape_.data(),
+        replacement, replacementMemory, "recipe operand tape SSBO refresh");
+    if (recipeTapeBuffer_ != VK_NULL_HANDLE || recipeTapeMemory_ != VK_NULL_HANDLE) {
+        RetiredBufferGeneration retired;
+        retired.retiredAtFrame = executeFrameCounter_;
+        retired.buffers.emplace_back(recipeTapeBuffer_, recipeTapeMemory_);
+        pendingRetire_.push_back(std::move(retired));
+    }
+    recipeTapeBuffer_ = replacement;
+    recipeTapeMemory_ = replacementMemory;
+    if (Resource* output = GetOutput(BodyOctreeSceneNodeConfig::RECIPE_TAPE_BUFFER.index, 0)) {
+        output->SetHandle<VkBuffer>(VkBuffer(recipeTapeBuffer_));
+    }
+    RecordWholeBufferUpload(static_cast<uint64_t>(size));
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Refreshed recipe operand tape buffer (" +
+                  std::to_string(static_cast<uint64_t>(size)) + "B)");
+}
+
 void BodyOctreeSceneNode::SetGlyphOutlineInstances(
     std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances) {
     // R631: this payload is produced by the same shader-build callback as the spliced recipe
@@ -874,6 +908,7 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Always emitted — placeholder for a scene with no derivable procedural recipe grids.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER,       recipeChunkBuffer_);
+    ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_TAPE_BUFFER,        recipeTapeBuffer_);
     // R631: runtime glyph-outline SSBO (binding 51), always emitted with a descriptor-valid
     // one-byte placeholder when the active recipe set contains no glyph data.
     ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
@@ -1095,6 +1130,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, tierRefTableBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER,       recipeChunkBuffer_);
+        ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_TAPE_BUFFER,        recipeTapeBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
         ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_FLAT_BUFFER, glyphOutlineFlatBuffer_);
         // Publish shell handles with the config created from the same complete pool.
@@ -1634,6 +1670,13 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
         recipeChunkBoxes_.empty() ? nullptr : recipeChunkBoxes_.data(),
         recipeChunkBuffer_, recipeChunkMemory_, "recipe chunk AABB SSBO");
 
+    const VkDeviceSize recipeTapeSize = std::max<VkDeviceSize>(
+        recipeTape_.size() * sizeof(YkRecipeGpuTapeInstruction), 1);
+    CreateHostBuffer(device, recipeTapeSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        recipeTape_.empty() ? nullptr : recipeTape_.data(),
+        recipeTapeBuffer_, recipeTapeMemory_, "recipe operand tape SSBO");
+
     // R631: the glyph outline payload is runtime data. Keeping it out of the generated GLSL
     // source prevents the driver from unrolling one large compile-time object per recipe.
     const VkDeviceSize glyphOutlineSize = std::max<VkDeviceSize>(
@@ -1664,6 +1707,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
     RecordWholeBufferUpload(static_cast<uint64_t>(tierRefTableSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(occupancyGridSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(recipeChunkSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(recipeTapeSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(glyphOutlineSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(glyphOutlineFlatSize));
 
@@ -1676,9 +1720,10 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
                   std::to_string(static_cast<uint64_t>(brickLookupSize)) + "B, mipPool=" +
                   std::to_string(static_cast<uint64_t>(mipPoolSize)) + "B, tierRefTable=" +
                   std::to_string(static_cast<uint64_t>(tierRefTableSize)) + "B, occupancyGrid=" +
-                  std::to_string(static_cast<uint64_t>(occupancyGridSize)) + "B, glyphOutline=" +
+        std::to_string(static_cast<uint64_t>(occupancyGridSize)) + "B, glyphOutline=" +
                   std::to_string(static_cast<uint64_t>(glyphOutlineSize)) + "B, recipeChunks=" +
-                  std::to_string(static_cast<uint64_t>(recipeChunkSize)) + "B)");
+                  std::to_string(static_cast<uint64_t>(recipeChunkSize)) + "B, recipeTape=" +
+                  std::to_string(static_cast<uint64_t>(recipeTapeSize)) + "B)");
 
     // Batch 10 (validator-requested cheap add): NODE_LOG_INFO above is disabled
     // by default for these nodes and its absence blocked settling the batch-9
@@ -1994,6 +2039,7 @@ void BodyOctreeSceneNode::RetireOctreeBuffers(uint64_t retiredAtFrame) {
     retire(tierRefTableBuffer_,  tierRefTableMemory_);
     retire(occupancyGridBuffer_, occupancyGridMemory_);
     retire(recipeChunkBuffer_,   recipeChunkMemory_);
+    retire(recipeTapeBuffer_,    recipeTapeMemory_);
     recipeChunkCapacity_ = 0;
     recipeChunkCount_ = 0;
     retire(glyphOutlineBuffer_,  glyphOutlineMemory_);
@@ -2405,6 +2451,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     recipeChunkCapacity_ = 0;
     recipeChunkCount_ = 0;
     destroy(recipeChunkBuffer_, recipeChunkMemory_);
+    destroy(recipeTapeBuffer_,  recipeTapeMemory_);
     destroy(glyphOutlineBuffer_,  glyphOutlineMemory_);  // R631
     destroy(glyphOutlineFlatBuffer_, glyphOutlineFlatMemory_); // R768
 }

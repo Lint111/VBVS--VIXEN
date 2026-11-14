@@ -733,6 +733,9 @@ public:
     // shader after a successful bytecode change. Runtime parameter edits stay in recipeParams.
     Vixen::SVO::RecipeRegistry::RegisterResult ReplaceProceduralRecipe(
         uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry);
+    // Refreshes the generated recipe tape SSBO after a material-only edit. This path deliberately
+    // does not mark any shader library dirty: MaterialRef data is runtime operand data.
+    void RefreshProceduralRecipeOperands();
     // Forces BodyInstanceRayMarch.comp to be re-spliced from the CURRENT proceduralRecipes_
     // contents and recompiled (MarkNodeNeedsRecompile on the stored compute_shader_lib node
     // handle). No-op (logs a warning) if the graph hasn't been compiled yet -- there is
