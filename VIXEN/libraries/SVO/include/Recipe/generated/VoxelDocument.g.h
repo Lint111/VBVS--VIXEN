@@ -7,7 +7,7 @@
 namespace Yeroket::Sdf::Generated {
 
 struct VoxelDocumentHeader {
-    uint32_t magic; uint32_t formatVersion; uint32_t channelCount; uint32_t layerCount; uint32_t reserved0; uint32_t reserved1; uint32_t reserved2; uint32_t reserved3;
+    uint32_t magic; uint32_t formatVersion; uint32_t channelCount; uint32_t layerCount; uint32_t parameterCount; uint32_t majorMaterialId; uint32_t minorMaterialId; uint32_t majorWeightPercent;
 };
 static_assert(sizeof(VoxelDocumentHeader) == 32, "VoxelDocumentHeader must be 32 B");
 
@@ -20,6 +20,9 @@ struct VoxelDocParameterHeader {    // mirrors C# VoxelDocParameterHeaderBlit (6
     uint32_t slot; uint32_t type; float defaultValue; float minValue; float maxValue; float value; uint8_t nameBytes[32]; uint8_t unitBytes[8];
 };
 static_assert(sizeof(VoxelDocParameterHeader) == 64, "VoxelDocParameterHeader must be 64 B");
+
+struct VoxelDocReference { uint8_t id[64]; };   // mirrors a version 4 reference-table slot
+static_assert(sizeof(VoxelDocReference) == 64, "VoxelDocReference must be 64 B");
 
 struct VoxelDocLayerHeader {         // mirrors C# VoxelDocLayerHeaderBlit (48 B)
     uint8_t type; uint8_t op; uint8_t enabled; uint8_t pad0; float blendRadius; uint8_t nameBytes[32]; uint32_t instructionCount; uint32_t pad1;
@@ -35,8 +38,15 @@ struct VoxelDocumentView {
     VoxelDocumentHeader header;
     const VoxelDocChannel* channels;
     const VoxelDocParameterHeader* parameters;
+    const VoxelDocReference* references;   // null unless the document is a version 4 file with a table
+    uint32_t referenceCount;
     VoxelDocLayerView layers[256];   // capacity bound — LayerCount is authoritative
 };
+
+inline bool IsValidVoxelDocumentMaterialRegions(uint32_t majorMaterialId, uint32_t minorMaterialId, uint32_t majorWeightPercent) {
+    if (majorMaterialId == 0u && minorMaterialId == 0u && majorWeightPercent == 0u) return true;
+    return majorMaterialId != 0u && minorMaterialId != 0u && majorWeightPercent >= 1u && majorWeightPercent <= 99u;
+}
 
 inline bool ReadVoxelDocument(const uint8_t* blob, size_t len, VoxelDocumentView& out) {
     if (!blob || len < sizeof(VoxelDocumentHeader)) return false;
@@ -44,11 +54,12 @@ inline bool ReadVoxelDocument(const uint8_t* blob, size_t len, VoxelDocumentView
     for (size_t i = 0; i < sizeof(VoxelDocumentHeader); ++i)
         reinterpret_cast<uint8_t*>(&h)[i] = blob[i];
     if (h.magic != 0x31434456u) return false;          // 'VDC1'
-    if (h.formatVersion != 1u && h.formatVersion != 2u) return false;
-    if (h.formatVersion == 1u && h.reserved0 != 0u) return false;
-    if (h.reserved1 != 0u || h.reserved2 != 0u || h.reserved3 != 0u) return false;
+    if (h.formatVersion != 1u && h.formatVersion != 2u && h.formatVersion != 3u && h.formatVersion != 4u) return false;
+    if (h.formatVersion == 1u && h.parameterCount != 0u) return false;
+    if (h.formatVersion < 3u && (h.majorMaterialId != 0u || h.minorMaterialId != 0u || h.majorWeightPercent != 0u)) return false;
+    if (h.formatVersion >= 3u && !IsValidVoxelDocumentMaterialRegions(h.majorMaterialId, h.minorMaterialId, h.majorWeightPercent)) return false;
     if (h.layerCount > 256) return false;   // VoxelDocLayerView capacity bound
-    const uint32_t parameterCount = h.formatVersion == 1u ? 0u : h.reserved0;
+    const uint32_t parameterCount = h.formatVersion == 1u ? 0u : h.parameterCount;
     if (parameterCount > 6u) return false;
 
     size_t offset = sizeof(VoxelDocumentHeader);
@@ -76,10 +87,33 @@ inline bool ReadVoxelDocument(const uint8_t* blob, size_t len, VoxelDocumentView
     }
     offset += (size_t)parameterCount * sizeof(VoxelDocParameterHeader);
 
+    const VoxelDocReference* references = nullptr;
+    uint32_t referenceCount = 0u;
+    if (h.formatVersion == 4u) {
+        if (offset + sizeof(uint32_t) > len) return false;
+        for (size_t i = 0; i < sizeof(uint32_t); ++i)
+            reinterpret_cast<uint8_t*>(&referenceCount)[i] = blob[offset + i];
+        offset += sizeof(uint32_t);
+        if (referenceCount > 32u) return false;
+        need = offset + (size_t)referenceCount * sizeof(VoxelDocReference);
+        if (need > len) return false;
+        references = reinterpret_cast<const VoxelDocReference*>(blob + offset);
+        for (uint32_t r = 0; r < referenceCount; ++r) {   // NUL-terminated and NUL-padded inside its slot
+            size_t n = 0;
+            while (n < sizeof(VoxelDocReference) && references[r].id[n] != 0) ++n;
+            if (n == 0 || n == sizeof(VoxelDocReference)) return false;
+            for (size_t pad = n; pad < sizeof(VoxelDocReference); ++pad)
+                if (references[r].id[pad] != 0) return false;
+        }
+        offset += (size_t)referenceCount * sizeof(VoxelDocReference);
+    }
+
     VoxelDocumentView view{};
     view.header = h;
     view.channels = channels;
     view.parameters = parameters;
+    view.references = references;
+    view.referenceCount = referenceCount;
     for (uint32_t l = 0; l < h.layerCount; ++l) {
         need = offset + sizeof(VoxelDocLayerHeader);
         if (need > len) return false;
@@ -106,20 +140,28 @@ inline bool WriteVoxelDocument(
     const VoxelDocChannel* channels, uint32_t channelCount,
     const VoxelDocParameterHeader* parameters, uint32_t parameterCount,
     const VoxelDocLayerWrite* layers, uint32_t layerCount,
+    const VoxelDocReference* references, uint32_t referenceCount,
+    uint32_t majorMaterialId, uint32_t minorMaterialId, uint32_t majorWeightPercent,
     uint8_t* outBuf, size_t outCap, size_t& outLen) {
     if (parameterCount > 6u || (parameterCount > 0u && !parameters)) return false;
+    if (referenceCount > 32u || (referenceCount > 0u && !references)) return false;
+    if (!IsValidVoxelDocumentMaterialRegions(majorMaterialId, minorMaterialId, majorWeightPercent)) return false;
     size_t need = sizeof(VoxelDocumentHeader) + (size_t)channelCount * sizeof(VoxelDocChannel)
                 + (size_t)parameterCount * sizeof(VoxelDocParameterHeader);
+    if (referenceCount > 0u) need += sizeof(uint32_t) + (size_t)referenceCount * sizeof(VoxelDocReference);
     for (uint32_t l = 0; l < layerCount; ++l)
         need += sizeof(VoxelDocLayerHeader) + (size_t)layers[l].header.instructionCount * sizeof(SdfInstruction);
     if (!outBuf || outCap < need) { outLen = need; return false; }
 
     VoxelDocumentHeader h{};
     h.magic = 0x31434456u;
-    h.formatVersion = 2u;
+    h.formatVersion = referenceCount > 0u ? 4u : 3u;   // version 4 only when a table is carried
     h.channelCount = channelCount;
     h.layerCount = layerCount;
-    h.reserved0 = parameterCount;
+    h.parameterCount = parameterCount;
+    h.majorMaterialId = majorMaterialId;
+    h.minorMaterialId = minorMaterialId;
+    h.majorWeightPercent = majorWeightPercent;
     size_t offset = 0;
     for (size_t i = 0; i < sizeof(VoxelDocumentHeader); ++i)
         outBuf[offset + i] = reinterpret_cast<const uint8_t*>(&h)[i];
@@ -137,6 +179,17 @@ inline bool WriteVoxelDocument(
         offset += sizeof(VoxelDocParameterHeader);
     }
 
+    if (referenceCount > 0u) {
+        for (size_t i = 0; i < sizeof(uint32_t); ++i)
+            outBuf[offset + i] = reinterpret_cast<const uint8_t*>(&referenceCount)[i];
+        offset += sizeof(uint32_t);
+        for (uint32_t r = 0; r < referenceCount; ++r) {
+            for (size_t i = 0; i < sizeof(VoxelDocReference); ++i)
+                outBuf[offset + i] = references[r].id[i];
+            offset += sizeof(VoxelDocReference);
+        }
+    }
+
     for (uint32_t l = 0; l < layerCount; ++l) {
         const VoxelDocLayerWrite& lw = layers[l];
         for (size_t i = 0; i < sizeof(VoxelDocLayerHeader); ++i)
@@ -150,6 +203,23 @@ inline bool WriteVoxelDocument(
 
     outLen = offset;
     return true;
+}
+inline bool WriteVoxelDocument(
+    const VoxelDocChannel* channels, uint32_t channelCount,
+    const VoxelDocParameterHeader* parameters, uint32_t parameterCount,
+    const VoxelDocLayerWrite* layers, uint32_t layerCount,
+    uint32_t majorMaterialId, uint32_t minorMaterialId, uint32_t majorWeightPercent,
+    uint8_t* outBuf, size_t outCap, size_t& outLen) {   // no reference table: a version 3 file
+    return WriteVoxelDocument(channels, channelCount, parameters, parameterCount, layers, layerCount,
+                              nullptr, 0u, majorMaterialId, minorMaterialId, majorWeightPercent, outBuf, outCap, outLen);
+}
+inline bool WriteVoxelDocument(
+    const VoxelDocChannel* channels, uint32_t channelCount,
+    const VoxelDocParameterHeader* parameters, uint32_t parameterCount,
+    const VoxelDocLayerWrite* layers, uint32_t layerCount,
+    uint8_t* outBuf, size_t outCap, size_t& outLen) {
+    return WriteVoxelDocument(channels, channelCount, parameters, parameterCount, layers, layerCount,
+                              nullptr, 0u, 0u, 0u, 0u, outBuf, outCap, outLen);
 }
 
 } // namespace Yeroket::Sdf::Generated
