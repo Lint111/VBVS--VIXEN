@@ -860,7 +860,7 @@ std::vector<std::string> EditorDocumentModel::LayerWarnings(uint32_t layerId) co
 }
 
 uint32_t EditorDocumentModel::ParameterCount() const {
-    return view_.header.formatVersion == kVdc1LegacyVersion ? 0u : view_.header.parameterCount;
+    return view_.header.formatVersion >= 2u ? view_.header.parameterCount : 0u;
 }
 
 std::string EditorDocumentModel::ParameterName(uint32_t index) const {
