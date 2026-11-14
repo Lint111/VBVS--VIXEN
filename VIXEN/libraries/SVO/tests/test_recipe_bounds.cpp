@@ -259,3 +259,24 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+// A document authored about the bake-grid centre, not the origin: the sampled bound must follow
+// the body (a fixed origin-centred sphere would cull it entirely).
+TEST(RecipeSampledBounds, FollowsABodyAuthoredAboutTheGridCentre) {
+    const std::array<SdfInstruction, 1> program{sphere({32.0f, 32.0f, 32.0f}, 12.0f)};
+    const auto bounds = DeriveSampledBounds(program.data(), 1, {}, 64);
+    ASSERT_TRUE(bounds.ok);
+    EXPECT_NEAR(bounds.center.x, 32.0f, 2.0f);
+    EXPECT_NEAR(bounds.center.y, 32.0f, 2.0f);
+    EXPECT_NEAR(bounds.center.z, 32.0f, 2.0f);
+    EXPECT_GE(bounds.radius, 12.0f * 1.7320508f * 0.9f);  // contains the sphere's box corners' sphere
+    EXPECT_LE(bounds.radius, 30.0f);                      // and is not the whole sampled domain
+}
+
+TEST(RecipeSampledBounds, EmptyFieldAndInvokeRecipeAreRefused) {
+    const std::array<SdfInstruction, 1> far{sphere({500.0f, 0.0f, 0.0f}, 1.0f)};
+    EXPECT_FALSE(DeriveSampledBounds(far.data(), 1, {}, 64).ok);
+    SdfInstruction invoke{};
+    invoke.opCode = static_cast<uint8_t>(SdfOpCode::InvokeRecipe);
+    EXPECT_FALSE(DeriveSampledBounds(&invoke, 1, {}, 64).ok);
+}

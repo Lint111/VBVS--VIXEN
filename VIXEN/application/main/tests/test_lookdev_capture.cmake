@@ -15,7 +15,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     add_executable(vixen_lookdev_capture
         ${CMAKE_CURRENT_LIST_DIR}/test_lookdev_capture.cpp)
     vixen_whole_archive_link_vixen_app(vixen_lookdev_capture PRIVATE)
-    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text stb)
+    target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text stb VoxelDocument)
     target_compile_definitions(vixen_lookdev_capture PRIVATE
         TEXT_LATO_FONT_PATH="${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/LatoLatin-Regular.ttf"
         TEXT_NOTO_ARABIC_FONT_PATH="${VIXEN_ROOT}/libraries/Text/tests/data/NotoSansArabic-VF.ttf")
