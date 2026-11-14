@@ -29,16 +29,16 @@
             <div class="node-entry" data-for="node : nodes"
                  data-attr-style="'padding-left: ' + (node.indent * 14) + 'px'">
                 <div class="node-row">
-                    <ut-disclosure class="node-toggle" variant="row" data-attr-id="node.toggleId"
+                    <ut-disclosure class="node-toggle" data-attr-id="node.toggleId"
                                    data-attr-label="node.nodeIndex + '  ' + node.name + '  (' + node.category + ')'"
                                    data-attr-open="node.isExpanded" data-attr-title="node.summary" tabindex="0"> </ut-disclosure>
                     <div class="node-summary">{{node.summary}}</div>
                     <div class="node-actions">
-                        <ut-button class="node-action" data-attr-id="node.addId" label="+ node"
+                        <ut-button class="node-action" data-attr-id="node.addId" label="+"
                                    data-attr-disabled="node.addOp == ''"
                                    data-attr-title="node.addReason == '' ? 'add ' + node.addOp : node.addReason"
                                    data-attr-reason="node.addReason"> </ut-button>
-                        <ut-button class="node-action" data-attr-id="node.removeId" label="remove"
+                        <ut-button class="node-action" data-attr-id="node.removeId" label="×"
                                    data-attr-disabled="!node.canRemove" data-attr-title="node.removeTitle"
                                    data-attr-reason="node.removeReason"> </ut-button>
                     </div>

@@ -1589,6 +1589,7 @@ void EditorApplication::RegisterAppFlowHandlers() {
         // A flyout opened by a click lands beside the control that was clicked; a scripted dispatch has no such
         // control and opens at the panel's own rect.
         std::string panelId = param(p, "panelId");
+        bool openedNodePicker = false;
         if (panelId.rfind("node-picker-", 0) == 0) {
             const std::string_view suffix(panelId.data() + 12, panelId.size() - 12);
             const size_t dash = suffix.find('-');
@@ -1606,10 +1607,19 @@ void EditorApplication::RegisterAppFlowHandlers() {
                     nodePickerLayer_ = layer;
                     nodePickerNode_ = node;
                     nodePickerActive_ = true;
+                    openedNodePicker = true;
                     PublishPickerPrimitives();
                     panelId = kPickerPanelId;
                 }
             }
+        }
+        // A normal Layers Add click starts a fresh layer/pack picker.  The node picker is a
+        // mode of the same panel, so clear that mode even when the preceding node-row click
+        // dismissed the panel before its structural handler observed PickerOpen().
+        if (panelId == kPickerPanelId && !openedNodePicker) {
+            nodePickerActive_ = false;
+            Vixen::App::ClearEditorPickerFilter(*layersView_);
+            PublishPickerPrimitives();
         }
         AfterPanelVerb("open", Panels().OpenAnchored(panelId, clickAnchorElementId_));
     });

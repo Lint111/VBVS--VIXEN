@@ -340,22 +340,24 @@ TEST_F(PanelDockDocumentsTest, FlyoutPanelOpensFloatingAndListsOneRowPerPublishe
     EXPECT_NE(doc->GetInnerRML().find("No primitive matches"), std::string::npos);
 }
 
-// sn-editorpicker1: the inspector's primitive fields show the catalogue label (the label text the table carries,
-// plus the component for a vector), the declared range inline, and a reset button only while the value differs
-// from the declared default.
-TEST_F(PanelDockDocumentsTest, InspectorShapeFieldsShowCatalogueLabelsRangesAndAResetButton) {
+// R876: the inspector's node fields show the catalogue label (the label text the table carries, plus the
+// component for a vector), the declared range inline, and a reset button only while the value differs from
+// the declared default. Primitive fields have one home in the expanded node row.
+TEST_F(PanelDockDocumentsTest, InspectorNodeFieldsShowCatalogueLabelsRangesAndAResetButton) {
     const Vixen::SVO::Recipe::SdfOpArgument* halfExtents = nullptr;
     for (const auto& argument : Vixen::SVO::Recipe::SdfOpArgumentTable) {
         if (argument.opcode == static_cast<std::uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Box) &&
             std::string(argument.name) == "b") halfExtents = &argument;
     }
     ASSERT_NE(halfExtents, nullptr);
-    Vixen::App::EditorShapeData shape;
-    shape.primitive = "Box";
-    shape.opChoices = {{"Union", true}};
-    shape.fields = {{"b.x", std::string(halfExtents->label) + " x", 2.0f, true, 0.0f, 100.0f, halfExtents->defaultValue[0], false},
-                    {"b.y", std::string(halfExtents->label) + " y", 0.5f, true, 0.0f, 100.0f, halfExtents->defaultValue[1], true}};
-    layers_.PopulateFromDocument(0b01u, {{"body", "Union", true, 0.0f}}, {}, {}, shape);
+    Vixen::App::EditorGraphData graph;
+    graph.rawProgram = false;
+    graph.nodes.push_back({0, "Box", "Primitive", "", "half extents (2, 0.5)", false, true, "", "", "", 0});
+    graph.arguments.push_back({0, "b", "x", std::string(halfExtents->label) + " x", 2.0f, true, 0.0f, 100.0f,
+                               halfExtents->defaultValue[0], true, false});
+    graph.arguments.push_back({0, "b", "y", std::string(halfExtents->label) + " y", halfExtents->defaultValue[1], true,
+                               0.0f, 100.0f, halfExtents->defaultValue[1], true, true});
+    layers_.PopulateFromDocument(0b01u, {{"body", "Union", true, 0.0f}}, {}, {}, {}, graph);
     Layout();
     EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
     Rml::ElementDocument* doc = panelDocs_.at("inspector");
@@ -364,9 +366,9 @@ TEST_F(PanelDockDocumentsTest, InspectorShapeFieldsShowCatalogueLabelsRangesAndA
     EXPECT_NE(text.find("half extents y"), std::string::npos);
     EXPECT_EQ(text.find(">b x<"), std::string::npos) << "no raw argument name as a label";
     EXPECT_NE(text.find("range 0\xE2\x80\x93" "100"), std::string::npos) << "the declared range, in the kit's one range format (was \"0..100\" here and \"range a\xE2\x80\x93" "b\" on parameters)";
-    EXPECT_NE(doc->GetElementById("layer-0-field-b-x-0.5"), nullptr) << "reset: the typed-value selector with the default filled in";
-    EXPECT_FALSE(Shown(doc, "layer-0-field-b-y-0.5")) << "no reset while the value is the default";
-    EXPECT_TRUE(Shown(doc, "layer-0-field-b-x-0.5"));
+    EXPECT_NE(doc->GetElementById("layer-0-node-0-field-b-x-0.5"), nullptr) << "reset: the typed-value selector with the default filled in";
+    EXPECT_FALSE(Shown(doc, "layer-0-node-0-field-b-y-0.5")) << "no reset while the value is the default";
+    EXPECT_TRUE(Shown(doc, "layer-0-node-0-field-b-x-0.5"));
 }
 
 // sn-editordock2: a field's reset button stays on the field's own row at the inspector's default and minimum width
@@ -378,20 +380,22 @@ TEST_F(PanelDockDocumentsTest, ResetButtonsStayOnTheirFieldsRowAtDefaultAndMinim
             std::string(argument.name) == "b") halfExtents = &argument;
     }
     ASSERT_NE(halfExtents, nullptr);
-    Vixen::App::EditorShapeData shape;
-    shape.primitive = "Box";
-    shape.opChoices = {{"Union", true}};
-    shape.fields = {{"b.x", std::string(halfExtents->label) + " x", 2.0f, true, 0.0f, 100.0f, halfExtents->defaultValue[0], false},
-                    {"b.y", std::string(halfExtents->label) + " y", halfExtents->defaultValue[1] + 1.0f, true, 0.0f, 100.0f, halfExtents->defaultValue[1], false}};
+    Vixen::App::EditorGraphData graph;
+    graph.rawProgram = false;
+    graph.nodes.push_back({0, "Box", "Primitive", "", "half extents (2, 1.5)", false, true, "", "", "", 0});
+    graph.arguments.push_back({0, "b", "x", std::string(halfExtents->label) + " x", 2.0f, true, 0.0f, 100.0f,
+                               halfExtents->defaultValue[0], true, false});
+    graph.arguments.push_back({0, "b", "y", std::string(halfExtents->label) + " y", halfExtents->defaultValue[1] + 1.0f,
+                               true, 0.0f, 100.0f, halfExtents->defaultValue[1], true, false});
     layers_.PopulateFromDocument(0b01u, {{"body", "Union", true, 0.0f}},
-                                 {{"lump_radius", "voxels", 9.25f, 4.0f, 12.0f}}, {}, shape);
+                                 {{"lump_radius", "voxels", 9.25f, 4.0f, 12.0f}}, {}, {}, graph);
     for (const float width : {320.0f, 220.0f}) {
         ASSERT_EQ(dock_.Resize(DockRegion::Right, width), DockResult::Ok);
         const DockFrame frame = Layout();
         EXPECT_TRUE(sys_.problems.empty()) << sys_.problems.front();
         Rml::ElementDocument* doc = panelDocs_.at("inspector");
         const float panelRight = frame.viewport.x + frame.viewport.width + width;
-        const char* resets[] = {"parameter-0-reset", "layer-0-field-b-x-0.5", "layer-0-field-b-y-0.5"};
+        const char* resets[] = {"layer-0-node-0-field-b-x-0.5", "layer-0-node-0-field-b-y-0.5"};
         for (const char* id : resets) {
             Rml::Element* reset = doc->GetElementById(id);
             ASSERT_NE(reset, nullptr) << id << " at width " << width;
