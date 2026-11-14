@@ -195,14 +195,15 @@ TEST_F(PanelDockDocumentsTest, EditorPanelsShareOneModelAndLandInTheirRegions) {
     const auto layerToggle = Offset(panelDocs_.at("layers"), "layer-0-toggle");
     EXPECT_LT(layerToggle.x, frame.viewport.x);
     EXPECT_GE(layerToggle.y, (720.0f - 28.0f) / 2.0f);  // second split of the left region
-    const auto parameterUp = PartOffset(panelDocs_.at("inspector"), 0, "up");
-    EXPECT_GE(parameterUp.x, frame.viewport.x + frame.viewport.width);
-    // R765 typed parameters: each row is a ut-number-field whose scrub handle (the label) and reset button resolve to
-    // parts, with the row index spliced into the reset selector by the data expression.
-    EXPECT_NE(NumberFieldPart(panelDocs_.at("inspector"), 0, "label"), nullptr);
-    EXPECT_NE(NumberFieldPart(panelDocs_.at("inspector"), 0, "down"), nullptr);
-    EXPECT_TRUE(panelDocs_.at("inspector")->GetElementById("parameter-0-reset") != nullptr);
-    EXPECT_EQ(NumberFieldPart(panelDocs_.at("inspector"), 0, "input")->GetId(), "parameter-0-set-{value}");
+    const auto parameterUp = PartOffset(panelDocs_.at("layers"), 0, "up");
+    EXPECT_LT(parameterUp.x, frame.viewport.x);
+    // R765/R876: Inputs are pinned in the layers panel. Each row is a ut-number-field whose scrub
+    // handle (the label) and reset button resolve to parts, with the row index spliced into the
+    // reset selector by the data expression.
+    EXPECT_NE(NumberFieldPart(panelDocs_.at("layers"), 0, "label"), nullptr);
+    EXPECT_NE(NumberFieldPart(panelDocs_.at("layers"), 0, "down"), nullptr);
+    EXPECT_TRUE(panelDocs_.at("layers")->GetElementById("parameter-0-reset") != nullptr);
+    EXPECT_EQ(NumberFieldPart(panelDocs_.at("layers"), 0, "input")->GetId(), "parameter-0-set-{value}");
     // The status line is the kit element: the bound attributes reach its parts.
     Rml::ElementList statusLines;
     panelDocs_.at("status")->GetElementsByTagName(statusLines, "ut-status-line");

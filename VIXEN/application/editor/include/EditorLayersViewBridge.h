@@ -29,6 +29,14 @@ struct EditorLayerData {
     std::string op;
     bool enabled = true;
     float blendRadius = 0.0f;
+    // Stable identity and dependency affordances are appended after the original four fields so
+    // existing headless panel fixtures can keep their compact aggregate initialization.
+    uint32_t id = 0;
+    bool provides = false;
+    bool solo = false;
+    std::string readsMark;
+    std::string readByMark;
+    std::string dependencyTitle;
 };
 
 // E3: the placement of the selected layer, in the order px py pz rx ry rz sx sy sz (rotation in

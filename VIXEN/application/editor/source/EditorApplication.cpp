@@ -345,12 +345,40 @@ void EditorApplication::DeInitialize() {
 void EditorApplication::RefreshLayersView() {
     std::vector<Vixen::App::EditorLayerData> layers;
     layers.reserve(doc_.LayerCount());
+    const auto layerNameForId = [this](uint32_t id) {
+        uint32_t index = 0u;
+        return doc_.LayerIndexForId(id, index) ? doc_.LayerName(index) :
+                                                ("missing layer " + std::to_string(id));
+    };
     for (uint32_t i = 0; i < doc_.LayerCount(); ++i) {
         Vixen::App::EditorLayerData row;
+        row.id = doc_.LayerId(i);
         row.name = doc_.LayerName(i);
         row.op = Vixen::Editor::EditorDocumentModel::OpName(doc_.View().layers[i].header->op);
         row.enabled = ((doc_.EnabledMask() >> i) & 1u) != 0u;
         row.blendRadius = doc_.View().layers[i].header->blendRadius;
+        row.provides = doc_.View().layers[i].header->op == 4u;
+        row.solo = doc_.SoloLayerId().has_value() && *doc_.SoloLayerId() == doc_.LayerId(i);
+        std::vector<std::string> reads;
+        std::vector<std::string> readBy;
+        for (const auto& wire : doc_.Wires()) {
+            if (wire.readerLayerId == doc_.LayerId(i))
+                reads.push_back(layerNameForId(wire.sourceLayerId) + "." + wire.output);
+            if (wire.sourceLayerId == doc_.LayerId(i))
+                readBy.push_back(layerNameForId(wire.readerLayerId) + "." + wire.input);
+        }
+        const auto join = [](const std::vector<std::string>& names) {
+            std::string text;
+            for (const auto& name : names) {
+                if (!text.empty()) text += ", ";
+                text += name;
+            }
+            return text;
+        };
+        row.readsMark = reads.empty() ? "" : "← " + std::to_string(reads.size());
+        row.readByMark = readBy.empty() ? "" : "→ " + std::to_string(readBy.size());
+        row.dependencyTitle = "reads: " + (reads.empty() ? std::string("none") : join(reads)) +
+                              "; read by: " + (readBy.empty() ? std::string("none") : join(readBy));
         layers.push_back(std::move(row));
     }
     std::vector<Vixen::App::EditorParameterData> parameters;
@@ -1137,6 +1165,120 @@ void EditorApplication::RegisterAppFlowHandlers() {
     const auto refuse = [this](const char* label, const std::string& why) {
         ReportEditorError(std::string(label) + ": " + why, "RefusedEdit");
     };
+    rt_.RegisterHandler(FlowActionId::SetLayerProvide,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        uint32_t provide = 0u;
+        if (!ParseIndexParam(p, "layer", layerId) || !ParseIndexParam(p, "provide", provide) || provide > 1u) {
+            refuse("SetLayerProvide", "needs a layer id and provide value 0 or 1");
+            return;
+        }
+        uint32_t index = 0u;
+        if (!doc_.LayerIndexForId(layerId, index)) {
+            refuse("SetLayerProvide", "layer id " + std::to_string(layerId) + " does not exist");
+            return;
+        }
+        const bool before = doc_.View().layers[index].header->op == 4u;
+        const bool after = provide != 0u;
+        if (before == after) return;
+        recordEdit(FlowActionId::SetLayerProvide, "SetLayerProvide",
+                   [this, layerId, after](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerProvide(layerId, after, d);
+                   },
+                   [this, layerId, before](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetLayerProvide(layerId, before, d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::AddWire,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t reader = 0u;
+        uint32_t source = 0u;
+        std::string input;
+        std::string port;
+        if (!ParseIndexParam(p, "readerLayer", reader) || !ParseTextParam(p, "input", input) ||
+            !ParseIndexParam(p, "sourceLayer", source) || !ParseTextParam(p, "port", port)) {
+            refuse("AddWire", "needs readerLayer, input, sourceLayer, and port");
+            return;
+        }
+        recordEdit(FlowActionId::AddWire, "AddWire",
+                   [this, reader, input, source, port](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.AddWire(reader, input, source, port, d);
+                   },
+                   [this, reader, input](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.RemoveWire(reader, input, d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::RemoveWire,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t reader = 0u;
+        std::string input;
+        if (!ParseIndexParam(p, "readerLayer", reader) || !ParseTextParam(p, "input", input)) {
+            refuse("RemoveWire", "needs readerLayer and input");
+            return;
+        }
+        const auto found = std::find_if(doc_.Wires().begin(), doc_.Wires().end(),
+                                        [reader, &input](const Vixen::Editor::LayerWire& wire) {
+                                            return wire.readerLayerId == reader && wire.input == input;
+                                        });
+        if (found == doc_.Wires().end()) {
+            refuse("RemoveWire", "no matching wire exists");
+            return;
+        }
+        const uint32_t source = found->sourceLayerId;
+        const std::string port = found->output;
+        recordEdit(FlowActionId::RemoveWire, "RemoveWire",
+                   [this, reader, input](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.RemoveWire(reader, input, d);
+                   },
+                   [this, reader, input, source, port](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.AddWire(reader, input, source, port, d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::InsertPortRead,
+        [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        uint32_t afterNode = 0u;
+        std::string source;
+        if (!ParseIndexParam(p, "layer", layerId) || !ParseIndexParam(p, "afterNode", afterNode) ||
+            !ParseTextParam(p, "source", source)) {
+            refuse("InsertPortRead", "needs layer, afterNode, and source");
+            return;
+        }
+        uint32_t index = 0u;
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        if (!doc_.LayerIndexForId(layerId, index)) {
+            refuse("InsertPortRead", "layer id does not exist");
+            return;
+        }
+        Vixen::Editor::EditableDocumentLayer before;
+        if (!doc_.GetLayer(index, before, diagnostic)) { refuse("InsertPortRead", diagnostic.message); return; }
+        recordEdit(FlowActionId::InsertPortRead, "InsertPortRead",
+                   [this, layerId, afterNode, source](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.InsertPortRead(layerId, afterNode, source, d);
+                   },
+                   [this, layerId, index, program = std::move(before.program)](Vixen::Editor::DocumentDiagnostic& d) {
+                       if (!doc_.SetLayerProgram(index, program, d)) return false;
+                       return doc_.RemoveWire(layerId, "read", d);
+                   });
+    });
+    rt_.RegisterHandler(FlowActionId::SoloLayer,
+        [this, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        uint32_t layerId = 0u;
+        if (!ParseIndexParam(p, "layer", layerId)) {
+            refuse("SoloLayer", "needs a layer id");
+            return;
+        }
+        Vixen::Editor::DocumentDiagnostic diagnostic;
+        const bool clear = doc_.SoloLayerId().has_value() && *doc_.SoloLayerId() == layerId;
+        const bool accepted = clear ? (doc_.ClearSoloLayer(), true)
+                                    : doc_.SetSoloLayer(layerId, diagnostic);
+        if (!accepted) {
+            ReportEditorDiagnostic(diagnostic);
+            return;
+        }
+        ClearEditorError();
+        RefreshLayersView();
+    });
     rt_.RegisterHandler(FlowActionId::SetDocumentMaterials,
         [this, recordEdit, refuse](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         const uint32_t major = ParseParam(p, "major");

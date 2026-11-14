@@ -7,12 +7,6 @@
 <body>
     <!-- R766 inspector: layer-level controls stay here; node fields have one home in the outline. -->
     <ut-panel data-model="editor_layers">
-        <div class="subtitle">Recipe parameters</div>
-        <ut-number-field data-for="param : parameters" data-attr-label="param.name" data-attr-unit="param.unit"
-                         data-attr-value="param.value" data-attr-value-id="param.setId"
-                         data-attr-reset-id="'parameter-' + it_index + '-reset'"
-                         data-attr-min="param.minimum" data-attr-max="param.maximum"> </ut-number-field>
-        <div class="hint" data-if="parameters.size == 0">This document declares no parameters.</div>
         <div class="subtitle">Layer {{selectedLayer}}</div>
         <div class="ut-row"><span class="ut-field-label">name</span>
             <ut-text-field class="wide" data-attr-id="'layer-' + selectedLayer + '-name-{name}'" data-attr-value="selectedLayerName"/></div>

@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0xF45200E4
+shape 0x4A629711
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -60,6 +60,11 @@ action InsertNodeAfter 49
 action RemoveNode 50
 action WrapNodes 51
 action ExpandNode 52
+action SetLayerProvide 53
+action AddWire 54
+action RemoveWire 55
+action InsertPortRead 56
+action SoloLayer 57
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -185,6 +190,11 @@ decl 49 sizeof(LayerState) 1
 decl 50 sizeof(LayerState) 1
 decl 51 sizeof(LayerState) 1
 decl 52 sizeof(LayerState) 1
+decl 53 sizeof(LayerState) 1
+decl 54 sizeof(LayerState) 1
+decl 55 sizeof(LayerState) 1
+decl 56 sizeof(LayerState) 1
+decl 57 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -243,6 +253,18 @@ param 51 last 1
 param 51 op 0
 param 52 layerIndex 1
 param 52 node 1
+param 53 layer 1
+param 53 provide 1
+param 54 readerLayer 1
+param 54 input 0
+param 54 sourceLayer 1
+param 54 port 0
+param 55 readerLayer 1
+param 55 input 0
+param 56 layer 1
+param 56 afterNode 1
+param 56 source 0
+param 57 layer 1
 param 16 panelId 0
 param 17 panelId 0
 param 18 panelId 0
@@ -302,6 +324,11 @@ trigger InsertNodeAfterTrigger layer-{index}-node-{afterNode}-add-{op} 49 layerI
 trigger RemoveNodeTrigger layer-{index}-node-{node}-remove 50 layerIndex click
 trigger WrapNodesTrigger layer-{index}-nodes-{first}-{last}-wrap-{op} 51 layerIndex click
 trigger ExpandNodeTrigger layer-{index}-node-{node}-expand 52 layerIndex click
+trigger SetLayerProvideTrigger layer-{layer}-provide-{provide} 53 layer click
+trigger AddWireTrigger layer-{readerLayer}-wire-{input}-{sourceLayer}-{port} 54 readerLayer click
+trigger RemoveWireTrigger layer-{readerLayer}-wire-{input}-remove 55 readerLayer click
+trigger InsertPortReadTrigger layer-{layer}-node-{afterNode}-read-{source} 56 layer click
+trigger SoloLayerTrigger layer-{layer}-solo 57 layer click
 trigger SetLayerTransformPXTrigger layer-{index}-placement-px-{px} 26 layerIndex click
 trigger SetLayerTransformPYTrigger layer-{index}-placement-py-{py} 26 layerIndex click
 trigger SetLayerTransformPZTrigger layer-{index}-placement-pz-{pz} 26 layerIndex click

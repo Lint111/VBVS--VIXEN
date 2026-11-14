@@ -96,6 +96,14 @@ public:
             row.selectId = "layer-" + std::to_string(i) + "-select";
             row.blendValueId = "layer-" + std::to_string(i) + "-blend-{radius}";
             row.isSelected = static_cast<int>(i) == placement.selectedLayer;
+            row.providesMark = layerData[i].provides ? "↗" : "";
+            row.readsMark = Rml::String(layerData[i].readsMark);
+            row.readByMark = Rml::String(layerData[i].readByMark);
+            row.dependencyTitle = Rml::String(layerData[i].dependencyTitle);
+            row.provideId = "layer-" + std::to_string(layerData[i].id) + "-provide-" +
+                            (layerData[i].provides ? "0" : "1");
+            row.soloId = "layer-" + std::to_string(layerData[i].id) + "-solo";
+            row.isSolo = layerData[i].solo;
             layers_.push_back(std::move(row));
         }
         parameters_.clear();

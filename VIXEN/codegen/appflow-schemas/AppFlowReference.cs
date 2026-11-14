@@ -44,6 +44,8 @@ namespace Vixen.AppFlow.Reference
         SetDocumentMaterials = 47,
         // R876 LM-V1: graph-node argument and structural edits. Keep append-only ids.
         SetNodeArgument = 48, InsertNodeAfter = 49, RemoveNode = 50, WrapNodes = 51, ExpandNode = 52,
+        // R876 LM-V2/LM-V3: layer-port edits are addressed by stable layer id, not outline index.
+        SetLayerProvide = 53, AddWire = 54, RemoveWire = 55, InsertPortRead = 56, SoloLayer = 57,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -325,6 +327,55 @@ namespace Vixen.AppFlow.Reference
         public const int Param0Type = (int)FlowParamType.Int;
         public const string Param1Name = "node";
         public const int Param1Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetLayerProvide))]
+    public static class SetLayerProvideParams
+    {
+        public const string Param0Name = "layer";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "provide";
+        public const int Param1Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.AddWire))]
+    public static class AddWireParams
+    {
+        public const string Param0Name = "readerLayer";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "input";
+        public const int Param1Type = (int)FlowParamType.String;
+        public const string Param2Name = "sourceLayer";
+        public const int Param2Type = (int)FlowParamType.Int;
+        public const string Param3Name = "port";
+        public const int Param3Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.RemoveWire))]
+    public static class RemoveWireParams
+    {
+        public const string Param0Name = "readerLayer";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "input";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.InsertPortRead))]
+    public static class InsertPortReadParams
+    {
+        public const string Param0Name = "layer";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "afterNode";
+        public const int Param1Type = (int)FlowParamType.Int;
+        public const string Param2Name = "source";
+        public const int Param2Type = (int)FlowParamType.String;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SoloLayer))]
+    public static class SoloLayerParams
+    {
+        public const string Param0Name = "layer";
+        public const int Param0Type = (int)FlowParamType.Int;
     }
 
     // R766: panel ids are the declared PanelDecl ids; regions are left | right | bottom | overlay | floating.
@@ -737,6 +788,46 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Element = "layer-{index}-node-{node}-expand";
         public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerProvide))]
+    public static class SetLayerProvideTrigger
+    {
+        public const string Element = "layer-{layer}-provide-{provide}";
+        public const string ParamName = "layer";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.AddWire))]
+    public static class AddWireTrigger
+    {
+        public const string Element = "layer-{readerLayer}-wire-{input}-{sourceLayer}-{port}";
+        public const string ParamName = "readerLayer";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.RemoveWire))]
+    public static class RemoveWireTrigger
+    {
+        public const string Element = "layer-{readerLayer}-wire-{input}-remove";
+        public const string ParamName = "readerLayer";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.InsertPortRead))]
+    public static class InsertPortReadTrigger
+    {
+        public const string Element = "layer-{layer}-node-{afterNode}-read-{source}";
+        public const string ParamName = "layer";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SoloLayer))]
+    public static class SoloLayerTrigger
+    {
+        public const string Element = "layer-{layer}-solo";
+        public const string ParamName = "layer";
         public const string On = "click";
     }
 

@@ -8,7 +8,7 @@
 
 namespace Vixen::Views {
 
-struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; float blendRadius; Rml::String blendUpId; Rml::String blendDownId; Rml::String selectId; bool isSelected; Rml::String blendValueId; };
+struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; float blendRadius; Rml::String blendUpId; Rml::String blendDownId; Rml::String selectId; bool isSelected; Rml::String blendValueId; Rml::String providesMark; Rml::String readsMark; Rml::String readByMark; Rml::String dependencyTitle; Rml::String provideId; Rml::String soloId; bool isSolo; };
 struct EditorParameterRow { Rml::String name; Rml::String unit; Rml::String upId; Rml::String downId; float value; float minimum; float maximum; Rml::String setId; };
 struct EditorTransformRow { Rml::String label; float value; Rml::String upId; Rml::String downId; Rml::String valueId; };
 struct EditorPrimitiveRow { Rml::String name; Rml::String display; Rml::String category; Rml::String elementId; };
@@ -66,6 +66,13 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("selectId", &EditorLayerRow::selectId);
         sh.RegisterMember("isSelected", &EditorLayerRow::isSelected);
         sh.RegisterMember("blendValueId", &EditorLayerRow::blendValueId);
+        sh.RegisterMember("providesMark", &EditorLayerRow::providesMark);
+        sh.RegisterMember("readsMark", &EditorLayerRow::readsMark);
+        sh.RegisterMember("readByMark", &EditorLayerRow::readByMark);
+        sh.RegisterMember("dependencyTitle", &EditorLayerRow::dependencyTitle);
+        sh.RegisterMember("provideId", &EditorLayerRow::provideId);
+        sh.RegisterMember("soloId", &EditorLayerRow::soloId);
+        sh.RegisterMember("isSolo", &EditorLayerRow::isSolo);
     }
     if (auto sh = c.RegisterStruct<EditorParameterRow>()) {
         sh.RegisterMember("name", &EditorParameterRow::name);

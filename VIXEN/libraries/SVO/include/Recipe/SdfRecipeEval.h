@@ -54,6 +54,12 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
         const SdfInstruction& in = prog[i];
         switch (static_cast<SdfOpCode>(in.opCode)) {
 #include "Recipe/generated/SdfRecipeEvalDispatch.g.inc"
+        default:
+            // v5 document-only overlay instructions are expanded by the generated document
+            // flattener before CPU evaluation. Keep direct evaluator calls fail-loud if one
+            // reaches this legacy runtime without that lowering step.
+            assert(false && "unsupported layer-port or set opcode in direct recipe evaluation");
+            break;
         }
     }
     assert(sp == 1 && "evalRecipe: expected exactly one value on stack at return");

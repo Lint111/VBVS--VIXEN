@@ -28,6 +28,15 @@ namespace Vixen.ViewSchemas
         public bool isSelected;
         // sn-rmlinput1: the typed blend-radius field's id, "layer-<i>-blend-{radius}" (the value slot is filled on commit).
         public string blendValueId;
+        // R876 LM-V3: dependency marks are derived from the model's wire table. The strings are
+        // display-only summaries; the exact names remain in the row title for hover/inspection.
+        public string providesMark;
+        public string readsMark;
+        public string readByMark;
+        public string dependencyTitle;
+        public string provideId;
+        public string soloId;
+        public bool isSolo;
     }
 
     // E3: one placement field (position/rotation/scale axis) of the selected layer, with its stepper ids.
