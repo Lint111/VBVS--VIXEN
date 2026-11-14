@@ -78,6 +78,55 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "appflow.quit",
+        "description": "Shut the editor down in order, the way closing its window does.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "ui.reload",
+        "description": "Force the live reload of the editor's UI documents and stylesheets now (they also reload on their own when a file changes). panel = a declared dock panel id; none reloads every document. Returns per-file results {file, ok, error{line,column,message}}; the first presented frame containing the reloaded document is readable with appflow.await_frame / appflow.readback using this request's id as actionId. A broken file keeps the old document and the error names file:line.",
+        "inputSchema": {"type": "object", "properties": {"panel": {"type": "string", "minLength": 1}, "readback": {"type": "object"}}, "additionalProperties": False},
+    },
+    {
+        "name": "appflow.reload",
+        "description": "Force the reload of the .appflow data (key defaults, triggers) now; shape-hash gated, the last good state stays on failure. Same result shape as ui.reload.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "appflow.navigate",
+        "description": "Take a flow transition by its generated edge id (the ids appflow.list reports under transitions).",
+        "inputSchema": {"type": "object", "properties": {"edge": {"type": "string", "minLength": 1}}, "required": ["edge"], "additionalProperties": False},
+    },
+    {
+        "name": "appflow.input",
+        "description": "Queue scripted input on the editor's real input path (the one GLFW callbacks use): kind=text (text), key (key = a generated KeyId name, action press|release|repeat|tap, mods), or pointer (x, y in window pixels, action move|press|release|click, button). Applied on the next frame; call appflow.step on a paused editor to advance.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["text", "key", "pointer"]},
+                "text": {"type": "string"},
+                "key": {"type": "string"},
+                "action": {"type": "string", "enum": ["press", "release", "repeat", "tap", "move", "click"]},
+                "mods": {"type": "array", "items": {"type": "string", "enum": ["Shift", "Ctrl", "Alt", "Super"]}},
+                "x": {"type": "number"},
+                "y": {"type": "number"},
+                "button": {"type": "string", "enum": ["left", "right", "middle"]},
+            },
+            "required": ["kind"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "appflow.begin_group",
+        "description": "Open a labelled undo group: every dispatch until appflow.end_group is one undo step. Nested calls are refused with a typed result.",
+        "inputSchema": {"type": "object", "properties": {"label": {"type": "string", "minLength": 1}}, "required": ["label"], "additionalProperties": False},
+    },
+    {
+        "name": "appflow.end_group",
+        "description": "Close the open undo group. Refused with a typed result when no group is open.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "appflow.pause",
         "description": "Pause editor update ticks while the render loop continues to service control requests.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -113,6 +162,20 @@ def tool_content(name: str, arguments: dict[str, Any], client: AppFlowClient) ->
             action_id=arguments.get("actionId"),
             frame=arguments.get("frame"),
         )
+    elif name == "appflow.quit":
+        result = client.quit()
+    elif name == "ui.reload":
+        result = client.ui_reload(arguments.get("panel"), readback=arguments.get("readback"))
+    elif name == "appflow.reload":
+        result = client.appflow_reload()
+    elif name == "appflow.navigate":
+        result = client.navigate(arguments["edge"])
+    elif name == "appflow.input":
+        result = client.input(**arguments)
+    elif name == "appflow.begin_group":
+        result = client.begin_group(arguments["label"])
+    elif name == "appflow.end_group":
+        result = client.end_group()
     elif name == "appflow.pause":
         result = client.pause()
     elif name == "appflow.run":

@@ -1,0 +1,2 @@
+<!-- ut-button: structure. Required part: label. Behaviour: UiKit.cpp (KitElement); look: kit.rcss. -->
+<span part="label" class="ut-label"></span>

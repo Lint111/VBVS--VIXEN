@@ -123,6 +123,10 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     // `lookcam 0 0` when yaw/pitch are already 0) was a silent no-op. The host bumps this on every
     // console pose write; CameraNode treats any change in its value as "reapply everything present".
     static constexpr const char* PARAM_POSE_SEQ = "pose_seq";
+    // bool, default true. false = the camera ignores InputState entirely (mouse drag, wheel, WASD/QE
+    // and arrow axes); a host that routes camera control through its own action layer (the editor's
+    // AppFlow OrbitCamera/PanCamera/ZoomCamera actions) drives it with OrbitBy/PanBy/ZoomBy instead.
+    static constexpr const char* PARAM_INPUT_DRIVEN = "input_driven";
 
     // Per-frame resources (ring buffer)
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;

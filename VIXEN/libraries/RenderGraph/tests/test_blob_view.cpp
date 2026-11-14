@@ -80,3 +80,20 @@ TEST(BlobView, VersionMismatchSkipsRegister) {
     view.Register(c);
     EXPECT_FALSE(view.Registered());
 }
+
+// R874.3: a field the blob declares and no producer writes is reported (inert, type default), never a failure.
+TEST(BlobView, DeclaredFieldWithNoProducerIsReportedUnfed) {
+    RmlFixture fx;
+    BlobView view(kBlob, "assets/ui/hud.rml");
+    EXPECT_EQ(view.UnfedFields(), (std::vector<std::string>{"blobtest.tick", "blobtest.name", "blobtest.factions"}));
+
+    view.Store().SetScalar("tick", ViewValue::I(7));
+    view.Store().SetScalar("name", ViewValue::I(1));  // kind mismatch: dropped, so still unfed
+    view.Store().ResizeArray("factions", 0);          // an empty array IS a producer's answer
+    EXPECT_EQ(view.UnfedFields(), (std::vector<std::string>{"blobtest.name"}));
+
+    Rml::DataModelConstructor c = fx.ctx->CreateDataModel(view.ModelName());
+    ASSERT_TRUE(static_cast<bool>(c));
+    view.Register(c);
+    EXPECT_TRUE(view.Registered()) << "an unfed field never blocks registration";
+}

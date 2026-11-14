@@ -5,6 +5,7 @@ namespace Vixen::RenderGraph {
 
 ViewStore::ViewStore(const ViewBlob& blob, uint32_t consumerVersion)
     : blob_(blob), consumerVersion_(consumerVersion) {
+    fed_.assign(blob_.fields.size(), false);
     scalars_.resize(blob_.fields.size());
     arrays_.resize(blob_.fields.size());
 }
@@ -39,6 +40,7 @@ void ViewStore::SetScalar(std::string_view field, ViewValue v) {
     if (idx < 0) { Rml::Log::Message(Rml::Log::LT_ERROR, "ViewStore: unknown field '%.*s'", (int)field.size(), field.data()); return; }
     ViewKind k = blob_.fields[idx].kind;
     if (!KindAcceptsValue(k, v)) { Rml::Log::Message(Rml::Log::LT_ERROR, "ViewStore: kind mismatch for '%.*s'", (int)field.size(), field.data()); return; }
+    fed_[idx] = true;
     auto& slot = scalars_[idx];
     switch (k) {
         case ViewKind::Int:        slot.i = v.i; break;
@@ -58,6 +60,7 @@ ViewStore::RowHandle ViewStore::ResizeArray(std::string_view field, size_t n) {
         Rml::Log::Message(Rml::Log::LT_ERROR, "ViewStore: '%.*s' is not an array field", (int)field.size(), field.data());
         return RowHandle{this, static_cast<size_t>(-1)};
     }
+    fed_[idx] = true;
     auto& rows = arrays_[idx];
     const size_t members = blob_.fields[idx].elem.size();
     rows.assign(n, ViewRow{});
@@ -99,4 +102,13 @@ void ViewStore::Flush(Rml::DataModelHandle& model) {
     }
 }
 
+}  // namespace Vixen::RenderGraph
+
+namespace Vixen::RenderGraph {
+std::vector<std::string> ViewStore::UnfedFields() const {
+    std::vector<std::string> names;
+    for (size_t k = 0; k < blob_.fields.size(); ++k)
+        if (!fed_[k]) names.emplace_back(blob_.fields[k].name);
+    return names;
+}
 }  // namespace Vixen::RenderGraph

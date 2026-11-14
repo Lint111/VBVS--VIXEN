@@ -13,13 +13,7 @@ body {
     bottom: 0;
     background-color: #161b29;
     overflow: auto;
-    pointer-events: none;  /* panel background is read-only; interactive controls opt back in */
-}
-
-.panel {
-    display: block;
-    padding: 8px 10px;
-    pointer-events: none;
+    pointer-events: auto;  /* the panel owns its pointer: wheel scrolls it, a click or drag on it is not a world pick or camera drag */
 }
 
 .subtitle {
@@ -39,26 +33,6 @@ body {
     font-size: 13px;
 }
 
-.panel.status {
-    padding: 3px 10px;
-    font-size: 13px;
-    white-space: nowrap;
-}
-
-.status-doc {
-    color: #e0d0b0;
-}
-
-.status-sep {
-    color: #505878;
-    margin-left: 6px;
-    margin-right: 6px;
-}
-
-.status-message {
-    color: #a0b0d0;
-}
-
 .title {
     display: block;
     color: #90c0ff;
@@ -69,50 +43,26 @@ body {
     padding-bottom: 4px;
 }
 
-.row {
-    display: block;
-    margin-top: 6px;
-}
-
-.checkbox {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    margin-right: 8px;
-    vertical-align: middle;
-    background-color: #303050;
-    border-width: 1px;
-    border-color: #6080c0;
-    pointer-events: auto;  /* interactive — clicks reach UISelectionProviderNode's hit-test */
-}
-
-.checkbox.checked {
-    background-color: #60a0ff;
-}
-
-.col-name {
-    display: inline-block;
-    width: 70px;
-    color: #e0d0b0;
-}
-
 .col-op {
     display: inline-block;
     color: #90c0ff;
     font-size: 13px;
 }
 
-.button {
-    display: inline-block;
-    min-width: 16px;
-    margin-left: 3px;
-    padding: 1px 4px;
-    color: #d0e0ff;
-    text-align: center;
-    background-color: #303050;
-    border-width: 1px;
-    border-color: #6080c0;
-    pointer-events: auto;
+/* sn-editorpicker1: the Layers panel pins its toolbar above scrolling rows (the body does not scroll). */
+body.layers {
+    overflow: hidden;
+}
+
+/* The Add flyout: a filter field above the matching catalogue primitives (R872.1 rows, ranked by match). */
+body.picker {
+    overflow: hidden;
+}
+
+.picker-hint {
+    flex: none;
+    margin-top: 4px;
+    padding-top: 4px;
 }
 
 .program-controls {
@@ -120,34 +70,6 @@ body {
     margin-left: 24px;
     color: #a0a0c0;
     font-size: 12px;
-}
-
-.value, .parameter-value, .parameter-range {
-    display: inline-block;
-    color: #a0b0d0;
-    font-size: 12px;
-}
-
-.toolbar {
-    display: block;
-    margin-top: 8px;
-}
-
-.parameter-row {
-    display: block;
-    margin-top: 5px;
-}
-
-.parameter-name {
-    display: inline-block;
-    width: 110px;
-    color: #e0d0b0;
-}
-
-.parameter-range {
-    display: block;
-    margin-left: 110px;
-    color: #707090;
 }
 
 .hint {
@@ -166,6 +88,31 @@ body {
     margin-bottom: 2dp;
 }
 
-.recipe-row .button.open {
-    background-color: #3a6ea5;
+/* The panel documents scroll (body overflow: auto). Without a declared scrollbar size RmlUi gives the vertical
+   scrollbar the whole width, collapsing the panel's content to 20 px once the rows outgrow the panel. */
+scrollbarvertical {
+    width: 12px;
+    pointer-events: auto;
+}
+
+scrollbarvertical slidertrack {
+    width: 12px;
+    background-color: #202840;
+}
+
+scrollbarvertical sliderbar {
+    width: 12px;
+    min-height: 24px;
+    background-color: #50609a;
+}
+
+scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
+    width: 0px;
+    height: 0px;
+}
+
+.value {
+    display: inline-block;
+    color: #a0b0d0;
+    font-size: 12px;
 }

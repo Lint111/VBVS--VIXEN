@@ -3,6 +3,7 @@
 #include <RmlUi/Core/DataModelHandle.h>
 #include <RmlUi/Core/Types.h>   // Rml::String
 #include <cstddef>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -35,6 +36,9 @@ public:
     RowHandle ResizeArray(std::string_view field, size_t n);
 
     void Flush(Rml::DataModelHandle& model);   // DirtyVariable every top-level field
+    // R874.3: top-level fields the blob DECLARES that no producer has written (SetScalar / ResizeArray) since the store was
+    // built, in declaration order. They keep their type default (inert); the host reports them once as `view.unfed`.
+    std::vector<std::string> UnfedFields() const;
     uint32_t Version() const { return consumerVersion_; }
     const ViewBlob& Blob() const { return blob_; }
 
@@ -50,6 +54,7 @@ private:
 
     const ViewBlob& blob_;
     uint32_t consumerVersion_;
+    std::vector<bool> fed_;                                  // per top-level field: some producer wrote it
     std::vector<ScalarSlot> scalars_;                        // one per top-level field (unused for arrays)
     std::vector<std::vector<ViewRow>> arrays_;               // one per top-level field (unused for scalars)
 };

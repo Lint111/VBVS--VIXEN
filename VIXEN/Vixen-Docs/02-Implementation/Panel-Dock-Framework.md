@@ -47,3 +47,68 @@ dropped; declared panels missing from the rows keep their defaults. The editor s
 `appflow.read` returns `panelLayout` (`viewport`, `stacks`, `panels` with content rects, the persisted
 `rows`, `layoutPath`, `revision`); `appflow.read {noun: "PanelLayout_panels"}` (and the other
 `PanelLayout_*` nouns) returns one field. Each verb records a `panel.<verb>` channel event.
+
+## Keyboard, text and pointer input
+
+Every app that hosts RmlUi forwards its `InputState` into the `Rml::Context` (`UiInputForwarder`, owned by `UIRenderNode`,
+fed through the node's optional `INPUT_STATE` slot): pointer moves and button edges in arrival order, wheel, every raw key
+transition and every typed code point (`InputNode` registers the GLFW char callback). With no focusable element a document
+sees only `:hover`/pointer state, so the game HUD is unchanged.
+
+- **Focus rule.** A focused text control (`<input type="text">`) owns the keyboard: `UIRenderNode::WantsKeyboard()` is true, the
+  editor's chord poll advances its edge state but dispatches nothing (`KeyEdgeTracker::Poll(..., typing)`), the camera key
+  axes are dropped, and `InputNode` no longer treats Escape as the shutdown request, the movement keys as axes or the digits as
+  debug-mode switches. Enter commits the value and blurs; Escape restores the value the field had on focus and blurs; leaving
+  the field after an edit commits it.
+- **Pointer ownership.** `WantsPointer()` is true while the pointer is over a UI element, or a press that began on one is still
+  held; a press that began outside the UI stays the world's (a camera orbit that crosses a panel keeps orbiting). The editor
+  drops camera orbit and wheel zoom while the UI owns the pointer. Editor panel bodies take pointer events (the wheel scrolls
+  a panel, a click on panel background is no longer a world pick).
+- **Typed values reach actions through the existing element triggers.** A text control's `id` is an element-trigger pattern with
+  its value slot left as the literal `{<param>}` (`parameter-0-set-{value}`, `layer-2-name-{name}`,
+  `layer-3-field-halfExtents-x-{x}`, `layer-0-placement-px-{px}`, `layer-1-blend-{radius}`). On commit the forwarder fills the
+  slot with the typed text and the host calls `DispatchBySelector(<filled selector>)` (`UIRenderNode::DrainCommittedInputs()`),
+  so the last placeholder binds the text to the action parameter it names: one `ActionStack` entry, refusals through the
+  handler's normal diagnostic path. The field's value is data-bound one way from the model (`data-attr-value`); after a commit
+  the node re-evaluates every bound value, so a refused value snaps back to the model's.
+- **Agents** use the same path: the channel verb `appflow.input` queues text, keys and pointer events into `InputNode`'s callback
+  ring (see AppFlow-Agent-Channel.md), so typing in a field can be witnessed without a human.
+
+## Flyout panels (sn-editorpicker1)
+
+A flyout is an ordinary declared panel (the editor's `picker`: Floating, closable, header), opened by `OpenPanel` (selector
+`panel-{panelId}-open`) and closed by `ClosePanel`; it adds no framework concept. What it relies on:
+
+- **Focus on open.** `UIRenderNode::ApplyPlacements` calls `ElementDocument::Show()` when a placement makes a panel visible, and
+  RmlUi's default focus flag focuses the document's first `autofocus` element: a text control marked `autofocus` takes the keyboard
+  the moment its panel opens (and the focus rule above then applies).
+- **Live text.** A text control with `data-value="<view field>"` writes the bound `Rml::String` on every change (RmlUi's own two-way
+  binding over the generated `Bind(name, ptr)`); the host reads the field next frame. Typed values that must reach an *action* still use
+  the committed `{slot}` id.
+- **Start closed.** `PanelDecl` has no initial-visibility flag, so the editor closes the flyout after the dock is built and
+  never trusts the saved layout for it.
+
+## Live reload (sn-editorlive1)
+
+Every app that hosts RmlUi reloads its UI documents and stylesheets while running; there is no flag. `UIRenderNode` owns a
+`UiDocumentReloader` that learns which files a document pulled in from RmlUi itself (a tracking `Rml::FileInterface` records every
+open during the document's load: its `.rml`, each linked or `@import`ed `.rcss`), and `PollDocumentReload` (from Execute, every 15
+ticks, a stat per file, no allocation) reloads a document whose file changed:
+
+- the new document loads beside the old one, is shown without taking focus, and is checked: any error-level RmlUi log line or an
+  empty (0x0) layout rejects it. A rejected reload keeps the old document, consumes the broken mtimes (reported once; the next edit
+  retries) and reports `file:line` (status line, `diagnostic` code `UiReload`, `ui.reloaded` event);
+- on success the data model stays bound (it belongs to the context), the dock re-places the new document (placement and shown/hidden
+  state follow `Place`), the old document's scroll offsets, focused element id and caret are restored by element id after the next
+  `Context::Update` (data-bound rows exist by then), and the old document is unloaded;
+- `Rml::Factory::ClearStyleSheetCache()` runs before the load, so an edited stylesheet is re-read; a stylesheet-only change reloads
+  its dependent documents (RmlUi has no per-sheet reload).
+
+Source files: the editor loads `assets/ui/...` from the staged copy next to the binary unless `VIXEN_UI_SOURCE_DIR` points at a
+tree laid out like `libraries/RenderGraph/assets` (it maps `assets/ui/x.rml` to `<dir>/ui/x.rml`); set it to
+`<repo>/VIXEN/libraries/RenderGraph/assets` and the watched files are the source files. Channel verbs: `ui.reload`, `appflow.reload`
+(`AppFlow-Agent-Channel.md`). Not tracked: images an `.rcss` references (loaded by the render interface, not the file interface).
+
+## UI kit (R874)
+
+Panel content is built from the shared kit elements (`ut-button`, `ut-number-field`, ...), registered once in `UIRenderNode`: see [[UI-Kit]]. The dock stays the panel framework; the kit supplies the controls inside the panels and the dock chrome's tab/tool buttons.

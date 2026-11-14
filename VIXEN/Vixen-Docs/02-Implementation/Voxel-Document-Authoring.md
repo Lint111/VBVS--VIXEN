@@ -124,7 +124,10 @@ only; the dock places every document). The default layout follows R765's three r
 - **Recipes** (`outliner`, left, first split, `editor_outliner.rml`): the pack's documents.
 - **Layers** (`layers`, left, second split, `editor_layers.rml`): one row per layer — an enabled checkbox,
   the name, the op label, move-up (`ˆ`) and move-down (`ˇ`), delete (`×`), and an `instruction 0 · data 0`
-  value with `−` / `+` — and the toolbar *Add rule layer*, *Undo*, *Redo*, *Save*.
+  value with `−` / `+`. The toolbar (*Add*, *Undo*, *Redo*, *Save*, *Reopen saved*) is pinned above the rows,
+  which scroll inside the panel, so the toolbar never clips however many layers there are.
+- **Add primitive** (`picker`, Floating, `editor_picker.rml`): the flyout the *Add* button opens (see below).
+  Closed at every start; it is a transient panel.
 - **Inspector** (`inspector`, right, `editor_inspector.rml`): one `−` / `+` row per recipe parameter.
 - **Status** (`status`, bottom, no tab strip, not closable, `editor_status.rml`): the open document, the
   AppFlow state, undo/redo depth and the last message.
@@ -146,7 +149,7 @@ Edits set the `dirty_` flag. On the next `Update()` the app re-runs `FlattenVoxe
 enabled mask and parameters (`ApplyDocumentToScene`) and re-uploads the recipe. What that costs depends on
 the edit:
 
-- **Parameter edits** (`−` / `+` on a parameter, or on `instruction 0 · data 0`) only change per-instance
+- **Parameter edits** (`−` / `+` on a parameter) only change per-instance
   values (`BodyInstanceGpu.recipeParams`, read by `ReadParam`). They do not recompile shaders.
 - **Structural edits** (toggle, add, delete, move) change the flattened bytecode. `ApplyDocumentToScene` then
   calls `ReplaceProceduralRecipe` and `RecompileProceduralShader`, which rebuilds every recipe-consuming
@@ -156,6 +159,33 @@ the edit:
 
 The editor does not use a per-tick `MarkNeedsRecompile` cascade; the recompile happens only when the bytecode
 actually changes. Agent (channel) dispatches are not grouped, so N agent actions give N undo steps.
+
+### Shape editing from the recipe-op catalogue (R872.1)
+
+The layers toolbar's *Add* button (`panel-picker-open`, `OpenPanel`) opens the `picker` flyout: a filter field
+(focused when the panel opens) above the catalogue's creatable Primitive rows (`primitive-<Name>-add`,
+`CreatePrimitiveLayer`). Typing filters live (the field writes the View's `pickerFilter` through the data
+binding; the editor republishes `primitives` ranked by `EditorDocumentModel::FilterRank`: prefix of the name or
+display text, then of a display word, then a substring, case-insensitive; ties by name). Enter commits the field
+(`picker-filter-{filter}`, `ChoosePrimitive`) and adds the first match; a click on a row adds that primitive;
+both close the flyout. Escape cancels the field and closes it. The filter is View state, not a document edit:
+the only `ActionStack` entry is the layer that gets added. Row text and default layer names are the opcode name
+split at camel-case boundaries (`EditorDocumentModel::DisplayName`, presentation only: ids, selectors and action
+params keep the exact opcode name; the catalogue declares no per-opcode display name).
+
+The layers panel also
+shows the selected layer's combine op as a choice over the generated layer-op table (`layer-<i>-op-<Name>`,
+`SetLayerOp`), and the inspector's "Shape of <layer>" block shows one row per component of the primitive's
+InstructionData arguments with a declared range and `-`/`+` (`layer-<i>-nudge-<argument>.<component>-<up|down>`,
+carried by `NudgeLayerField`; typed values by `SetLayerPrimitiveField`). Each row's text is the catalogue's own
+`label` (plus the component for a vector: "half extents x"), its declared range is shown inline (`0..inf`), and a
+*reset <default>* button appears while the value differs from the declared default (its id is the typed-value
+selector with the default filled in, `layer-<i>-field-<argument>-<component>-<default>`, so one click is one
+`SetLayerPrimitiveField`). Every list, default, range and width is
+read from `Recipe/generated/SdfOpCodes.g.h` (`SdfOpInfoTable`, `SdfOpArgumentTable`, `SdfLayerOpTable`); nothing is
+hand-listed. A layer is shape-editable only when its program is `[Transform] + one Primitive + [RestorePos]`;
+otherwise the inspector says why it is not. `EditProgramFieldUp/Down` keep their ids but no UI element dispatches
+them any more (the "instruction 0 - data 0" stepper is gone).
 
 ## 4. Save
 

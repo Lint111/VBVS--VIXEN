@@ -1,0 +1,11 @@
+<!-- ut-number-field: structure. Required parts: label (also the scrub handle), input (the typed value; its id is the
+     value-slot selector), down, up (nudge), reset, range. Behaviour (ONE nudge/step/clamp rule, ONE reset, ONE range
+     format, scrub, refusal snap-back): UiKit.cpp. -->
+<span part="label" class="ut-label"></span>
+<div class="ut-controls">
+    <input part="input" type="text" class="ut-input"/>
+    <div part="down" class="ut-step" hit-mask="none">−</div>
+    <div part="up" class="ut-step" hit-mask="none">+</div>
+    <div part="reset" class="ut-reset" hit-mask="none"></div>
+    <span part="range" class="ut-range"></span>
+</div>

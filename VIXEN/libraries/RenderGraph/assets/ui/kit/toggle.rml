@@ -1,0 +1,2 @@
+<!-- ut-toggle: structure. Required part: mark (an empty span a variant may draw a glyph into). -->
+<span part="mark" class="ut-mark"></span>

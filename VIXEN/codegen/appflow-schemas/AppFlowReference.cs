@@ -27,6 +27,18 @@ namespace Vixen.AppFlow.Reference
         // R766: panel layout verbs on the app's channel (PanelDock). Not undoable document edits.
         OpenPanel = 16, ClosePanel = 17, FocusPanel = 18, MovePanel = 19, SplitPanel = 20,
         FloatPanel = 21, ResizeRegion = 22, ResetLayout = 23,
+        // E3 (catalogue-free half): layer blend / name / placement, selection, and reopening the saved file.
+        SetLayerBlend = 24, RenameLayer = 25, SetLayerTransform = 26, ReopenSaved = 27,
+        SelectLayer = 28, NudgeLayerField = 29,
+        // sn-editorinput1 block (R765 camera/input/typed-parameter actions). Camera actions are not document edits.
+        OrbitCamera = 30, PanCamera = 31, ZoomCamera = 32, FrameAsset = 33, SetViewAngle = 34,
+        SelectViewAngle0 = 35, SelectViewAngle1 = 36, SelectViewAngle2 = 37, SelectViewAngle3 = 38,
+        SetParameter = 39, ResetParameter = 40, ScrubParameter = 41,
+        // sn-editorshape2 block (R872.1 catalogue consumer): names are validated against the generated recipe-op catalogue.
+        CreatePrimitiveLayer = 42, SetLayerOp = 43, SetLayerPrimitiveField = 44,
+        // sn-editorpicker1 block: Enter in the Add flyout's filter field adds the best match (a view verb; the
+        // layer it adds is the CreatePrimitiveLayer document edit).
+        ChoosePrimitive = 45,
     }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
@@ -34,7 +46,11 @@ namespace Vixen.AppFlow.Reference
     [FlowKeyEnum]
     public enum KeyId : ushort
     {
-        None = 0, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Escape
+        None = 0, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Escape,
+        // sn-editorinput1 block (append-only): every key the host maps from GLFW (KeyMap.h).
+        Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9,
+        F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+        Left, Right, Up, Down, Delete, Backspace, Tab, Space, Enter, Home, End, PageUp, PageDown
     }
 
     [FlowModEnum]
@@ -115,6 +131,118 @@ namespace Vixen.AppFlow.Reference
         public const int Param0Type = (int)FlowParamType.String;
     }
 
+    // E3: typed layer edits. Blend radius and placement are document edits (one undo entry each);
+    // the placement is position, Euler rotation in degrees and per-axis scale.
+    [FlowActionParams(nameof(FlowAction.SetLayerBlend))]
+    public static class SetLayerBlendParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "radius";
+        public const int Param1Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.RenameLayer))]
+    public static class RenameLayerParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "name";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    // Any placement component the call does not name keeps the layer's current value.
+    [FlowActionParams(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "px";
+        public const int Param1Type = (int)FlowParamType.Float;
+        public const string Param2Name = "py";
+        public const int Param2Type = (int)FlowParamType.Float;
+        public const string Param3Name = "pz";
+        public const int Param3Type = (int)FlowParamType.Float;
+        public const string Param4Name = "rx";
+        public const int Param4Type = (int)FlowParamType.Float;
+        public const string Param5Name = "ry";
+        public const int Param5Type = (int)FlowParamType.Float;
+        public const string Param6Name = "rz";
+        public const int Param6Type = (int)FlowParamType.Float;
+        public const string Param7Name = "sx";
+        public const int Param7Type = (int)FlowParamType.Float;
+        public const string Param8Name = "sy";
+        public const int Param8Type = (int)FlowParamType.Float;
+        public const string Param9Name = "sz";
+        public const int Param9Type = (int)FlowParamType.Float;
+    }
+
+    // The layer whose placement the inspector shows. Selection is view state, not a document edit.
+    [FlowActionParams(nameof(FlowAction.SelectLayer))]
+    public static class SelectLayerParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    // A stepper button: field is "<blend|px|py|pz|rx|ry|rz|sx|sy|sz>-<up|down>"; the step is one fixed
+    // increment of that field. sn-editorshape2: "<argument>.<component>-<up|down>" (for example
+    // "halfExtents.x-up") steps one component of the layer's primitive argument named in the
+    // generated recipe-op catalogue.
+    [FlowActionParams(nameof(FlowAction.NudgeLayerField))]
+    public static class NudgeLayerFieldParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "field";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    // R872.1: append a layer holding one catalogue primitive at its declared defaults.
+    [FlowActionParams(nameof(FlowAction.CreatePrimitiveLayer))]
+    public static class CreatePrimitiveLayerParams
+    {
+        public const string Param0Name = "primitive";
+        public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    // sn-editorpicker1: the Add flyout's filter text; the best match (FilterRank, then name) is added.
+    [FlowActionParams(nameof(FlowAction.ChoosePrimitive))]
+    public static class ChoosePrimitiveParams
+    {
+        public const string Param0Name = "filter";
+        public const int Param0Type = (int)FlowParamType.String;
+    }
+
+    // R872.1: the layer's combine op, by its name in the generated layer-op table.
+    [FlowActionParams(nameof(FlowAction.SetLayerOp))]
+    public static class SetLayerOpParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "op";
+        public const int Param1Type = (int)FlowParamType.String;
+    }
+
+    // R872.1: one InstructionData argument of the layer's primitive, by its catalogue name; the
+    // components beyond the argument's width are ignored, and a component the call does not name keeps its current value.
+    [FlowActionParams(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "field";
+        public const int Param1Type = (int)FlowParamType.String;
+        public const string Param2Name = "x";
+        public const int Param2Type = (int)FlowParamType.Float;
+        public const string Param3Name = "y";
+        public const int Param3Type = (int)FlowParamType.Float;
+        public const string Param4Name = "z";
+        public const int Param4Type = (int)FlowParamType.Float;
+        public const string Param5Name = "w";
+        public const int Param5Type = (int)FlowParamType.Float;
+    }
+
     // R766: panel ids are the declared PanelDecl ids; regions are left | right | bottom | overlay | floating.
     [FlowActionParams(nameof(FlowAction.OpenPanel))]
     public static class OpenPanelParams
@@ -180,6 +308,65 @@ namespace Vixen.AppFlow.Reference
         public const int Param0Type = (int)FlowParamType.String;
         public const string Param1Name = "size";
         public const int Param1Type = (int)FlowParamType.Int;
+    }
+
+    // sn-editorinput1 block: camera actions (radians / world units) and typed parameter entry.
+    [FlowActionParams(nameof(FlowAction.OrbitCamera))]
+    public static class OrbitCameraParams
+    {
+        public const string Param0Name = "dYaw";
+        public const int Param0Type = (int)FlowParamType.Float;
+        public const string Param1Name = "dPitch";
+        public const int Param1Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.PanCamera))]
+    public static class PanCameraParams
+    {
+        public const string Param0Name = "dx";
+        public const int Param0Type = (int)FlowParamType.Float;
+        public const string Param1Name = "dy";
+        public const int Param1Type = (int)FlowParamType.Float;
+    }
+
+    // Positive delta moves the camera toward the orbit centre.
+    [FlowActionParams(nameof(FlowAction.ZoomCamera))]
+    public static class ZoomCameraParams
+    {
+        public const string Param0Name = "delta";
+        public const int Param0Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.SetViewAngle))]
+    public static class SetViewAngleParams
+    {
+        public const string Param0Name = "index";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    // Clamped to the declared parameter range; one undo step.
+    [FlowActionParams(nameof(FlowAction.SetParameter))]
+    public static class SetParameterParams
+    {
+        public const string Param0Name = "parameterIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+        public const string Param1Name = "value";
+        public const int Param1Type = (int)FlowParamType.Float;
+    }
+
+    [FlowActionParams(nameof(FlowAction.ResetParameter))]
+    public static class ResetParameterParams
+    {
+        public const string Param0Name = "parameterIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    // Pressing the value label starts a horizontal drag-scrub of that parameter (one undo step per gesture).
+    [FlowActionParams(nameof(FlowAction.ScrubParameter))]
+    public static class ScrubParameterParams
+    {
+        public const string Param0Name = "parameterIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
     }
 
     // Footprint struct for ToggleLayer — a GpuStruct-style serializable blob so the
@@ -270,12 +457,206 @@ namespace Vixen.AppFlow.Reference
         public const string On = "click";
     }
 
+    [FlowElementTrigger(nameof(FlowAction.ScrubParameter))]
+    public static class ScrubParameterTrigger
+    {
+        public const string Element = "parameter-{index}-value";
+        public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.ResetParameter))]
+    public static class ResetParameterTrigger
+    {
+        public const string Element = "parameter-{index}-reset";
+        public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
     // A listed recipe row's button carries its content id in the element id ("recipe-core:asteroid-open").
     [FlowElementTrigger(nameof(FlowAction.OpenRecipe))]
     public static class OpenRecipeTrigger
     {
         public const string Element = "recipe-{recipeId}-open";
         public const string ParamName = "recipeId";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SelectLayer))]
+    public static class SelectLayerTrigger
+    {
+        public const string Element = "layer-{index}-select";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // "layer-2-nudge-blend-up", "layer-2-nudge-px-down": the second placeholder binds the `field` param.
+    [FlowElementTrigger(nameof(FlowAction.NudgeLayerField))]
+    public static class NudgeLayerFieldTrigger
+    {
+        public const string Element = "layer-{index}-nudge-{field}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // "primitive-Sphere-add": the picker row's id carries the catalogue primitive name.
+    [FlowElementTrigger(nameof(FlowAction.CreatePrimitiveLayer))]
+    public static class CreatePrimitiveLayerTrigger
+    {
+        public const string Element = "primitive-{primitive}-add";
+        public const string ParamName = "primitive";
+        public const string On = "click";
+    }
+
+    // "layer-2-op-subtract": the second placeholder binds the `op` param.
+    [FlowElementTrigger(nameof(FlowAction.SetLayerOp))]
+    public static class SetLayerOpTrigger
+    {
+        public const string Element = "layer-{index}-op-{op}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // sn-rmlinput1 block: typed value entry. A text control's element id is one of these patterns with its
+    // value slot left as the literal "{<param>}" ("parameter-0-set-{value}"); on commit (Enter, or blur after
+    // an edit) the UI fills the slot with the typed text and dispatches the selector, so the last placeholder
+    // binds the typed value to the action parameter it names. Nothing here is a new declaration form: they
+    // are ordinary element triggers whose second placeholder names a parameter, like panel-{panelId}-to-{region}.
+    [FlowElementTrigger(nameof(FlowAction.SetParameter))]
+    public static class SetParameterTypedTrigger
+    {
+        public const string Element = "parameter-{index}-set-{value}";
+        public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerBlend))]
+    public static class SetLayerBlendTypedTrigger
+    {
+        public const string Element = "layer-{index}-blend-{radius}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.RenameLayer))]
+    public static class RenameLayerTypedTrigger
+    {
+        public const string Element = "layer-{index}-name-{name}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // One component of a catalogue primitive argument; the other components keep their current values.
+    [FlowElementTrigger(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldXTrigger
+    {
+        public const string Element = "layer-{index}-field-{field}-x-{x}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldYTrigger
+    {
+        public const string Element = "layer-{index}-field-{field}-y-{y}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldZTrigger
+    {
+        public const string Element = "layer-{index}-field-{field}-z-{z}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerPrimitiveField))]
+    public static class SetLayerPrimitiveFieldWTrigger
+    {
+        public const string Element = "layer-{index}-field-{field}-w-{w}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    // One placement component of a layer; the other eight keep their current values.
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformPXTrigger
+    {
+        public const string Element = "layer-{index}-placement-px-{px}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformPYTrigger
+    {
+        public const string Element = "layer-{index}-placement-py-{py}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformPZTrigger
+    {
+        public const string Element = "layer-{index}-placement-pz-{pz}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformRXTrigger
+    {
+        public const string Element = "layer-{index}-placement-rx-{rx}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformRYTrigger
+    {
+        public const string Element = "layer-{index}-placement-ry-{ry}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformRZTrigger
+    {
+        public const string Element = "layer-{index}-placement-rz-{rz}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformSXTrigger
+    {
+        public const string Element = "layer-{index}-placement-sx-{sx}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformSYTrigger
+    {
+        public const string Element = "layer-{index}-placement-sy-{sy}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.SetLayerTransform))]
+    public static class SetLayerTransformSZTrigger
+    {
+        public const string Element = "layer-{index}-placement-sz-{sz}";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.ReopenSaved))]
+    public static class ReopenSavedButtonTrigger
+    {
+        public const string Element = "reopen-button";
+        public const string ParamName = "";
         public const string On = "click";
     }
 
@@ -300,6 +681,24 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Element = "save-button";
         public const string ParamName = "";
+        public const string On = "click";
+    }
+
+    // sn-editorpicker1: "panel-picker-open" (the Layers toolbar's Add button) opens the declared flyout panel.
+    [FlowElementTrigger(nameof(FlowAction.OpenPanel))]
+    public static class OpenPanelTrigger
+    {
+        public const string Element = "panel-{panelId}-open";
+        public const string ParamName = "panelId";
+        public const string On = "click";
+    }
+
+    // The flyout's filter field: its id keeps the value slot "picker-filter-{filter}" (committed with Enter).
+    [FlowElementTrigger(nameof(FlowAction.ChoosePrimitive))]
+    public static class ChoosePrimitiveTrigger
+    {
+        public const string Element = "picker-filter-{filter}";
+        public const string ParamName = "filter";
         public const string On = "click";
     }
 
@@ -340,7 +739,25 @@ namespace Vixen.AppFlow.Reference
     public static class RedoKey { public const KeyId Key = KeyId.Y; public const KeyMod Mods = KeyMod.Ctrl; }
 
     [FlowKeyDefault(nameof(FlowAction.Save), FlowScope.Global)]
-    public static class SaveKey { public const KeyId Key = KeyId.S; public const KeyMod Mods = KeyMod.None; }
+    public static class SaveKey { public const KeyId Key = KeyId.S; public const KeyMod Mods = KeyMod.Ctrl; }
+
+    // sn-editorinput1 block: camera key defaults (plain keys; the host skips them while a text field has focus).
+    [FlowKeyDefault(nameof(FlowAction.FrameAsset), FlowScope.Global)]
+    public static class FrameAssetKey { public const KeyId Key = KeyId.F; public const KeyMod Mods = KeyMod.None; }
+
+    // A key default carries no action params, so the four look-dev angles bind through one param-less action each
+    // (AppFlow gap: key defaults cannot carry constant params; see the sn-editorinput1 report).
+    [FlowKeyDefault(nameof(FlowAction.SelectViewAngle0), FlowScope.Global)]
+    public static class ViewAngle0Key { public const KeyId Key = KeyId.Digit1; public const KeyMod Mods = KeyMod.None; }
+
+    [FlowKeyDefault(nameof(FlowAction.SelectViewAngle1), FlowScope.Global)]
+    public static class ViewAngle1Key { public const KeyId Key = KeyId.Digit2; public const KeyMod Mods = KeyMod.None; }
+
+    [FlowKeyDefault(nameof(FlowAction.SelectViewAngle2), FlowScope.Global)]
+    public static class ViewAngle2Key { public const KeyId Key = KeyId.Digit3; public const KeyMod Mods = KeyMod.None; }
+
+    [FlowKeyDefault(nameof(FlowAction.SelectViewAngle3), FlowScope.Global)]
+    public static class ViewAngle3Key { public const KeyId Key = KeyId.Digit4; public const KeyMod Mods = KeyMod.None; }
 
     // Settings sub-state — the scoped-override + return-edge live demonstration's home (design §6.3).
     // Reachable via transition index 1 (Editing -> Settings).

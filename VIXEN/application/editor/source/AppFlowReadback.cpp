@@ -136,7 +136,7 @@ bool AppFlowReadbackRing::EnsureSlot(Slot& slot, VkDevice logicalDevice, uint32_
 bool AppFlowReadbackRing::Enqueue(std::string key, uint64_t frame,
                                   Vixen::Vulkan::Resources::VulkanDevice* device, VkQueue queue,
                                   uint32_t queueFamily, Vixen::Vulkan::Resources::IRenderTarget* target,
-                                  uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                                  uint32_t imageIndex, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                                   std::string& error) {
     const auto started = Clock::now();
     if (!device || device->device == VK_NULL_HANDLE || queue == VK_NULL_HANDLE || !target) {
@@ -154,7 +154,10 @@ bool AppFlowReadbackRing::Enqueue(std::string key, uint64_t frame,
         error = "readback rectangle is outside the native render extent";
         return false;
     }
-    const uint32_t imageIndex = target->GetCurrentIndex();
+    if (imageIndex >= target->GetImageCount()) {
+        error = "readback image index is outside the render target";
+        return false;
+    }
     const VkImage image = target->GetImage(imageIndex);
     const VkImageLayout oldLayout = target->GetImageLayout(imageIndex);
     if (image == VK_NULL_HANDLE || oldLayout == VK_IMAGE_LAYOUT_UNDEFINED) {

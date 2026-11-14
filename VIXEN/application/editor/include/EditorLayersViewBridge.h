@@ -14,6 +14,7 @@
 // EditorLayersViewBridge.cpp (gaia-free) is where EditorLayersView.h / Ui/IView.h /
 // Nodes/UIRenderNode.h actually get included and EditorLayersView's inline methods actually
 // instantiate. EditorApplication.cpp reaches EditorLayersView ONLY through this bridge.
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -27,7 +28,46 @@ struct EditorLayerData {
     std::string name;
     std::string op;
     bool enabled = true;
-    float programFieldValue = 0.0f;
+    float blendRadius = 0.0f;
+};
+
+// E3: the placement of the selected layer, in the order px py pz rx ry rz sx sy sz (rotation in
+// degrees). The inspector shows it and its steppers; the field keys live with the view.
+// R872.1: the catalogue-driven shape block of the selected layer. Everything here comes from the
+// generated recipe-op catalogue through EditorDocumentModel; the view holds no op knowledge.
+struct EditorPrimitiveData {
+    std::string name;      // the exact opcode name (ids and action params)
+    std::string display;   // presentation of the name (split at camel-case boundaries)
+    std::string category;
+};
+
+struct EditorLayerOpData {
+    std::string name;
+    bool isCurrent = false;
+};
+
+struct EditorShapeFieldData {
+    std::string key;     // "<argument>.<component>", the nudge selector's field key
+    std::string label;
+    float value = 0.0f;
+    bool hasRange = false;
+    float minimum = 0.0f;
+    float maximum = 0.0f;
+    float defaultValue = 0.0f;   // the catalogue default of this component
+    bool isDefault = false;
+};
+
+struct EditorShapeData {
+    std::vector<EditorLayerOpData> opChoices;
+    std::vector<EditorShapeFieldData> fields;
+    std::string primitive;   // empty when the selected layer is not shape-editable
+    std::string note;
+};
+
+struct EditorPlacementData {
+    int selectedLayer = 0;
+    std::string selectedName;
+    std::array<float, 9> values{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct EditorParameterData {
@@ -70,7 +110,16 @@ Vixen::RenderGraph::IView& EditorLayersAsView(EditorLayersView& view);
 // Forwards the headless document's layer and parameter projection into the generated view model.
 void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
                              const std::vector<EditorLayerData>& layers,
-                             const std::vector<EditorParameterData>& parameters);
+                             const std::vector<EditorParameterData>& parameters,
+                             const EditorPlacementData& placement = {},
+                             const EditorShapeData& shape = {});
+
+// R872.1: the picker rows (static for a build of the catalogue).
+void RefreshEditorPrimitivesView(EditorLayersView& view, const std::vector<EditorPrimitiveData>& primitives);
+
+// sn-editorpicker1: the Add flyout's filter text as the picker's text field last wrote it, and clearing it.
+std::string EditorPickerFilter(const EditorLayersView& view);
+void ClearEditorPickerFilter(EditorLayersView& view);
 
 void RefreshEditorRecipesView(EditorLayersView& view, const std::vector<EditorRecipeData>& recipes);
 

@@ -3,9 +3,12 @@
 // flatten/save seam. The application owns input history, while each mutation is applied here so
 // the headless module remains the single authority for accepted document state.
 
+#include <cstddef>
 #include <cstdint>
 #include <array>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Recipe/generated/VoxelDocument.g.h"
@@ -23,9 +26,17 @@ enum class DocumentDiagnosticCode : uint8_t {
     InvalidLayerMask,
     InvalidProgramField,
     InvalidParameterValue,
+    InvalidBlendRadius,
+    InvalidLayerName,
+    InvalidTransform,
     StaleBakeSnapshot,
     FlattenError,
     WriteError,
+    // Catalogue-driven shape edits (appended: ids are stable).
+    InvalidPrimitive,
+    InvalidLayerOp,
+    FieldNotEditable,
+    InvalidPrimitiveField,
 };
 
 struct DocumentDiagnostic {
@@ -47,6 +58,38 @@ struct EditableDocumentLayer {
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> program;
 };
 
+// A layer's placement as the editor shows it: position, Euler rotation (degrees, R = Rz * Ry * Rx)
+// and per-axis scale. It is stored as the layer program's leading Transform instruction wrapped
+// with a closing RestorePos (translation data[0..2], inverse rotation xyzw data[4..7], inverse
+// scale data[8..10], distance scale data[11]); the identity placement stores no wrapper at all.
+struct LayerTransform {
+    std::array<float, 3> position{0.0f, 0.0f, 0.0f};
+    std::array<float, 3> rotationDegrees{0.0f, 0.0f, 0.0f};
+    std::array<float, 3> scale{1.0f, 1.0f, 1.0f};
+
+    bool IsIdentity() const {
+        return position == std::array<float, 3>{0.0f, 0.0f, 0.0f} &&
+               rotationDegrees == std::array<float, 3>{0.0f, 0.0f, 0.0f} &&
+               scale == std::array<float, 3>{1.0f, 1.0f, 1.0f};
+    }
+};
+
+// One editable component group of a layer's primitive: an InstructionData argument of the
+// generated catalogue (name, width in floats, declared range), with its current value. `name` and
+// `type` point into the generated argument table.
+struct PrimitiveFieldInfo {
+    const char* name = "";
+    const char* type = "";
+    const char* label = "";   // the catalogue's display label (points into the generated table)
+    uint32_t width = 0;
+    bool hasRange = false;
+    float minimum = 0.0f;
+    float maximum = 0.0f;
+    bool hasDefault = false;
+    std::array<float, 4> defaultValue{0.0f, 0.0f, 0.0f, 0.0f};
+    std::array<float, 4> value{0.0f, 0.0f, 0.0f, 0.0f};
+};
+
 struct DocumentBakeSnapshot {
     uint64_t revision = 0;
     std::array<float, 6> parameterValues{};
@@ -58,6 +101,7 @@ struct DocumentBakeSnapshot {
 class EditorDocumentModel {
 public:
     static constexpr uint32_t kMaximumLayerCount = 32;
+    static constexpr size_t kMaximumLayerNameBytes = 31;
 
     bool Load(const std::string& path, DocumentDiagnostic& diagnostic);
 
@@ -97,6 +141,97 @@ public:
                               DocumentDiagnostic& diagnostic);
     bool SetParameterValue(uint32_t index, float value,
                            DocumentDiagnostic& diagnostic);
+
+    // Layer blend radius (finite, >= 0), name (1..31 bytes: the VDC1 header keeps nameBytes[32]
+    // NUL-terminated) and placement. Every setter validates before it rebuilds, so a rejected
+    // call leaves the accepted document and its revision untouched.
+    // The value rules are public so a caller can refuse an invalid edit before it records one.
+    static bool ValidateBlendRadius(float radius, DocumentDiagnostic& diagnostic);
+    static bool ValidateLayerName(const std::string& name, DocumentDiagnostic& diagnostic);
+    static bool ValidateLayerTransform(const LayerTransform& transform,
+                                       DocumentDiagnostic& diagnostic);
+    bool SetLayerBlendRadius(uint32_t index, float radius, DocumentDiagnostic& diagnostic);
+    bool SetLayerName(uint32_t index, const std::string& name, DocumentDiagnostic& diagnostic);
+    bool GetLayerTransform(uint32_t index, LayerTransform& out,
+                           DocumentDiagnostic& diagnostic) const;
+    bool SetLayerTransform(uint32_t index, const LayerTransform& transform,
+                           DocumentDiagnostic& diagnostic);
+    // Replaces one layer's whole program (finite fields, masks whole bytes). It is the exact
+    // inverse of any program edit: undo of a placement edit restores the snapshot taken before it.
+    bool SetLayerProgram(uint32_t index,
+                         const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& program,
+                         DocumentDiagnostic& diagnostic);
+
+    // Catalogue-driven shape editing (R872.1). A layer is "shape-editable" only when its program is
+    // [Transform] + exactly one Primitive-category instruction + [RestorePos]; any other program
+    // reports its fields as not editable and refuses writes (no guessing).
+    // MakePrimitiveLayer builds one layer holding one instruction of `primitive` with every
+    // InstructionData argument at its declared default; it refuses a non-Primitive opcode and a
+    // primitive with an argument that declares no default (the diagnostic names it).
+    static bool MakePrimitiveLayer(Vixen::SVO::Recipe::SdfOpCode primitive, const std::string& name,
+                                   EditableDocumentLayer& out, DocumentDiagnostic& diagnostic);
+    // True when MakePrimitiveLayer can build `primitive` (the picker lists exactly these); on false
+    // `reason` receives the diagnostic naming the blocking argument.
+    static bool CanMakePrimitive(Vixen::SVO::Recipe::SdfOpCode primitive, std::string* reason = nullptr);
+    // R872.9 Q1: a newly created primitive lands visible. The size is ONE declared fraction of the document's
+    // conservative bound radius (a quarter: big enough to read next to the document, small enough to stay a
+    // detail), applied as a uniform scale on the layer's placement Transform (the catalogue defaults stay
+    // untouched: the scale divides out the primitive's own default bound radius). The position is the
+    // selected layer's placement position offset along a fixed document axis (+Y, up) by the selected
+    // layer's bound radius, so the new shape straddles the selected layer's surface. With no selected
+    // layer it sits at the document bounds centre. Deterministic and document-only (no camera state).
+    static constexpr float kNewPrimitiveBoundsFraction = 0.25f;
+    static constexpr std::array<float, 3> kNewPrimitiveAxis{0.0f, 1.0f, 0.0f};
+    // Conservative bound sphere of the enabled layers' flattened program, the one rule the editor's
+    // preview frames with (parameter maxima in; a non-whitelisted program falls back to the finite editor
+    // bake domain). radius is always finite and positive.
+    void DerivePreviewBounds(std::array<float, 3>& center, float& radius) const;
+    // The same rule over an already flattened entry (the editor's per-edit re-flatten reuses its entry).
+    void DeriveBoundsOf(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry, std::array<float, 3>& center,
+                        float& radius) const;
+    // Places a layer built by MakePrimitiveLayer: wraps its program in the placement Transform per the rule
+    // above. `selectedLayer` is the layer to land on (nullopt: document centre). Refuses nothing that
+    // MakePrimitiveLayer accepted; a diagnostic is set only on an impossible transform.
+    bool PlaceNewPrimitive(EditableDocumentLayer& layer, std::optional<uint32_t> selectedLayer,
+                           DocumentDiagnostic& diagnostic) const;
+
+    // Sets the layer's combine op (a value of the generated SdfLayerOpTable).
+    bool SetLayerOp(uint32_t index, uint8_t layerOp, DocumentDiagnostic& diagnostic);
+    // The primitive opcode of an editable layer; false (with FieldNotEditable) otherwise.
+    bool GetLayerPrimitive(uint32_t index, Vixen::SVO::Recipe::SdfOpCode& out,
+                           DocumentDiagnostic& diagnostic) const;
+    // The editable fields of the layer's primitive in argument-table order; empty with a
+    // FieldNotEditable diagnostic when the layer is not shape-editable.
+    bool GetLayerPrimitiveFields(uint32_t index, std::vector<PrimitiveFieldInfo>& out,
+                                 DocumentDiagnostic& diagnostic) const;
+    bool GetLayerPrimitiveField(uint32_t index, const std::string& argumentName,
+                                std::array<float, 4>& out, DocumentDiagnostic& diagnostic) const;
+    // The value rule of SetLayerPrimitiveField (finite, inside the declared range), public so a
+    // caller can refuse before it records an edit.
+    static bool ValidatePrimitiveField(const PrimitiveFieldInfo& field, const std::array<float, 4>& value,
+                                       DocumentDiagnostic& diagnostic);
+    // Writes the first `width` components of `value` (the rest are ignored). A value outside the
+    // declared range, a non-finite value, an unknown argument or a non-editable layer is refused
+    // and leaves the document and its revision untouched.
+    bool SetLayerPrimitiveField(uint32_t index, const std::string& argumentName,
+                                const std::array<float, 4>& value, DocumentDiagnostic& diagnostic);
+
+    // Pure presentation of a catalogue opcode name: split at camel-case boundaries ("CappedTorus" ->
+    // "Capped Torus"). Ids, selectors and action params keep the exact opcode name; the catalogue
+    // declares no per-opcode display name (a later kernel question), so this is display only.
+    static std::string DisplayName(std::string_view opcodeName);
+    // How well `filter` matches a primitive (case-insensitive, over the opcode name and its display
+    // text): 0 = a prefix of either, 1 = a prefix of one of the display words, 2 = a substring, -1 = no
+    // match. An empty filter matches everything at rank 0. The flyout lists matches by rank, then name.
+    static int FilterRank(std::string_view opcodeName, std::string_view filter);
+    // The flyout's rows: every primitive MakePrimitiveLayer can build, read from the generated op table, that
+    // matches `filter`, ordered by FilterRank then opcode name.
+    struct PrimitiveChoice {
+        std::string name;      // the exact opcode name (ids and action params)
+        std::string display;   // DisplayName(name)
+        std::string category;  // the catalogue category ("Primitive")
+    };
+    static std::vector<PrimitiveChoice> CreatablePrimitives(std::string_view filter = {});
 
     std::string LayerName(uint32_t i) const;
     static const char* OpName(uint8_t op);

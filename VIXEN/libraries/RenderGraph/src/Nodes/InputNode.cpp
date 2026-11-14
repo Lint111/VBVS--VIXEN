@@ -287,6 +287,7 @@ void InputNode::RegisterCallbacks() {
     glfwSetCursorPosCallback(window, &InputNode::OnCursorPos);
     glfwSetScrollCallback(window, &InputNode::OnScroll);
     glfwSetKeyCallback(window, &InputNode::OnKey);
+    glfwSetCharCallback(window, &InputNode::OnChar);
 
     // Belt-and-braces backstop (spec 2026-07-02-input-rework-slice1-design.md §2): if a press+
     // release both land inside one glfwPollEvents() call in a way that would otherwise skip the
@@ -323,17 +324,22 @@ void InputNode::OnScroll(GLFWwindow* w, double xoffset, double yoffset) {
     it->second->QueueEvent({InputEvent::Type::Scroll, 0, 0, xoffset, yoffset});
 }
 
-void InputNode::OnKey(GLFWwindow* w, int key, int /*scancode*/, int action, int /*mods*/) {
+void InputNode::OnKey(GLFWwindow* w, int key, int /*scancode*/, int action, int mods) {
     auto it = WindowToInputNodeRegistry().find(w);
     if (it == WindowToInputNodeRegistry().end()) return;
-    it->second->QueueEvent({InputEvent::Type::Key, key, action, 0.0, 0.0});
+    it->second->QueueEvent({InputEvent::Type::Key, key, action, 0.0, 0.0, mods});
+}
+
+void InputNode::OnChar(GLFWwindow* w, unsigned int codepoint) {
+    auto it = WindowToInputNodeRegistry().find(w);
+    if (it == WindowToInputNodeRegistry().end()) return;
+    it->second->QueueEvent({InputEvent::Type::Char, static_cast<int>(codepoint), 0, 0.0, 0.0});
 }
 
 void InputNode::QueueEvent(const InputEvent& event) {
     pendingInput_.Push(event);
 }
 
-#if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
 void InputNode::InjectMouseButton(int button, int action) {
     QueueEvent({InputEvent::Type::MouseButton, button, action, 0.0, 0.0});
 }
@@ -345,6 +351,14 @@ void InputNode::InjectKey(EventBus::KeyCode key, bool pressed) {
     }
 }
 
+void InputNode::InjectChar(char32_t codepoint) {
+    QueueEvent({InputEvent::Type::Char, static_cast<int>(codepoint), 0, 0.0, 0.0});
+}
+
+void InputNode::InjectRawKey(int glfwKey, int glfwAction, int glfwMods) {
+    QueueEvent({InputEvent::Type::Key, glfwKey, glfwAction, 0.0, 0.0, glfwMods});
+}
+
 void InputNode::InjectCursorPos(double x, double y) {
     QueueEvent({InputEvent::Type::CursorPos, 0, 0, x, y});
 }
@@ -352,7 +366,7 @@ void InputNode::InjectCursorPos(double x, double y) {
 void InputNode::InjectFocusLoss() {
     ClearInputOnFocusLoss();
 }
-#endif
+
 
 void InputNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Calculate delta time
@@ -441,7 +455,15 @@ void InputNode::FoldEvent(const InputEvent& event) {
                     instanceId, static_cast<float>(event.y), static_cast<float>(event.x)));
             }
             break;
+        case InputEvent::Type::Char:
+            if (event.buttonOrKey > 0) pendingText_.push_back(static_cast<char32_t>(event.buttonOrKey));
+            break;
         case InputEvent::Type::Key: {
+            // Every key transition (repeat included) is recorded for the UI text path before the
+            // tracked-key filter below: a text field needs Backspace/Delete/Home/End/Enter too.
+            pendingKeyEvents_.push_back({event.buttonOrKey, event.action, event.mods});
+            if (event.action == GLFW_PRESS) heldRawKeys_.insert(event.buttonOrKey);
+            else if (event.action == GLFW_RELEASE) heldRawKeys_.erase(event.buttonOrKey);
             // GLFW_REPEAT is a held-key auto-repeat notification, not a state transition — folding
             // it into keyStates would falsely re-trigger the press edge every OS repeat interval.
             if (event.action == GLFW_REPEAT) break;
@@ -480,11 +502,15 @@ void InputNode::PopulateInputState() {
         state.wasDown = state.isDown;
     }
     inputState_.UpdateAxesFromKeyState();
+    // A UI text field owns the keyboard: typed letters are text, not movement.
+    if (keyboardCapturedByUi_) inputState_.axes.fill(0.0f);
 
     // Update debug mode based on number key presses (0-9)
     // debugMode persists until another number is pressed
     using EventBus::KeyCode;
-    if (inputState_.IsKeyPressed(KeyCode::Key0)) inputState_.debugMode = 0;
+    if (keyboardCapturedByUi_) {
+        // typing digits into a text field must not switch the debug mode
+    } else if (inputState_.IsKeyPressed(KeyCode::Key0)) inputState_.debugMode = 0;
     else if (inputState_.IsKeyPressed(KeyCode::Key1)) inputState_.debugMode = 1;
     else if (inputState_.IsKeyPressed(KeyCode::Key2)) inputState_.debugMode = 2;
     else if (inputState_.IsKeyPressed(KeyCode::Key3)) inputState_.debugMode = 3;
@@ -497,7 +523,8 @@ void InputNode::PopulateInputState() {
 
     // ESC -> graceful-shutdown WindowCloseEvent (was PublishKeyEvents' only real job; folded in
     // here since it's a one-shot check against the same keyStates map this loop already walked).
-    if (inputState_.IsKeyPressed(KeyCode::Escape) && GetMessageBus()) {
+    if (inputState_.IsKeyPressed(KeyCode::Escape) && GetMessageBus() && !keyboardCapturedByUi_ &&
+        !escapeConsumedByUi_) {
         GetMessageBus()->Publish(std::make_unique<EventBus::WindowCloseEvent>(instanceId));
         NODE_LOG_INFO("[InputNode] ESC pressed - published WindowCloseEvent for graceful shutdown");
     }
@@ -512,6 +539,8 @@ void InputNode::PopulateInputState() {
     inputState_.mouseButtons[2] = buttonDown_[2];
     inputState_.wheelDelta = pendingScroll_;
     inputState_.clicksThisFrame = pendingClicks_;
+    inputState_.keyEventsThisFrame = pendingKeyEvents_;
+    inputState_.textThisFrame = pendingText_;
 
     // TEMP DEBUG: latch the last left-press pixel (persists across frames, unlike
     // clicksThisFrame) for the ray-trace debug buffer to force-capture that exact ray.
@@ -538,6 +567,8 @@ void InputNode::PopulateInputState() {
     pendingDelta_ = glm::vec2(0.0f);
     pendingScroll_ = glm::vec2(0.0f);
     pendingClicks_.clear();
+    pendingKeyEvents_.clear();
+    pendingText_.clear();
 }
 
 void InputNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
@@ -604,6 +635,7 @@ void InputNode::ClearInputOnFocusLoss() {
         inputState_.keyDown[key] = false;
     }
     buttonDown_[0] = buttonDown_[1] = buttonDown_[2] = false;
+    heldRawKeys_.clear();
     {
         // Drop queued key/cursor events, keep the rest (drain, then re-publish what stays; order among
         // the kept events is preserved).

@@ -21,13 +21,17 @@
 #include "EditorDocumentModel.h"
 #include "PackRecipeSource.h"
 #include "AppFlowChannel.h"
+#include "KeyMap.h"
+#include <glm/vec3.hpp>
 #include "AppFlowReadback.h"
 #include "AppFlowRuntime.h"
+#include "AppFlowBlobFile.h"
 #include "RuntimeCachePaths.h"
 #include "GaiaLayerViewDataProvider.h"  // Inc-B: Gaia-backed IViewDataProvider (was LayerControllerViewDataProvider)
 #include "ViewReconcileNode.h"         // Inc-B: per-frame .changed<LayerMask>() reconcile
 #include "EditorLayersViewBridge.h"  // Inc-A2: gaia/robin_hood ODR isolation seam -- see its file header
 #include <Logger.h>
+#include <nlohmann/json_fwd.hpp>
 
 #include <memory>
 #include <array>
@@ -41,6 +45,7 @@
 // Forward-declared only -- see EditorLayersViewBridge.h's file header for why this TU (which
 // transitively sees gaia.h via Recipe/RecipeBaker.h below) never includes EditorLayersView.h itself.
 namespace Vixen::App { class EditorLayersView; }
+namespace Vixen::RenderGraph { class CameraNode; }
 namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 
 class EditorApplication : public VulkanGraphApplication {
@@ -53,21 +58,9 @@ public:
     // EditorApplication.cpp, not implicitly generated here where the type is incomplete.
     ~EditorApplication() override;
 
-    // One parsed VIXEN_EDITOR_SCRIPT entry (e.g. "parameter_up:0@30" or "undo@60").
-    // Public (plain data, no invariants) so the free-function parser in EditorApplication.cpp's
-    // anonymous namespace can build a std::vector<ScriptedAction> without befriending it.
-    struct ScriptedAction {
-        long frame = 0;
-        enum class Kind {
-            Toggle, CreateLayer, DeleteLayer, MoveLayerUp, MoveLayerDown,
-            ProgramFieldUp, ProgramFieldDown, ParameterUp, ParameterDown,
-            Undo, Redo, Save, Reopen, Settings, Back
-        } kind = Kind::Undo;
-        uint32_t index = 0;  // layer or parameter index, depending on Kind
-    };
-
     void BuildRenderGraph() override;
-    void PreTick() override;   // graph.Run(): scripted-action injector runs here, before Update()
+    void DeInitialize() override;  // frees the channel's readback ring before the device goes
+    void PreTick() override;   // attaches the event bus; parses the capture-fixture env once
     void Update() override;
     void PostTick() override;  // captures scripted frames after this tick's Render()
 
@@ -126,6 +119,14 @@ private:
     std::optional<std::string> HandleAppFlowRequest(const std::string& request);
     void PumpAppFlowChannel();
     void RecordAppFlowEvent(const std::string& type);
+    void RecordAppFlowEvent(const std::string& type, nlohmann::json detail);
+    // E15: one place records a diagnostic -- lastEditorError_ (status line), the diagnostic code, a
+    // log line and a channel event. Plain-string failures use the "EditorError" code.
+    void ReportEditorDiagnostic(const Vixen::Editor::DocumentDiagnostic& diagnostic);
+    void ReportEditorError(std::string message, std::string code = "EditorError");
+    void ClearEditorError();
+    // E15: gives the AppFlow runtime the engine's event bus and mirrors its events into the channel log.
+    void AttachAppFlowEventBus();
     void StartPendingReadbacks();
 
     // Replays the consumer-owned handler wiring after AppFlowRuntime replaces its primitives.
@@ -134,6 +135,11 @@ private:
     // Polls the external AppFlow artifact at a bounded cadence. The swap is called from Update()
     // before input dispatch, which is the editor's between-tick point.
     void PollAppFlowFile();
+    // Loads the external AppFlow artifact into the running runtime (shape-hash and validation gated; the last
+    // good state stays on any failure, `error` says why). Shared by the poll and the `appflow.reload` verb.
+    bool ReloadAppFlowData(std::string& error);
+    // Turns the UI node's document reloads since the last call into `ui.reloaded` events and the status line.
+    void ReportUiReloads();
 
     // Inc-A2: re-derives layersView_'s bound "layers" array from doc_'s per-layer name/op and
     // enabled mask. Shared by the initial population (LoadDocument)
@@ -151,6 +157,23 @@ private:
     void ReconcileLayersView();
     void SyncAfterDocumentMutation();
     void RefreshRecipesView();
+    // R872.1: the picker rows are published once (the catalogue never changes at run time).
+    bool primitivesPublished_ = false;
+    // sn-editorpicker1: the Add flyout is a declared Floating panel (DeclarePanels); its text field writes the
+    // filter into the View and the editor republishes the ranked primitive rows when it changes.
+    static constexpr const char* kPickerPanelId = "picker";
+    void PublishPickerPrimitives();
+    bool PickerOpen() const;
+    void ClosePicker();
+    void StepPicker();
+    // sn-editordock2: the dock's pointer gestures and the generic cancel, stepped once per Update. A drag emits the
+    // FloatPanel / ResizeRegion verbs on release; an Escape no text field consumed closes the dismissible panel
+    // through ClosePanel.
+    void StepDock();
+    bool dockPointerCaptured_ = false;
+    // The element the last UI click came from (cleared after its dispatch): where an OpenPanel anchors a flyout.
+    std::string clickAnchorElementId_;
+    std::string publishedPickerFilter_;
     // R766: the status-line panel (document, flow state, undo depth, last message).
     void RefreshStatusView();
     // R766: applies one panel verb's result: persists the layout and records a channel event.
@@ -166,6 +189,8 @@ private:
     Vixen::Editor::PackRecipeSource pack_;
     std::string openRecipeId_;
     std::optional<std::string> pendingOpenRecipe_;  // OpenRecipe request, applied in Update()
+    bool pendingReopenSaved_ = false;               // ReopenSaved request, applied in Update() (reloads the runtime)
+    uint32_t selectedLayer_ = 0;                    // SelectLayer: whose placement the inspector shows (view state)
     bool reframePending_ = false;                    // next re-apply reframes the camera (new document)
     // Inc-2b: the editor owns an AppFlowRuntime (bus=nullptr — Publish no-ops; the editor
     // doesn't consume the events yet) so toggle/undo/redo route through the ActionStack. The
@@ -206,6 +231,8 @@ private:
     Vixen::App::EditorLayersView* layersView_ = Vixen::App::MakeEditorLayersView();
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
     std::string lastEditorError_;
+    std::string lastEditorDiagnosticCode_;
+    Vixen::EventBus::MessageBus* appFlowBus_ = nullptr;
     std::string lastSavedPath_;
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastSavedProgram_;
     std::array<float, 6> lastSavedParameters_{};
@@ -214,26 +241,47 @@ private:
     std::array<float, 6> lastPreviewParameterValues_{};
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastProceduralProgram_;
     bool proceduralPreviewRegistered_ = false;
-    bool sKeyWasDown_ = false;  // edge-detect for the Save keybinding
-    bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
-    bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
-    bool escWasDown_ = false;  // edge-detect for the Return (Esc) keybinding
-    bool ctrlRWasDown_ = false;  // edge-detect for the ResetLayout keybinding (R766)
+    // Rising-edge detector over every mapped key; each press resolves its chord through the runtime's
+    // InputProfile, so the declared [FlowKeyDefault] table (not host code) decides what a key does.
+    Vixen::Editor::KeyEdgeTracker keyEdges_;
+    // Camera control: host translation of raw mouse/axis input into AppFlow camera dispatches (the AppFlow
+    // gap: InputProfile binds chords, not axes/drags), and the framing FrameAsset restores.
+    void TranslateCameraInput();
+    Vixen::RenderGraph::CameraNode* EditorCamera();   // live lookup, never cached across recompiles
+    void SetViewAngle(uint32_t index);
+    // The one parameter-edit path: clamp to the declared range, one ActionStack entry (nothing when unchanged).
+    void CommitParameter(Vixen::AppFlow::Generated::FlowActionId actionId, uint32_t index, float value);
+    void ApplyCameraFrame();           // FrameAsset: restore the orbit centre/distance fit
+    void StepParameterScrub();         // ScrubParameter drag: SetParameter per frame inside one undo group
+    glm::vec3 framedCenter_{0.0f};
+    float framedDistance_ = 0.0f;
+    bool hasFrame_ = false;
+    struct ParameterScrub {
+        bool active = false;
+        uint32_t index = 0;
+        float startValue = 0.0f;
+        float startCursorX = 0.0f;
+        bool grouped = false;  // an undo group is open for this gesture
+    } scrub_;
+    uint32_t nextUndoGroup_ = 1;
     std::string appFlowPath_;
+    // The last good reloaded AppFlow data file, kept only so `appflow.list` reports the triggers and chords the
+    // running runtime actually uses (the runtime deep-owns what it needs; the compiled-in tables are the fallback).
+    std::optional<Vixen::AppFlow::AppFlowBlobFile> appFlowBlob_;
+    std::string uiReloadFailedDocument_;  // the document whose failed reload set the UiReload diagnostic
     std::filesystem::file_time_type appFlowMtime_{};
     bool appFlowMtimeInitialized_ = false;
 
-    // Inc-2b Task 3/4: capture + script harness state, inert when the two VIXEN_EDITOR_* env
+    // Inc-2b Task 3/4: capture harness state, inert when the two VIXEN_EDITOR_* env
     // knobs are unset (see BuildRenderGraph + Update). CaptureFrameToPng reads the existing
     // compute_render_target so UI overlays cannot satisfy a scene-render assertion.
     std::string pendingCapturePath_;  // one capture is scheduled by Update() for PostTick()
     std::shared_ptr<Vixen::RenderGraph::Debug::PendingRenderTargetPngCapture> pendingCapture_;
     long updateTick_ = 0;  // editor-local Update tick counter, independent of the base app's own counters
 
-    std::vector<ScriptedAction> scriptedActions_;   // parsed once from VIXEN_EDITOR_SCRIPT
     std::vector<long> captureFrames_;               // parsed once from VIXEN_EDITOR_CAPTURE_FRAMES
     std::string captureDir_ = Vixen::ProcessTemporaryDirectory("editor").string();
-    bool scriptParsed_ = false;                     // guards the one-time env parse in Update()
+    bool captureEnvParsed_ = false;                 // guards the one-time capture env parse in PreTick()
 
     std::unique_ptr<AppFlowChannel> appFlowChannel_;
     bool channelPaused_ = false;
@@ -243,9 +291,19 @@ private:
     std::unordered_map<std::string, uint64_t> channelActionFrames_;
     uint32_t channelObservedMask_ = 0;
     uint64_t channelPresentedFrame_ = 0;
+    // E6b: Update() calls that ran to their end (View reconcile, status refresh and scene re-apply
+    // included). A dispatched action is reflected once a later Update has finished; the first frame
+    // presented after that is the frame that shows it.
+    uint64_t channelUpdateSerial_ = 0;
+    std::unordered_map<std::string, uint64_t> channelActionPending_;  // action key -> required serial
+    // E18: one open undo group at a time, opened and closed through the channel.
+    bool channelGroupOpen_ = false;
+    uint32_t channelGroupSerial_ = 0;
+    std::string channelGroupLabel_;
     struct PendingReadback {
         std::string spec;
         uint64_t frame = 0;
+        uint64_t requiredSerial = 0;  // dispatch-attached: the Update serial that reflects the action
         std::chrono::steady_clock::time_point requestedAt{};
         bool enqueued = false;
     };

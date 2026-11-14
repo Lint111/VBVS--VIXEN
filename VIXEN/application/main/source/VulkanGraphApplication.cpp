@@ -215,8 +215,8 @@ namespace {
 // selects one of two hard-coded known HudFactionIn/HudEventIn sets (see PreTick below) — the live
 // gate's A/B-on-known-data proof needs a SPECIFIC known payload per capture, not free-form data,
 // so the script vocabulary is deliberately just 'A'/'B' rather than the editor's richer toggle/
-// undo/redo actions. Malformed tokens are skipped with a warning (mirrors ParseEditorScript's
-// never-abort contract), never NULL-widening a whole run over one bad token.
+// undo/redo actions. Malformed tokens are skipped with a warning (the same
+// never-abort contract as the editor's retired env script), never NULL-widening a whole run over one bad token.
 std::vector<std::pair<long, char>> ParseHudScript(const std::string& spec, Vixen::Log::Logger* logger) {
     std::vector<std::pair<long, char>> actions;
     std::stringstream ss(spec);
@@ -2602,6 +2602,12 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             VIXEN_FRAME_TRACE_SCOPE("update", "input");
             if (auto* input = static_cast<InputNode*>(renderGraph->GetInstance(inputNode_))) {
+                // A focused UI text control owns the keyboard: typed keys are text, not game input
+                // (no Escape shutdown, no movement axes, no debug-mode digits). State as of the last UI Execute.
+                const auto* ui = GetUiRenderNode();
+                input->SetKeyboardCapturedByUi(ui && ui->WantsKeyboard());
+                // An open dismissible panel takes Escape as "cancel" (the app closes it), not as "quit".
+                input->SetEscapeConsumedByUi(panelDock_->Dock().HasOpenDismissible());
                 input->ProcessPendingInput();
             }
         }

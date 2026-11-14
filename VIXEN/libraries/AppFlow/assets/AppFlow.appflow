@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0xCE7796BC
+shape 0x05763615
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -31,6 +31,28 @@ action SplitPanel 20
 action FloatPanel 21
 action ResizeRegion 22
 action ResetLayout 23
+action SetLayerBlend 24
+action RenameLayer 25
+action SetLayerTransform 26
+action ReopenSaved 27
+action SelectLayer 28
+action NudgeLayerField 29
+action OrbitCamera 30
+action PanCamera 31
+action ZoomCamera 32
+action FrameAsset 33
+action SetViewAngle 34
+action SelectViewAngle0 35
+action SelectViewAngle1 36
+action SelectViewAngle2 37
+action SelectViewAngle3 38
+action SetParameter 39
+action ResetParameter 40
+action ScrubParameter 41
+action CreatePrimitiveLayer 42
+action SetLayerOp 43
+action SetLayerPrimitiveField 44
+action ChoosePrimitive 45
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -63,6 +85,41 @@ key X 24
 key Y 25
 key Z 26
 key Escape 27
+key Digit0 28
+key Digit1 29
+key Digit2 30
+key Digit3 31
+key Digit4 32
+key Digit5 33
+key Digit6 34
+key Digit7 35
+key Digit8 36
+key Digit9 37
+key F1 38
+key F2 39
+key F3 40
+key F4 41
+key F5 42
+key F6 43
+key F7 44
+key F8 45
+key F9 46
+key F10 47
+key F11 48
+key F12 49
+key Left 50
+key Right 51
+key Up 52
+key Down 53
+key Delete 54
+key Backspace 55
+key Tab 56
+key Space 57
+key Enter 58
+key Home 59
+key End 60
+key PageUp 61
+key PageDown 62
 mod None 0
 mod Ctrl 1
 mod Shift 2
@@ -92,6 +149,28 @@ decl 20 sizeof(LayerState) 1
 decl 21 sizeof(LayerState) 1
 decl 22 sizeof(LayerState) 1
 decl 23 sizeof(LayerState) 1
+decl 24 sizeof(LayerState) 1
+decl 25 sizeof(LayerState) 1
+decl 26 sizeof(LayerState) 1
+decl 27 sizeof(LayerState) 1
+decl 28 sizeof(LayerState) 1
+decl 29 sizeof(LayerState) 1
+decl 30 sizeof(LayerState) 1
+decl 31 sizeof(LayerState) 1
+decl 32 sizeof(LayerState) 1
+decl 33 sizeof(LayerState) 1
+decl 34 sizeof(LayerState) 1
+decl 35 sizeof(LayerState) 1
+decl 36 sizeof(LayerState) 1
+decl 37 sizeof(LayerState) 1
+decl 38 sizeof(LayerState) 1
+decl 39 sizeof(LayerState) 1
+decl 40 sizeof(LayerState) 1
+decl 41 sizeof(LayerState) 1
+decl 42 sizeof(LayerState) 1
+decl 43 sizeof(LayerState) 1
+decl 44 sizeof(LayerState) 1
+decl 45 sizeof(LayerState) 1
 param 0 layerIndex 1
 param 8 layerIndex 1
 param 9 layerIndex 1
@@ -101,6 +180,33 @@ param 12 layerIndex 1
 param 13 parameterIndex 1
 param 14 parameterIndex 1
 param 15 recipeId 0
+param 24 layerIndex 1
+param 24 radius 2
+param 25 layerIndex 1
+param 25 name 0
+param 26 layerIndex 1
+param 26 px 2
+param 26 py 2
+param 26 pz 2
+param 26 rx 2
+param 26 ry 2
+param 26 rz 2
+param 26 sx 2
+param 26 sy 2
+param 26 sz 2
+param 28 layerIndex 1
+param 29 layerIndex 1
+param 29 field 0
+param 42 primitive 0
+param 45 filter 0
+param 43 layerIndex 1
+param 43 op 0
+param 44 layerIndex 1
+param 44 field 0
+param 44 x 2
+param 44 y 2
+param 44 z 2
+param 44 w 2
 param 16 panelId 0
 param 17 panelId 0
 param 18 panelId 0
@@ -115,6 +221,16 @@ param 21 width 1
 param 21 height 1
 param 22 region 0
 param 22 size 1
+param 30 dYaw 2
+param 30 dPitch 2
+param 31 dx 2
+param 31 dy 2
+param 32 delta 2
+param 34 index 1
+param 39 parameterIndex 1
+param 39 value 2
+param 40 parameterIndex 1
+param 41 parameterIndex 1
 transition Transitions 0 1 0
 transition ToSettings 0 3 0
 transition SettingsEditingEdge 3 0 0
@@ -127,10 +243,35 @@ trigger EditProgramFieldUpTrigger layer-{index}-program-up 11 layerIndex click
 trigger EditProgramFieldDownTrigger layer-{index}-program-down 12 layerIndex click
 trigger AdjustParameterUpTrigger parameter-{index}-up 13 parameterIndex click
 trigger AdjustParameterDownTrigger parameter-{index}-down 14 parameterIndex click
+trigger ScrubParameterTrigger parameter-{index}-value 41 parameterIndex click
+trigger ResetParameterTrigger parameter-{index}-reset 40 parameterIndex click
 trigger OpenRecipeTrigger recipe-{recipeId}-open 15 recipeId click
+trigger SelectLayerTrigger layer-{index}-select 28 layerIndex click
+trigger NudgeLayerFieldTrigger layer-{index}-nudge-{field} 29 layerIndex click
+trigger CreatePrimitiveLayerTrigger primitive-{primitive}-add 42 primitive click
+trigger SetLayerOpTrigger layer-{index}-op-{op} 43 layerIndex click
+trigger SetParameterTypedTrigger parameter-{index}-set-{value} 39 parameterIndex click
+trigger SetLayerBlendTypedTrigger layer-{index}-blend-{radius} 24 layerIndex click
+trigger RenameLayerTypedTrigger layer-{index}-name-{name} 25 layerIndex click
+trigger SetLayerPrimitiveFieldXTrigger layer-{index}-field-{field}-x-{x} 44 layerIndex click
+trigger SetLayerPrimitiveFieldYTrigger layer-{index}-field-{field}-y-{y} 44 layerIndex click
+trigger SetLayerPrimitiveFieldZTrigger layer-{index}-field-{field}-z-{z} 44 layerIndex click
+trigger SetLayerPrimitiveFieldWTrigger layer-{index}-field-{field}-w-{w} 44 layerIndex click
+trigger SetLayerTransformPXTrigger layer-{index}-placement-px-{px} 26 layerIndex click
+trigger SetLayerTransformPYTrigger layer-{index}-placement-py-{py} 26 layerIndex click
+trigger SetLayerTransformPZTrigger layer-{index}-placement-pz-{pz} 26 layerIndex click
+trigger SetLayerTransformRXTrigger layer-{index}-placement-rx-{rx} 26 layerIndex click
+trigger SetLayerTransformRYTrigger layer-{index}-placement-ry-{ry} 26 layerIndex click
+trigger SetLayerTransformRZTrigger layer-{index}-placement-rz-{rz} 26 layerIndex click
+trigger SetLayerTransformSXTrigger layer-{index}-placement-sx-{sx} 26 layerIndex click
+trigger SetLayerTransformSYTrigger layer-{index}-placement-sy-{sy} 26 layerIndex click
+trigger SetLayerTransformSZTrigger layer-{index}-placement-sz-{sz} 26 layerIndex click
+trigger ReopenSavedButtonTrigger reopen-button 27 - click
 trigger UndoButtonTrigger undo-button 1 - click
 trigger RedoButtonTrigger redo-button 2 - click
 trigger SaveButtonTrigger save-button 3 - click
+trigger OpenPanelTrigger panel-{panelId}-open 16 panelId click
+trigger ChoosePrimitiveTrigger picker-filter-{filter} 45 filter click
 trigger FocusPanelTrigger panel-{panelId}-tab 18 panelId click
 trigger ClosePanelTrigger panel-{panelId}-close 17 panelId click
 trigger MovePanelTrigger panel-{panelId}-to-{region} 19 panelId click
@@ -138,7 +279,12 @@ trigger BackButtonTrigger back-button 5 - click
 keydefault ResetLayoutKey 23 18 1 0 0
 keydefault UndoKey 1 26 1 0 0
 keydefault RedoKey 2 25 1 0 0
-keydefault SaveKey 3 19 0 0 0
+keydefault SaveKey 3 19 1 0 0
+keydefault FrameAssetKey 33 6 0 0 0
+keydefault ViewAngle0Key 35 29 0 0 0
+keydefault ViewAngle1Key 36 30 0 0 0
+keydefault ViewAngle2Key 37 31 0 0 0
+keydefault ViewAngle3Key 38 32 0 0 0
 keydefault SettingsUndoOverride 4 26 1 1 3
 return SettingsReturn 3 27 0
 data 6 0 EditorNouns_layerMask

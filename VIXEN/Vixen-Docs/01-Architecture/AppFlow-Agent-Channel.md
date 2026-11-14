@@ -60,10 +60,17 @@ per-session buffer and returns them to `subscribe(after)`; it does not stream un
 
 | Operation | Request data | Result |
 |---|---|---|
-| `appflow.list` | none | generated actions and parameter types, element selector patterns, chords, view nouns, flow states, data targets and current state |
+| `appflow.list` | none | generated actions and parameter types, element selector patterns, chords (`mods` is an array of generated `KeyMod` names, the same grammar `dispatch` accepts), view nouns, flow states, data targets and current state |
 | `appflow.dispatch` | exactly one generated action ID plus typed `params`, selector, or key chord; optional selected `readback` | typed `DispatchResult`, request correlation ID, target frame and undo/redo depths; with readback, the first presented frame's pixels |
-| `appflow.read` | optional generated noun ID/name | current readable view values, flow state, undo/redo depth and frame |
-| `appflow.subscribe` | last event sequence | buffered action and view-reconcile events after that sequence, plus latest sequence |
+| `appflow.read` | optional generated noun ID/name | current readable view values, flow state, undo/redo depth, the last diagnostic (`code`, `message`), the open undo group and frame |
+| `appflow.begin_group` / `appflow.end_group` | `label` for `begin_group` | typed `group.result` (`Ok`, `NestedGroupRefused`, `NoOpenGroupRefused`) and undo/redo depths; every dispatch between them is one undo step (one agent task, one `undo`) |
+| `appflow.list` (R874.3) | none | actions, transitions and data targets are the runtime's LOADED declarations (a reload that changed them shows here); each action carries `implemented` (a handler is registered). A declared action with no handler is visible but inert: dispatching it returns `NoHandler` (not `RejectedByState`) with one located diagnostic (`<file>: action 'X' ...`, status line + `flow.diagnostic` event, code `NotImplemented`), and the same is reported once at load. A reload never fails for it |
+| `appflow.input` | `kind` `text` (`text`), `key` (`key` = generated `KeyId` name, `action` press/release/repeat/tap, `mods`; modifiers are sent as their own key events around the key; a held-key consumer such as a chord samples once per frame, so send a chord as `press`, a few frames, `release` rather than `tap`) or `pointer` (`x`, `y` window pixels, `action` move/press/release/click, `button`) | events queued on the app's real input path (InputNode's callback ring, the same queue GLFW feeds): they reach the UI text controls, camera translation and selection providers on the next frame exactly as typed or pointed input does; the count queued. Nothing is dispatched directly: a typed value commits through the field's own selector |
+| `ui.reload` | optional `panel` (a declared dock panel id; none = every document), optional `readback` (a `{selection}` spec like dispatch's) | forces the live document reload now. Reply `{ok, files:[{file, ok, error?:{line, column, message}}], frame}`; a document that does not parse keeps the old one and the file's entry carries file:line (column is 0: RmlUi reports none). The request's id works as an `actionId` for `appflow.await_frame` / `appflow.readback`: the first presented frame that contains the reloaded document. With `readback` the reply carries that frame's pixels. A `ui.reloaded` event (`document`, `ok`, `forced`, `files`) is recorded for every reload, also the ones the file watcher makes on its own; a failed one also sets the status line and the `diagnostic` (code `UiReload`) until the document reloads again |
+| `appflow.reload` | none | forces the reload of the `.appflow` data (triggers, key defaults) the mtime poll would do; same result shape (`files` has the one file; `error.message` says why). Shape-hash gated; the runtime keeps its flow state, undo history and handlers; the last good state stays on failure. `appflow.list` then reports the reloaded `selectors` and `chords`. Event `appflow.reloaded` (also for the watched reload) |
+| `appflow.quit` | none | orderly shutdown through the window-close path (system acknowledgements, log and cache extraction); a session ends cleanly instead of as a killed process |
+| `appflow.navigate` | generated transition edge id (from `appflow.list` `transitions`) | typed `DispatchResult` and the new flow state |
+| `appflow.subscribe` | last event sequence | buffered events after that sequence: `dispatch`, `view.reconcile`, `diagnostic` (`detail.code`, `detail.message`), `group.begin`/`group.end`, `navigate`, and the runtime's own bus events (`flow.edge`, `flow.action`, `flow.undone`, `flow.redone`, `flow.diagnostic`), plus latest sequence |
 | `appflow.await_frame` | dispatch request ID or frame number | first completed/presented frame at or after the target |
 | `appflow.pause` / `appflow.run` / `appflow.step` | bounded tick count for `step` | whether Update ticks are paused and the current/target frame |
 | `appflow.readback` | selection and `png` or `raw` format; optional action request ID/frame fence | pixels inline as base64, 64-bit FNV-1a hash of native pixels, selection bounds, source frame, transfer size, and timing data |
@@ -86,9 +93,16 @@ resizing or downscaling occurs. The initial formats are PNG and raw RGBA8/BGRA8 
 The editor polls its nonblocking loopback listener on the app frame thread in `PostTick`, after the
 render/present step. AppFlow mutations therefore stay on the owning thread and use the existing
 runtime, but socket polling, JSON parsing, and response work are part of frame-thread CPU cost.
-Dispatch records the next presented-frame number. On the following Update/Render/PostTick cycle,
-the editor applies the action through AppFlow, reconciles views, renders and presents; then
-`await_frame(actionId)` completes for that frame.
+Dispatch records the Update serial that will reflect the action. The first Update that runs to its
+end after the dispatch applies the action's effects (View reconcile, status refresh, scene
+re-apply); the first frame presented after that Update is the frame that shows the action.
+`await_frame(actionId)` completes for that frame, and a readback attached to the dispatch reads that
+same frame, never the previous one. While the editor is paused no Update runs, so both wait for a
+`step` or `run`. The editor's swapchain reports no usable current image index, so windowed readbacks
+take the image the swapchain node just presented.
+
+Diagnostics (a rejected edit, a failed save) set the status line (`[Code] message`), log a warning,
+and publish a `diagnostic` channel event with the model's `DocumentDiagnosticCode`.
 
 Readback uses a three-slot Vulkan staging-buffer ring. The editor records image-to-buffer copies for
 the awaited frame and selection, submits them on the graphics queue under the queue's submit mutex,
@@ -169,22 +183,12 @@ cumulative frame-thread CPU costs were 23,053 µs, 512 µs, and 8,924 µs. Outer
 2.33 s, 5.18 s, and 11.11 s. This is a contention trace, not the isolated latency baseline; see
 `reports/agentport-appflow-transcript.json`.
 
-Do not delete the file-script harness in this lane. R468.4's later deletion consists of:
-
-1. `VIXEN/application/editor/include/EditorApplication.h`: remove `ScriptedAction`,
-   `scriptedActions_`, and `scriptParsed_`.
-2. `VIXEN/application/editor/source/EditorApplication.cpp`: remove `ParseEditorScript`, the
-   `VIXEN_EDITOR_SCRIPT` environment parse, and the scripted-action schedule/switch in `PreTick`.
-3. `VIXEN/application/editor/CMakeLists.txt`: remove the `VIXEN_EDITOR_SCRIPT` assignment from
-   `vixen_editor_capture_producer`; retain the independent capture-frame and capture-directory
-   fixture controls.
-4. Remove script environment assignments from `VIXEN/tools/measure-editor-latency.py`,
-   `VIXEN/tools/run-vixen-windowed-captures.sh`, and `VIXEN/temp/run_editor_script.bat` (or retire
-   that script-only runner if it has no remaining capture use).
-5. Remove the log-parsing assertions/comments in
-   `VIXEN/libraries/RenderGraph/tests/Nodes/test_editor_toggle_undo_capture.cpp` only after the new
-   channel gate carries the same state properties; keep unrelated capture assertions if still
-   needed.
+R468.4 is done: `ParseEditorScript`, `ScriptedAction` and the `VIXEN_EDITOR_SCRIPT` environment path
+are deleted. The CTest fixture `vixen_editor_capture_producer` (and the multi-instance cache gate)
+now run `tools/editor_capture_producer.py`, which drives the same edits through this channel, reads
+the mask and undo depths back with `appflow.read`, writes `appflow_state_trail.log`, and captures
+the scene target with `appflow.readback`. The old reopen-parity leg had no AppFlow action to be
+driven through and is not part of the channel-driven gate.
 
 `VIXEN_EDITOR_CAPTURE_FRAMES` and `VIXEN_EDITOR_CAPTURE_DIR` are separate capture-fixture controls;
 they are not part of the `VIXEN_EDITOR_SCRIPT` retirement unless a replacement capture fixture

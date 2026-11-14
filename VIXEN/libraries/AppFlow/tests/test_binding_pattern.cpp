@@ -81,3 +81,101 @@ TEST(BindingPattern, TwoPlaceholdersBindBothParams) {
     EXPECT_FALSE(store.TryGetForSelector("panel--to-left", none));      // empty panel id
     EXPECT_FALSE(store.TryGetForSelector("panel-inspector-to-", none)); // empty region
 }
+
+// E3: the layer stepper and selection selectors resolve to their own actions, and the older
+// "layer-<i>-up" / "-program-up" patterns keep resolving to theirs (the nudge ids end in -up too).
+TEST(BindingPattern, LayerNudgeAndSelectSelectorsBindTheirParamsWithoutStealingOlderIds) {
+    BindingStore store;
+    store.RegisterActions(AppFlowContainerView::actions());
+    for (const auto& trigger : kElementTriggers) store.AddElementTrigger(trigger);
+
+    for (const auto* selector : {"layer-1-nudge-blend-up", "layer-1-nudge-px-down", "layer-12-nudge-sz-up"}) {
+        BoundAction nudge;
+        ASSERT_TRUE(store.TryGetForSelector(selector, nudge)) << selector;
+        EXPECT_EQ(nudge.action, FlowActionId::NudgeLayerField);
+        EXPECT_EQ(nudge.cause.identity, FlowElementTriggerId::NudgeLayerFieldTrigger);
+        ASSERT_EQ(nudge.params.size(), 2u);
+        EXPECT_EQ(nudge.params[0].first, "layerIndex");
+        EXPECT_EQ(nudge.params[1].first, "field");
+    }
+    BoundAction nudge;
+    ASSERT_TRUE(store.TryGetForSelector("layer-12-nudge-sz-up", nudge));
+    EXPECT_EQ(nudge.params[0].second, "12");
+    EXPECT_EQ(nudge.params[1].second, "sz-up");
+
+    BoundAction select;
+    ASSERT_TRUE(store.TryGetForSelector("layer-3-select", select));
+    EXPECT_EQ(select.action, FlowActionId::SelectLayer);
+    ASSERT_EQ(select.params.size(), 1u);
+    EXPECT_EQ(select.params[0].second, "3");
+
+    BoundAction reopen;
+    ASSERT_TRUE(store.TryGetForSelector("reopen-button", reopen));
+    EXPECT_EQ(reopen.action, FlowActionId::ReopenSaved);
+    EXPECT_TRUE(reopen.params.empty());
+
+    BoundAction move;
+    ASSERT_TRUE(store.TryGetForSelector("layer-3-up", move));
+    EXPECT_EQ(move.action, FlowActionId::MoveLayerUp);
+    BoundAction program;
+    ASSERT_TRUE(store.TryGetForSelector("layer-3-program-up", program));
+    EXPECT_EQ(program.action, FlowActionId::EditProgramFieldUp);
+}
+
+// sn-rmlinput1: typed value entry. A text control's element id is a trigger pattern with its value slot
+// filled on commit; the LAST placeholder binds the typed text to the action parameter it names, so one
+// DispatchBySelector carries the value (no new declaration form).
+TEST(BindingPattern, TypedValueSelectorsBindTheValueToTheNamedParameter) {
+    BindingStore store;
+    store.RegisterActions(AppFlowContainerView::actions());
+    for (const auto& trigger : kElementTriggers) store.AddElementTrigger(trigger);
+    using Param = std::pair<std::string, std::string>;
+
+    BoundAction set;
+    ASSERT_TRUE(store.TryGetForSelector("parameter-3-set-1.25", set));
+    EXPECT_EQ(set.action, FlowActionId::SetParameter);
+    ASSERT_EQ(set.params.size(), 2u);
+    EXPECT_EQ(set.params[0], (Param{"parameterIndex", "3"}));
+    EXPECT_EQ(set.params[1], (Param{"value", "1.25"}));
+
+    // A negative number and an out-of-range text value both reach the handler (it refuses, the pattern does not).
+    BoundAction negative;
+    ASSERT_TRUE(store.TryGetForSelector("parameter-0-set--0.5", negative));
+    EXPECT_EQ(negative.params[1], (Param{"value", "-0.5"}));
+    BoundAction text;
+    ASSERT_TRUE(store.TryGetForSelector("parameter-0-set-abc", text));
+    EXPECT_EQ(text.params[1], (Param{"value", "abc"}));
+
+    // A name may contain dashes, spaces and the pattern's own literals: the first placeholder is the integer
+    // before the first "-name-", the last takes everything after it.
+    BoundAction rename;
+    ASSERT_TRUE(store.TryGetForSelector("layer-2-name-Rock -name- face-2", rename));
+    EXPECT_EQ(rename.action, FlowActionId::RenameLayer);
+    ASSERT_EQ(rename.params.size(), 2u);
+    EXPECT_EQ(rename.params[0], (Param{"layerIndex", "2"}));
+    EXPECT_EQ(rename.params[1], (Param{"name", "Rock -name- face-2"}));
+
+    BoundAction blend;
+    ASSERT_TRUE(store.TryGetForSelector("layer-1-blend-0.4", blend));
+    EXPECT_EQ(blend.action, FlowActionId::SetLayerBlend);
+    EXPECT_EQ(blend.params[1], (Param{"radius", "0.4"}));
+
+    // One primitive component: the field name sits between the index and the component literal.
+    BoundAction field;
+    ASSERT_TRUE(store.TryGetForSelector("layer-3-field-halfExtents-y-2.5", field));
+    EXPECT_EQ(field.action, FlowActionId::SetLayerPrimitiveField);
+    ASSERT_EQ(field.params.size(), 3u);
+    EXPECT_EQ(field.params[0], (Param{"layerIndex", "3"}));
+    EXPECT_EQ(field.params[1], (Param{"field", "halfExtents"}));
+    EXPECT_EQ(field.params[2], (Param{"y", "2.5"}));
+
+    BoundAction placement;
+    ASSERT_TRUE(store.TryGetForSelector("layer-0-placement-rz-90", placement));
+    EXPECT_EQ(placement.action, FlowActionId::SetLayerTransform);
+    EXPECT_EQ(placement.params[1], (Param{"rz", "90"}));
+
+    // An empty slot is no selector at all: nothing dispatches.
+    BoundAction empty;
+    EXPECT_FALSE(store.TryGetForSelector("parameter-3-set-", empty));
+    EXPECT_FALSE(store.TryGetForSelector("layer-2-name-", empty));
+}

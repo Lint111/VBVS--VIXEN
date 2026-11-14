@@ -16,6 +16,7 @@ target_compile_definitions(test_appflow_blob PRIVATE
 # (application/editor/include/KeyMap.h is header-only, depends only on the already-public
 # AppFlow.g.h) -- give it that one extra include dir rather than link the whole editor app.
 target_include_directories(test_keychord PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../application/editor/include")
+target_link_libraries(test_keychord PRIVATE magic_enum)  # KeyMap.h's chord-modifier grammar names KeyMod through it
 
 if(COMMAND gtest_discover_tests)
     foreach(t test_action_stack test_flow_state_machine test_binding_store test_appflow_loader test_appflow_data_seam test_layer_controller test_snapshot_undo test_input_profile test_keychord test_binding_pattern test_flow_return test_return_dispatch test_appflow_blob)

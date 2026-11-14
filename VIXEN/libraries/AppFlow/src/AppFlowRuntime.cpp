@@ -1,5 +1,6 @@
 #include "AppFlowRuntime.h"
 #include "Logger.h"
+#include <algorithm>
 #include <utility>
 
 namespace Vixen::AppFlow {
@@ -54,6 +55,51 @@ void AppFlowRuntime::ReportDiagnostic(const std::string& message) {
     }
 }
 
+void AppFlowRuntime::CaptureCatalog(const AppFlowContainerView& view) {
+    catalogActions_.clear();
+    for (const auto& decl : view.actionTable()) {
+        CatalogAction action;
+        action.id = decl.id;
+        for (uint32_t i = 0; i < decl.paramCount; ++i)
+            action.params.emplace_back(decl.params[i].name ? decl.params[i].name : "", decl.params[i].type);
+        catalogActions_.push_back(std::move(action));
+    }
+    catalogTransitions_.clear();
+    for (const auto& edge : view.transitionTable())
+        catalogTransitions_.push_back({edge.id ? edge.id : "", edge.from, edge.to, edge.guard});
+}
+
+std::vector<FlowActionId> AppFlowRuntime::UnimplementedActions() const {
+    std::vector<FlowActionId> result;
+    for (const auto& action : catalogActions_)
+        if (!IsImplemented(action.id)) result.push_back(action.id);
+    return result;
+}
+
+void AppFlowRuntime::ReportUnimplementedAction(FlowActionId id, const std::string& what) {
+    const std::string message = declarationSource_ + ": action '" + ActionName(id) + "' " + what;
+    ReportDiagnostic(message);
+    if (unimplementedHandler_) {
+        try { unimplementedHandler_(id, message); }
+        catch (...) { RuntimeLogger().Error("AppFlow unimplemented-action callback threw"); }
+    }
+}
+
+std::string AppFlowRuntime::ActionName(FlowActionId id) const {
+    if (actionNamer_) {
+        std::string name = actionNamer_(id);
+        if (!name.empty()) return name;
+    }
+    return "#" + std::to_string(static_cast<uint16_t>(id));
+}
+
+size_t AppFlowRuntime::ReportUnimplemented() {
+    const auto missing = UnimplementedActions();
+    for (const FlowActionId id : missing)
+        ReportUnimplementedAction(id, "is declared but no handler is registered (inert until RegisterHandler lands or the declaration is removed)");
+    return missing.size();
+}
+
 LoadResult AppFlowRuntime::Load(const AppFlowContainerView* view, IViewDataProvider* dataProvider) {
     FlowStateMachine freshFsm;
     ActionStack freshStack;
@@ -73,6 +119,30 @@ LoadResult AppFlowRuntime::Load(const AppFlowContainerView* view, IViewDataProvi
     dataProvider_ = dataProvider;
     activeCause_.reset();
     handlers_.clear();
+    CaptureCatalog(view ? *view : compiledIn);
+    return LoadResult::Ok;
+}
+
+LoadResult AppFlowRuntime::Reload(const AppFlowContainerView* view, IViewDataProvider* dataProvider) {
+    FlowStateMachine candidateFsm;   // validated and then discarded: the running fsm/stack keep their state
+    ActionStack candidateStack;
+    BindingStore freshBindings;
+    InputProfile freshInputProfile;
+    DataTargetTable freshDataTargets;
+    const AppFlowContainerView compiledIn{};
+    const LoadResult result = AppFlowLoader::Load(view ? *view : compiledIn, candidateFsm, candidateStack,
+                                                  freshBindings, freshInputProfile, &freshDataTargets);
+    if (result != LoadResult::Ok) return result;
+
+    bindings_ = std::move(freshBindings);
+    inputProfile_ = std::move(freshInputProfile);
+    dataTargets_ = std::move(freshDataTargets);
+    dataProvider_ = dataProvider;
+    // The declarations may have changed (a hand-edited action row passes the shape gate): the catalogue and the stack's
+    // action table follow the data; the undo/redo entries and the registered handlers stay.
+    CaptureCatalog(view ? *view : compiledIn);
+    const auto actions = (view ? *view : compiledIn).actionTable();
+    stack_.LoadActions(actions.data(), actions.size());
     return LoadResult::Ok;
 }
 
@@ -161,7 +231,13 @@ DispatchResult AppFlowRuntime::Dispatch(FlowActionId id, const Params& params) {
 DispatchResult AppFlowRuntime::DispatchWithCause(FlowActionId id, const Params& params,
                                                   FlowTriggerCause cause) {
     auto it = handlers_.find(uint16_t(id));
-    if (it == handlers_.end()) return DispatchResult::RejectedByState;
+    if (it == handlers_.end()) {
+        const bool declared = std::any_of(catalogActions_.begin(), catalogActions_.end(),
+                                          [id](const CatalogAction& a) { return a.id == id; });
+        if (!declared) return DispatchResult::RejectedByState;
+        ReportUnimplementedAction(id, "was dispatched but no handler is registered (declared, not implemented)");
+        return DispatchResult::NoHandler;
+    }
     if (cause.identity.empty()) cause = ActionCause(id);
     auto previous = std::move(activeCause_);
     activeCause_ = std::move(cause);

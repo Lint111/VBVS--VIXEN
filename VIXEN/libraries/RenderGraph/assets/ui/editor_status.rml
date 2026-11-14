@@ -2,18 +2,12 @@
 <head>
     <title>Status</title>
     <link type="text/rcss" href="editor.rcss"/>
+    <link type="text/rcss" href="kit/kit.rcss"/>
 </head>
 <body>
     <!-- R766 "status" panel (bottom region, no tab strip): the open document, the AppFlow state, the undo
-         depth and the last message. -->
-    <div data-model="editor_layers" class="panel status">
-        <span class="status-doc">{{statusDocument}}</span>
-        <span class="status-sep">·</span>
-        <span>{{flowState}}</span>
-        <span class="status-sep">·</span>
-        <span>undo {{undoDepth}} / redo {{redoDepth}}</span>
-        <span class="status-sep" data-if="statusMessage != ''">·</span>
-        <span class="status-message" data-if="statusMessage != ''">{{statusMessage}}</span>
-    </div>
+         depth and the last message, drawn by the kit's one status-line element. -->
+    <ut-status-line data-model="editor_layers" data-attr-doc="statusDocument" data-attr-state="flowState"
+                    data-attr-undo="undoDepth" data-attr-redo="redoDepth" data-attr-message="statusMessage"/>
 </body>
 </rml>

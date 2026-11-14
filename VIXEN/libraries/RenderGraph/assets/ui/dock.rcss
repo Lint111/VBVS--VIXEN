@@ -11,7 +11,6 @@ body {
     bottom: 0;
     pointer-events: none;
 }
-
 #dock {
     position: absolute;
     top: 0;
@@ -30,49 +29,8 @@ body {
 
 .header {
     display: block;
+    pointer-events: auto;   /* the header strip is UI (a floating panel's drag handle), not the world behind it */
     background-color: #141a28;
     border-bottom-width: 1px;
     border-color: #34405a;
-}
-
-.tab {
-    position: absolute;
-    padding: 4px 6px 0px 8px;
-    background-color: #1c2334;
-    border-right-width: 1px;
-    border-color: #34405a;
-    overflow: hidden;
-    white-space: nowrap;
-    pointer-events: auto;
-}
-
-.tab.active {
-    background-color: #26324c;
-    color: #e8eeff;
-    border-top-width: 2px;
-    border-top-color: #5a8ae0;
-}
-
-.tab .title {
-    display: inline-block;
-    pointer-events: none;
-}
-
-.tool {
-    display: inline-block;
-    min-width: 12px;
-    margin-left: 3px;
-    padding: 0px 2px;
-    color: #9fb0d0;
-    text-align: center;
-    pointer-events: auto;
-}
-
-.tool:hover {
-    color: #ffffff;
-    background-color: #3a4a6c;
-}
-
-.tool.close {
-    color: #c09090;
 }

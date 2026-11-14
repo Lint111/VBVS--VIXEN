@@ -177,6 +177,40 @@ TEST(AppFlowBlob, ReloadedRuntimeResolvesStringPatternAfterBlobIsFreed) {
     EXPECT_EQ(opened, "core:asteroid");
 }
 
+// Live reload of a key default onto a running runtime: the new chord is bound and the old one is not, while the
+// undo history, the flow state and the registered handlers stay (an agent editing the data must not lose its work).
+TEST(AppFlowBlob, ReloadRebindsKeyDefaultAndKeepsUndoStateAndHandlers) {
+    AppFlowRuntime runtime(nullptr, 1);
+    ASSERT_EQ(runtime.Load(), LoadResult::Ok);
+    int undone = 0;
+    runtime.RegisterHandler(FlowActionId::ToggleLayer, [&](const AppFlowRuntime::Params&) {
+        runtime.Stack().Dispatch(FlowActionId::ToggleLayer, [](bool) {});
+    });
+    runtime.RegisterHandler(FlowActionId::Undo, [&](const AppFlowRuntime::Params&) { ++undone; });
+    ASSERT_EQ(runtime.DispatchBySelector("layer-1-toggle"), DispatchResult::Ok);
+    ASSERT_EQ(runtime.Stack().UndoDepth(), 1u);
+    runtime.SetGuardResult(FlowGuardId::DocumentValid, true);
+    ASSERT_EQ(runtime.DispatchByKey({KeyId::Z, KeyMod::Ctrl}), DispatchResult::Ok) << "Ctrl+Z is the shipped Undo default";
+    ASSERT_EQ(undone, 1);
+
+    auto blob = AppFlowBlobFile::Parse(ReplaceOnce(ReadGeneratedBlob(), "keydefault UndoKey 1 26 1 0 0", "keydefault UndoKey 1 21 1 0 0"));
+    ASSERT_TRUE(blob.has_value());
+    ASSERT_EQ(runtime.NavTo(FlowEdgeId::ToSettings, {FlowTriggerKind::System, "test"}), DispatchResult::Ok);
+    ASSERT_EQ(runtime.Reload(&blob->View()), LoadResult::Ok);
+    blob.reset();
+
+    EXPECT_EQ(runtime.Current(), FlowStateId::Settings) << "reload keeps the running flow state";
+    EXPECT_EQ(runtime.Stack().UndoDepth(), 1u) << "reload keeps the undo history";
+    ASSERT_EQ(runtime.NavTo(FlowEdgeId::SettingsEditingEdge, {FlowTriggerKind::System, "test"}), DispatchResult::Ok);
+    EXPECT_EQ(runtime.DispatchByKey({KeyId::Z, KeyMod::Ctrl}), DispatchResult::RejectedByState) << "the old chord is no longer bound";
+    EXPECT_EQ(runtime.DispatchByKey({KeyId::U, KeyMod::Ctrl}), DispatchResult::Ok) << "the new chord is";
+    EXPECT_EQ(undone, 2) << "the registered handler survived the reload";
+
+    const AppFlowContainerView invalid(std::span<const AppFlowActionDecl>{}, std::span<const AppFlowTransition>{});
+    EXPECT_EQ(runtime.Reload(&invalid), LoadResult::EmptyArtifact) << "an invalid candidate changes nothing";
+    EXPECT_EQ(runtime.DispatchByKey({KeyId::U, KeyMod::Ctrl}), DispatchResult::Ok);
+}
+
 TEST(AppFlowBlob, ShapeHashMismatchRejectsAndRuntimeFallsBack) {
     std::string shapeEdit = ReadGeneratedBlob();
     const std::size_t shapeStart = shapeEdit.find("shape 0x");
@@ -190,4 +224,61 @@ TEST(AppFlowBlob, ShapeHashMismatchRejectsAndRuntimeFallsBack) {
     AppFlowRuntime runtime(nullptr, 1);
     EXPECT_EQ(runtime.Load(blob ? &blob->View() : nullptr), LoadResult::Ok);
     EXPECT_EQ(runtime.Current(), FlowStateId::Editing);
+}
+
+// R874.3: a declared action with no handler is visible but inert. It is listed `implemented: false`, dispatching it returns
+// the distinct NoHandler result (not RejectedByState) with one located diagnostic, and a reload never fails for it.
+TEST(AppFlowBlob, DeclaredActionWithNoHandlerIsNoHandlerNotRejectedAndLocated) {
+    AppFlowRuntime runtime(nullptr, 1);
+    ASSERT_EQ(runtime.Load(), LoadResult::Ok);
+    runtime.SetDeclarationSource("AppFlow.appflow");
+    runtime.SetActionNamer([](FlowActionId id) { return id == FlowActionId::Save ? std::string("Save") : std::string("Other"); });
+    std::vector<std::string> diagnostics;
+    runtime.SetDiagnosticHandler([&](const std::string& message) { diagnostics.push_back(message); });
+    std::vector<FlowActionId> unimplementedSeen;
+    runtime.SetUnimplementedHandler([&](FlowActionId id, const std::string&) { unimplementedSeen.push_back(id); });
+
+    const size_t declared = runtime.CatalogActions().size();
+    ASSERT_GT(declared, 3u);
+    EXPECT_EQ(runtime.UnimplementedActions().size(), declared) << "no handler registered yet";
+    runtime.RegisterHandler(FlowActionId::ToggleLayer, [](const AppFlowRuntime::Params&) {});
+    EXPECT_TRUE(runtime.IsImplemented(FlowActionId::ToggleLayer));
+    EXPECT_FALSE(runtime.IsImplemented(FlowActionId::Save));
+    EXPECT_EQ(runtime.UnimplementedActions().size(), declared - 1);
+
+    EXPECT_EQ(runtime.DispatchById(FlowActionId::Save), DispatchResult::NoHandler);
+    ASSERT_EQ(diagnostics.size(), 1u) << "one diagnostic per dispatch";
+    EXPECT_NE(diagnostics[0].find("AppFlow.appflow: action 'Save'"), std::string::npos) << diagnostics[0];
+    EXPECT_NE(diagnostics[0].find("no handler is registered"), std::string::npos);
+    ASSERT_EQ(unimplementedSeen.size(), 1u);
+    EXPECT_EQ(unimplementedSeen[0], FlowActionId::Save);
+
+    // An id outside the loaded declarations stays RejectedByState (undeclared is not unimplemented).
+    const AppFlowContainerView one(std::span<const AppFlowActionDecl>(kActionDecls, 1), std::span<const AppFlowTransition>(kTransitions));
+    ASSERT_EQ(runtime.Reload(&one), LoadResult::Ok) << "a reload never fails because an action has no handler";
+    ASSERT_EQ(runtime.CatalogActions().size(), 1u) << "the catalogue follows the loaded data";
+    diagnostics.clear();
+    EXPECT_EQ(runtime.DispatchById(FlowActionId::Save), DispatchResult::RejectedByState);
+    EXPECT_TRUE(diagnostics.empty());
+
+    diagnostics.clear();
+    EXPECT_EQ(runtime.ReportUnimplemented(), 0u) << "the one declared action (ToggleLayer) has its handler";
+    runtime.Reload(nullptr);
+    EXPECT_EQ(runtime.ReportUnimplemented(), declared - 1) << "back to the full table: every unhandled declaration reported once";
+    EXPECT_EQ(diagnostics.size(), declared - 1);
+}
+
+TEST(AppFlowBlob, CatalogueIsTheLoadedDataNotTheCompiledTables) {
+    // A hand-edited action row (here: one extra parameterless action the compiled table does not know is NOT possible
+    // without a new id), so edit a transition id in the data: the catalogue must report the loaded name.
+    auto blob = AppFlowBlobFile::Parse(ReadGeneratedBlob());
+    ASSERT_TRUE(blob.has_value());
+    AppFlowRuntime runtime(nullptr, 1);
+    ASSERT_EQ(runtime.Load(&blob->View()), LoadResult::Ok);
+    blob.reset();   // the catalogue must own its strings
+    ASSERT_FALSE(runtime.CatalogTransitions().empty());
+    EXPECT_FALSE(runtime.CatalogTransitions().front().id.empty());
+    bool sawParams = false;
+    for (const auto& action : runtime.CatalogActions()) sawParams = sawParams || !action.params.empty();
+    EXPECT_TRUE(sawParams);
 }

@@ -25,6 +25,12 @@ public:
 
     ViewStore& Store() { return *store_; }
     bool Registered() const { return registered_; }
+    // R874.3: one "<model>.<field>" per declared field no producer has fed; the field is inert (type default).
+    std::vector<std::string> UnfedFields() const {
+        std::vector<std::string> names = store_ ? store_->UnfedFields() : std::vector<std::string>{};
+        for (auto& n : names) n = modelName_ + "." + n;
+        return names;
+    }
 
     // Forces the ViewStore's consumer version, overriding the constructor default (blob.version).
     // Used to simulate a stale consumer for the version-mismatch path. ViewStore has no assignment

@@ -20,9 +20,60 @@ namespace Vixen.ViewSchemas
         public string moveUpId;
         public string moveDownId;
         public string deleteId;
-        public string programUpId;
-        public string programDownId;
-        public float programFieldValue;
+        // E3: blend radius with its stepper ids, and the row's selection click target.
+        public float blendRadius;
+        public string blendUpId;
+        public string blendDownId;
+        public string selectId;
+        public bool isSelected;
+        // sn-rmlinput1: the typed blend-radius field's id, "layer-<i>-blend-{radius}" (the value slot is filled on commit).
+        public string blendValueId;
+    }
+
+    // E3: one placement field (position/rotation/scale axis) of the selected layer, with its stepper ids.
+    public struct EditorTransformRow {
+        public string label;
+        public float value;
+        public string upId;
+        public string downId;
+        // sn-rmlinput1: the typed field's id, "layer-<i>-placement-<key>-{<key>}".
+        public string valueId;
+    }
+
+    // R872.1: one catalogue primitive of the picker ("primitive-<name>-add" is its AppFlow selector).
+    // Rows come from the generated recipe-op catalogue (category Primitive), never from a hand list.
+    public struct EditorPrimitiveRow {
+        public string name;
+        // Presentation of the opcode name (split at camel-case boundaries); ids keep the exact name.
+        public string display;
+        public string category;
+        public string elementId;
+    }
+
+    // R872.1: one combine-op choice of the selected layer ("layer-<i>-op-<name>"), from the generated layer-op table.
+    public struct EditorLayerOpRow {
+        public string name;
+        public string elementId;
+        public bool isCurrent;
+    }
+
+    // R872.1: one component of the selected layer's primitive argument, with its declared range and
+    // the ids of its nudge buttons ("layer-<i>-nudge-<argument>.<component>-<up|down>").
+    public struct EditorShapeFieldRow {
+        public string label;
+        public float value;
+        public bool hasRange;
+        public float minimum;
+        public float maximum;
+        public string upId;
+        public string downId;
+        // sn-rmlinput1: the typed field's id, "layer-<i>-field-<argument>-<component>-{<component>}".
+        public string valueId;
+        // sn-editorpicker1: the catalogue default of this component and its reset button, which is the
+        // SetLayerPrimitiveField selector with the default filled in ("layer-<i>-field-<argument>-<component>-<default>").
+        public float defaultValue;
+        public bool isDefault;
+        public string resetId;
     }
 
     public struct EditorParameterRow {
@@ -33,6 +84,8 @@ namespace Vixen.ViewSchemas
         public float value;
         public float minimum;
         public float maximum;
+        // sn-rmlinput1: the typed field's id, "parameter-<i>-set-{value}".
+        public string setId;
     }
 
     // R765: one render-recipe document of the open pack, listed by content id. elementId is the row's
@@ -57,6 +110,22 @@ namespace Vixen.ViewSchemas
     public struct EditorLayers {
         [ViewSection(Layout = ViewLayout.Aos)] public EditorLayerRow[] layers;
         [ViewSection(Layout = ViewLayout.Aos)] public EditorParameterRow[] parameters;
+        // E3: the selected layer's placement (nine fields) and which layer that is.
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorTransformRow[] transform;
+        public string selectedLayerName;
+        public int selectedLayer;
+        // R872.1 (catalogue consumer): the primitive picker, the selected layer's combine-op choices
+        // and its typed primitive fields. selectedShape is the primitive's name, or empty with
+        // shapeNote saying why the fields are not editable.
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorPrimitiveRow[] primitives;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorLayerOpRow[] opChoices;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorShapeFieldRow[] shape;
+        public string selectedShape;
+        public string shapeNote;
+        // sn-editorpicker1: the Add flyout's filter text. View state, not a document value: the picker's
+        // text field writes it as the user types (the data binding is two-way) and the editor republishes
+        // `primitives` filtered and ranked by it.
+        public string pickerFilter;
 
         // Inc-Ovr (design §5b Override proof): the framework generates NO read/write/reconcile
         // logic for this field -- only a forward-declared hook,

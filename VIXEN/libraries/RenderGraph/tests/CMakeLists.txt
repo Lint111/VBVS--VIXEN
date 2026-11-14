@@ -721,6 +721,33 @@ if(TARGET GTest::gtest_main)
     vixen_stage_assets(test_panel_dock_documents ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
     set_target_properties(test_panel_dock_documents PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_panel_dock_documents)
+    # R765: the editor's raw-input -> camera-action translation (pure; synthetic InputState, no window or device).
+    add_executable(test_editor_camera_input test_editor_camera_input.cpp)
+    target_link_libraries(test_editor_camera_input PRIVATE GTest::gtest_main RenderGraph AppFlow)
+    target_include_directories(test_editor_camera_input PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+    set_target_properties(test_editor_camera_input PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_editor_camera_input)
+    # sn-rmlinput1: keyboard / text / pointer forwarding into the Rml context, headless (the focus rule, pointer
+    # ownership, the committed selector, and a refused value snapping back on the real inspector document).
+    add_executable(test_ui_input_forwarder test_ui_input_forwarder.cpp)
+    target_link_libraries(test_ui_input_forwarder PRIVATE GTest::gtest_main RenderGraph AppFlow)
+    target_include_directories(test_ui_input_forwarder PRIVATE ${CMAKE_SOURCE_DIR}/application/editor/include)
+    vixen_stage_assets(test_ui_input_forwarder ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
+    set_target_properties(test_ui_input_forwarder PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_ui_input_forwarder)
+    # sn-editorlive1: live reload of UI documents and stylesheets, headless (state restore, located errors,
+    # steady-state poll allocates nothing). Edits real files in a temp dir.
+    add_executable(test_ui_document_reloader test_ui_document_reloader.cpp)
+    target_link_libraries(test_ui_document_reloader PRIVATE GTest::gtest_main RenderGraph)
+    vixen_stage_assets(test_ui_document_reloader ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
+    set_target_properties(test_ui_document_reloader PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_ui_document_reloader)
+    # R874: the UI kit (number rule, override contract, real fragments instanced headless).
+    add_executable(test_ui_kit test_ui_kit.cpp)
+    target_link_libraries(test_ui_kit PRIVATE GTest::gtest_main RenderGraph)
+    vixen_stage_assets(test_ui_kit ${CMAKE_CURRENT_SOURCE_DIR}/../assets DEST assets)
+    set_target_properties(test_ui_kit PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_ui_kit)
     message(STATUS "✓ test_panel_dock + test_panel_dock_documents configured (R766 panel dock)")
 endif()
 

@@ -214,6 +214,13 @@ def main():
 
 def run(args, output):
     if not args.analyse_only:
+        # The tick-locked VIXEN_EDITOR_SCRIPT timeline this tool measured was retired with R468.4. Running
+        # it would start an unscripted editor and report latencies for edits that never happened.
+        raise SystemExit(
+            "measure-editor-latency.py: capturing is retired with the VIXEN_EDITOR_SCRIPT path (R468.4). "
+            "It needs a rewrite on the AppFlow channel (dispatch with an attached readback, frame deltas "
+            "from the reflected frame). Fix: use --analyse-only on existing captures, or see "
+            "reports/sn-editorchannel1.md STOP 3.")
         catalogue = json.loads(subprocess.check_output(
             ["ctest", "--test-dir", str(args.build_dir.resolve()), "--show-only=json-v1"], text=True))
         fixture = next(test for test in catalogue["tests"] if test["name"] == "vixen_editor_capture_producer")
@@ -233,7 +240,7 @@ def run(args, output):
             environment.update(item.split("=", 1) for item in properties["ENVIRONMENT"])
             environment.pop("DISPLAY", None)
             environment.pop("WAYLAND_DISPLAY", None)
-            environment.update(VIXEN_EDITOR_SCRIPT=CASES[name], VIXEN_EDITOR_LATENCY_TRACE="1",
+            environment.update(VIXEN_EDITOR_LATENCY_TRACE="1",
                 VIXEN_EDITOR_CAPTURE_DIR=str(directory), VIXEN_EXIT_AFTER_FRAMES="132",
                 VIXEN_CACHE_DIR=str(REPO / ".tmp/editor-latency-cache" / output.name / name),
                 VIXEN_EDITOR_CAPTURE_FRAMES=",".join(str(frame) for tick in (30, 60, 90, 120)

@@ -4,6 +4,7 @@
 #include "Generated/EditorLayers.g.h"   // Vixen::Views::{EditorLayerRow,EditorLayersBind,BindEditorLayersModel}
 #include <RmlUi/Core/DataModelHandle.h>
 #include <bit>
+#include <charconv>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -50,7 +51,9 @@ public:
     const char* DocumentPath() const override { return "assets/ui/editor_layers.rml"; }
     void Register(Rml::DataModelConstructor& c) override {
         Vixen::Views::BindEditorLayersModel(c,
-            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &activeLayerCountRaw_, &recipes_,
+            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
+                                            &selectedLayer_, &primitives_, &opChoices_, &shape_,
+                                            &selectedShape_, &shapeNote_, &pickerFilter_, &activeLayerCountRaw_, &recipes_,
                                             &statusDocument_, &statusMessage_, &flowState_,
                                             &undoDepth_, &redoDepth_ });
         model_ = c.GetModelHandle();
@@ -69,7 +72,9 @@ public:
     // there; a later re-population, e.g. after the optional same-frame echo, needs it).
     void PopulateFromDocument(uint32_t mask,
                               const std::vector<EditorLayerData>& layerData,
-                              const std::vector<EditorParameterData>& parameterData) {
+                              const std::vector<EditorParameterData>& parameterData,
+                              const EditorPlacementData& placement = {},
+                              const EditorShapeData& shape = {}) {
         layers_.clear();
         layers_.reserve(layerData.size());
         for (uint32_t i = 0; i < layerData.size(); ++i) {
@@ -81,9 +86,12 @@ public:
             row.moveUpId = "layer-" + std::to_string(i) + "-up";
             row.moveDownId = "layer-" + std::to_string(i) + "-down";
             row.deleteId = "layer-" + std::to_string(i) + "-delete";
-            row.programUpId = "layer-" + std::to_string(i) + "-program-up";
-            row.programDownId = "layer-" + std::to_string(i) + "-program-down";
-            row.programFieldValue = layerData[i].programFieldValue;
+            row.blendRadius = layerData[i].blendRadius;
+            row.blendUpId = "layer-" + std::to_string(i) + "-nudge-blend-up";
+            row.blendDownId = "layer-" + std::to_string(i) + "-nudge-blend-down";
+            row.selectId = "layer-" + std::to_string(i) + "-select";
+            row.blendValueId = "layer-" + std::to_string(i) + "-blend-{radius}";
+            row.isSelected = static_cast<int>(i) == placement.selectedLayer;
             layers_.push_back(std::move(row));
         }
         parameters_.clear();
@@ -94,11 +102,72 @@ public:
             row.unit = Rml::String(parameterData[i].unit);
             row.upId = "parameter-" + std::to_string(i) + "-up";
             row.downId = "parameter-" + std::to_string(i) + "-down";
+            row.setId = "parameter-" + std::to_string(i) + "-set-{value}";
             row.value = parameterData[i].value;
             row.minimum = parameterData[i].minimum;
             row.maximum = parameterData[i].maximum;
             parameters_.push_back(std::move(row));
         }
+        // E3: the selected layer's placement. Field keys are the SetLayerTransform param names, so a
+        // nudge id reads "layer-<selected>-nudge-<key>-<up|down>".
+        static constexpr const char* kPlacementLabels[9] = {
+            "position x", "position y", "position z", "rotation x", "rotation y", "rotation z",
+            "scale x", "scale y", "scale z"};
+        static constexpr const char* kPlacementKeys[9] = {
+            "px", "py", "pz", "rx", "ry", "rz", "sx", "sy", "sz"};
+        selectedLayer_ = placement.selectedLayer;
+        selectedLayerName_ = Rml::String(placement.selectedName);
+        transform_.clear();
+        if (!layerData.empty()) {
+            transform_.reserve(9);
+            for (size_t f = 0; f < 9; ++f) {
+                Vixen::Views::EditorTransformRow row;
+                const std::string stem = "layer-" + std::to_string(placement.selectedLayer) +
+                                         "-nudge-" + kPlacementKeys[f];
+                row.label = kPlacementLabels[f];
+                row.value = placement.values[f];
+                row.upId = stem + "-up";
+                row.downId = stem + "-down";
+                row.valueId = "layer-" + std::to_string(placement.selectedLayer) + "-placement-" +
+                              kPlacementKeys[f] + "-{" + kPlacementKeys[f] + "}";
+                transform_.push_back(std::move(row));
+            }
+        }
+        // R872.1: the selected layer's combine-op choices and typed primitive fields.
+        opChoices_.clear();
+        shape_.clear();
+        if (!layerData.empty()) {
+            const std::string layerStem = "layer-" + std::to_string(placement.selectedLayer);
+            for (const auto& choice : shape.opChoices) {
+                Vixen::Views::EditorLayerOpRow row;
+                row.name = Rml::String(choice.name);
+                row.elementId = layerStem + "-op-" + choice.name;
+                row.isCurrent = choice.isCurrent;
+                opChoices_.push_back(std::move(row));
+            }
+            for (const auto& field : shape.fields) {
+                Vixen::Views::EditorShapeFieldRow row;
+                row.label = Rml::String(field.label);
+                row.value = field.value;
+                row.hasRange = field.hasRange;
+                row.minimum = field.minimum;
+                row.maximum = field.maximum;
+                row.upId = layerStem + "-nudge-" + field.key + "-up";
+                row.downId = layerStem + "-nudge-" + field.key + "-down";
+                // "<argument>.<component>" -> "layer-<i>-field-<argument>-<component>-{<component>}".
+                const size_t dot = field.key.find('.');
+                const std::string argument = dot == std::string::npos ? field.key : field.key.substr(0, dot);
+                const std::string component = dot == std::string::npos ? std::string("x") : field.key.substr(dot + 1);
+                row.valueId = layerStem + "-field-" + argument + "-" + component + "-{" + component + "}";
+                row.defaultValue = field.defaultValue;
+                row.isDefault = field.isDefault;
+                // The reset button is the typed-value selector with the default filled in (one SetLayerPrimitiveField).
+                row.resetId = layerStem + "-field-" + argument + "-" + component + "-" + FloatText(field.defaultValue);
+                shape_.push_back(std::move(row));
+            }
+        }
+        selectedShape_ = Rml::String(shape.primitive);
+        shapeNote_ = Rml::String(shape.note);
         // activeLayerCount (Inc-Ovr Override proof): storage holds the raw mask reinterpreted as
         // int; BindEditorLayersModel_activeLayerCountOverride (this file, above) popcounts it at
         // bind time. Only needs a dirty when the mask itself changes, same as "layers".
@@ -106,8 +175,30 @@ public:
         if (model_) {
             model_.DirtyVariable("layers");
             model_.DirtyVariable("parameters");
+            model_.DirtyVariable("transform");
+            model_.DirtyVariable("selectedLayerName");
+            model_.DirtyVariable("selectedLayer");
+            model_.DirtyVariable("opChoices");
+            model_.DirtyVariable("shape");
+            model_.DirtyVariable("selectedShape");
+            model_.DirtyVariable("shapeNote");
             model_.DirtyVariable("activeLayerCount");
         }
+    }
+
+    // R872.1: the primitive picker; each row carries its CreatePrimitiveLayer selector.
+    void PopulatePrimitives(const std::vector<EditorPrimitiveData>& primitiveData) {
+        primitives_.clear();
+        primitives_.reserve(primitiveData.size());
+        for (const auto& primitive : primitiveData) {
+            Vixen::Views::EditorPrimitiveRow row;
+            row.name = Rml::String(primitive.name);
+            row.display = Rml::String(primitive.display);
+            row.category = Rml::String(primitive.category);
+            row.elementId = "primitive-" + primitive.name + "-add";
+            primitives_.push_back(std::move(row));
+        }
+        if (model_) model_.DirtyVariable("primitives");
     }
 
     // R765: the open pack's render-recipe documents; each row carries its OpenRecipe selector.
@@ -140,18 +231,51 @@ public:
         }
     }
 
+    // sn-editorpicker1: the Add flyout's filter text. The picker's text field writes `pickerFilter_` through the
+    // data binding as the user types; the editor reads it each frame and republishes the primitive rows.
+    std::string PickerFilter() const { return std::string(pickerFilter_); }
+    void ClearPickerFilter() {
+        if (pickerFilter_.empty()) return;
+        pickerFilter_.clear();
+        if (model_) model_.DirtyVariable("pickerFilter");
+    }
+    // Test hook: what the document's text field does on a keystroke.
+    void DebugSetPickerFilter(const std::string& text) { pickerFilter_ = Rml::String(text); }
+
     // Debug accessor for tests.
     size_t DebugLayerCount() const { return layers_.size(); }
     const Vixen::Views::EditorLayerRow& DebugLayer(size_t i) const { return layers_.at(i); }
     size_t DebugParameterCount() const { return parameters_.size(); }
+    size_t DebugPrimitiveCount() const { return primitives_.size(); }
+    const Vixen::Views::EditorPrimitiveRow& DebugPrimitive(size_t i) const { return primitives_.at(i); }
+    size_t DebugOpChoiceCount() const { return opChoices_.size(); }
+    const Vixen::Views::EditorLayerOpRow& DebugOpChoice(size_t i) const { return opChoices_.at(i); }
+    size_t DebugShapeFieldCount() const { return shape_.size(); }
+    const Vixen::Views::EditorShapeFieldRow& DebugShapeField(size_t i) const { return shape_.at(i); }
     int DebugActiveLayerCount() const {
         return Vixen::Views::BindEditorLayersModel_activeLayerCountOverride(
             const_cast<int*>(&activeLayerCountRaw_));
     }
 
 private:
+    // Shortest text that parses back to the same float (the reset selector's value slot).
+    static std::string FloatText(float value) {
+        char buffer[32];
+        const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+        return std::string(buffer, result.ptr);
+    }
+
     std::vector<Vixen::Views::EditorLayerRow> layers_;
     std::vector<Vixen::Views::EditorParameterRow> parameters_;
+    std::vector<Vixen::Views::EditorTransformRow> transform_;
+    Rml::String selectedLayerName_;
+    int selectedLayer_ = 0;
+    std::vector<Vixen::Views::EditorPrimitiveRow> primitives_;
+    std::vector<Vixen::Views::EditorLayerOpRow> opChoices_;
+    std::vector<Vixen::Views::EditorShapeFieldRow> shape_;
+    Rml::String selectedShape_;
+    Rml::String shapeNote_;
+    Rml::String pickerFilter_;
     int activeLayerCountRaw_ = 0;
     std::vector<Vixen::Views::EditorRecipeRow> recipes_;
     Rml::String statusDocument_;

@@ -172,6 +172,23 @@ public:
     bool GetOrbitActiveForTest() const { return orbitActive_; }
     glm::vec3 GetOrbitCenterForTest() const { return orbitCenter; }
 
+    // ---- Host-driven orbit control (AppFlow camera actions) ----
+    // The same state InputState-driven control mutates (yaw/pitch/orbitCenter/orbitDistance), exposed so a
+    // host can route camera control through its own action layer (PARAM_INPUT_DRIVEN=false). Each engages
+    // orbit mode first, like every other orbit interaction.
+    /// Radians; pitch is clamped to +-89 degrees.
+    void OrbitBy(float dYawRadians, float dPitchRadians);
+    /// World-unit move of the orbit centre along X (dx) and Y (dy), as the A/D and Q/E axes do.
+    void PanBy(float dx, float dy);
+    /// World-unit zoom toward the orbit centre (positive = closer); clamped to the orbit distance bounds.
+    void ZoomBy(float delta);
+    /// Re-anchor the orbit (framing); yaw/pitch are kept. Cuts temporal history like a pose-param write.
+    void SetOrbit(const glm::vec3& center, float distance);
+    /// Set the orbit yaw (radians) keeping pitch/centre/distance. Cuts temporal history.
+    void SetOrbitYaw(float yawRadians);
+    float GetMouseSensitivity() const { return mouseSensitivity; }
+    float GetMoveSpeed() const { return moveSpeed; }
+
 protected:
     void TypedSetupImpl(TypedSetupContext& ctx) override;
     void TypedCompileImpl(TypedCompileContext& ctx) override;
@@ -285,6 +302,7 @@ private:
     // Camera control parameters
     float moveSpeed = 20.0f;       // Horizontal movement: units per second (scaled for 10^3 world)
     float verticalSpeed = 20.0f;   // Vertical movement (QE): units per second
+    bool inputDriven_ = true;       // PARAM_INPUT_DRIVEN: false = ignore InputState (host drives the pose)
     float mouseSensitivity = 0.0015f;  // Radians per pixel (reduced from 0.004 for less sensitivity)
     float mouseSmoothingFactor = 0.6f;  // 0=no smoothing, 1=instant (0.6 = responsive)
     float maxRotationDeltaPerFrame = 100.0f;  // Max pixels per frame to prevent jumps

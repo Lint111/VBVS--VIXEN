@@ -49,6 +49,11 @@ struct PanelDecl {
     bool header = true;       // false: a stack holding only this panel draws no tab strip (status line)
     PanelMount mount = PanelMount::Fragment;
     PanelRect floatRect{80.0f, 80.0f, 360.0f, 420.0f};
+    // A transient panel (a flyout) starts closed on every run, is never written to the persisted layout and
+    // never restored from it; opening, moving and closing it do not touch the saved layout.
+    bool transient = false;
+    // Escape closes this panel (through ClosePanel) when no text field owns the key first.
+    bool dismissible = false;
 };
 
 // One persisted panel row.
@@ -131,6 +136,18 @@ public:
     DockResult Split(std::string_view panelId, DockRegion region);  // dock into a new stack of the region
     DockResult Float(std::string_view panelId, PanelRect rect);
     DockResult Resize(DockRegion region, float size);
+    // Opens a floating panel beside `anchor` (an element's rect, window pixels): see PlaceBeside. A panel that is
+    // not floating opens where it is. `anchor` with no area (an element that could not be found) opens the panel
+    // at its declared/last rect, like Open.
+    DockResult OpenAnchored(std::string_view panelId, const PanelRect& anchor, float windowWidth, float windowHeight);
+    // Where a (width x height) panel goes next to `anchor`: right of it, else below, else left, else above (the first
+    // candidate that does not cover the viewport centre once clamped inside the window); the first candidate when
+    // every one covers it. Pure.
+    static PanelRect PlaceBeside(const PanelRect& anchor, float width, float height, float windowWidth,
+                                 float windowHeight, float avoidX, float avoidY);
+    // The visible dismissible panel Escape closes: the topmost floating one, else the last declared. Empty when none.
+    std::string TopDismissible() const;
+    bool HasOpenDismissible() const { return !TopDismissible().empty(); }
 
     // Settings rows (persisted layout). Apply keeps declared defaults for panels the rows don't name.
     DockLayoutRows Rows() const;
@@ -144,6 +161,9 @@ public:
 
     // Bumped by every successful verb / reset / apply, so a host re-places only on change.
     uint64_t Revision() const { return revision_; }
+    // Bumped only by changes the persisted layout contains: a verb on a transient panel does not bump it, so a host
+    // saves the layout when this moved and not otherwise.
+    uint64_t PersistedRevision() const { return persistedRevision_; }
 
 private:
     PanelRow* RowOf(std::string_view panelId);
@@ -160,6 +180,56 @@ private:
     std::vector<RegionRow> regions_;  // Left, Right, Bottom
     uint32_t focusCounter_ = 0;
     uint64_t revision_ = 0;
+    uint64_t persistedRevision_ = 0;
+    void Touch(std::string_view panelId);   // revision always; persistedRevision unless the panel is transient
+};
+
+// One layout change a pointer drag asks for. A drag emits the same verbs a script does (FloatPanel for a moved
+// floating panel, ResizeRegion for a dragged splitter), so the dock stays driven by one set of actions.
+struct DockGesture {
+    enum class Kind : uint8_t { None = 0, MovePanel, ResizeRegion };
+    Kind kind = Kind::None;
+    std::string panel;                    // MovePanel: the floating panel
+    PanelRect rect;                       // MovePanel: its new rect
+    DockRegion region = DockRegion::Left; // ResizeRegion: the region
+    float size = 0.0f;                    // ResizeRegion: its new extent
+    explicit operator bool() const { return kind != Kind::None; }
+};
+
+struct DockDragStep {
+    // The left button went down on a drag handle and has not been released: the pointer belongs to the dock, so a
+    // host must not also treat it as a camera drag or a world click.
+    bool captured = false;
+    DockGesture preview;  // the gesture so far (set on every step of a drag past the threshold)
+    DockGesture commit;   // set once, on the release that ends a drag past the threshold
+};
+
+// Pointer gestures on the dock chrome: drag a floating panel by its header strip, drag an edge region's splitter.
+// Pure geometry over the computed frame and one pointer sample per call, so it is testable headless; the host feeds
+// it the window pointer, applies `preview` to the dock for live feedback (no save), and emits `commit` as the
+// verb (one layout save on release). A press that does not move past kDragThreshold changes nothing and emits
+// nothing, so a click on a tab button still reaches the chrome as a click.
+class PanelDockDrag {
+public:
+    static constexpr float kDragThreshold = 4.0f;
+    static constexpr float kSplitterNear = 1.0f;   // band reaching into the region
+    static constexpr float kSplitterFar = 5.0f;    // band reaching into the viewport
+
+    DockDragStep Step(const PanelDock& dock, const DockFrame& frame, float windowWidth, float windowHeight,
+                      float pointerX, float pointerY, bool leftDown);
+    [[nodiscard]] bool Active() const { return mode_ != Mode::Idle; }
+
+private:
+    enum class Mode : uint8_t { Idle, Pending, Dragging };
+    DockGesture Gesture(float windowWidth, float windowHeight, float pointerX, float pointerY) const;
+
+    Mode mode_ = Mode::Idle;
+    bool wasDown_ = false;
+    DockGesture::Kind kind_ = DockGesture::Kind::None;
+    std::string panel_;
+    PanelRect startRect_;
+    DockRegion region_ = DockRegion::Left;
+    float startX_ = 0.0f, startY_ = 0.0f;
 };
 
 }  // namespace Vixen::RenderGraph

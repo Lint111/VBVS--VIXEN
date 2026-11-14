@@ -98,6 +98,43 @@ class AppFlowClient:
             params["frame"] = frame
         return self.call("appflow.readback", params)
 
+    def input(self, **event: Any) -> dict[str, Any]:
+        """Queue scripted input on the app's real input path (the one GLFW callbacks use).
+
+        input(kind="text", text="1.5"); input(kind="key", key="Enter", action="tap", mods=["Ctrl"]);
+        input(kind="pointer", x=120, y=80, action="click", button="left"). Takes effect on the next frame.
+        """
+        return self.call("appflow.input", event)
+
+    def ui_reload(self, panel: str | None = None, *, readback: dict[str, Any] | None = None,
+                  request_id: Any = None) -> dict[str, Any]:
+        """Force the live reload of the UI documents now (R468); `panel` is a declared dock panel id, none = all.
+
+        Returns {ok, files: [{file, ok, error?: {line, column, message}}], frame}. The request id then works as an
+        `actionId` for await_frame / readback: the first presented frame that contains the reloaded document.
+        With `readback` (a {"selection": ...} spec) the reply also carries that frame's pixels, like dispatch.
+        """
+        params: dict[str, Any] = {} if panel is None else {"panel": panel}
+        if readback is not None:
+            params["readback"] = readback
+        return self.call("ui.reload", params, request_id=request_id)
+
+    def appflow_reload(self) -> dict[str, Any]:
+        """Force the AppFlow artifact (.appflow data) reload the mtime poll would do; same result shape as ui_reload."""
+        return self.call("appflow.reload")
+
+    def quit(self) -> dict[str, Any]:
+        return self.call("appflow.quit")
+
+    def navigate(self, edge: str) -> dict[str, Any]:
+        return self.call("appflow.navigate", {"edge": edge})
+
+    def begin_group(self, label: str) -> dict[str, Any]:
+        return self.call("appflow.begin_group", {"label": label})
+
+    def end_group(self) -> dict[str, Any]:
+        return self.call("appflow.end_group")
+
     def pause(self) -> dict[str, Any]:
         return self.call("appflow.pause")
 
