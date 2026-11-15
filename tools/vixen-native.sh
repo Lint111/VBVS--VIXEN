@@ -5,7 +5,7 @@
 #
 # Usage: tools/vixen-native.sh [--lane NAME] [--branch NAME] [--direct] [--log FILE] COMMAND [ARGS]
 #   cmd                        print the discovered cmd.exe
-#   jobs                       print how the ninja job count is derived (node width capped by memory, R847.4) and the count
+#   jobs                       print the queue grant or direct node width used for the native build and the count
 #   checkout                   create $VIXEN_NATIVE_ROOT/<lane> as a clone of this worktree if missing
 #   sync                       checkout, then fast-forward it to this worktree's branch tip and verify it
 #   provision                  run build.bat provision when the pinned Ninja/CMake files are missing
@@ -203,73 +203,50 @@ infer_roots() {
     fi
 }
 
-# Peak memory of one cl.exe at the worst moment of a cold -j4 vixen_lookdev_capture build on ws: the
-# summed cl.exe working sets divided by the cl.exe count at the instant of the peak (3538 MB / 4 = 885;
-# the largest single process was 1203 MB). Measured by reports/sn-nativejobs1-evidence/sample-build.ps1;
-# VIXEN_BUILD_MB_PER_JOB overrides it.
-BUILD_MB_PER_JOB_DEFAULT=900
-
-# Windows logical cores and available memory (MB) as the build sees them; empty when unreadable.
+# Windows logical cores as the direct build sees them.
 # shellcheck source=node-width.sh
 windows_logical_cores() {
     local n=""
     if need_cmd_quiet; then n="$("$cmd_exe" /c "echo %NUMBER_OF_PROCESSORS%" 2>/dev/null | tr -dc '0-9' || true)"; fi
     echo "${n:-$(nproc)}"
 }
-windows_available_mb() {
-    [[ -z "${VIXEN_NATIVE_AVAILABLE_MB:-}" ]] || { echo "$VIXEN_NATIVE_AVAILABLE_MB"; return 0; }
-    local ps_exe
-    ps_exe="$(find_powershell)" || return 0
-    "$ps_exe" -NoProfile -Command "[int](Get-Counter '\\Memory\\Available MBytes').CounterSamples[0].CookedValue" 2>/dev/null | tr -dc '0-9' || true
-}
 need_cmd_quiet() { cmd_exe="$(find_cmd)" || return 1; }
 
-# Sets VIXEN_MAX_BUILD_JOBS (an explicit value wins) and logs how it was derived in one line (R847.4):
-# node width, capped by memory. jobs = max(1, min(Windows logical cores, (Windows available MB - other
-# native builds' width claims - headroom) / per_job_mb)). Linux-side queue reservations are NOT
-# subtracted (nw_other_claims_mb: the Windows counter already nets the WSL VM; measured 11-11, Available
-# 9553 MB with vmmemWSL at 70508 MB); another build's claim counts only for 120 s after it is written. A queue-admitted build keeps at least 4 jobs (nw_floor_jobs) unless
-# Windows available MB < 4 * per_job. The queue grant sets admission only. It is
-# read at the start of every build step (each run_bat), so a step that starts later sees a freer node;
-# under the queue the chosen jobs * per_job is published as this holder's claim for the step's duration.
+# Sets VIXEN_MAX_BUILD_JOBS from the live queue grant, or from direct Windows node width. The queue's
+# C# admission owns Windows memory and the jobserver owns live top-ups; this shell does not subtract
+# another build's claim from a one-shot Windows memory snapshot.
 derived_build_jobs=""
 resolve_build_jobs() {
-    local cpus mem per jobs other holders manual where="direct"
-    per="${VIXEN_BUILD_MB_PER_JOB:-$BUILD_MB_PER_JOB_DEFAULT}"
-    [[ "$per" =~ ^[1-9][0-9]*$ ]] || die "VIXEN_BUILD_MB_PER_JOB='$per' is not a positive integer"
+    local cpus jobs grant manual
+    grant="$(nw_queue_grant_cpus 2>/dev/null || true)"
+    manual="$(nw_manual_grant_cpus 2>/dev/null || true)"
+    if [[ -z "$grant" && -n "${UT_QUEUE_HOLDER_PID:-}" ]]; then
+        die "queue grant unavailable: UT_QUEUE_GRANT_FILE has no grant-cpus field"
+    fi
     # A value this function exported for an earlier step of the same command (provision, then build) is
     # not an override: each step reads the node again.
-    if [[ -n "${VIXEN_MAX_BUILD_JOBS:-}" && "$VIXEN_MAX_BUILD_JOBS" != "$derived_build_jobs" ]]; then
+    if [[ -z "$grant" && -n "${VIXEN_MAX_BUILD_JOBS:-}" && "$VIXEN_MAX_BUILD_JOBS" != "$derived_build_jobs" ]]; then
         say "build jobs: $VIXEN_MAX_BUILD_JOBS (explicit VIXEN_MAX_BUILD_JOBS)"
         return 0
     fi
-    # A manual queue grant (--regrant) is the owner's choice of width: read from the grant file at the start of every step.
-    if manual="$(nw_manual_grant_cpus)"; then
+    if [[ -n "$manual" ]]; then
         export VIXEN_MAX_BUILD_JOBS="$manual"
         derived_build_jobs="$manual"
         say "build jobs: $manual (source=manual queue grant, re-read at this step; the node width rule is not applied)"
         return 0
     fi
-    [[ -z "${UT_QUEUE_HOLDER_PID:-}" ]] || where="queue"
+    if [[ -n "$grant" ]]; then
+        export VIXEN_MAX_BUILD_JOBS="$grant"
+        derived_build_jobs="$grant"
+        say "build jobs: $grant (source=queue grant-cpus=$grant, re-read at this step; Windows memory was admitted by the queue core)"
+        return 0
+    fi
     cpus="$(windows_logical_cores)"
     [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || die "cannot derive the build job count: CPUs '$cpus' is not a positive integer"
-    nw_claim_begin
-    mem="$(windows_available_mb)"
-    if [[ "$mem" =~ ^[0-9]+$ ]]; then
-        read -r other holders <<<"$(nw_other_claims_mb)"
-        local budget=$(( mem > other ? mem - other : 0 ))
-        jobs="$(nw_jobs "$cpus" "$budget" "$per")"
-        [[ "$where" == queue ]] && jobs="$(nw_floor_jobs "$jobs" "$cpus" "$budget" "$per")"
-        nw_claim_end $(( jobs * per )) "${UT_AGENT_ID:-vixen}:native-build"
-        mem="$mem other_claims_mb=$other other_holders=$holders"
-    else
-        jobs="$cpus"
-        nw_claim_end 0 "${UT_AGENT_ID:-vixen}:native-build"
-        mem="unknown"
-    fi
+    jobs="$cpus"
     export VIXEN_MAX_BUILD_JOBS="$jobs"
     derived_build_jobs="$jobs"
-    say "build jobs: $jobs (source=$where cores=$cpus windows_available_mb=$mem per_job_mb=$per)"
+    say "build jobs: $jobs (source=direct Windows logical cores=$cpus)"
 }
 
 # Base directory the build runs from: the native checkout, or this worktree with --direct.
@@ -325,12 +302,18 @@ run_bat() {
     for a in "$@"; do cmd_args+=("$(cmd_escape_arg "$a")"); done
     export VIXEN_NATIVE_ARGS="$(quote_arg_list "$@")"
     # Lane builds must not fetch into another lane's cache: default a checkout-local FetchContent cache
-    # here (T-2955); an explicit value still wins. The ninja job count is derived from the CPUs and
-    # memory this run was granted (resolve_build_jobs), not a fixed number.
+    # here (T-2955); an explicit value still wins for direct runs. Queued native width comes from
+    # the live grant (resolve_build_jobs), not a second shell-side Windows memory snapshot.
     resolve_build_jobs
+    if [[ -n "${UT_QUEUE_JOBSERVER_WINSEM:-}" ]]; then
+        export VIXEN_JOBSERVER_AUTH="$UT_QUEUE_JOBSERVER_WINSEM"
+        say "jobserver: ninja follows the queue grant through semaphore $VIXEN_JOBSERVER_AUTH (no -j)"
+    else
+        unset VIXEN_JOBSERVER_AUTH
+    fi
     export VIXEN_FETCHCONTENT_CACHE="${VIXEN_FETCHCONTENT_CACHE:-$(base_dir)/.tmp/fetch}"
     mkdir -p "$VIXEN_FETCHCONTENT_CACHE"
-    local forward="VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_LOOKDEV_RECIPE_PATH/p:VIXEN_LOOKDEV_PACK_ROOT/p:VIXEN_LOOKDEV_PACK_SCHEMA/p:VIXEN_LOOKDEV_CAPTURE_DIR/p:VIXEN_LOOKDEV_RECIPE_ID:VIXEN_LOOKDEV_RECIPE_PARAMS:VIXEN_LOOKDEV_RECIPE_SCALE:VIXEN_LOOKDEV_RECIPE_TEXT:VIXEN_LOOKDEV_EXPECT_UNKNOWN_RECIPE:VIXEN_LOOKDEV_CAPTURE_STATE:VIXEN_LOOKDEV_CAPTURE_ANGLE:VIXEN_LOOKDEV_CAPTURE_FRAMES:VIXEN_LOOKDEV_CAPTURE_BUDGET_MS:VIXEN_MAX_BUILD_JOBS:UT_QUEUE_CREDITS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p:UT_QUEUE_WINROOT_FILE/p"
+    local forward="VIXEN_JOBSERVER_AUTH:VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_LOOKDEV_RECIPE_PATH/p:VIXEN_LOOKDEV_PACK_ROOT/p:VIXEN_LOOKDEV_PACK_SCHEMA/p:VIXEN_LOOKDEV_CAPTURE_DIR/p:VIXEN_LOOKDEV_RECIPE_ID:VIXEN_LOOKDEV_RECIPE_PARAMS:VIXEN_LOOKDEV_RECIPE_SCALE:VIXEN_LOOKDEV_RECIPE_TEXT:VIXEN_LOOKDEV_EXPECT_UNKNOWN_RECIPE:VIXEN_LOOKDEV_CAPTURE_STATE:VIXEN_LOOKDEV_CAPTURE_ANGLE:VIXEN_LOOKDEV_CAPTURE_FRAMES:VIXEN_LOOKDEV_CAPTURE_BUDGET_MS:VIXEN_MAX_BUILD_JOBS:UT_QUEUE_CREDITS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p:UT_QUEUE_WINROOT_FILE/p"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     # The lock scripts write the Windows process-tree root here (Register-NativeRunRoot.ps1) so a
@@ -378,7 +361,6 @@ run_bat() {
     trap - TERM INT HUP
     kill "$heartbeat_pid" $registrar_pid 2>/dev/null || true
     wait "$heartbeat_pid" $registrar_pid 2>/dev/null || true
-    nw_claim_release
     rm -f "$pid_file"
     say "exit code $rc"
     return "$rc"
@@ -473,7 +455,7 @@ fi
 
 case "$command_name" in
     cmd) need_cmd; echo "$cmd_exe" ;;
-    jobs) resolve_build_jobs; nw_claim_release; echo "$VIXEN_MAX_BUILD_JOBS" ;;
+    jobs) resolve_build_jobs; echo "$VIXEN_MAX_BUILD_JOBS" ;;
     ps) do_ps "$@" ;;
     rasterize) do_rasterize "$@" ;;
     checkout) do_checkout ;;
