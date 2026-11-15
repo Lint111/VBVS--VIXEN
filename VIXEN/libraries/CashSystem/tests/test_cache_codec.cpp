@@ -181,7 +181,9 @@ TEST(CacheEnvelope, ConcurrentWritersOnlyPublishCompletePayloads) {
     const auto path = TempPath("concurrent_writers.cache");
     const std::vector<char> payloadA(64 * 1024, 'A');
     const std::vector<char> payloadB(64 * 1024, 'B');
-    ASSERT_TRUE(CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadA));
+    std::string initialError;
+    ASSERT_TRUE(CashSystem::WriteCacheEnvelopeBytesAtomically(
+        path, 0x1234, "test-cacher", payloadA, &initialError)) << initialError;
 
     std::atomic<bool> writing{true};
     std::atomic<bool> invalidRead{false};
