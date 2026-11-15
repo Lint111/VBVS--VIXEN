@@ -104,7 +104,7 @@ layout(std430, binding = 5) buffer statsBlock
 {
     TileBinStats values[];
 } stats;
-layout(r32f, set = 0, binding = 2) uniform readonly image2D tileFarDepth_previous;
+layout(r32f, set = 0, binding = 2) uniform readonly image2D viewDepth_previous;
 layout(push_constant, std430) uniform TileBinScatterSystemPushConstants
 {
     uint _ExtentX;
@@ -194,12 +194,14 @@ void TileBinScatterSystem_Body(in InstanceBound bounds, in TileBinView view, int
                 {
                     counters.values[tile].count = 0;
                     counters.values[tile].demand = 0;
+                    counters.values[tile].listCapacityLog2 = view.listCapacityLog2;
+                    atomicExchange(counters.values[tile].activeGeneration, generation);
                     atomicExchange(counters.values[tile].generation, generation);
                     break;
                 }
                 state = counters.values[tile].generation;
             }
-            if (IsBehindTileDepth(rect.nearDepth, imageLoad(tileFarDepth_previous, ivec2(int(tile) % imageSize(tileFarDepth_previous).x, int(tile) / imageSize(tileFarDepth_previous).x)).x))
+            if (IsBehindTileDepth(rect.nearDepth, imageLoad(viewDepth_previous, ivec2(int(tile) % imageSize(viewDepth_previous).x, int(tile) / imageSize(viewDepth_previous).x)).x))
             {
                 continue;
             }

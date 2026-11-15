@@ -71,11 +71,11 @@ public static class TileBinScatterSystem
     [GaiaQuery]
     public static QuerySpec Instances() => Gaia.Query()
         .All<InstanceBound>()
-        .All<FrameTargetsRef, R32f>(row => row.TileFarDepth);
+        .All<FrameTargetsRef, R32f>(row => row.ViewDepth);
 
     [Update]
     public static void Run(in InstanceBound[] bounds, in TileBinView[] view,
-        in Texture2D<R32f> tileFarDepth, ref TileBinCounter[] counters,
+        in Texture2D<R32f> viewDepth, ref TileBinCounter[] counters,
         ref TileCandidate[] candidates,
         ref TileBinStats[] stats, int i)
     {
@@ -113,12 +113,14 @@ public static class TileBinScatterSystem
                     {
                         counters[tile].count = 0;
                         counters[tile].demand = 0;
+                        counters[tile].listCapacityLog2 = view[0].listCapacityLog2;
+                        Interlocked.Exchange(ref counters[tile].activeGeneration, generation);
                         Interlocked.Exchange(ref counters[tile].generation, generation);
                         break;
                     }
                     state = counters[tile].generation;
                 }
-                if (TileBinOps.IsBehindTileDepth(rect.nearDepth, tileFarDepth.Previous[tile].x)) continue;
+                if (TileBinOps.IsBehindTileDepth(rect.nearDepth, viewDepth.Previous[tile].x)) continue;
                 visible++;
                 int slot = Interlocked.Increment(ref counters[tile].count) - 1;
                 if (slot >= capacity)

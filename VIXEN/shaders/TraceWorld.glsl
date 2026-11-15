@@ -308,6 +308,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     const float rayFootprintBase = pc.raySizeBias;
     const float rayFootprintPerT = VIXEN_QUERY_RAY_SIZE_COEF;
     int numInstances = max(pc.instanceCount, 0);
+#ifndef VIXEN_PRIMARY_TILE_CANDIDATES
+    // GB1 replaces the camera-ray loop with the generated tile list. Probe and
+    // secondary-ray consumers remain on their pre-GB1 bounded contract until
+    // GB3 supplies their world-space candidate structure.
+    numInstances = min(numInstances, 3 * 64);
+#endif
     int candidateCount = numInstances;
     int candidateBase = 0;
 #ifdef VIXEN_PRIMARY_TILE_CANDIDATES

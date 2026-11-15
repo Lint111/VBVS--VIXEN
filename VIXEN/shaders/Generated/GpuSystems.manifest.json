@@ -105,7 +105,7 @@
           "format": "VK_FORMAT_R32_SFLOAT",
           "read": true,
           "write": false,
-          "slot": "single",
+          "slot": "current",
           "layout": "VK_IMAGE_LAYOUT_GENERAL",
           "accessKind": "ComputeStorageRead"
         },
@@ -121,7 +121,7 @@
           "format": "VK_FORMAT_R32_SFLOAT",
           "read": true,
           "write": false,
-          "slot": "single",
+          "slot": "current",
           "layout": "VK_IMAGE_LAYOUT_GENERAL",
           "accessKind": "ComputeSampledReadGeneral"
         },
@@ -171,7 +171,7 @@
       "extent": {
         "source": "presentation",
         "kind": "frame_targets",
-        "member": "TileFarDepth"
+        "member": "ViewDepth"
       },
       "push": {
         "size": 8,
@@ -247,9 +247,9 @@
           "accessKind": "ComputeStorageReadWrite"
         },
         {
-          "name": "tileFarDepth_previous",
+          "name": "viewDepth_previous",
           "kind": "frame_targets",
-          "member": "TileFarDepth",
+          "member": "ViewDepth",
           "form": "texture",
           "access": "in",
           "binding": 2,
@@ -365,7 +365,7 @@
       "extent": {
         "source": "presentation",
         "kind": "frame_targets",
-        "member": "TileFarDepth"
+        "member": "ViewDepth"
       },
       "push": {
         "size": 8,
@@ -441,9 +441,9 @@
           "accessKind": "ComputeStorageReadWrite"
         },
         {
-          "name": "tileFarDepth_previous",
+          "name": "viewDepth_previous",
           "kind": "frame_targets",
-          "member": "TileFarDepth",
+          "member": "ViewDepth",
           "form": "texture",
           "access": "in",
           "binding": 0,
@@ -538,22 +538,11 @@
     },
     {
       "kind": "frame_targets",
-      "member": "TileFarDepth",
-      "dimensions": 2,
-      "format": "VK_FORMAT_R32_SFLOAT",
-      "texelStride": 0,
-      "slots": 2,
-      "usage": "VK_IMAGE_USAGE_STORAGE_BIT",
-      "extentSource": "presentation",
-      "follows": ""
-    },
-    {
-      "kind": "frame_targets",
       "member": "ViewDepth",
       "dimensions": 2,
       "format": "VK_FORMAT_R32_SFLOAT",
       "texelStride": 0,
-      "slots": 1,
+      "slots": 2,
       "usage": "VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT",
       "extentSource": "presentation",
       "follows": ""

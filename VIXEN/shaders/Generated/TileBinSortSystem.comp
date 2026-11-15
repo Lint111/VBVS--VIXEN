@@ -89,7 +89,7 @@ layout(std430, binding = 5) buffer sortedCandidatesBlock
 {
     TileSortedCandidate values[];
 } sortedCandidates;
-layout(r32f, set = 0, binding = 0) uniform readonly image2D tileFarDepth_previous;
+layout(r32f, set = 0, binding = 0) uniform readonly image2D viewDepth_previous;
 layout(push_constant, std430) uniform TileBinSortSystemPushConstants
 {
     uint _ExtentX;
@@ -111,7 +111,7 @@ void TileBinSortSystem_Body(in TileBinView view, int i) {
     {
         return;
     }
-    if (imageLoad(tileFarDepth_previous, ivec2(int(0) % imageSize(tileFarDepth_previous).x, int(0) / imageSize(tileFarDepth_previous).x)).x < -3.402823e38)
+    if (imageLoad(viewDepth_previous, ivec2(int(0) % imageSize(viewDepth_previous).x, int(0) / imageSize(viewDepth_previous).x)).x < -3.402823e38)
     {
         return;
     }
