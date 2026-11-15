@@ -2,9 +2,9 @@
 
 ## STATUS
 
-`PARTIAL / STOPPED`: the consolidated VIXEN row is implemented and all VIXEN-local build, test, native capture, HUD, and look-dev witnesses pass. The required Undertow native boot with this row's VIXEN SHA and the corresponding KFR/launcher/Undertow scratch pin-chain commits were not run because this dispatch assigned only the VIXEN worktree; worker isolation forbids editing the unassigned provider worktrees.
+`PASS`: the consolidated VIXEN row, exact KFR/launcher/Undertow pin chain, and current-row Undertow native boot are complete and witnessed.
 
-Source row SHA before this report commit: `1136839c9977` (`chore(vixen): track landed c1e6dff4c kernel snapshot`).
+VIXEN source row SHA: `1136839c997727ea3eccbbea6254b9823858ed0f` (`chore(vixen): track landed c1e6dff4c kernel snapshot`).
 
 ## LANES
 
@@ -39,6 +39,7 @@ CodeGraph was attempted first; this checkout has no `.codegraph/index`, so the r
 - Full GPU CTest: 1644 selected entries, 8 disabled entries, 17 active tests; `17/17` passed. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1794710624-gpu-cx-consolvx9:ctest-gpu-full.log`.
 - HarfBuzz targeted CTest: `TextShapingFixture` `9/9` passed, including `DirectCodepointInputCanBeShaped`. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1794712336-test-cx-consolvx9:text-shaping-targeted.log`.
 - Recipe opcode mirror target: pass, exit 0, no work required. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1794712360-build-cx-consolvx9:recipe-opcode-mirror.log`.
+- Current-row Undertow native boot final graph: `10/10` artifacts passed, including default CTest `12/12`, composition CTest `13/13`, native fixtures `15/15`, both loader modes at 3 frames, and the evidence-negative check. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1794714289-build-cx-consolvx9-r:native-boot-final-chain.log`; summary: `/home/liory/projects/undertow/.claude/worktrees/vx9u/.tmp/native-graph/run/summary.txt`.
 
 ### Look-dev goldens
 
@@ -66,32 +67,30 @@ Log: `/home/liory/.local/state/undertow/undertow-box-logs/1794712188-gpu-cx-cons
 
 ## PIN CHAIN / BOOT
 
-The authoritative landed d9 chain is present read-only in the assigned wave state:
+The exact current-row chain, measured from each checkout, is:
 
-- KFR d9 landed commit: `3d36f1d82931b0f9568687f1ad8347ef0af4673a`.
-- Launcher d9 landed repin: `c22729d367fbfd284396fe5393bdc7d9d523eae6`.
-- Undertow d9 landed launcher-pin closure: `b31f395915c60865db02f23aba38f9853e077e84`.
+- KFR `lane-vx9kfr`: commit `ab9745825477b626975ace5aba582402c5a3ec04`; `toolchain/providers/vixen.pin -> 1136839c997727ea3eccbbea6254b9823858ed0f`.
+- Launcher `lane-vx9l`: commit `a7658919d1d05cc468de3f35b195e2cfd3f991a4`; `toolchain/providers/kfr.pin -> ab9745825477b626975ace5aba582402c5a3ec04`.
+- Undertow `lane-vx9u`: commit `a95ed02c2bdd87a7697c6c3644eab780f8a79e11`; `toolchain/providers/launcher.pin -> a7658919d1d05cc468de3f35b195e2cfd3f991a4` and `vixen.pin -> 1136839c997727ea3eccbbea6254b9823858ed0f`.
 
-That landed chain still points its VIXEN provider at d9 VIXEN `002a5f6b6adf53644e53ef947c16538440497411`, not this row's `1136839c9977`. The requested next chain would require KFR `vixen.pin -> 1136839c9977`, launcher `kfr.pin -> 3d36f1d82931...`, and Undertow `launcher.pin -> c22729d367...` plus `vixen.pin -> 1136839c9977`.
-
-The already-landed d9 boot evidence reports both default and composition modes green with the expected digests `world=07b009ea59ade130` and `save=d25922a43cf0cc90` (`cx-landd9.md`, evidence under `/home/liory/codeman-cases/undertow/reports/cx-landd9-evidence-expanded-fix/batch-d9/`). It is not claimed as a current-row boot because the provider chain was not retargeted to `1136839c9977`.
+Final queued native boot used `KFR_ROOT=/home/liory/projects/KernelFederationRenderer/.claude-worktrees/vx9kfr` so the launcher could consume the assigned unpublished KFR commit. Both modes observed 3 frames, `scheduled=39`, `in-plan=21`, `ticked=63`, with no blocked lifecycle arms. Default and composition both produced `world=07b009ea59ade130 save=d25922a43cf0cc90`.
 
 ## STOPs
 
-1. **Required current-row Undertow boot and pin-chain commits are blocked by worktree authority.** No KFR, launcher, or Undertow scratch worktree was assigned in this brief, and the worker rules prohibit creating/switching/editing unassigned worktrees. Owner options: assign those three scratch worktrees and authorize the pin commits plus queued two-mode boot, or accept the landed d9 boot as sufficient for these source changes after reviewing that the VIXEN-local witnesses are boot-neutral.
-
-No product red remains in the VIXEN-local required scope. The first WSL termination, native provisioning, and native wrapper regex failure were recovered and are not STOPs.
+None. The initial no-override boot staging failure and one concurrent DZN `headless_session_render` segfault were both recovered by documented/provider-safe queued retries; the final graph is green.
 
 ## LANDER NOTES
 
 - Native first-run provisioning downloaded the pinned Ninja and extracted ccache before the native build. This is already covered by the existing proposal `Windows native capture lanes require first-run Ninja and ccache provisioning before the target build` in `.spt-proposals/cx-recipecull2.jsonl`.
 - The first native look-dev wrapper invocation failed in `cmd.exe` before CTest because its regex argument transport hit the known delayed-expansion quoting bug. The documented direct `ctest.exe` route recovered the witness. Existing proposal: `Native GPU wrapper cannot pass a literal-dollar duplicate CTest exclusion through cmd.exe` in `.spt-proposals/cx-consolvx8-r3.jsonl`.
 - The first WSL full build termination is covered by existing `Queued full VIXEN build resumes can terminate without a diagnostic` in `.spt-proposals/cx-textshape1.jsonl`. No duplicate proposals were added.
+- The first current-row boot could not resolve unpublished KFR `ab974582...` from the public branch; the documented `KFR_ROOT` exact-worktree override recovered it. New proposal: `d1f80908b6d4`.
+- The first concurrent composition CTest saw one DZN `headless_session_render` segfault; the isolated named test and the complete 13-test composition set both passed, then the final native graph passed all 10 artifacts.
 - Native runtime logs also contain pre-existing Vulkan debug-report lookup and cache-save warnings after the successful HUD run; they did not affect exit status or hashes.
 
 ## SPT DISPOSITION
 
-No SPT task ID was assigned or worked. Existing proposal inbox entries cover each incidental recovery above; no new `.spt-proposals` file was necessary.
+New proposal `d1f80908b6d4` was appended to `.spt-proposals/cx-consolvx9.jsonl` for the unpublished KFR pairing gap. Existing proposal inbox entries cover the other incidental recoveries.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
@@ -99,3 +98,4 @@ No SPT task ID was assigned or worked. Existing proposal inbox entries cover eac
 - proposed: Native GPU wrapper cannot pass a literal-dollar duplicate CTest exclusion through cmd.exe (existing `cx-consolvx8-r3` proposal)
 - proposed: Queued full VIXEN build resumes can terminate without a diagnostic (existing `cx-textshape1` proposal)
 - proposed: Pin-chain helper should derive exact provider SHAs instead of hand-edited values (existing `cx-consolvx8-r3` proposal)
+- proposed: Native boot does not pair an assigned unpublished KFR pin into launcher kfr-root (`d1f80908b6d4`)
