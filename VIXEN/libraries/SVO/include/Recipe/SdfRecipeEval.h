@@ -19,7 +19,9 @@
 #include <glm/glm.hpp>
 #include <bit>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <string>
 #include <stdexcept>
@@ -47,7 +49,9 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                          std::span<const float> params = {}, glm::vec3* outDeclaredPos = nullptr,
                          const RecipeRegistry* registry = nullptr,
                          std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
-                         std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {}) {
+                         std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
+                         const void* elementRow = nullptr, uint32_t elementStride = 0u,
+                         const uint32_t* planSlots = nullptr, uint32_t planSlotCount = 0u) {
     float stack[64]; int sp = 0;
     // The pinned kernel dispatch carries MaterialId as a categorical sidecar even though this
     // legacy scalar API returns distance only. Keep the sidecar state local so generated cases
@@ -57,6 +61,8 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
     float distScaleStack[64];            // distance-scale per saved frame (pushed 1.0f for non-scaling transforms; M4b Transform uses data[11])
+    const auto* elementRowBytes = static_cast<const unsigned char*>(elementRow);
+    (void)elementStride;
     using namespace Yeroket::Sdf::Kernels;
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];

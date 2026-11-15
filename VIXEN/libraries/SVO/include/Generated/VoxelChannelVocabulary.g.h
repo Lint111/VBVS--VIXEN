@@ -23,7 +23,8 @@ enum SemanticId : std::uint32_t {
     SEM_CUSTOM3 = 14u,
     SEM_EDGE_SMOOTHNESS = 15u,
     SEM_EMISSION_COLOR = 16u,
-    SEM_COUNT = 17u
+    SEM_POSITION = 17u,
+    SEM_COUNT = 18u
 };
 
 enum ChannelRenderSemantic : std::uint32_t { CHANNEL_RENDER_SEMANTIC_NONE = 0u, CHANNEL_RENDER_SEMANTIC_MATERIAL_REFERENCE = 1u, CHANNEL_RENDER_SEMANTIC_SMOOTHNESS_OVERRIDE = 2u };
@@ -47,7 +48,7 @@ inline constexpr std::array<const char*, 4> kMaterialPackRowFieldTypes{{"Namespa
 // Linear-albedo conversion is the single sRGB rule used for authored rows and runtime pack rows.
 inline float MaterialSrgbChannelToLinear(std::uint32_t value) noexcept { const float srgb = static_cast<float>(value) / 255.0f; return srgb <= 0.04045f ? srgb / 12.92f : std::pow((srgb + 0.055f) / 1.055f, 2.4f); }
 inline MaterialPaletteSpec MaterialPaletteSpecFromPackRow(std::uint32_t slot, const MaterialPackRow& row) noexcept { return {slot, {MaterialSrgbChannelToLinear((row.colorHex >> 16u) & 0xffu), MaterialSrgbChannelToLinear((row.colorHex >> 8u) & 0xffu), MaterialSrgbChannelToLinear(row.colorHex & 0xffu)}, row.colorHex, row.defaultEdgeSmoothness, row.visibility, row.id}; }
-inline constexpr std::array<ChannelVocabularyEntry, 17> kChannelVocabulary{{
+inline constexpr std::array<ChannelVocabularyEntry, 18> kChannelVocabulary{{
     {SEM_SDF, 1u, FK_DISTANCE, 5u, 1u, "SDF", "Distance", 0u, {0.0f, 0.0f, 0.0f}},
     {SEM_COLOR, 3u, FK_NONE, 5u, 2u, "COLOR", "Color", 0u, {1.0f, 1.0f, 1.0f}},
     {SEM_ROUGHNESS, 1u, FK_NONE, 1u, 0u, "ROUGHNESS", "", 0u, {0.5f, 0.5f, 0.5f}},
@@ -65,6 +66,7 @@ inline constexpr std::array<ChannelVocabularyEntry, 17> kChannelVocabulary{{
     {SEM_CUSTOM3, 1u, FK_NONE, 4u, 1024u, "CUSTOM3", "Custom3", 0u, {0.0f, 0.0f, 0.0f}},
     {SEM_EDGE_SMOOTHNESS, 1u, FK_NONE, 4u, 2048u, "EDGE_SMOOTHNESS", "EdgeSmoothness", 2u, {0.0f, 0.0f, 0.0f}},
     {SEM_EMISSION_COLOR, 3u, FK_NONE, 0u, 0u, "EMISSION_COLOR", "", 0u, {0.0f, 0.0f, 0.0f}},
+    {SEM_POSITION, 3u, FK_NONE, 6u, 4096u, "POSITION", "Position", 0u, {0.0f, 0.0f, 0.0f}},
 }};
 inline constexpr std::array<ChannelStorageSpec, 4> kStoredChannelSpecs{{
     {SEM_SDF, 1u, 1u, FK_DISTANCE, {0.0f, 0.0f, 0.0f}},
@@ -72,7 +74,7 @@ inline constexpr std::array<ChannelStorageSpec, 4> kStoredChannelSpecs{{
     {SEM_ROUGHNESS, 0u, 1u, FK_NONE, {0.5f, 0.5f, 0.5f}},
     {SEM_EMISSION, 0u, 1u, FK_NONE, {0.0f, 0.0f, 0.0f}},
 }};
-inline constexpr std::array<RecipeOutputChannelSpec, 12> kOutputtableChannelSpecs{{
+inline constexpr std::array<RecipeOutputChannelSpec, 13> kOutputtableChannelSpecs{{
     {SEM_SDF, 1u, 1u, FK_DISTANCE, 5u, "Distance", 0u, {0.0f, 0.0f, 0.0f}},
     {SEM_COLOR, 2u, 3u, FK_NONE, 5u, "Color", 0u, {1.0f, 1.0f, 1.0f}},
     {SEM_NORMAL, 4u, 3u, FK_NONE, 6u, "Normal", 0u, {0.0f, 0.0f, 1.0f}},
@@ -85,6 +87,7 @@ inline constexpr std::array<RecipeOutputChannelSpec, 12> kOutputtableChannelSpec
     {SEM_CUSTOM2, 512u, 1u, FK_NONE, 4u, "Custom2", 0u, {0.0f, 0.0f, 0.0f}},
     {SEM_CUSTOM3, 1024u, 1u, FK_NONE, 4u, "Custom3", 0u, {0.0f, 0.0f, 0.0f}},
     {SEM_EDGE_SMOOTHNESS, 2048u, 1u, FK_NONE, 4u, "EdgeSmoothness", 2u, {0.0f, 0.0f, 0.0f}},
+    {SEM_POSITION, 4096u, 3u, FK_NONE, 6u, "Position", 0u, {0.0f, 0.0f, 0.0f}},
 }};
 constexpr const RecipeOutputChannelSpec* FindRecipeOutputChannel(std::uint32_t outputSlot) noexcept {
     for (const auto& entry : kOutputtableChannelSpecs)

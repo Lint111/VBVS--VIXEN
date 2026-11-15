@@ -1039,7 +1039,7 @@ case SdfOpCode::PushParam: {
     const bool recipeMaterialAPresent = false;
     const bool recipeMaterialBPresent = false;
     assert(sp < 64 && "PushParam: value stack overflow");
-    stack[sp++] = in.data[0];
+    stack[sp++] = (in.paramMask & 128u) != 0u ? (planSlots != nullptr && static_cast<size_t>(in.data[0]) < planSlotCount ? static_cast<float>(planSlots[static_cast<size_t>(in.data[0])]) : 0.0f) : in.data[0];
     materialStack[recipeMaterialBase + 0] = 0.0f;
     materialPresent[recipeMaterialBase + 0] = false;
 } break;
@@ -1051,7 +1051,7 @@ case SdfOpCode::ReadParam: {
     const bool recipeMaterialBPresent = false;
     assert(sp < 64 && "ReadParam: value stack overflow");
     const size_t parameterIndex = static_cast<size_t>(in.data[0]);
-    stack[sp++] = parameterIndex < params.size() ? params[parameterIndex] : 0.0f;
+    stack[sp++] = (in.paramMask & 128u) != 0u ? (planSlots != nullptr && parameterIndex < planSlotCount ? static_cast<float>(planSlots[parameterIndex]) : 0.0f) : (parameterIndex < params.size() ? params[parameterIndex] : 0.0f);
     materialStack[recipeMaterialBase + 0] = 0.0f;
     materialPresent[recipeMaterialBase + 0] = false;
 } break;
@@ -1368,6 +1368,51 @@ case SdfOpCode::Attach: {
         materialStack[recipeMaterialBase] = static_cast<float>(std::bit_cast<std::uint32_t>(stack[recipeMaterialBase + 1]));
         materialPresent[recipeMaterialBase] = true;
     }
+} break;
+case SdfOpCode::SamplePath: {
+    const int recipeMaterialBase = sp - 0;
+    const float recipeMaterialA = 0.0f;
+    const float recipeMaterialB = 0.0f;
+    const bool recipeMaterialAPresent = false;
+    const bool recipeMaterialBPresent = false;
+    assert(false && "Set operations must be expanded by native recipe lowering");
+} break;
+case SdfOpCode::Filter: {
+    const int recipeMaterialBase = sp - 0;
+    const float recipeMaterialA = 0.0f;
+    const float recipeMaterialB = 0.0f;
+    const bool recipeMaterialAPresent = false;
+    const bool recipeMaterialBPresent = false;
+    assert(false && "Set operations must be expanded by native recipe lowering");
+} break;
+case SdfOpCode::Count: {
+    const int recipeMaterialBase = sp - 0;
+    const float recipeMaterialA = 0.0f;
+    const float recipeMaterialB = 0.0f;
+    const bool recipeMaterialAPresent = false;
+    const bool recipeMaterialBPresent = false;
+    assert(false && "Set operations must be expanded by native recipe lowering");
+    stack[sp++] = std::numeric_limits<float>::quiet_NaN();
+    materialStack[recipeMaterialBase + 0] = 0.0f;
+    materialPresent[recipeMaterialBase + 0] = false;
+} break;
+case SdfOpCode::ReadElement: {
+    const int recipeMaterialBase = sp - 0;
+    const float recipeMaterialA = 0.0f;
+    const float recipeMaterialB = 0.0f;
+    const bool recipeMaterialAPresent = false;
+    const bool recipeMaterialBPresent = false;
+    assert(elementRowBytes != nullptr && "ReadElement requires the current set row");
+    const std::uint32_t elementWidth = std::isfinite(in.data[1]) && in.data[1] >= 1.0f ? static_cast<std::uint32_t>(in.data[1]) : 1u;
+    float elementValue = std::numeric_limits<float>::quiet_NaN();
+    std::memcpy(&elementValue, elementRowBytes + static_cast<std::size_t>(in.data[0]), sizeof elementValue);
+    stack[sp++] = elementValue;
+    if (elementWidth >= 3u) {
+        std::memcpy(&elementValue, elementRowBytes + static_cast<std::size_t>(in.data[0]) + 4u, sizeof elementValue); stack[sp++] = elementValue;
+        std::memcpy(&elementValue, elementRowBytes + static_cast<std::size_t>(in.data[0]) + 8u, sizeof elementValue); stack[sp++] = elementValue;
+    }
+    materialStack[recipeMaterialBase + 0] = 0.0f;
+    materialPresent[recipeMaterialBase + 0] = false;
 } break;
 case SdfOpCode::Hash32: {
     const int recipeMaterialBase = sp - 1;
@@ -1800,7 +1845,7 @@ case SdfOpCode::ReadParamU32: {
     const bool recipeMaterialBPresent = false;
     assert(sp < 64 && "typed parameter read: value stack overflow");
     const size_t typedParameterIndex = static_cast<size_t>(in.data[0]);
-    stack[sp++] = typedParameterIndex < params.size() ? params[typedParameterIndex] : 0.0f;
+    stack[sp++] = (in.paramMask & 128u) != 0u ? (planSlots != nullptr && typedParameterIndex < planSlotCount ? std::bit_cast<float>(planSlots[typedParameterIndex]) : 0.0f) : (typedParameterIndex < params.size() ? params[typedParameterIndex] : 0.0f);
     materialStack[recipeMaterialBase + 0] = 0.0f;
     materialPresent[recipeMaterialBase + 0] = false;
 } break;
@@ -1812,7 +1857,7 @@ case SdfOpCode::ReadParamQ16: {
     const bool recipeMaterialBPresent = false;
     assert(sp < 64 && "typed parameter read: value stack overflow");
     const size_t typedParameterIndex = static_cast<size_t>(in.data[0]);
-    stack[sp++] = typedParameterIndex < params.size() ? params[typedParameterIndex] : 0.0f;
+    stack[sp++] = (in.paramMask & 128u) != 0u ? (planSlots != nullptr && typedParameterIndex < planSlotCount ? std::bit_cast<float>(planSlots[typedParameterIndex]) : 0.0f) : (typedParameterIndex < params.size() ? params[typedParameterIndex] : 0.0f);
     materialStack[recipeMaterialBase + 0] = 0.0f;
     materialPresent[recipeMaterialBase + 0] = false;
 } break;
