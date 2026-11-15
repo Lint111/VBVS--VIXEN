@@ -4,16 +4,8 @@
 #include <cstddef>
 namespace Vixen::Codegen::Gpu {
 struct TileBinCounter {
-    int32_t generation;
-    int32_t activeGeneration;
     int32_t count;
-    int32_t demand;
-    int32_t listCapacityLog2;
 };
-static_assert(sizeof(TileBinCounter) == 20, "TileBinCounter std430 size");
-static_assert(offsetof(TileBinCounter, generation) == 0, "generation@0");
-static_assert(offsetof(TileBinCounter, activeGeneration) == 4, "activeGeneration@4");
-static_assert(offsetof(TileBinCounter, count) == 8, "count@8");
-static_assert(offsetof(TileBinCounter, demand) == 12, "demand@12");
-static_assert(offsetof(TileBinCounter, listCapacityLog2) == 16, "listCapacityLog2@16");
+static_assert(sizeof(TileBinCounter) == 4, "TileBinCounter std430 size");
+static_assert(offsetof(TileBinCounter, count) == 0, "count@0");
 } // namespace Vixen::Codegen::Gpu

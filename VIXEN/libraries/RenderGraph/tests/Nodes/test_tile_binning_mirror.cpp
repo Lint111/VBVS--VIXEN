@@ -59,7 +59,6 @@ TileBinView LookdevTier3View() {
     view.tilesX = kTilesX;
     view.tilesY = kTilesY;
     view.listCapacityLog2 = kListCapacityLog2;
-    view.generation = 1;
     view.instanceCount = kInstanceCount;
     return view;
 }
@@ -124,4 +123,29 @@ TEST(TileBinningMirror, Tier3InputsTerminateAndPreserveCandidateLists) {
               << result.metrics.legacyFullSlabCompareIterations
               << " consumerCandidates=" << result.metrics.consumerCandidateIterations
               << " overflowed=" << result.metrics.overflowed << '\n';
+}
+
+TEST(TileBinningMirror, SortZeroesCountersSoNextFrameStartsEmpty) {
+    // The counter buffer persists across frames and is zero only at allocation.
+    // The sort must hand the next scatter zeroed counts: a tile that no instance
+    // touches in frame 2 must not replay frame 1's list, and a repeated frame
+    // must not accumulate.
+    TileBinView view = LookdevTier3View();
+    const auto bounds = LookdevTier3Bounds();
+    const std::vector<float> previousDepth(static_cast<size_t>(kWidth) * kHeight,
+                                            std::numeric_limits<float>::max());
+    std::vector<Vixen::Codegen::Gpu::TileBinCounter> counters(
+        static_cast<size_t>(kTilesX) * kTilesY);
+
+    const auto first = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &counters);
+    const auto repeated = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &counters);
+    ASSERT_EQ(first.headers.size(), repeated.headers.size());
+    for (size_t tile = 0; tile < first.headers.size(); ++tile)
+        EXPECT_EQ(first.headers[tile].count, repeated.headers[tile].count) << "tile " << tile;
+    EXPECT_GT(first.metrics.consumerCandidateIterations, 0u);
+
+    view.instanceCount = 0;
+    const auto empty = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &counters);
+    EXPECT_EQ(empty.metrics.consumerCandidateIterations, 0u);
+    for (const auto& counter : counters) EXPECT_EQ(counter.count, 0);
 }

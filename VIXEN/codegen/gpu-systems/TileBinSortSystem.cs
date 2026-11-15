@@ -13,18 +13,22 @@ public static class TileBinSortSystem
 
     [Update]
     public static void Run(in Texture2D<R32f> viewDepth, in TileBinView[] view,
-        in TileBinCounter[] counters, in TileCandidate[] candidates,
+        ref TileBinCounter[] counters, in TileCandidate[] candidates,
         ref TileHeader[] tiles, ref TileSortedCandidate[] sortedCandidates, int i)
     {
         if (i >= view[0].tilesX * view[0].tilesY) return;
-        if (viewDepth.Previous[0].x < -3.402823e38f) return;
         int tileIndex = i;
+        // Consume this frame's appended count and zero it for the next scatter. This is
+        // the only per-frame counter initialisation: the scatter never claims or resets
+        // a tile, so no invocation depends on another one's progress.
+        int offered = counters[tileIndex].count;
+        counters[tileIndex].count = 0;
+        if (viewDepth.Previous[0].x < -3.402823e38f) return;
+        int listCapacityLog2 = view[0].listCapacityLog2;
         tiles[i].index = tileIndex;
-        int offered = counters[tileIndex].generation == counters[tileIndex].activeGeneration ? counters[tileIndex].count : 0;
-        int stored = TileBinOps.StoredCount(offered, counters[tileIndex].listCapacityLog2);
-        int first = tileIndex << counters[tileIndex].listCapacityLog2;
-        int capacity = 1 << counters[tileIndex].listCapacityLog2;
-        tiles[i].capacityLog2 = counters[tileIndex].listCapacityLog2;
+        int stored = TileBinOps.StoredCount(offered, listCapacityLog2);
+        int first = tileIndex << listCapacityLog2;
+        tiles[i].capacityLog2 = listCapacityLog2;
         int sortCapacity = 0;
         if (stored > 0)
         {

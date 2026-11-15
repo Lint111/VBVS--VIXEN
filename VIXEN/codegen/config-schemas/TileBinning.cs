@@ -21,18 +21,16 @@ public struct TileBinView
     public float viewZx; public float viewZy; public float viewZz; public float viewZw;
     public float focalX; public float focalY; public float centerX; public float centerY;
     public float nearPlane; public float tileSize;
-    public int tilesX; public int tilesY; public int listCapacityLog2; public int generation;
+    public int tilesX; public int tilesY; public int listCapacityLog2;
     public int instanceCount;
 }
 
 [GpuStruct(Layout = GpuLayout.Std430)]
 public struct TileBinCounter
 {
-    public int generation;
-    public int activeGeneration;
+    // Candidates appended this frame: the scatter increments it atomically and the
+    // sort consumes and zeroes it.
     public int count;
-    public int demand;
-    public int listCapacityLog2;
 }
 
 [GpuStruct(Layout = GpuLayout.Std430)]

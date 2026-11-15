@@ -25,10 +25,9 @@ struct TileBinView {
     int32_t tilesX;
     int32_t tilesY;
     int32_t listCapacityLog2;
-    int32_t generation;
     int32_t instanceCount;
 };
-static_assert(sizeof(TileBinView) == 92, "TileBinView std430 size");
+static_assert(sizeof(TileBinView) == 88, "TileBinView std430 size");
 static_assert(offsetof(TileBinView, viewXx) == 0, "viewXx@0");
 static_assert(offsetof(TileBinView, viewXy) == 4, "viewXy@4");
 static_assert(offsetof(TileBinView, viewXz) == 8, "viewXz@8");
@@ -50,6 +49,5 @@ static_assert(offsetof(TileBinView, tileSize) == 68, "tileSize@68");
 static_assert(offsetof(TileBinView, tilesX) == 72, "tilesX@72");
 static_assert(offsetof(TileBinView, tilesY) == 76, "tilesY@76");
 static_assert(offsetof(TileBinView, listCapacityLog2) == 80, "listCapacityLog2@80");
-static_assert(offsetof(TileBinView, generation) == 84, "generation@84");
-static_assert(offsetof(TileBinView, instanceCount) == 88, "instanceCount@88");
+static_assert(offsetof(TileBinView, instanceCount) == 84, "instanceCount@84");
 } // namespace Vixen::Codegen::Gpu

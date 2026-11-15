@@ -23,7 +23,6 @@ struct TileBinView {
     int tilesX;
     int tilesY;
     int listCapacityLog2;
-    int generation;
     int instanceCount;
 };
 #endif // TILEBINVIEW_GLSL

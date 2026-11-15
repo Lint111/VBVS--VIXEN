@@ -13,7 +13,8 @@
 #include "Generated/TileHeader.g.h"
 #include "Generated/TileSortedCandidate.g.h"
 
-#include <cassert>
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -60,9 +61,11 @@ struct TileBinMirrorResult {
     TileBinMirrorMetrics metrics;
 };
 
-inline void MirrorRequire(bool condition, const char* message) {
-    (void)message;
-    assert(condition);
+// Records a failed mirror check on the running test. It neither throws nor
+// relies on assert(), which the Release (-DNDEBUG) test build compiles out.
+inline bool MirrorRequire(bool condition, const char* message) {
+    if (!condition) ADD_FAILURE() << "GB1 CPU mirror: " << message;
+    return condition;
 }
 
 inline int MirrorCapacity(int listCapacityLog2) {
@@ -75,8 +78,9 @@ inline int MirrorNextPowerOfTwo(int value) {
     MirrorRequire(value >= 0, "negative sort count");
     int result = 1;
     while (result < value) {
-        MirrorRequire(result <= (std::numeric_limits<int>::max() >> 1),
-                      "sort bound overflow");
+        if (!MirrorRequire(result <= (std::numeric_limits<int>::max() >> 1),
+                           "sort bound overflow"))
+            return result;
         result <<= 1;
     }
     return result;
@@ -145,12 +149,15 @@ inline uint64_t MirrorBitonicCompareCount(int capacity) {
 // `previousDepth` is the image fed to imageLoad(viewDepth_previous).  The
 // generated scatter shader samples it with the tile number as a linear pixel
 // coordinate, so this mirror preserves that slightly unusual contract exactly.
+// `persistentCounters` models the counter buffer that survives across frames
+// (zero-initialised on allocation); null runs one frame on a fresh buffer.
 inline TileBinMirrorResult RunTileBinMirror(
     const TileBinView& view,
     const std::vector<InstanceBound>& bounds,
     const std::vector<float>& previousDepth,
     int imageWidth,
-    int imageHeight) {
+    int imageHeight,
+    std::vector<TileBinCounter>* persistentCounters = nullptr) {
     MirrorRequire(imageWidth > 0 && imageHeight > 0, "invalid depth image extent");
     MirrorRequire(view.instanceCount >= 0 &&
                       static_cast<size_t>(view.instanceCount) <= bounds.size(),
@@ -167,7 +174,10 @@ inline TileBinMirrorResult RunTileBinMirror(
     const size_t slabSize = static_cast<size_t>(tileCount) * capacity;
 
     TileBinMirrorResult result;
-    result.counters.assign(static_cast<size_t>(tileCount), {});
+    if (persistentCounters && persistentCounters->size() == static_cast<size_t>(tileCount))
+        result.counters = *persistentCounters;
+    else
+        result.counters.assign(static_cast<size_t>(tileCount), {});
     result.candidates.assign(slabSize,
                              {std::numeric_limits<float>::max(), UINT32_MAX});
     result.headers.assign(static_cast<size_t>(tileCount), {});
@@ -190,26 +200,9 @@ inline TileBinMirrorResult RunTileBinMirror(
                 const int tile = tileY * view.tilesX + tileX;
                 MirrorRequire(tile >= 0 && tile < tileCount, "scatter tile index outside grid");
 
+                // The generated scatter appends with one atomic increment and never
+                // claims, resets or waits on a tile; the sort below zeroes the count.
                 TileBinCounter& counter = result.counters[static_cast<size_t>(tile)];
-                int state = counter.generation;
-                int spins = 0;
-                while (state != view.generation) {
-                    MirrorRequire(++spins <= 8,
-                                  "scatter generation acquire did not terminate");
-                    if (state < 0) {
-                        state = counter.generation;
-                        continue;
-                    }
-                    // The CPU mirror has one owner for the tile, so this is the
-                    // successful CompareExchange branch of the generated body.
-                    counter.generation = -view.generation;
-                    counter.count = 0;
-                    counter.demand = 0;
-                    counter.listCapacityLog2 = view.listCapacityLog2;
-                    counter.activeGeneration = view.generation;
-                    counter.generation = view.generation;
-                    state = view.generation;
-                }
 
                 const size_t depthX = static_cast<size_t>(tile % imageWidth);
                 const size_t depthY = static_cast<size_t>(tile / imageWidth);
@@ -238,7 +231,8 @@ inline TileBinMirrorResult RunTileBinMirror(
     for (int tile = 0; tile < tileCount; ++tile) {
         ++result.metrics.sortTileIterations;
         TileBinCounter& counter = result.counters[static_cast<size_t>(tile)];
-        const int offered = counter.generation == counter.activeGeneration ? counter.count : 0;
+        const int offered = counter.count;
+        counter.count = 0;  // TileBinSortSystem consumes and zeroes the tile count.
         MirrorRequire(offered >= 0, "negative offered candidate count");
         result.metrics.maximumOffered = std::max(result.metrics.maximumOffered,
                                                   static_cast<uint32_t>(offered));
@@ -328,6 +322,7 @@ inline TileBinMirrorResult RunTileBinMirror(
             }
         }
     }
+    if (persistentCounters) *persistentCounters = result.counters;
     return result;
 }
 

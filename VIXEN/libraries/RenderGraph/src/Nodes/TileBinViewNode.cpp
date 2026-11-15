@@ -64,7 +64,6 @@ void TileBinViewNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     view->tilesX = static_cast<int32_t>((width + 7u) / 8u);
     view->tilesY = static_cast<int32_t>((height + 7u) / 8u);
     view->listCapacityLog2 = 9; // 512 candidates per tile; no 192-instance cap.
-    view->generation = ++generation_;
     view->instanceCount = std::max(ctx.In(TileBinViewNodeConfig::INSTANCE_COUNT), 0);
     ctx.Out(TileBinViewNodeConfig::VIEW_BUFFER, viewRing_.GetUniformBuffer(frame));
 }

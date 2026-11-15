@@ -100,28 +100,14 @@ public static class TileBinScatterSystem
             for (int tileX = rect.minX; tileX <= rect.maxX; tileX++)
             {
                 int tile = tileY * view[0].tilesX + tileX;
-                int generation = view[0].generation;
-                int state = counters[tile].generation;
-                while (state != generation)
-                {
-                    if (state < 0)
-                    {
-                        state = counters[tile].generation;
-                        continue;
-                    }
-                    if (Interlocked.CompareExchange(ref counters[tile].generation, -generation, state) == state)
-                    {
-                        counters[tile].count = 0;
-                        counters[tile].demand = 0;
-                        counters[tile].listCapacityLog2 = view[0].listCapacityLog2;
-                        Interlocked.Exchange(ref counters[tile].activeGeneration, generation);
-                        Interlocked.Exchange(ref counters[tile].generation, generation);
-                        break;
-                    }
-                    state = counters[tile].generation;
-                }
                 if (TileBinOps.IsBehindTileDepth(rect.nearDepth, viewDepth.Previous[tile].x)) continue;
                 visible++;
+                // Wait-free append: one atomic per (instance, tile); no invocation waits on
+                // another. TileBinSortSystem consumes and zeroes every tile count, so the
+                // counters start each frame at zero. The earlier per-tile generation acquire
+                // spun on a plain re-read of counters[tile].generation; a GPU load without
+                // coherence need not observe another invocation's atomic publish, so
+                // instances sharing a tile spun forever and the device was lost.
                 int slot = Interlocked.Increment(ref counters[tile].count) - 1;
                 if (slot >= capacity)
                 {

@@ -34,7 +34,6 @@ private:
     static const uint32_t kRingSize;
     PerFrameResources viewRing_;
     VulkanDevice* device_ = nullptr;
-    uint32_t generation_ = 0;
 };
 
 } // namespace Vixen::RenderGraph
