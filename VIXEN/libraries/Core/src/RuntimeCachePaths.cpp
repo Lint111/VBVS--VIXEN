@@ -12,6 +12,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -337,12 +338,26 @@ bool AtomicWriteFile(
     }
 
 #ifdef _WIN32
-    if (!::MoveFileExW(temporary.c_str(), destination.c_str(),
-                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        if (error) *error = "MoveFileExW failed with error " + std::to_string(::GetLastError());
-        std::filesystem::remove(temporary, ec);
-        return false;
+    // A reader opened without FILE_SHARE_DELETE can transiently block replacement on Windows.
+    // Readers in the cache envelope path explicitly opt into delete sharing, but keep this small
+    // retry for other callers of AtomicWriteFile that may still have an older handle open.
+    constexpr int kMaxReplaceAttempts = 8;
+    DWORD lastError = ERROR_SUCCESS;
+    for (int attempt = 0; attempt < kMaxReplaceAttempts; ++attempt) {
+        if (::MoveFileExW(temporary.c_str(), destination.c_str(),
+                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            return true;
+        }
+
+        lastError = ::GetLastError();
+        if (lastError != ERROR_SHARING_VIOLATION || attempt + 1 == kMaxReplaceAttempts) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    if (error) *error = "MoveFileExW failed with error " + std::to_string(lastError);
+    std::filesystem::remove(temporary, ec);
+    return false;
 #else
     std::filesystem::rename(temporary, destination, ec);
     if (ec) {
