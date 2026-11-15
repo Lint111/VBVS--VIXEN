@@ -347,7 +347,7 @@ bool AtomicWriteFile(
     // their handle to the old inode, matching POSIX rename semantics without a delete-then-move
     // window.  The destination may be absent, so use REPLACE_IF_EXISTS for both first publish and
     // replacement.
-    const auto destinationName = destination.filename().native();
+    const auto destinationName = destination.native();
     if (destinationName.size() >
         static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) / sizeof(wchar_t)) {
         if (error) *error = "destination path is too long for FileRenameInfoEx";
