@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cmath>
 #include <cstdint>
@@ -1434,6 +1435,103 @@ TEST(EditorDocumentModelVdc1, DocumentDefaultMaterialPersistsAndFeedsFlattenOutp
         clearedBytes.data(), clearedBytes.size(), clearedView));
     EXPECT_EQ(clearedView.header.formatVersion, 5u);
     EXPECT_EQ(clearedView.defaultMaterialReference, 0u);
+}
+
+TEST(EditorDocumentModelMaterialCarry, FlattenAndSimdUseTransparentAndDocumentDefault) {
+    constexpr uint32_t kMaterialA = 5u;
+    constexpr uint32_t kMaterialB = 8u;
+    constexpr std::array<glm::vec3, 4> kFixedPoints = {
+        glm::vec3{0.0f, 0.0f, 0.0f},
+        glm::vec3{1.0f, 0.9f, 0.0f},
+        glm::vec3{0.0f, 0.0f, 1.2f},
+        glm::vec3{0.35f, 0.0f, 0.0f},
+    };
+    const auto materialResolver = [](const std::string& id, uint32_t& materialId) {
+        if (id == "core:hull_metal_major") {
+            materialId = kMaterialA;
+            return true;
+        }
+        if (id == "core:emissive_trim") {
+            materialId = kMaterialB;
+            return true;
+        }
+        return false;
+    };
+
+    auto expectMaterialCase = [&](const char* name, EditorDocumentModel& model,
+                                  uint32_t expectedDefault, uint32_t expectedMaterial) {
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+        uint32_t resolvedDefault = 0u;
+        DocumentDiagnostic diagnostic;
+        ASSERT_TRUE(model.FlattenToRecipeEntry(
+            entry, model.CaptureBakeSnapshot(), {}, materialResolver, false,
+            resolvedDefault, diagnostic))
+            << name << ": " << diagnostic.message;
+        ASSERT_EQ(resolvedDefault, expectedDefault) << name;
+        ASSERT_EQ(entry.defaultMaterialId, expectedDefault) << name;
+
+        Vixen::SVO::Recipe::LoweredRecipeProgram simd;
+        std::string lowerError;
+        ASSERT_TRUE(simd.Lower(
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
+            entry.parameterValues, true, entry.defaultMaterialId, lowerError))
+            << name << ": " << lowerError;
+        ASSERT_EQ(simd.OutputCount(), 2u) << name;
+        const auto& distanceOutput = simd.OutputAt(0u);
+        const auto& materialOutput = simd.OutputAt(1u);
+        ASSERT_EQ(distanceOutput.channel, static_cast<uint32_t>(Vixen::SVO::SEM_SDF)) << name;
+        ASSERT_EQ(materialOutput.channel, static_cast<uint32_t>(Vixen::SVO::SEM_MATERIAL_ID)) << name;
+        ASSERT_TRUE(materialOutput.materialSidecar) << name;
+
+        glm::vec3 positions[4] = {
+            kFixedPoints[0], kFixedPoints[1], kFixedPoints[2], kFixedPoints[3],
+        };
+        float output[8]{};
+        std::string evaluateError;
+        ASSERT_TRUE(simd.EvaluateOutputSet4(
+            positions, output, std::size(output), nullptr, &evaluateError))
+            << name << ": " << evaluateError;
+        for (std::size_t lane = 0; lane < kFixedPoints.size(); ++lane) {
+            EXPECT_FLOAT_EQ(output[materialOutput.valueOffset * 4u + lane],
+                            static_cast<float>(expectedMaterial))
+                << name << " fixed point " << lane;
+        }
+    };
+
+    EditorDocumentModel allUnmaterialedDefaultB;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(allUnmaterialedDefaultB.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    for (uint32_t layer = 0u; layer < allUnmaterialedDefaultB.LayerCount(); ++layer) {
+        ASSERT_TRUE(allUnmaterialedDefaultB.ClearLayerMaterial(
+            allUnmaterialedDefaultB.LayerId(layer), diagnostic)) << diagnostic.message;
+    }
+    ASSERT_TRUE(allUnmaterialedDefaultB.SetDocumentDefaultMaterial(
+        "core:emissive_trim", diagnostic)) << diagnostic.message;
+    expectMaterialCase("a: no layer material, default B", allUnmaterialedDefaultB,
+                       kMaterialB, kMaterialB);
+
+    EditorDocumentModel allUnmaterialedNoDefault;
+    ASSERT_TRUE(allUnmaterialedNoDefault.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    for (uint32_t layer = 0u; layer < allUnmaterialedNoDefault.LayerCount(); ++layer) {
+        ASSERT_TRUE(allUnmaterialedNoDefault.ClearLayerMaterial(
+            allUnmaterialedNoDefault.LayerId(layer), diagnostic)) << diagnostic.message;
+    }
+    expectMaterialCase("b: no layer material, no default", allUnmaterialedNoDefault,
+                       0u, 0u);
+
+    EditorDocumentModel baseAWithDefaultB;
+    ASSERT_TRUE(baseAWithDefaultB.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+    for (uint32_t layer = 0u; layer < baseAWithDefaultB.LayerCount(); ++layer) {
+        ASSERT_TRUE(baseAWithDefaultB.ClearLayerMaterial(
+            baseAWithDefaultB.LayerId(layer), diagnostic)) << diagnostic.message;
+    }
+    ASSERT_TRUE(baseAWithDefaultB.SetLayerMaterial(
+        baseAWithDefaultB.LayerId(0u), "core:hull_metal_major", diagnostic))
+        << diagnostic.message;
+    ASSERT_TRUE(baseAWithDefaultB.SetDocumentDefaultMaterial(
+        "core:emissive_trim", diagnostic)) << diagnostic.message;
+    expectMaterialCase("c: base A, transparent bulge, default B", baseAWithDefaultB,
+                       kMaterialB, kMaterialA);
 }
 
 TEST(EditorDocumentModelVdc1, UnresolvedReferencesAreLocatedAndCanBeSkippedForPreview) {
