@@ -17,7 +17,6 @@
 #include "Recipe/generated/SdfCoreKernels.g.hpp"   // Yeroket::Sdf::Generated::SdfCore_*
 #include "Recipe/RecipeRegistry.h"  // Recipe-Nested-Invocation M1: InvokeRecipe's callee lookup
 #include <glm/glm.hpp>
-#include <bit>
 #include <cassert>
 #include <cstdint>
 #include <span>
@@ -47,11 +46,6 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                          std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
                          std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {}) {
     float stack[64]; int sp = 0;
-    // The pinned kernel dispatch carries MaterialId as a categorical sidecar even though this
-    // legacy scalar API returns distance only. Keep the sidecar state local so generated cases
-    // can preserve it through combines without changing this evaluator's public ABI.
-    float materialStack[64]{};
-    bool materialPresent[64]{};
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
     float distScaleStack[64];            // distance-scale per saved frame (pushed 1.0f for non-scaling transforms; M4b Transform uses data[11])
@@ -59,26 +53,7 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
         switch (static_cast<SdfOpCode>(in.opCode)) {
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable: 4101)
-#endif
 #include "Recipe/generated/SdfRecipeEvalDispatch.g.inc"
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-        default:
-            // v5 document-only overlay instructions are expanded by the generated document
-            // flattener before CPU evaluation. Keep direct evaluator calls fail-loud if one
-            // reaches this legacy runtime without that lowering step.
-            assert(false && "unsupported layer-port or set opcode in direct recipe evaluation");
-            break;
         }
     }
     assert(sp == 1 && "evalRecipe: expected exactly one value on stack at return");
