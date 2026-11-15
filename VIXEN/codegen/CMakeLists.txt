@@ -483,7 +483,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs" _recipe_glyph_outline_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs" _recipe_kernel_extra_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs" _recipe_value_kernel_source_run)
-        _codegen_to_wsl_path("${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime/Recipe/RecipeElementKinds.cs" _recipe_element_schema_source_run)
+        _codegen_to_wsl_path("${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime/Recipe/RecipeElementKinds.cs" _recipe_element_kinds_source_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp" _out_sdf_core_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl" _out_sdf_core_hlsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl" _out_sdf_core_glsl_run)
@@ -592,7 +592,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_recipe_glyph_outline_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/GlyphOutlineSegment.cs")
         set(_recipe_kernel_extra_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs")
         set(_recipe_value_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/TypedRecipeValueKernels.cs")
-        set(_recipe_element_schema_source_run "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime/Recipe/RecipeElementKinds.cs")
+        set(_recipe_element_kinds_source_run "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime/Recipe/RecipeElementKinds.cs")
         set(_out_sdf_core_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp")
         set(_out_sdf_core_hlsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl")
         set(_out_sdf_core_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
@@ -857,14 +857,14 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
-        --recipe-kernels-extra "${_recipe_element_schema_source_run}"
+        --recipe-kernels-extra "${_recipe_element_kinds_source_run}"
         --recipe-container "${_recipe_container_run}"
         --out-dir "${_recipe_services_dir_run}")
     add_custom_command(OUTPUT ${_recipe_services_outputs}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${_recipe_services_dir}"
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_services_args}
         DEPENDS "${_yk_dll}" "${_tool_stamp}" "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeContainer.g.h"
-            ${_recipe_simd_input_files}
+            ${_recipe_simd_input_files} "${_recipe_element_kinds_source_run}"
         COMMENT "[codegen] emitting pinned-kernel recipe CPU/GPU/analysis services"
         VERBATIM)
     add_custom_target(recipe_services_codegen DEPENDS ${_recipe_services_outputs})
@@ -987,7 +987,8 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
         --recipe-kernels-extra "${_recipe_glyph_outline_source_run}"
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
-        --out-header "${_out_recipe_simd_run}")
+        --out-header "${_out_recipe_simd_run}"
+        --out-eval-dispatch "${_out_recipe_eval_dispatch_run}")
     add_custom_command(
         OUTPUT "${_recipe_simd_build_output}"
         COMMAND "${CMAKE_COMMAND}" -E make_directory

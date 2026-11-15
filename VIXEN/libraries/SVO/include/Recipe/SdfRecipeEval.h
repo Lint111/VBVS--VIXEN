@@ -17,6 +17,7 @@
 #include "Recipe/generated/SdfCoreKernels.g.hpp"   // Yeroket::Sdf::Generated::SdfCore_*
 #include "Recipe/RecipeRegistry.h"  // Recipe-Nested-Invocation M1: InvokeRecipe's callee lookup
 #include <glm/glm.hpp>
+#include <bit>
 #include <cassert>
 #include <cstdint>
 #include <span>
@@ -48,6 +49,11 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                          std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
                          std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {}) {
     float stack[64]; int sp = 0;
+    // The pinned kernel dispatch carries MaterialId as a categorical sidecar even though this
+    // legacy scalar API returns distance only. Keep the sidecar state local so generated cases
+    // can preserve it through combines without changing this evaluator's public ABI.
+    float materialStack[64]{};
+    bool materialPresent[64]{};
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
     float distScaleStack[64];            // distance-scale per saved frame (pushed 1.0f for non-scaling transforms; M4b Transform uses data[11])
@@ -55,27 +61,15 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
         switch (static_cast<SdfOpCode>(in.opCode)) {
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
 #include "Recipe/generated/SdfRecipeEvalDispatch.g.inc"
-        case SdfOpCode::ReadPort:
-            // The scalar legacy evaluator has no layer-port or instance
-            // context. Keep the distance-only oracle stack-valid; the
-            // generated SIMD evaluator owns the typed channel path.
-            assert(sp + 1 <= 64 && "typed input stack overflow");
-            stack[sp++] = 0.0f;
-            break;
-        case SdfOpCode::Instance:
-            throw std::runtime_error("evalRecipe: opcode Instance (116) at instruction " +
-                                     std::to_string(i) + " requires set expansion; scalar consumer refused");
-        case SdfOpCode::SampleSurface:
-            throw std::runtime_error("evalRecipe: opcode SampleSurface (115) at instruction " +
-                                     std::to_string(i) + " requires set expansion; scalar consumer refused");
-        case SdfOpCode::MaterialRef:
-            assert(sp + 1 <= 64 && "material reference stack overflow");
-            stack[sp++] = 0.0f;
-            break;
-        case SdfOpCode::Attach:
-            if (sp >= 2) --sp;  // discard the material sidecar in the scalar oracle
-            break;
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
         default:
             // v5 document-only overlay instructions are expanded by the generated document
             // flattener before CPU evaluation. Keep direct evaluator calls fail-loud if one

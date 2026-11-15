@@ -1454,7 +1454,8 @@ bool EditorDocumentModel::Rebuild(
     std::vector<VoxelDocLayerWrite> writes(layers.size());
     for (size_t i = 0; i < layers.size(); ++i) {
         const auto& source = layers[i];
-        if (source.type != 0u || source.op > 4u || !std::isfinite(source.blendRadius)) {
+        if (source.type != 0u || Vixen::SVO::Recipe::FindSdfLayerOp(source.op) == nullptr ||
+            !std::isfinite(source.blendRadius)) {
             diagnostic = {DocumentDiagnosticCode::InvalidProgramField,
                           "layer type, operation, or blend radius is invalid"};
             return false;
