@@ -71,10 +71,15 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4101)
 #endif
 #include "Recipe/generated/SdfRecipeEvalDispatch.g.inc"
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
 #endif
         default:
             // v5 document-only overlay instructions are expanded by the generated document
