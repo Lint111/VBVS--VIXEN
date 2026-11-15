@@ -914,8 +914,8 @@ case SdfOpCode::Displacement: {
     float recipeValue = SdfCore_Displacement(stack[recipeStackBase + 0], stack[recipeStackBase + 1], in.data[0]);
     sp = recipeStackBase;
     stack[sp++] = recipeValue;
-    materialStack[recipeMaterialBase] = materialStack[recipeMaterialBase];
-    materialPresent[recipeMaterialBase] = recipeMaterialAPresent;
+    materialStack[recipeMaterialBase + 0] = 0.0f;
+    materialPresent[recipeMaterialBase + 0] = false;
 } break;
 case SdfOpCode::MathStep: {
     const int recipeMaterialBase = sp - 1;
@@ -1340,7 +1340,8 @@ case SdfOpCode::Instance: {
     const bool recipeMaterialBPresent = false;
     assert(false && "Set operations must be expanded by native recipe lowering");
     stack[sp++] = std::numeric_limits<float>::quiet_NaN();
-    materialPresent[recipeMaterialBase] = false; // resolved element material is supplied by the set flattener
+    materialStack[recipeMaterialBase + 0] = 0.0f;
+    materialPresent[recipeMaterialBase + 0] = false;
 } break;
 case SdfOpCode::MaterialRef: {
     const int recipeMaterialBase = sp - 0;
