@@ -347,7 +347,7 @@ bool AtomicWriteFile(
     // their handle to the old inode, matching POSIX rename semantics without a delete-then-move
     // window.  The destination may be absent, so use REPLACE_IF_EXISTS for both first publish and
     // replacement.
-    const auto destinationName = destination.native();
+    const auto destinationName = destination.filename().native();
     if (destinationName.size() >
         static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) / sizeof(wchar_t)) {
         if (error) *error = "destination path is too long for FileRenameInfoEx";
@@ -359,9 +359,28 @@ bool AtomicWriteFile(
     std::vector<char> renameInfoStorage(renameInfoSize);
     auto* renameInfo = reinterpret_cast<FILE_RENAME_INFO*>(renameInfoStorage.data());
     renameInfo->Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
-    renameInfo->RootDirectory = nullptr;
     renameInfo->FileNameLength = static_cast<DWORD>(destinationNameBytes);
     std::memcpy(renameInfo->FileName, destinationName.data(), destinationNameBytes);
+
+    const auto destinationDirectoryPath = destination.parent_path().empty()
+        ? std::filesystem::path(".")
+        : destination.parent_path();
+    HANDLE destinationDirectory = ::CreateFileW(
+        destinationDirectoryPath.c_str(),
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        nullptr);
+    if (destinationDirectory == INVALID_HANDLE_VALUE) {
+        const DWORD directoryError = ::GetLastError();
+        if (error) *error = "CreateFileW destination directory failed with error " +
+                            std::to_string(directoryError);
+        std::filesystem::remove(temporary, ec);
+        return false;
+    }
+    renameInfo->RootDirectory = destinationDirectory;
 
     constexpr int kMaxReplaceAttempts = 8;
     DWORD lastError = ERROR_SUCCESS;
@@ -388,6 +407,7 @@ bool AtomicWriteFile(
             lastError = renamed ? ERROR_SUCCESS : ::GetLastError();
             ::CloseHandle(replacement);
             if (renamed) {
+                ::CloseHandle(destinationDirectory);
                 return true;
             }
         }
@@ -401,6 +421,7 @@ bool AtomicWriteFile(
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    ::CloseHandle(destinationDirectory);
     if (error) *error = "SetFileInformationByHandle(FileRenameInfoEx) failed with error " +
                         std::to_string(lastError);
     std::filesystem::remove(temporary, ec);
