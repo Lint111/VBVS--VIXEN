@@ -59,28 +59,36 @@ function(vixen_codegen_payload_arguments out_var)
     set(${out_var} "${_payload}" PARENT_SCOPE)
 endfunction()
 
+# Codegen commands run under WSL when the Windows-native configure cannot execute the
+# pinned managed tool directly. Their command arguments must stay WSL paths, while
+# Ninja's prerequisite graph must use paths visible to the native Ninja process.
+# _codegen_to_wsl_path records the reverse mapping for translated paths; resolve it
+# here for every codegen input that is also declared as a native dependency.
+function(vixen_codegen_native_dependency_path argument out_var)
+    set(_path "${argument}")
+    if(_codegen_need_wsl_bridge AND _path MATCHES "^/")
+        string(SHA256 _path_key "${_path}")
+        get_property(_path GLOBAL PROPERTY "_vixen_codegen_native_path_${_path_key}")
+        if(NOT _path)
+            execute_process(COMMAND "${WSL_EXE}" --cd / -e wslpath -w "${argument}"
+                OUTPUT_VARIABLE _path OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE _translated)
+            if(NOT _translated EQUAL 0 OR NOT _path)
+                message(FATAL_ERROR "[codegen] cannot translate dependency path ${argument}")
+            endif()
+            file(TO_CMAKE_PATH "${_path}" _path)
+            set_property(GLOBAL PROPERTY "_vixen_codegen_native_path_${_path_key}" "${_path}")
+        endif()
+    endif()
+    set(${out_var} "${_path}" PARENT_SCOPE)
+endfunction()
+
 function(vixen_add_codegen_check name)
     cmake_parse_arguments(CHECK "ALL;VERBATIM" "COMMENT;JOB_POOL" "COMMAND" ${ARGN})
     set(_inputs "${_yk_dll}" "${_tool_stamp}" engine_codegen_tool)
     vixen_codegen_payload_arguments(_payload ${CHECK_COMMAND})
     foreach(_argument IN LISTS _payload)
-        set(_path "${_argument}")
-        if(_codegen_need_wsl_bridge AND _argument MATCHES "^/")
-            # The command uses WSL paths; Ninja on Windows needs native dependency
-            # paths. Keep the conversion symmetric with _codegen_to_wsl_path.
-            string(SHA256 _path_key "${_argument}")
-            get_property(_path GLOBAL PROPERTY "_vixen_codegen_native_path_${_path_key}")
-            if(NOT _path)
-                execute_process(COMMAND "${WSL_EXE}" --cd / -e wslpath -w "${_argument}"
-                    OUTPUT_VARIABLE _path OUTPUT_STRIP_TRAILING_WHITESPACE
-                    RESULT_VARIABLE _translated)
-                if(NOT _translated EQUAL 0 OR NOT _path)
-                    message(FATAL_ERROR "[codegen] cannot translate dependency path ${_argument}")
-                endif()
-                file(TO_CMAKE_PATH "${_path}" _path)
-                set_property(GLOBAL PROPERTY "_vixen_codegen_native_path_${_path_key}" "${_path}")
-            endif()
-        endif()
+        vixen_codegen_native_dependency_path("${_argument}" _path)
         if(IS_DIRECTORY "${_path}")
             file(GLOB_RECURSE _sources CONFIGURE_DEPENDS "${_path}/*.cs" "${_path}/*.json")
             list(APPEND _inputs ${_sources})
