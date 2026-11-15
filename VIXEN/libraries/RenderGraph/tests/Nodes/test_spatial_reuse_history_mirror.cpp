@@ -1,5 +1,5 @@
 #include <array>
-#include <cassert>
+#include "../TestAlwaysOn.h"
 #include <cmath>
 
 struct HistoryResult {
@@ -37,13 +37,13 @@ int main() {
     const float alpha = 0.5f;
 
     const HistoryResult racy = MirrorInPlaceHistory(previousFrame, currentRadiance, alpha);
-    assert(std::fabs(racy.current[1] - 130.0f) < 1e-6f);
+    VIXEN_TEST_CHECK(std::fabs(racy.current[1] - 130.0f) < 1e-6f);
 
     const HistoryResult result = MirrorSeparatedHistory(previousFrame, currentRadiance, alpha);
-    assert(std::fabs(result.current[0] - 60.0f) < 1e-6f);
+    VIXEN_TEST_CHECK(std::fabs(result.current[0] - 60.0f) < 1e-6f);
     // Correct output uses previousFrame[0] (10), not the just-written value 60.
-    assert(std::fabs(result.current[1] - 105.0f) < 1e-6f);
-    assert(result.storedHistory[0] == result.current[0]);
-    assert(result.storedHistory[1] == result.current[1]);
+    VIXEN_TEST_CHECK(std::fabs(result.current[1] - 105.0f) < 1e-6f);
+    VIXEN_TEST_CHECK(result.storedHistory[0] == result.current[0]);
+    VIXEN_TEST_CHECK(result.storedHistory[1] == result.current[1]);
     return 0;
 }

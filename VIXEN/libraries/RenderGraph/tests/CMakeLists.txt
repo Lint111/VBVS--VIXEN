@@ -117,8 +117,16 @@ vixen_gtest_discover_tests(RenderGraph test_rendergraph_shadermirrors)
 # HDR3 CPU mirror of ExposureMeter.comp's deterministic sun/cosmic percentile clamp.
 add_executable(test_exposure_meter_mirror Nodes/test_exposure_meter_mirror.cpp)
 target_compile_features(test_exposure_meter_mirror PRIVATE cxx_std_17)
-# Header-only use of LightingConfigNodeConfig's preset table (R670); RenderGraph supplies the includes.
-target_link_libraries(test_exposure_meter_mirror PRIVATE RenderGraph)
+# Header-only use of LightingConfigNodeConfig's preset table (R670). Keep this mirror independent
+# of the RenderGraph link closure so the CTest classifier can run it in the CPU Release partition.
+target_include_directories(test_exposure_meter_mirror PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${VIXEN_ROOT}/libraries/Core/include
+    ${VIXEN_ROOT}/libraries/VulkanResources/include
+    ${CMAKE_BINARY_DIR}/generated/include
+    ${Vulkan_INCLUDE_DIR}
+    ${glm_SOURCE_DIR}
+)
 vixen_enable_asserts(test_exposure_meter_mirror)
 set_target_properties(test_exposure_meter_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
 add_test(NAME test_exposure_meter_mirror COMMAND test_exposure_meter_mirror)

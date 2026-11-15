@@ -11,7 +11,7 @@
 
 #include <iostream>
 #include <vector>
-#include <cassert>
+#include "TestAlwaysOn.h"
 
 // Use the RenderGraph namespace
 using namespace Vixen::RenderGraph;
@@ -165,7 +165,7 @@ void testFieldExtraction() {
     const uint32_t& extractedCount = countExtractor.extract(swapchainVars);
     std::cout << "\nTest 2: Extract scalar field (imageCount)\n";
     std::cout << "  Extracted value: " << extractedCount << "\n";
-    assert(extractedCount == 3 && "Extracted count should match original");
+    VIXEN_TEST_CHECK(extractedCount == 3 && "Extracted count should match original");
     std::cout << "  ✅ Scalar extraction successful\n";
 
     // Test 3: Extract vector field
@@ -173,8 +173,8 @@ void testFieldExtraction() {
     const std::vector<VkImageView>& extractedImages = imageExtractor.extract(swapchainVars);
     std::cout << "\nTest 3: Extract vector field (images)\n";
     std::cout << "  Extracted vector size: " << extractedImages.size() << "\n";
-    assert(extractedImages.size() == 3 && "Extracted vector size should match original");
-    assert(extractedImages[0] == swapchainVars.images[0] && "Extracted elements should match");
+    VIXEN_TEST_CHECK(extractedImages.size() == 3 && "Extracted vector size should match original");
+    VIXEN_TEST_CHECK(extractedImages[0] == swapchainVars.images[0] && "Extracted elements should match");
     std::cout << "  ✅ Vector extraction successful\n";
 
     // Test 4: Extract VkHandle field
@@ -182,7 +182,7 @@ void testFieldExtraction() {
     const VkSwapchainKHR& extractedSwapchain = swapchainExtractor.extract(swapchainVars);
     std::cout << "\nTest 4: Extract VkHandle field (swapchain)\n";
     std::cout << "  Extracted handle: 0x" << std::hex << reinterpret_cast<uintptr_t>(extractedSwapchain) << std::dec << "\n";
-    assert(extractedSwapchain == swapchainVars.swapchain && "Extracted handle should match");
+    VIXEN_TEST_CHECK(extractedSwapchain == swapchainVars.swapchain && "Extracted handle should match");
     std::cout << "  ✅ Handle extraction successful\n";
 
     // Test 5: Extract VkFormat (enum) field
@@ -190,7 +190,7 @@ void testFieldExtraction() {
     const VkFormat& extractedFormat = formatExtractor.extract(swapchainVars);
     std::cout << "\nTest 5: Extract VkFormat field\n";
     std::cout << "  Extracted format: " << static_cast<int>(extractedFormat) << "\n";
-    assert(extractedFormat == VK_FORMAT_B8G8R8A8_SRGB && "Extracted format should match");
+    VIXEN_TEST_CHECK(extractedFormat == VK_FORMAT_B8G8R8A8_SRGB && "Extracted format should match");
     std::cout << "  ✅ Enum extraction successful\n";
 
     // Test 6: Modify through extractor (non-const)
@@ -201,7 +201,7 @@ void testFieldExtraction() {
     std::cout << "\nTest 6: Modify field through extractor\n";
     std::cout << "  Old value: " << oldCount << "\n";
     std::cout << "  New value: " << swapchainVars.imageCount << "\n";
-    assert(swapchainVars.imageCount == 5 && "Field should be modified through extractor");
+    VIXEN_TEST_CHECK(swapchainVars.imageCount == 5 && "Field should be modified through extractor");
     std::cout << "  ✅ Mutable extraction successful\n";
 
     // Test 7: Multiple extractors on same instance
@@ -222,9 +222,9 @@ void testFieldExtraction() {
     std::cout << "  Pipeline: 0x" << std::hex << reinterpret_cast<uintptr_t>(pipe) << std::dec << "\n";
     std::cout << "  Layout: 0x" << std::hex << reinterpret_cast<uintptr_t>(layout) << std::dec << "\n";
     std::cout << "  RenderPass: 0x" << std::hex << reinterpret_cast<uintptr_t>(pass) << std::dec << "\n";
-    assert(pipe == pipelineState.pipeline && "Pipeline should match");
-    assert(layout == pipelineState.layout && "Layout should match");
-    assert(pass == pipelineState.renderPass && "RenderPass should match");
+    VIXEN_TEST_CHECK(pipe == pipelineState.pipeline && "Pipeline should match");
+    VIXEN_TEST_CHECK(layout == pipelineState.layout && "Layout should match");
+    VIXEN_TEST_CHECK(pass == pipelineState.renderPass && "RenderPass should match");
     std::cout << "  ✅ Multiple extractor usage successful\n";
 
     // Test 8: Buffer collection
@@ -245,8 +245,8 @@ void testFieldExtraction() {
     std::cout << "\nTest 8: Buffer collection extraction\n";
     std::cout << "  Vertex buffer: 0x" << std::hex << reinterpret_cast<uintptr_t>(vertex) << std::dec << "\n";
     std::cout << "  Uniform buffers count: " << uniforms.size() << "\n";
-    assert(vertex == buffers.vertexBuffer && "Vertex buffer should match");
-    assert(uniforms.size() == 2 && "Uniform buffer count should match");
+    VIXEN_TEST_CHECK(vertex == buffers.vertexBuffer && "Vertex buffer should match");
+    VIXEN_TEST_CHECK(uniforms.size() == 2 && "Uniform buffer count should match");
     std::cout << "  ✅ Buffer collection extraction successful\n";
 }
 

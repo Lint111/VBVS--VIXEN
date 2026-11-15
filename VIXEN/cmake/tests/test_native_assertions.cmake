@@ -1,0 +1,47 @@
+if(NOT DEFINED VIXEN_ASSERT_SCAN_ROOT OR NOT IS_DIRECTORY "${VIXEN_ASSERT_SCAN_ROOT}")
+    message(FATAL_ERROR "VIXEN_ASSERT_SCAN_ROOT must name an existing source tree")
+endif()
+
+set(_scan_roots)
+if(EXISTS "${VIXEN_ASSERT_SCAN_ROOT}/libraries" OR EXISTS "${VIXEN_ASSERT_SCAN_ROOT}/application")
+    foreach(_area libraries application)
+        if(EXISTS "${VIXEN_ASSERT_SCAN_ROOT}/${_area}")
+            list(APPEND _scan_roots "${VIXEN_ASSERT_SCAN_ROOT}/${_area}")
+        endif()
+    endforeach()
+else()
+    list(APPEND _scan_roots "${VIXEN_ASSERT_SCAN_ROOT}")
+endif()
+
+set(_native_sources)
+foreach(_root IN LISTS _scan_roots)
+    file(GLOB_RECURSE _found LIST_DIRECTORIES false
+        "${_root}/*.c" "${_root}/*.cc" "${_root}/*.cpp" "${_root}/*.cxx"
+        "${_root}/*.h" "${_root}/*.hh" "${_root}/*.hpp" "${_root}/*.hxx")
+    list(APPEND _native_sources ${_found})
+endforeach()
+
+set(_violations)
+foreach(_path IN LISTS _native_sources)
+    if(NOT _path MATCHES "/tests?/" AND NOT _path MATCHES "/test[^/]*\\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$")
+        continue()
+    endif()
+    file(READ "${_path}" _source)
+    string(REGEX MATCH "(^|[^A-Za-z0-9_])(assert|RMLUI_ASSERT)[ \\t]*\\(" _assert_match "${_source}")
+    if(NOT _assert_match)
+        continue()
+    endif()
+
+    string(REGEX MATCH "(^|[^A-Za-z0-9_])(EXPECT_[A-Za-z0-9_]+|ASSERT_[A-Za-z0-9_]+|ADD_FAILURE|GTEST_[A-Za-z0-9_]+|[A-Z][A-Z0-9_]*_TEST_CHECK)[ \\t]*\\(" _framework_match "${_source}")
+    if(NOT _framework_match)
+        list(APPEND _violations "${_path}")
+    endif()
+endforeach()
+
+if(_violations)
+    string(JOIN "\\n  " _details ${_violations})
+    message(FATAL_ERROR "Native test source contains Release-disabled assert checks without a framework or always-on assertion:\\n  ${_details}")
+endif()
+
+list(LENGTH _native_sources _native_source_count)
+message(STATUS "Native assertion lint passed (${_native_source_count} native sources scanned)")
