@@ -1,4 +1,5 @@
 #include "VulkanGraphApplication.h"
+#include "EnvironmentFlags.h"
 #include "VulkanGlobalNames.h"
 #include "graph/UpscalerModules.h"
 #include "Core/FrameSyncSchedule.h"
@@ -26,7 +27,7 @@
 
 VulkanGraphApplication::UpdateEnvironmentFlags VulkanGraphApplication::ReadUpdateEnvironmentFlags() {
     UpdateEnvironmentFlags flags;
-    const auto isSet = [](const char* name) { return std::getenv(name) != nullptr; };
+    const auto isSet = Vixen::Core::Env::Present;
 
     if (const char* env = std::getenv("VIXEN_RESIZE_AT_FRAME")) {
         flags.resizeAtFrame = std::strtol(env, nullptr, 10);

@@ -5,6 +5,10 @@
 
 namespace Vixen::Core::Env {
 
+inline bool Present(const char* name) {
+    return std::getenv(name) != nullptr;
+}
+
 // Environment flags have historically treated any non-whitespace value as enabled.  Keep the
 // explicit 0/1 parser separate so callers can distinguish an unset flag from an explicit value.
 inline bool Enabled(const char* name) {
