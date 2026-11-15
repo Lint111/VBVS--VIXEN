@@ -188,12 +188,9 @@ TEST(CacheEnvelope, ConcurrentWritersOnlyPublishCompletePayloads) {
     std::thread reader([&] {
         while (writing.load(std::memory_order_acquire)) {
             std::vector<char> payload;
-            std::string error;
-            const auto status = CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", payload, &error);
+            const auto status = CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", payload);
             if (status != CashSystem::CacheFileStatus::Loaded ||
                 (payload != payloadA && payload != payloadB)) {
-                std::cerr << "concurrent read status=" << static_cast<int>(status)
-                          << " error=" << error << " payload=" << payload.size() << '\n';
                 invalidRead.store(true, std::memory_order_release);
                 return;
             }
@@ -201,18 +198,14 @@ TEST(CacheEnvelope, ConcurrentWritersOnlyPublishCompletePayloads) {
     });
     std::thread writerA([&] {
         for (int i = 0; i < 20; ++i) {
-            std::string error;
-            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadA, &error)) {
-                std::cerr << "writer A error=" << error << '\n';
+            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadA)) {
                 invalidRead.store(true, std::memory_order_release);
             }
         }
     });
     std::thread writerB([&] {
         for (int i = 0; i < 20; ++i) {
-            std::string error;
-            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadB, &error)) {
-                std::cerr << "writer B error=" << error << '\n';
+            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadB)) {
                 invalidRead.store(true, std::memory_order_release);
             }
         }
