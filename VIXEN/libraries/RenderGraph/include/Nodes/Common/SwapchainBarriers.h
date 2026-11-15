@@ -1,9 +1,12 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 #pragma once
 
+#include "error/VulkanError.h"
 #include "VulkanDevice.h"
 #include "IRenderTarget.h"
 #include <vulkan/vulkan.h>
+
+#include <utility>
 
 namespace Vixen::RenderGraph {
 
@@ -18,6 +21,51 @@ inline VkImageLayout DecideRenderTargetPriorLayoutAndUpdate(
 } // namespace Vixen::RenderGraph
 
 namespace Vixen::RenderGraph::SwapchainBarriers {
+
+// Record setup-time work into a one-shot command buffer and publish it through the
+// graph's submission stream. The graph owns the command buffer after submit and
+// retires it with the same queue-timeline ordering as every other graph submit.
+template <typename RecordFn, typename SubmitFn>
+inline void RecordAndSubmitOneShot(
+    VkDevice device,
+    VkCommandPool pool,
+    RecordFn&& record,
+    SubmitFn&& submit,
+    const char* allocateMessage,
+    const char* beginMessage,
+    const char* endMessage,
+    const char* submitMessage) {
+    VkCommandBufferAllocateInfo allocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    allocation.commandPool = pool;
+    allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocation.commandBufferCount = 1;
+
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    VK_CHECK_THROW(vkAllocateCommandBuffers(device, &allocation, &commandBuffer), allocateMessage);
+
+    VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    const VkResult beginResult = vkBeginCommandBuffer(commandBuffer, &begin);
+    if (beginResult != VK_SUCCESS) {
+        vkFreeCommandBuffers(device, pool, 1, &commandBuffer);
+        VK_CHECK_THROW(beginResult, beginMessage);
+    }
+
+    try {
+        record(commandBuffer);
+    } catch (...) {
+        vkFreeCommandBuffers(device, pool, 1, &commandBuffer);
+        throw;
+    }
+
+    const VkResult endResult = vkEndCommandBuffer(commandBuffer);
+    if (endResult != VK_SUCCESS) {
+        vkFreeCommandBuffers(device, pool, 1, &commandBuffer);
+        VK_CHECK_THROW(endResult, endMessage);
+    }
+
+    VK_CHECK_THROW(submit(commandBuffer), submitMessage);
+}
 
 inline void TransitionImageToGeneralBarrier2(Vixen::Vulkan::Resources::VulkanDevice* device,
                                               VkCommandBuffer cmd, VkImage image,
