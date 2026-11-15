@@ -860,11 +860,27 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         --recipe-kernels-extra "${_recipe_element_kinds_source_run}"
         --recipe-container "${_recipe_container_run}"
         --out-dir "${_recipe_services_dir_run}")
+    # The command above intentionally receives WSL paths. Native Ninja needs the
+    # corresponding Windows spelling for every source/input prerequisite instead;
+    # use the shared bridge helper rather than declaring a WSL path in DEPENDS.
+    set(_recipe_services_dependency_inputs
+        "${_recipe_opcode_source_run}"
+        "${_recipe_kernel_source_run}"
+        "${_recipe_glyph_outline_source_run}"
+        "${_recipe_kernel_extra_source_run}"
+        "${_recipe_value_kernel_source_run}"
+        "${_recipe_element_kinds_source_run}"
+        "${_recipe_container_run}")
+    set(_recipe_services_native_dependencies)
+    foreach(_recipe_services_input IN LISTS _recipe_services_dependency_inputs)
+        vixen_codegen_native_dependency_path("${_recipe_services_input}" _recipe_services_input_native)
+        list(APPEND _recipe_services_native_dependencies "${_recipe_services_input_native}")
+    endforeach()
     add_custom_command(OUTPUT ${_recipe_services_outputs}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${_recipe_services_dir}"
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_services_args}
         DEPENDS "${_yk_dll}" "${_tool_stamp}" "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeContainer.g.h"
-            ${_recipe_simd_input_files} "${_recipe_element_kinds_source_run}"
+            ${_recipe_simd_input_files} ${_recipe_services_native_dependencies}
         COMMENT "[codegen] emitting pinned-kernel recipe CPU/GPU/analysis services"
         VERBATIM)
     add_custom_target(recipe_services_codegen DEPENDS ${_recipe_services_outputs})
