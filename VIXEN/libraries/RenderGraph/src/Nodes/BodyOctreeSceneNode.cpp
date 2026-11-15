@@ -334,6 +334,16 @@ bool BodyOctreeSceneNode::UpdateInstanceRows(std::span<const Vixen::SVO::BodyIns
     return true;
 }
 
+int32_t BodyOctreeSceneNode::MarchedInstanceCount() const {
+    // Same paired-stream clamp RefreshInstanceStreams applies to the emitted INSTANCE_COUNT.
+    int32_t capacity = std::min(
+        static_cast<int32_t>(transformRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceTransformGpu)),
+        static_cast<int32_t>(materialRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceMaterialGpu)));
+    if (motionGuidesEnabled_) capacity = std::min(capacity,
+        static_cast<int32_t>(motionRingCapacity_ / sizeof(Vixen::Gpu::BodyInstanceMotion)));
+    return std::clamp(std::min(instanceCount_, capacity), 0, kMarchLoopInstanceCap);
+}
+
 void BodyOctreeSceneNode::RefreshInstanceStreams() {
     instanceTransforms_.clear();
     instanceTransforms_.reserve(instances_.size());

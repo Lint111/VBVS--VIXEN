@@ -129,6 +129,16 @@ public:
     uint64_t GetInstanceEpoch() const { return rtQueryInstanceEpoch_; }
     void SetMotionGuidesEnabled(bool enabled) { motionGuidesEnabled_ = enabled; RefreshInstanceStreams(); }
 
+    /// The instance march loop's capacity: TraceWorld.glsl clamps `pc.instanceCount` to 3 * 64
+    /// (both the primary and the shadow loop). Keep in step with the shader until the tile
+    /// candidate lists (GB1) remove the cap.
+    static constexpr int32_t kMarchLoopInstanceCap = 3 * 64;
+    /// Instances the host asked for (the size of the last SetInstances list).
+    int32_t RequestedInstanceCount() const { return instanceCount_; }
+    /// Instances the march loop actually iterates: the requested count after the paired stream
+    /// capacity clamp and the shader's loop cap.
+    int32_t MarchedInstanceCount() const;
+
     /**
      * @brief Reorder the current instance list front-to-back by distance from
      *        `cameraPos` (Sparse-Mip ESVO LOD Inc1 M4b).

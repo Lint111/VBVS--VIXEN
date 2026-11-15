@@ -314,6 +314,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             continue;
         }
 
+        // GB0: every instance the loop actually examines for this ray is a candidate.
+        incrLeafInstrCandidate();
         BodyInstance inst = bodyInstances[instIdx];
         const uint instanceIndex = uint(instIdx);
         const bool axisAlignedUniform = instanceIsAxisAlignedUniformScale(instanceIndex);

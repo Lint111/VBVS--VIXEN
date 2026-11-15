@@ -374,6 +374,7 @@ private:
     uint32_t physicsLoopID = 0;                      // Physics loop at 60Hz
     uint32_t simLoopID = 0;                          // Logic loop for the embedded sim (fixed cadence)
     NodeHandle voxelGridNode_{};                     // dense debug-buffer node (still in graph; no longer the render source)
+    int32_t capWarnedBodyInstanceCount_ = 0;         // requested count the instance-capacity warning last named
     NodeHandle bodyOctreeSceneNode_{};               // M-wire: sparse shell octree node (bindings 1/2/3/5/10)
     NodeHandle cameraNode_{};                        // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state lookup for the residency trigger
     NodeHandle skyProjectionNode_{};                 // Tiered ESVO Inc1 M3: address-derived sky-point composite pass (stored for potential live lookup)
@@ -706,6 +707,11 @@ public:
     // Diagnostic: the RT-query TLAS instance epoch (moves once per requested TLAS rebuild).
     uint64_t BodyInstanceEpoch() const;
     bool UpdateBodyInstanceRows(std::span<const Vixen::SVO::BodyInstanceRowDelta> rows);
+    // Instances the host last asked for / the march loop actually iterates (0 when the body node is
+    // absent). The loop count is the requested count after the stream-capacity clamp and the
+    // shader's loop cap (BodyOctreeSceneNode::kMarchLoopInstanceCap).
+    int32_t RequestedBodyInstanceCount() const;
+    int32_t MarchedBodyInstanceCount() const;
     // R802.1 external scene seam: drive the existing ray-march camera from a facade camera row.
     void SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up, float verticalFov);
     // Spec B I3/Task 6 (= main's I4.1 passthrough — both lines converged on this API): push a
