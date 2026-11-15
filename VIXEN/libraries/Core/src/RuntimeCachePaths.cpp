@@ -6,8 +6,10 @@
 #include <cctype>
 #include <cerrno>
 #include <csignal>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -16,6 +18,9 @@
 #include <vector>
 
 #ifdef _WIN32
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -338,41 +343,66 @@ bool AtomicWriteFile(
     }
 
 #ifdef _WIN32
-    // ReplaceFileW preserves the destination name while replacing its contents, which avoids the
-    // delete-then-move window in MoveFileExW when readers hold the destination open.  MoveFileExW
-    // remains the correct operation when publishing a destination for the first time.
-    const DWORD destinationAttributes = ::GetFileAttributesW(destination.c_str());
-    const bool destinationExists = destinationAttributes != INVALID_FILE_ATTRIBUTES;
-    if (!destinationExists) {
-        const DWORD attributesError = ::GetLastError();
-        if (attributesError != ERROR_FILE_NOT_FOUND && attributesError != ERROR_PATH_NOT_FOUND) {
-            if (error) *error = "GetFileAttributesW failed with error " +
-                                std::to_string(attributesError);
-            std::filesystem::remove(temporary, ec);
-            return false;
-        }
+    // FileRenameInfoEx with POSIX semantics replaces the destination while existing readers keep
+    // their handle to the old inode, matching POSIX rename semantics without a delete-then-move
+    // window.  The destination may be absent, so use REPLACE_IF_EXISTS for both first publish and
+    // replacement.
+    const auto destinationName = destination.native();
+    if (destinationName.size() >
+        static_cast<std::size_t>(std::numeric_limits<DWORD>::max()) / sizeof(wchar_t)) {
+        if (error) *error = "destination path is too long for FileRenameInfoEx";
+        std::filesystem::remove(temporary, ec);
+        return false;
     }
+    const auto destinationNameBytes = destinationName.size() * sizeof(wchar_t);
+    const auto renameInfoSize = offsetof(FILE_RENAME_INFO, FileName) + destinationNameBytes;
+    std::vector<char> renameInfoStorage(renameInfoSize);
+    auto* renameInfo = reinterpret_cast<FILE_RENAME_INFO*>(renameInfoStorage.data());
+    renameInfo->Flags = FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS;
+    renameInfo->RootDirectory = nullptr;
+    renameInfo->FileNameLength = static_cast<DWORD>(destinationNameBytes);
+    std::memcpy(renameInfo->FileName, destinationName.data(), destinationNameBytes);
 
     constexpr int kMaxReplaceAttempts = 8;
     DWORD lastError = ERROR_SUCCESS;
     for (int attempt = 0; attempt < kMaxReplaceAttempts; ++attempt) {
-        const BOOL replaced = destinationExists
-            ? ::ReplaceFileW(destination.c_str(), temporary.c_str(), nullptr,
-                             REPLACEFILE_WRITE_THROUGH, nullptr, nullptr)
-            : ::MoveFileExW(temporary.c_str(), destination.c_str(),
-                            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-        if (replaced) {
+        HANDLE replacement = ::CreateFileW(
+            temporary.c_str(),
+            GENERIC_READ | GENERIC_WRITE | DELETE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
+            nullptr);
+        if (replacement == INVALID_HANDLE_VALUE) {
+            lastError = ::GetLastError();
+        } else {
+            BOOL renamed = ::FlushFileBuffers(replacement);
+            if (renamed) {
+                renamed = ::SetFileInformationByHandle(
+                    replacement,
+                    FileRenameInfoEx,
+                    renameInfoStorage.data(),
+                    static_cast<DWORD>(renameInfoStorage.size()));
+            }
+            lastError = renamed ? ERROR_SUCCESS : ::GetLastError();
+            ::CloseHandle(replacement);
+            if (renamed) {
+                return true;
+            }
+        }
+
+        if (lastError == ERROR_SUCCESS) {
             return true;
         }
 
-        lastError = ::GetLastError();
         if (lastError != ERROR_SHARING_VIOLATION || attempt + 1 == kMaxReplaceAttempts) {
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    if (error) *error = std::string(destinationExists ? "ReplaceFileW" : "MoveFileExW") +
-                        " failed with error " + std::to_string(lastError);
+    if (error) *error = "SetFileInformationByHandle(FileRenameInfoEx) failed with error " +
+                        std::to_string(lastError);
     std::filesystem::remove(temporary, ec);
     return false;
 #else
