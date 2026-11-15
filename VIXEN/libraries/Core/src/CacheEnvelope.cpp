@@ -21,6 +21,7 @@ namespace {
 
 enum class CacheFileReadStatus {
     Loaded,
+    Missing,
     TooLarge,
     IoError,
 };
@@ -40,8 +41,12 @@ CacheFileReadStatus ReadCacheFile(
         FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
         nullptr);
     if (file == INVALID_HANDLE_VALUE) {
+        const DWORD openError = ::GetLastError();
+        if (openError == ERROR_FILE_NOT_FOUND || openError == ERROR_PATH_NOT_FOUND) {
+            return CacheFileReadStatus::Missing;
+        }
         if (error) *error = "cannot open cache file (Windows error " +
-                            std::to_string(::GetLastError()) + ")";
+                            std::to_string(openError) + ")";
         return CacheFileReadStatus::IoError;
     }
 
@@ -79,6 +84,10 @@ CacheFileReadStatus ReadCacheFile(
 #else
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in) {
+        std::error_code existsError;
+        if (!std::filesystem::exists(path, existsError) && !existsError) {
+            return CacheFileReadStatus::Missing;
+        }
         if (error) *error = "cannot open cache file";
         return CacheFileReadStatus::IoError;
     }
@@ -146,17 +155,11 @@ CacheFileStatus ReadCacheEnvelopeBytes(
     std::string* error
 ) {
     payload.clear();
-    std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) {
-        if (ec) {
-            if (error) *error = "cannot inspect cache file: " + ec.message();
-            return CacheFileStatus::IoError;
-        }
-        return CacheFileStatus::Missing;
-    }
-
     std::vector<char> fileBytes;
     const auto readStatus = ReadCacheFile(path, fileBytes, error);
+    if (readStatus == CacheFileReadStatus::Missing) {
+        return CacheFileStatus::Missing;
+    }
     if (readStatus == CacheFileReadStatus::IoError) {
         return CacheFileStatus::IoError;
     }
