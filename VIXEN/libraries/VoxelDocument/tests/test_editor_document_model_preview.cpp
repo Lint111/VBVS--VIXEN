@@ -14,6 +14,7 @@
 #include <chrono>
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdlib>
 #include <cmath>
 #include <cstdint>
@@ -41,6 +42,12 @@
 #ifndef VXD_TEST_TEMP_DIR
 #error "VXD_TEST_TEMP_DIR must be defined by CMake"
 #endif
+#ifndef UNDERTOW_CONTENT_IDS_PATH
+#error "UNDERTOW_CONTENT_IDS_PATH must be defined by CMake"
+#endif
+#ifndef UNDERTOW_CORE_MATERIALS_PATH
+#error "UNDERTOW_CORE_MATERIALS_PATH must be defined by CMake"
+#endif
 
 namespace {
 
@@ -57,6 +64,84 @@ std::vector<std::uint8_t> ReadFile(const std::string& path) {
     file.seekg(0);
     if (!file.read(reinterpret_cast<char*>(bytes.data()), size)) return {};
     return bytes;
+}
+
+// The authoring contract stores MaterialRef as the 1-based handle in the frozen content-id
+// table. Keep this parity fixture on the real provider artifacts: the VDC1 reference table is
+// only a name table, so its ordinal is deliberately not a valid VRC1 material value.
+std::vector<std::string> ReadCoreContentIds() {
+    std::ifstream file(UNDERTOW_CONTENT_IDS_PATH, std::ios::binary);
+    if (!file) return {};
+    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string marker = "\"ids\"";
+    const std::size_t markerAt = text.find(marker);
+    if (markerAt == std::string::npos) return {};
+    const std::size_t begin = text.find('[', markerAt + marker.size());
+    if (begin == std::string::npos) return {};
+
+    std::vector<std::string> ids;
+    for (std::size_t at = begin + 1u; at < text.size() && text[at] != ']';) {
+        if (text[at] != '"') {
+            ++at;
+            continue;
+        }
+        const std::size_t end = text.find('"', at + 1u);
+        if (end == std::string::npos) return {};
+        ids.emplace_back(text.substr(at + 1u, end - at - 1u));
+        at = end + 1u;
+    }
+    return ids;
+}
+
+const std::vector<std::string>& CoreMaterialReferences() {
+    static const auto references = [] {
+        std::vector<std::string> result;
+        std::ifstream file(UNDERTOW_CORE_MATERIALS_PATH);
+        if (!file) return result;
+        std::string line;
+        while (std::getline(file, line)) {
+            const std::size_t idAt = line.find("id:");
+            if (idAt == std::string::npos) continue;
+            std::size_t begin = idAt + 3u;
+            while (begin < line.size() && std::isspace(static_cast<unsigned char>(line[begin]))) ++begin;
+            std::size_t end = begin;
+            while (end < line.size() && (std::isalnum(static_cast<unsigned char>(line[end])) || line[end] == '_' || line[end] == '-')) ++end;
+            if (end > begin) result.emplace_back("core:" + line.substr(begin, end - begin));
+        }
+        return result;
+    }();
+    return references;
+}
+
+bool IsCoreMaterialRow(const std::string& reference) {
+    const auto& materials = CoreMaterialReferences();
+    return std::find(materials.begin(), materials.end(), reference) != materials.end();
+}
+
+bool ResolveCoreMaterial(const std::string& reference, std::uint32_t& materialId) {
+    if (!IsCoreMaterialRow(reference)) return false;
+    const auto ids = ReadCoreContentIds();
+    const auto found = std::find(ids.begin(), ids.end(), reference);
+    if (found == ids.end()) return false;
+    materialId = static_cast<std::uint32_t>(found - ids.begin()) + 1u;
+    return true;
+}
+
+void DumpMaterialRefs(const std::string& name, const std::vector<std::uint8_t>& blob,
+                      const char* side) {
+    Yeroket::Sdf::Generated::RecipeContainerView view{};
+    if (!Yeroket::Sdf::Generated::ReadRecipeContainer(blob.data(), blob.size(), view)) return;
+    for (std::uint32_t i = 0u; i < view.header.instructionCount; ++i) {
+        const auto& instruction = view.instructions[i];
+        if (instruction.opCode != 117u) continue; // MaterialRef; catalogue: InstructionData/material/0/1.
+        std::uint32_t raw = 0u;
+        std::memcpy(&raw, &instruction.data[0], sizeof(raw));
+        std::cout << "[bake-parity] case=" << name << " side=" << side
+                  << " instruction=" << i << " opcode=" << static_cast<unsigned>(instruction.opCode)
+                  << " data0.u32=0x" << std::hex << raw << std::dec
+                  << " data0.float=" << std::setprecision(9) << instruction.data[0]
+                  << " declared-source=InstructionData declared-type=material\n";
+    }
 }
 
 bool SameBytes(const std::vector<Yeroket::Sdf::Generated::SdfInstruction>& a,
@@ -198,6 +283,29 @@ TEST(EditorDocumentModelBake, ExportParityFixtureWhenRequested) {
         ASSERT_TRUE(model.SetLayerMaterial(
             model.LayerId(1u), "core:emissive_trim", diagnostic))
             << diagnostic.message;
+    } else if (std::string(mode) == "cut-with-own-material") {
+        ASSERT_GE(model.LayerCount(), 3u);
+        ASSERT_TRUE(model.SetDocumentDefaultMaterial({}, diagnostic)) << diagnostic.message;
+        ASSERT_TRUE(model.SetLayerMaterial(
+            model.LayerId(0u), "core:hull_metal_major", diagnostic))
+            << diagnostic.message;
+        ASSERT_TRUE(model.SetLayerMaterial(
+            model.LayerId(1u), "core:emissive_trim", diagnostic))
+            << diagnostic.message;
+        ASSERT_TRUE(model.SetLayerMaterial(
+            model.LayerId(2u), "core:hull_metal_minor", diagnostic))
+            << diagnostic.message;
+        ASSERT_TRUE(model.SetLayerEnabled(2u, true, diagnostic)) << diagnostic.message;
+    } else if (std::string(mode) == "bulge-input") {
+        ASSERT_GE(model.ParameterCount(), 1u);
+        ASSERT_TRUE(model.SetDocumentDefaultMaterial({}, diagnostic)) << diagnostic.message;
+        ASSERT_TRUE(model.SetLayerMaterial(
+            model.LayerId(0u), "core:hull_metal_major", diagnostic))
+            << diagnostic.message;
+        ASSERT_TRUE(model.SetLayerMaterial(
+            model.LayerId(1u), "core:emissive_trim", diagnostic))
+            << diagnostic.message;
+        ASSERT_TRUE(model.SetParameterValue(0u, 0.85f, diagnostic)) << diagnostic.message;
     } else if (std::string(mode) == "default-only") {
         ASSERT_TRUE(model.SetDocumentDefaultMaterial("core:emissive_trim", diagnostic))
             << diagnostic.message;
@@ -238,15 +346,8 @@ TEST(EditorDocumentModelBake, FlattenVrc1MatchesAuthorBakeOutputs) {
         DocumentDiagnostic diagnostic;
         ASSERT_TRUE(model.Load(vxdPath, diagnostic)) << name << ": " << diagnostic.message;
         std::vector<std::uint8_t> editorVrc1;
-        // The author VRC1 writer preserves the VDC1 reference-table index in MaterialRef. The
-        // runtime CPU witness separately resolves these names to palette slots (5 and 8); parity
-        // here intentionally compares the serialized editor/author container contract.
-        const auto materialResolver = [&model](const std::string& id, uint32_t& materialId) {
-            const auto& references = model.References();
-            const auto found = std::find(references.begin(), references.end(), id);
-            if (found == references.end()) return false;
-            materialId = static_cast<uint32_t>(found - references.begin());
-            return true;
+        const auto materialResolver = [](const std::string& id, uint32_t& materialId) {
+            return ResolveCoreMaterial(id, materialId);
         };
         ASSERT_TRUE(model.Flatten(editorVrc1, materialResolver, diagnostic))
             << name << ": " << diagnostic.message;
@@ -283,6 +384,9 @@ TEST(EditorDocumentModelBake, FlattenVrc1MatchesAuthorBakeOutputs) {
             << name << ": no VRC1 container of editor size " << editorVrc1.size()
             << " found in " << authorPackPath;
 
+        DumpMaterialRefs(name, editorVrc1, "editor");
+        DumpMaterialRefs(name, authorVrc1, "author");
+
         std::size_t firstDifference = 0u;
         const std::size_t commonSize = std::min(editorVrc1.size(), authorVrc1.size());
         while (firstDifference < commonSize &&
@@ -306,7 +410,7 @@ TEST(EditorDocumentModelBake, FlattenVrc1MatchesAuthorBakeOutputs) {
         }
         ++caseCount;
     }
-    EXPECT_EQ(caseCount, 3u);
+    EXPECT_EQ(caseCount, 5u);
 }
 
 TEST(EditorDocumentModelPreview, DirectEntryMatchesVrc1ForLayerOverride) {
