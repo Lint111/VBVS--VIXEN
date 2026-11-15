@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -148,6 +149,25 @@ TEST(EditorDocumentModelPreview, DirectEntryMatchesVrc1FlattenAndExportBytes) {
     EXPECT_EQ(previewEntry.bakeResolution, oldView.header.bakeResolution);
     EXPECT_FLOAT_EQ(previewEntry.bandVoxels, oldView.header.bandVoxels);
     EXPECT_EQ(previewEntry.brickDepth, oldView.header.brickDepth);
+}
+
+TEST(EditorDocumentModelBake, ExportExternalVxdWhenRequested) {
+    const char* input = std::getenv("EDMAT11_PARITY_VXD");
+    const char* output = std::getenv("EDMAT11_PARITY_VRC1");
+    if (input == nullptr || output == nullptr || *input == '\0' || *output == '\0') {
+        GTEST_SKIP() << "set EDMAT11_PARITY_VXD and EDMAT11_PARITY_VRC1 for the external bake-parity witness";
+    }
+
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(input, diagnostic)) << diagnostic.message;
+    std::vector<std::uint8_t> flattened;
+    ASSERT_TRUE(model.Flatten(flattened, diagnostic)) << diagnostic.message;
+    std::ofstream file(output, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(file.good()) << output;
+    file.write(reinterpret_cast<const char*>(flattened.data()),
+               static_cast<std::streamsize>(flattened.size()));
+    ASSERT_TRUE(file.good()) << output;
 }
 
 TEST(EditorDocumentModelPreview, DirectEntryMatchesVrc1ForLayerOverride) {
@@ -1386,6 +1406,7 @@ TEST(EditorDocumentModelVdc1, DocumentDefaultMaterialPersistsAndFeedsFlattenOutp
     EditorDocumentModel reopened;
     ASSERT_TRUE(reopened.Load(path.path, diagnostic)) << diagnostic.message;
     EXPECT_EQ(reopened.DocumentDefaultMaterial(), "core:emissive_trim");
+    EXPECT_TRUE(reopened.IsMaterialReference("core:emissive_trim"));
     std::vector<uint8_t> reopenedBytes;
     ASSERT_TRUE(reopened.Serialize(reopenedBytes, diagnostic)) << diagnostic.message;
     EXPECT_EQ(reopenedBytes, savedBytes);
@@ -1405,6 +1426,7 @@ TEST(EditorDocumentModelVdc1, DocumentDefaultMaterialPersistsAndFeedsFlattenOutp
 
     ASSERT_TRUE(reopened.SetDocumentDefaultMaterial({}, diagnostic)) << diagnostic.message;
     EXPECT_TRUE(reopened.DocumentDefaultMaterial().empty());
+    EXPECT_FALSE(reopened.IsMaterialReference("core:emissive_trim"));
     std::vector<uint8_t> clearedBytes;
     ASSERT_TRUE(reopened.Serialize(clearedBytes, diagnostic)) << diagnostic.message;
     Yeroket::Sdf::Generated::VoxelDocumentView clearedView{};

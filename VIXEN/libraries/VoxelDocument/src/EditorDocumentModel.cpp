@@ -1053,6 +1053,10 @@ bool EditorDocumentModel::RemoveReference(const std::string& id, DocumentDiagnos
 }
 
 bool EditorDocumentModel::IsMaterialReference(const std::string& id) const {
+    // The v5 document default shares the reference table with layer MaterialRef nodes,
+    // but has no layer instruction to mark it. Keep pack-recursive registration from
+    // mistaking a persisted default material for a recipe dependency after reopen.
+    if (!defaultMaterial_.empty() && defaultMaterial_ == id) return true;
     const auto found = std::find(references_.begin(), references_.end(), id);
     if (found == references_.end()) return false;
     const uint32_t referenceIndex = static_cast<uint32_t>(found - references_.begin());
