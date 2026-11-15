@@ -35,8 +35,8 @@ endforeach()
 set(_vixen_windows_dotnet "")
 if(WIN32)
     find_program(_vixen_windows_dotnet NAMES dotnet.exe
-        HINTS "$ENV{DOTNET_ROOT}" "$ENV{DOTNET_ROOT(x86)}"
-        PATHS "$ENV{ProgramFiles}/dotnet" "$ENV{ProgramFiles(x86)}/dotnet")
+        HINTS "$ENV{DOTNET_ROOT}"
+        PATHS "$ENV{ProgramFiles}/dotnet")
 endif()
 find_program(_vixen_dotnet_on_path NAMES dotnet)
 set(_vixen_dotnet_is_home_fallback FALSE)
