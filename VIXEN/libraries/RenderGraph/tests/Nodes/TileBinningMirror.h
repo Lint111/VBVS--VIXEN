@@ -13,13 +13,12 @@
 #include "Generated/TileHeader.g.h"
 #include "Generated/TileSortedCandidate.g.h"
 
+#include <cassert>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
-#include <string>
 #include <vector>
 
 namespace Vixen::RenderGraph::Mirror {
@@ -61,8 +60,9 @@ struct TileBinMirrorResult {
     TileBinMirrorMetrics metrics;
 };
 
-inline void MirrorRequire(bool condition, const std::string& message) {
-    if (!condition) throw std::runtime_error("GB1 CPU mirror: " + message);
+inline void MirrorRequire(bool condition, const char* message) {
+    (void)message;
+    assert(condition);
 }
 
 inline int MirrorCapacity(int listCapacityLog2) {

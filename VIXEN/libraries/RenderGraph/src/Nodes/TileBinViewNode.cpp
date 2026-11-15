@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <stdexcept>
 #include <glm/glm.hpp>
 
 namespace Vixen::RenderGraph {
@@ -26,7 +25,10 @@ void TileBinViewNode::TypedSetupImpl(TypedSetupContext&) {}
 
 void TileBinViewNode::TypedCompileImpl(TypedCompileContext& ctx) {
     device_ = ctx.In(TileBinViewNodeConfig::VULKAN_DEVICE_IN);
-    if (!device_) throw std::runtime_error("[TileBinViewNode] VULKAN_DEVICE_IN is null");
+    if (!device_) {
+        NODE_LOG_ERROR("[TileBinViewNode] VULKAN_DEVICE_IN is null");
+        return;
+    }
     if (!viewRing_.IsInitialized()) viewRing_.Initialize(device_, kRingSize);
     for (uint32_t i = 0; i < kRingSize; ++i) {
         if (viewRing_.GetUniformBuffer(i) == VK_NULL_HANDLE)
