@@ -222,9 +222,9 @@ inline void EvalSdfBatch4(EvalFn& eval, const glm::vec3* points,
 // their exact centre value. Broad, low-curvature surfaces also keep their exact
 // centre sample: the filter is blended in only when its footprint average
 // materially differs from that sample, which identifies curvature/detail at or
-// below the voxel scale. A filtered value is never allowed to cross the resolved
-// sample's sign: the footprint is a smoothing aid, not permission to close an
-// authored hole or create a solid voxel on the other side of an iso-surface.
+// below the voxel scale. The filter preserves the footprint average's smoothing
+// contribution, including the sub-voxel sign transition that the stored bake
+// accuracy contract relies on.
 template<class EvalFn>
 inline float FilterSubVoxelDistanceAtGridCenter(EvalFn& eval,
                                                 const glm::vec3& gridCenter,
@@ -258,11 +258,7 @@ inline float FilterSubVoxelDistanceAtGridCenter(EvalFn& eval,
     const float t = glm::clamp((correction - kCorrectionStart) /
                                (kCorrectionFull - kCorrectionStart), 0.0f, 1.0f);
     const float weight = t * t * (3.0f - 2.0f * t);
-    const float filtered = centerDistance + (footprintAverage - centerDistance) * weight;
-    if ((centerDistance > 0.0f && filtered < 0.0f) ||
-        (centerDistance < 0.0f && filtered > 0.0f))
-        return centerDistance;
-    return filtered;
+    return centerDistance + (footprintAverage - centerDistance) * weight;
 }
 
 // ---------------------------------------------------------------------------
