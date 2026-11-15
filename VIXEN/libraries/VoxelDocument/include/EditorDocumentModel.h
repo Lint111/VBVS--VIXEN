@@ -364,7 +364,14 @@ public:
     std::string LayerName(uint32_t i) const;
     static const char* OpName(uint8_t op);
 
+    using RecipeReferenceResolver = std::function<bool(const std::string& reference,
+                                                       uint32_t& recipeId)>;
+    using MaterialReferenceResolver = std::function<bool(const std::string& reference,
+                                                         uint32_t& materialId)>;
     bool Flatten(std::vector<uint8_t>& outVrc1Blob, DocumentDiagnostic& diagnostic) const;
+    bool Flatten(std::vector<uint8_t>& outVrc1Blob,
+                 const MaterialReferenceResolver& materialResolver,
+                 DocumentDiagnostic& diagnostic) const;
 
     // Flattens directly into a RecipeRegistry::RecipeEntry ready to Register()/bake. VRC1 remains
     // the persistence/export format through Flatten(); this preview-only seam avoids a temporary
@@ -374,10 +381,6 @@ public:
     bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
                               const DocumentBakeSnapshot& snapshot,
                               DocumentDiagnostic& diagnostic) const;
-    using RecipeReferenceResolver = std::function<bool(const std::string& reference,
-                                                       uint32_t& recipeId)>;
-    using MaterialReferenceResolver = std::function<bool(const std::string& reference,
-                                                         uint32_t& materialId)>;
     bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
                               const DocumentBakeSnapshot& snapshot,
                               const RecipeReferenceResolver& resolver,

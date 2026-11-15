@@ -25,6 +25,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -169,6 +170,143 @@ TEST(EditorDocumentModelBake, ExportExternalVxdWhenRequested) {
     file.write(reinterpret_cast<const char*>(flattened.data()),
                static_cast<std::streamsize>(flattened.size()));
     ASSERT_TRUE(file.good()) << output;
+}
+
+TEST(EditorDocumentModelBake, ExportParityFixtureWhenRequested) {
+    const char* input = std::getenv("EDMAT12_PARITY_INPUT");
+    const char* output = std::getenv("EDMAT12_PARITY_OUTPUT");
+    const char* mode = std::getenv("EDMAT12_PARITY_MODE");
+    if (input == nullptr || output == nullptr || mode == nullptr || *input == '\0' ||
+        *output == '\0' || *mode == '\0') {
+        GTEST_SKIP() << "set EDMAT12_PARITY_INPUT, EDMAT12_PARITY_OUTPUT, and "
+                        "EDMAT12_PARITY_MODE for the editor-save parity fixture";
+    }
+
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(input, diagnostic)) << diagnostic.message;
+
+    for (uint32_t layer = 0u; layer < model.LayerCount(); ++layer) {
+        ASSERT_TRUE(model.ClearLayerMaterial(model.LayerId(layer), diagnostic))
+            << diagnostic.message;
+    }
+    if (std::string(mode) == "two-material") {
+        ASSERT_TRUE(model.SetDocumentDefaultMaterial({}, diagnostic)) << diagnostic.message;
+        ASSERT_TRUE(model.SetLayerMaterial(
+            model.LayerId(0u), "core:hull_metal_major", diagnostic))
+            << diagnostic.message;
+        ASSERT_TRUE(model.SetLayerMaterial(
+            model.LayerId(1u), "core:emissive_trim", diagnostic))
+            << diagnostic.message;
+    } else if (std::string(mode) == "default-only") {
+        ASSERT_TRUE(model.SetDocumentDefaultMaterial("core:emissive_trim", diagnostic))
+            << diagnostic.message;
+    } else if (std::string(mode) == "neutral") {
+        ASSERT_TRUE(model.SetDocumentDefaultMaterial({}, diagnostic)) << diagnostic.message;
+    } else {
+        FAIL() << "unknown EDMAT12_PARITY_MODE: " << mode;
+    }
+
+    ASSERT_TRUE(model.Save(output, diagnostic)) << diagnostic.message;
+    std::cout << "[bake-parity] saved mode=" << mode << " path=" << output << "\n";
+}
+
+TEST(EditorDocumentModelBake, FlattenVrc1MatchesAuthorBakeOutputs) {
+    const char* manifestPath = std::getenv("EDMAT12_PARITY_MANIFEST");
+    if (manifestPath == nullptr || *manifestPath == '\0') {
+        GTEST_SKIP() << "set EDMAT12_PARITY_MANIFEST for the three-case bake parity witness";
+    }
+
+    std::ifstream manifest(manifestPath);
+    ASSERT_TRUE(manifest.good()) << manifestPath;
+    std::string line;
+    std::size_t caseCount = 0u;
+    while (std::getline(manifest, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream fields(line);
+        std::string name;
+        std::string vxdPath;
+        std::string authorPackPath;
+        ASSERT_TRUE(std::getline(fields, name, '\t')) << line;
+        ASSERT_TRUE(std::getline(fields, vxdPath, '\t')) << line;
+        ASSERT_TRUE(std::getline(fields, authorPackPath, '\t')) << line;
+        ASSERT_FALSE(name.empty()) << line;
+        ASSERT_FALSE(vxdPath.empty()) << line;
+        ASSERT_FALSE(authorPackPath.empty()) << line;
+
+        EditorDocumentModel model;
+        DocumentDiagnostic diagnostic;
+        ASSERT_TRUE(model.Load(vxdPath, diagnostic)) << name << ": " << diagnostic.message;
+        std::vector<std::uint8_t> editorVrc1;
+        // The author VRC1 writer preserves the VDC1 reference-table index in MaterialRef. The
+        // runtime CPU witness separately resolves these names to palette slots (5 and 8); parity
+        // here intentionally compares the serialized editor/author container contract.
+        const auto materialResolver = [&model](const std::string& id, uint32_t& materialId) {
+            const auto& references = model.References();
+            const auto found = std::find(references.begin(), references.end(), id);
+            if (found == references.end()) return false;
+            materialId = static_cast<uint32_t>(found - references.begin());
+            return true;
+        };
+        ASSERT_TRUE(model.Flatten(editorVrc1, materialResolver, diagnostic))
+            << name << ": " << diagnostic.message;
+
+        const auto authorPack = ReadFile(authorPackPath);
+        ASSERT_FALSE(authorPack.empty()) << name << ": " << authorPackPath;
+        std::vector<std::uint8_t> authorVrc1;
+        std::size_t authorOffset = std::string::npos;
+        for (std::size_t offset = 0u;
+             offset + sizeof(Yeroket::Sdf::Generated::RecipeContainerHeader) <= authorPack.size();
+             ++offset) {
+            Yeroket::Sdf::Generated::RecipeContainerHeader header{};
+            std::memcpy(&header, authorPack.data() + offset, sizeof(header));
+            if (header.magic != Yeroket::Sdf::Generated::kRecipeContainerMagic ||
+                (header.formatVersion != 1u && header.formatVersion != 2u)) {
+                continue;
+            }
+            const std::size_t containerSize =
+                sizeof(header) + static_cast<std::size_t>(header.instructionCount) *
+                                     sizeof(Yeroket::Sdf::Generated::SdfInstruction);
+            if (containerSize > authorPack.size() - offset) continue;
+            Yeroket::Sdf::Generated::RecipeContainerView view{};
+            if (!Yeroket::Sdf::Generated::ReadRecipeContainer(
+                    authorPack.data() + offset, containerSize, view)) {
+                continue;
+            }
+            if (containerSize != editorVrc1.size()) continue;
+            authorVrc1.assign(authorPack.begin() + static_cast<std::ptrdiff_t>(offset),
+                              authorPack.begin() + static_cast<std::ptrdiff_t>(offset + containerSize));
+            authorOffset = offset;
+            break;
+        }
+        ASSERT_NE(authorOffset, std::string::npos)
+            << name << ": no VRC1 container of editor size " << editorVrc1.size()
+            << " found in " << authorPackPath;
+
+        std::size_t firstDifference = 0u;
+        const std::size_t commonSize = std::min(editorVrc1.size(), authorVrc1.size());
+        while (firstDifference < commonSize &&
+               editorVrc1[firstDifference] == authorVrc1[firstDifference]) {
+            ++firstDifference;
+        }
+        if (firstDifference == commonSize && editorVrc1.size() == authorVrc1.size()) {
+            std::cout << "[bake-parity] case=" << name << " equal bytes=" << editorVrc1.size()
+                      << " author-offset=" << authorOffset << "\n";
+        } else {
+            const auto byteAt = [](const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+                return offset < bytes.size() ? static_cast<unsigned>(bytes[offset]) : 256u;
+            };
+            std::cout << "[bake-parity] case=" << name << " first-difference="
+                      << firstDifference << " editor=" << byteAt(editorVrc1, firstDifference)
+                      << " author=" << byteAt(authorVrc1, firstDifference)
+                      << " editor-size=" << editorVrc1.size()
+                      << " author-size=" << authorVrc1.size() << "\n";
+            ADD_FAILURE() << name << ": editor Flatten VRC1 differs from author bake at offset "
+                          << firstDifference;
+        }
+        ++caseCount;
+    }
+    EXPECT_EQ(caseCount, 3u);
 }
 
 TEST(EditorDocumentModelPreview, DirectEntryMatchesVrc1ForLayerOverride) {

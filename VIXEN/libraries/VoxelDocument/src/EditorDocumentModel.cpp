@@ -2495,6 +2495,13 @@ const char* EditorDocumentModel::OpName(uint8_t op) {
 
 bool EditorDocumentModel::Flatten(std::vector<uint8_t>& outVrc1Blob,
                                   DocumentDiagnostic& diagnostic) const {
+    return Flatten(outVrc1Blob, MaterialReferenceResolver{}, diagnostic);
+}
+
+bool EditorDocumentModel::Flatten(
+    std::vector<uint8_t>& outVrc1Blob,
+    const MaterialReferenceResolver& materialResolver,
+    DocumentDiagnostic& diagnostic) const {
     diagnostic.Clear();
     std::vector<uint8_t> enabledOverride(LayerCount());
     if (!BuildEvaluationMask(enabledOverride, diagnostic)) return false;
@@ -2502,7 +2509,11 @@ bool EditorDocumentModel::Flatten(std::vector<uint8_t>& outVrc1Blob,
     if (v5FeaturesUsed_) {
         const DocumentBakeSnapshot snapshot = CaptureBakeSnapshot();
         Vixen::SVO::RecipeRegistry::RecipeEntry entry;
-        if (!FlattenToRecipeEntry(entry, snapshot, diagnostic)) return false;
+        uint32_t ignoredDefaultMaterial = 0u;
+        if (!FlattenToRecipeEntry(entry, snapshot, RecipeReferenceResolver{}, materialResolver,
+                                  false, ignoredDefaultMaterial, diagnostic)) {
+            return false;
+        }
         // V5 document export is the persistence-side VRC1 bake face. The preview entry keeps
         // ReadParam dynamic so a parameter edit can update the viewport without recompiling;
         // the generated authoring flattener resolves the same scalar reads to PushParam bytes.
