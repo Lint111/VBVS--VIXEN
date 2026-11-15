@@ -10,6 +10,7 @@
 // variant, visibility via data-if); any other attribute is refused with a located diagnostic at document load.
 // Value changes of every number field (typed, nudged, scrubbed) reach the host the same way: one `ut-commit` event
 // that UiInputForwarder queues like a typed commit, so the host runs one DispatchBySelector.
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -31,6 +32,9 @@ inline constexpr float kScrubPixelsPerRange = 200.0f;
 float ScrubValue(float start, float dxPixels, float step, bool hasRange, float minimum, float maximum);
 /// The ONE range text: "range 0–1" (empty when there is no range).
 std::string FormatRange(bool hasRange, float minimum, float maximum);
+/// Returns the kit's readable foreground for an sRGB background, choosing the higher-contrast
+/// light or dark label color. The editor's material chips use this one rule for every palette row.
+std::string ContrastingTextHex(std::uint32_t srgbColor);
 
 // ---- The override contract --------------------------------------------------------------------------------------
 /// Element names the kit registers.

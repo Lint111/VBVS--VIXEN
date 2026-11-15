@@ -187,6 +187,7 @@ struct EditorMaterialData {
     std::string elementId;
     std::string defaultId;
     std::string color;
+    std::string textColor;
     std::string coverage;
     bool coverageStale = false;
 };

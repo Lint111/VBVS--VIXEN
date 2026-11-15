@@ -86,6 +86,8 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
     std::vector<Vixen::Views::EditorRecipeRow> recipes;
     std::vector<Vixen::Views::EditorPackRecipeRow> packRecipes;
     std::vector<Vixen::Views::EditorMaterialRow> materials;
+    int materialCoverageCount = 0;
+    bool materialCoverageStale = false;
     std::vector<Vixen::Views::EditorNodeRow> nodes;
     std::vector<Vixen::Views::EditorNodeArgumentRow> nodeArguments;
     std::vector<Vixen::Views::EditorNodePortChoiceRow> portChoices;
@@ -103,6 +105,7 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
                                          &activeLayerCount, &recipes,
                                          &packRecipes,
                                          &materials,
+                                         &materialCoverageCount, &materialCoverageStale,
                                          &nodes, &nodeArguments, &portChoices, &readPortChoices, &nodeWrapChoices,
                                          &nodeChoices, &nodePickerActive, &readPortEmptyReason, &rawProgram,
                                          &rawProgramDiagnostic,

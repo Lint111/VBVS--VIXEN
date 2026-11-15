@@ -207,6 +207,7 @@ namespace Vixen.ViewSchemas
         public string elementId;
         public string defaultId;
         public string color;
+        public string textColor;
         public string coverage;
         public bool coverageStale;
     }

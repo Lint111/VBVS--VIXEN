@@ -104,7 +104,7 @@ body.layers .outputs-pinned {
     min-width: 0;
     margin-right: 6px;
     padding: 1px 5px;
-    color: #f0f2ff;
+    color: var(--material-text-color, #f0f2ff);
     background-color: var(--material-color, #506090);
     border-width: 1px;
     border-color: #7f90c0;

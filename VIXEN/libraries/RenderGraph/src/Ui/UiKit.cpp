@@ -67,6 +67,37 @@ std::string FormatRange(bool hasRange, float minimum, float maximum) {
     return "range " + FormatNumber(minimum) + "\xE2\x80\x93" + FormatNumber(maximum);  // en dash
 }
 
+std::string ContrastingTextHex(std::uint32_t srgbColor) {
+    constexpr std::uint32_t kLightText = 0xF0F2FFu;
+    constexpr std::uint32_t kDarkText = 0x101826u;
+    const auto linear = [](std::uint32_t channel) {
+        const float srgb = static_cast<float>(channel) / 255.0f;
+        return srgb <= 0.04045f ? srgb / 12.92f : std::pow((srgb + 0.055f) / 1.055f, 2.4f);
+    };
+    const float luminance =
+        0.2126f * linear((srgbColor >> 16u) & 0xFFu) +
+        0.7152f * linear((srgbColor >> 8u) & 0xFFu) +
+        0.0722f * linear(srgbColor & 0xFFu);
+    const auto contrast = [luminance](std::uint32_t textColor) {
+        const auto channel = [](std::uint32_t color, unsigned shift) {
+            const float srgb = static_cast<float>((color >> shift) & 0xFFu) / 255.0f;
+            return srgb <= 0.04045f ? srgb / 12.92f : std::pow((srgb + 0.055f) / 1.055f, 2.4f);
+        };
+        const float textLuminance = 0.2126f * channel(textColor, 16u) +
+                                    0.7152f * channel(textColor, 8u) +
+                                    0.0722f * channel(textColor, 0u);
+        const float brighter = std::max(luminance, textLuminance);
+        const float darker = std::min(luminance, textLuminance);
+        return (brighter + 0.05f) / (darker + 0.05f);
+    };
+    const auto hex = [](std::uint32_t color) {
+        char buffer[8];
+        std::snprintf(buffer, sizeof(buffer), "#%06X", color & 0x00FFFFFFu);
+        return std::string(buffer);
+    };
+    return hex(contrast(kLightText) >= contrast(kDarkText) ? kLightText : kDarkText);
+}
+
 // ================================================================================================ the override contract
 namespace {
 

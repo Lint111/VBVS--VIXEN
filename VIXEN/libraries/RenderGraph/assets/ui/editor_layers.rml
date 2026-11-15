@@ -35,7 +35,7 @@
             </div>
             <div class="material-coverage" data-for="material : materials" data-if="material.coverage != ''"
                  data-class-stale="material.coverageStale">
-                <span class="material-chip" data-attr-style="'--material-color: ' + material.color">{{material.name}}</span>
+                <span class="material-chip" data-attr-style="'--material-color: ' + material.color + '; --material-text-color: ' + material.textColor">{{material.name}}</span>
                 <span class="material-coverage-percent">{{material.coverage}}</span>
             </div>
             <div class="default-material-row" data-for="material : materials" data-if="material.defaultId != ''">

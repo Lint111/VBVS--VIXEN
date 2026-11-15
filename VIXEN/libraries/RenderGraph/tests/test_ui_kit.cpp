@@ -15,6 +15,7 @@
 #include "Ui/UiHitMask.h"
 #include "Ui/UiKit.h"
 
+#include <cstdint>
 #include <string>
 #include <fstream>
 #include <iterator>
@@ -43,6 +44,21 @@ TEST(UiKitRule, ParseFormatRangeScrub) {
     EXPECT_EQ(UiKit::FormatRange(false, 0.0f, 1.0f), "");
     EXPECT_FLOAT_EQ(UiKit::ScrubValue(1.0f, 100.0f, 0.5f, true, 0.0f, 4.0f), 3.0f) << "half a range per 100 px";
     EXPECT_FLOAT_EQ(UiKit::ScrubValue(1.0f, 1000.0f, 0.5f, true, 0.0f, 4.0f), 4.0f);
+}
+
+TEST(UiKitRule, MaterialChipTextContrastsAgainstMaterialTableAlbedos) {
+    struct MaterialAlbedo {
+        const char* id;
+        std::uint32_t srgb;
+        const char* expectedText;
+    };
+    // The two editor witness rows from the pack material table: dark hull and cream trim.
+    constexpr MaterialAlbedo rows[] = {
+        {"core:hull_metal_major", 0x2A3234u, "#F0F2FF"},
+        {"core:emissive_trim", 0xF3D7ADu, "#101826"},
+    };
+    for (const auto& row : rows)
+        EXPECT_EQ(UiKit::ContrastingTextHex(row.srgb), row.expectedText) << row.id;
 }
 
 TEST(UiKitContract, InstancesMayOnlyCarryTheOverrideContract) {

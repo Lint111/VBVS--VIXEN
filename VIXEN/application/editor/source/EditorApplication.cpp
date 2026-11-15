@@ -31,6 +31,7 @@
 #include <nlohmann/json.hpp>
 #include <RmlUi/Core.h>
 #include <stb_image_write.h>
+#include "Ui/UiKit.h"
 
 #include <cstdlib>
 #include <atomic>
@@ -871,6 +872,7 @@ void EditorApplication::RefreshLayersView() {
                                  "layer-" + std::to_string(selectedId) + "-material-" + materialRow.name,
                                  isDocumentDefault ? "document-material-default-" + materialRow.name : "",
                                  MaterialColorHex(materialRow.srgbColor),
+                                 Vixen::RenderGraph::UiKit::ContrastingTextHex(materialRow.srgbColor),
                                  std::move(coverage),
                                  coverageStale});
         }
@@ -881,6 +883,7 @@ void EditorApplication::RefreshLayersView() {
             materials.push_back({std::to_string(Vixen::SVO::kMaterialRefNone), "none",
                                  "layer-" + std::to_string(selectedId) + "-material-none", "",
                                  MaterialColorHex(0x808080u),
+                                 Vixen::RenderGraph::UiKit::ContrastingTextHex(0x808080u),
                                  std::move(coverage),
                                  coverageStale});
         }
@@ -895,7 +898,9 @@ void EditorApplication::RefreshLayersView() {
                 materials.push_back({std::to_string(defaultRow->slot), defaultRow->name,
                                      "layer-" + std::to_string(selectedId) + "-material-" + defaultRow->name,
                                      "document-material-default-" + defaultRow->name,
-                                     MaterialColorHex(defaultRow->srgbColor), "", coverageStale});
+                                     MaterialColorHex(defaultRow->srgbColor),
+                                     Vixen::RenderGraph::UiKit::ContrastingTextHex(defaultRow->srgbColor),
+                                     "", coverageStale});
             }
         }
     }
@@ -925,7 +930,8 @@ void EditorApplication::PublishPickerPrimitives() {
                              "layer-" + std::to_string(doc_.LayerCount() == 0u ? 0u : doc_.LayerId(selectedLayer_)) +
                                  "-material-" + material.name,
                              "document-material-default-" + material.name,
-                             MaterialColorHex(material.srgbColor)});
+                             MaterialColorHex(material.srgbColor),
+                             Vixen::RenderGraph::UiKit::ContrastingTextHex(material.srgbColor)});
     }
     Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     Vixen::App::RefreshEditorNodeChoicesView(*layersView_, {}, false);
@@ -3258,7 +3264,8 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
             materialRows_.push_back({row.id, name, row.srgbColor});
             materials.push_back({std::to_string(row.id), name, {},
                                  "document-material-default-" + name,
-                                 MaterialColorHex(row.srgbColor)});
+                                 MaterialColorHex(row.srgbColor),
+                                 Vixen::RenderGraph::UiKit::ContrastingTextHex(row.srgbColor)});
         }
         Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     } else {
