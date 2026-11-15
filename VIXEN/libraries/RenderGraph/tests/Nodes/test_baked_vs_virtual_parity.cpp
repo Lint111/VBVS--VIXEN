@@ -203,6 +203,17 @@ std::string EnableSdfTraceProbe(std::string source) {
     return source;
 }
 
+// This parity fixture owns its shader bundle and descriptor layout rather than
+// the production RenderGraph resource providers. Keep it on the historical
+// full-instance stream contract; production BodyInstanceRayMarch remains
+// tile-candidate enabled.
+std::string DisablePrimaryTileCandidatesForFixture(std::string source) {
+    const size_t versionEnd = source.find('\n');
+    if (versionEnd == std::string::npos) return source;
+    source.insert(versionEnd + 1, "#define VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES 1\n");
+    return source;
+}
+
 // ---------------------------------------------------------------------------
 // KI-032 fix: this file's colorImg (binding 0) readback went permanently dark when
 // commit 784adff7 (Sampled Lighting Inc3 M1, KI-018) split shading out of
@@ -1335,7 +1346,8 @@ protected:
         constexpr uint32_t kRecipeId = 2u;
         ASSERT_EQ(registry.Register(kRecipeId, entry), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
 
-        std::string rawSource = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+        std::string rawSource = DisablePrimaryTileCandidatesForFixture(
+            ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH));
         ASSERT_FALSE(rawSource.empty());
         if (outSdfTraces != nullptr) {
             rawSource = EnableSdfTraceProbe(std::move(rawSource));
@@ -1410,7 +1422,8 @@ protected:
     std::vector<uint32_t> bakedSpirv_;
 
     void CompileBakedShader() {
-        const std::string rawSource = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+        const std::string rawSource = DisablePrimaryTileCandidatesForFixture(
+            ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH));
         ASSERT_FALSE(rawSource.empty());
         ShaderManagement::ShaderBundleBuilder builder;
         builder.SetProgramName("BodyInstanceRayMarch_ParityBaked")

@@ -31,8 +31,13 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 // GB1 (R857): SceneBindings exposes the generated per-tile candidate records
 // only for this camera-ray translation unit. Shadow/probe consumers retain the
-// shared full-stream traversal contract.
+// shared full-stream traversal contract. The standalone legacy GPU fixtures
+// compile this source with VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES because
+// they own their descriptor sets and intentionally exercise the pre-GB1 stream
+// contract; the production shader never defines that test-only switch.
+#ifndef VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES
 #define VIXEN_PRIMARY_TILE_CANDIDATES
+#endif
 #if defined(VIXEN_PRIMARY_JITTER) && !defined(VIXEN_RECONSTRUCTION_INPUTS)
 #error Primary jitter requires the declared reconstruction inputs
 #endif
