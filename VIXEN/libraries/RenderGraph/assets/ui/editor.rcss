@@ -79,7 +79,9 @@ body.layers .outputs-pinned:focus-within {
     overflow-y: auto;
 }
 body.layers .outputs-pinned {
-    max-height: 84px;
+    /* Four coverage rows plus the summary/default row and the explanatory note fit
+       in the 1280x720 editor without requiring the pinned region to scroll. */
+    max-height: 160px;
     overflow-y: auto;
 }
 .section-summary {
