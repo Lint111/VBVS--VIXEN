@@ -39,6 +39,8 @@ struct EditorLayersBind {
     std::vector<EditorRecipeRow>* recipes;
     std::vector<EditorPackRecipeRow>* packRecipes;
     std::vector<EditorMaterialRow>* materials;
+    int* materialCoverageCount;
+    bool* materialCoverageStale;
     std::vector<EditorNodeRow>* nodes;
     std::vector<EditorNodeArgumentRow>* nodeArguments;
     std::vector<EditorNodePortChoiceRow>* portChoices;
@@ -246,6 +248,8 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
     c.Bind("recipes", b.recipes);
     c.Bind("packRecipes", b.packRecipes);
     c.Bind("materials", b.materials);
+    c.Bind("materialCoverageCount", b.materialCoverageCount);
+    c.Bind("materialCoverageStale", b.materialCoverageStale);
     c.Bind("nodes", b.nodes);
     c.Bind("nodeArguments", b.nodeArguments);
     c.Bind("portChoices", b.portChoices);

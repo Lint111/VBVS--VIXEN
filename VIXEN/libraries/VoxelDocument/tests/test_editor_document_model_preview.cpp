@@ -1924,6 +1924,55 @@ TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeS
     EXPECT_EQ(materialSamplesById[5u] + materialSamplesById[8u], totalMaterialSurfaceSamples);
     EXPECT_GT(materialSamplesById[5u], 0u);
     EXPECT_GT(materialSamplesById[8u], 0u);
+    const auto roundedPercent = [totalMaterialSurfaceSamples](uint64_t count) {
+        return (count * 100u + totalMaterialSurfaceSamples / 2u) /
+               totalMaterialSurfaceSamples;
+    };
+    EXPECT_EQ(roundedPercent(materialSamplesById[5u]) + roundedPercent(materialSamplesById[8u]), 100u);
+    EXPECT_EQ(roundedPercent(materialSamplesById[5u]), 54u);
+    EXPECT_EQ(roundedPercent(materialSamplesById[8u]), 46u);
+
+    // Change every authored surface to the major material and prove the next stored bake follows
+    // the accepted model revision instead of retaining the prior two-row coverage.
+    for (uint32_t layer = 0u; layer < materialModel.LayerCount(); ++layer) {
+        ASSERT_TRUE(materialModel.SetLayerMaterial(
+            materialModel.LayerId(layer), "core:hull_metal_major", diagnostic))
+            << diagnostic.message;
+    }
+    Vixen::SVO::RecipeRegistry changedRegistry;
+    Vixen::SVO::RecipeRegistry::RecipeEntry changedEntry;
+    ASSERT_TRUE(materialModel.FlattenToRecipeEntry(
+        changedEntry, materialModel.CaptureBakeSnapshot(), {}, materialResolver, false, diagnostic))
+        << diagnostic.message;
+    ASSERT_EQ(changedRegistry.Register(1u, changedEntry),
+              Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+    const auto changedBake = Vixen::SVO::BakeRegistryToPool(changedRegistry, config);
+    ASSERT_TRUE(changedBake.ok) << changedBake.err;
+    const auto& changedOutput = changedBake.owned[0].recipeOutputSet;
+    const auto changedDistance = std::find_if(
+        changedOutput.outputs.begin(), changedOutput.outputs.end(), [](const auto& descriptor) {
+            return descriptor.channel == static_cast<uint32_t>(Vixen::SVO::SEM_SDF);
+        });
+    const auto changedMaterial = std::find_if(
+        changedOutput.outputs.begin(), changedOutput.outputs.end(), [](const auto& descriptor) {
+            return descriptor.channel == static_cast<uint32_t>(Vixen::SVO::SEM_MATERIAL_ID);
+        });
+    ASSERT_NE(changedDistance, changedOutput.outputs.end());
+    ASSERT_NE(changedMaterial, changedOutput.outputs.end());
+    std::map<uint32_t, uint64_t> changedSamplesById;
+    uint64_t changedTotal = 0u;
+    for (int z = 0; z < changedOutput.resolution; ++z)
+    for (int y = 0; y < changedOutput.resolution; ++y)
+    for (int x = 0; x < changedOutput.resolution; ++x) {
+        const float* values = changedOutput.sample({x, y, z});
+        if (values == nullptr || !std::isfinite(values[changedDistance->valueOffset]) ||
+            std::abs(values[changedDistance->valueOffset]) > 0.5f) continue;
+        ++changedSamplesById[static_cast<uint32_t>(values[changedMaterial->valueOffset])];
+        ++changedTotal;
+    }
+    EXPECT_EQ(changedSamplesById.size(), 1u);
+    EXPECT_EQ(changedSamplesById[5u], changedTotal);
+    EXPECT_EQ(roundedPercent(changedSamplesById[5u]), 100u);
     const auto readSerializedVoxel = [](const Vixen::SVO::SerializedOctree& serialized,
                                         const glm::ivec3& grid) -> std::optional<float> {
         const int n = static_cast<int>(serialized.config.bricksPerAxis) * 8;

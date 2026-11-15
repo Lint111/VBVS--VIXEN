@@ -54,7 +54,8 @@ public:
             Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &transform_, &selectedLayerName_,
                                             &selectedLayer_, &primitives_, &opChoices_, &shape_,
                                             &selectedShape_, &shapeNote_, &pickerFilter_, &activeLayerCountRaw_, &recipes_,
-                                            &packRecipes_, &materials_, &nodes_, &nodeArguments_, &portChoices_,
+                                            &packRecipes_, &materials_, &materialCoverageCount_, &materialCoverageStale_,
+                                            &nodes_, &nodeArguments_, &portChoices_,
                                             &readPortChoices_, &nodeWrapChoices_, &nodeChoices_, &nodePickerActive_,
                                             &readPortEmptyReason_,
                                             &rawProgram_, &rawProgramDiagnostic_,
@@ -378,6 +379,8 @@ public:
     // R872.10: expose pack material rows as data for the later material-panel
     // lane. There is intentionally no panel/action wiring here.
     void PopulateMaterials(const std::vector<EditorMaterialData>& materialData) {
+        materialCoverageCount_ = 0;
+        materialCoverageStale_ = false;
         materials_.clear();
         materials_.reserve(materialData.size());
         for (const auto& material : materialData) {
@@ -389,9 +392,15 @@ public:
             row.color = Rml::String(material.color);
             row.coverage = Rml::String(material.coverage);
             row.coverageStale = material.coverageStale;
+            if (!material.coverage.empty()) ++materialCoverageCount_;
+            materialCoverageStale_ = materialCoverageStale_ || material.coverageStale;
             materials_.push_back(std::move(row));
         }
-        if (model_) model_.DirtyVariable("materials");
+        if (model_) {
+            model_.DirtyVariable("materials");
+            model_.DirtyVariable("materialCoverageCount");
+            model_.DirtyVariable("materialCoverageStale");
+        }
     }
 
     // R766: the status-line panel's fields.
@@ -464,6 +473,8 @@ private:
     std::vector<Vixen::Views::EditorRecipeRow> recipes_;
     std::vector<Vixen::Views::EditorPackRecipeRow> packRecipes_;
     std::vector<Vixen::Views::EditorMaterialRow> materials_;
+    int materialCoverageCount_ = 0;
+    bool materialCoverageStale_ = false;
     std::vector<Vixen::Views::EditorNodeRow> nodes_;
     std::vector<Vixen::Views::EditorNodeArgumentRow> nodeArguments_;
     std::vector<Vixen::Views::EditorNodePortChoiceRow> portChoices_;

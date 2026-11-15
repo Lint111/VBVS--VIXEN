@@ -29,9 +29,9 @@
         </div>
         <div class="outputs-pinned">
             <div class="section-summary">Outputs
-                <span class="section-detail" data-if="materials.size == 0">Distance + MaterialId</span>
-                <span class="section-detail" data-if="materials.size == 1">1 material</span>
-                <span class="section-detail" data-if="materials.size > 1">{{materials.size}} materials</span>
+                <span class="section-detail" data-if="materialCoverageCount == 0">Distance + MaterialId</span>
+                <span class="section-detail" data-if="materialCoverageCount == 1">1 material</span>
+                <span class="section-detail" data-if="materialCoverageCount > 1">{{materialCoverageCount}} materials</span>
             </div>
             <div class="material-coverage" data-for="material : materials" data-if="material.coverage != ''"
                  data-class-stale="material.coverageStale">
@@ -42,10 +42,11 @@
                 <span class="ut-field-label">Default</span>
                 <ut-button variant="row" data-attr-id="material.defaultId" data-attr-label="material.name"
                             data-attr-style="'--material-color: ' + material.color"> </ut-button>
-                <span class="default-material-unused" data-if="material.coverage == ''">not used: every surface has a material</span>
+                <span class="default-material-unused" data-if="material.coverage == ''">not used: every surface has material</span>
             </div>
-            <div class="hint" data-if="materials.size == 0">No sampled material coverage yet.</div>
-            <div class="hint" data-if="materials.size != 0">Coverage is measured from the current stored bake.</div>
+            <div class="hint" data-if="materialCoverageCount == 0">No sampled material coverage yet.</div>
+            <div class="hint" data-if="materialCoverageCount != 0 && materialCoverageStale">Measuring current revision...</div>
+            <div class="hint" data-if="materialCoverageCount != 0 && !materialCoverageStale">Share of the surface per material</div>
         </div>
         <ut-list class="fill">
             <div class="ut-row" data-for="row : layers">

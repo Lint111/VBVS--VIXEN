@@ -256,6 +256,10 @@ namespace Vixen.ViewSchemas
         // R872.6: the Add flyout's second section; the editor filters this with the same picker text.
         [ViewSection(Layout = ViewLayout.Aos)] public EditorPackRecipeRow[] packRecipes;
         [ViewSection(Layout = ViewLayout.Aos)] public EditorMaterialRow[] materials;
+        // Count only rows with stored material samples; the materials array also carries the
+        // document-default control when that default is currently unused.
+        public int materialCoverageCount;
+        public bool materialCoverageStale;
 
         // R876 LM-V1: graph inspector. A raw program retains its located diagnostic and has no
         // node controls; valid programs expose generated nodes and catalogue-backed arguments.

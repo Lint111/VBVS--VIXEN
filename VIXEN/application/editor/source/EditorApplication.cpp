@@ -858,27 +858,30 @@ void EditorApplication::RefreshLayersView() {
     const auto materialCoverage = std::atomic_load_explicit(&materialCoverage_, std::memory_order_acquire);
     const bool coverageStale = materialCoverage != nullptr &&
                                (materialCoverage->stale ||
-                                materialCoverage->revision !=
-                                    materialCoverageRevision_.load(std::memory_order_acquire));
+                                materialCoverage->revision != doc_.Revision());
     if (materialCoverage != nullptr && materialCoverage->totalSurfaceSamples != 0u) {
         for (const auto& materialRow : materialRows_) {
             const auto count = materialCoverage->counts.find(materialRow.slot);
             if (count == materialCoverage->counts.end() || count->second == 0u) continue;
             const bool isDocumentDefault = documentDefaultMaterial == materialRow.name;
             defaultMaterialPublished = defaultMaterialPublished || isDocumentDefault;
+            std::string coverage = CoveragePercent(count->second, materialCoverage->totalSurfaceSamples);
+            if (coverageStale) coverage += " measuring...";
             materials.push_back({std::to_string(materialRow.slot), materialRow.name,
                                  "layer-" + std::to_string(selectedId) + "-material-" + materialRow.name,
                                  isDocumentDefault ? "document-material-default-" + materialRow.name : "",
                                  MaterialColorHex(materialRow.srgbColor),
-                                 CoveragePercent(count->second, materialCoverage->totalSurfaceSamples),
+                                 std::move(coverage),
                                  coverageStale});
         }
         const auto none = materialCoverage->counts.find(Vixen::SVO::kMaterialRefNone);
         if (none != materialCoverage->counts.end() && none->second != 0u) {
+            std::string coverage = CoveragePercent(none->second, materialCoverage->totalSurfaceSamples);
+            if (coverageStale) coverage += " measuring...";
             materials.push_back({std::to_string(Vixen::SVO::kMaterialRefNone), "none",
                                  "layer-" + std::to_string(selectedId) + "-material-none", "",
                                  MaterialColorHex(0x808080u),
-                                 CoveragePercent(none->second, materialCoverage->totalSurfaceSamples),
+                                 std::move(coverage),
                                  coverageStale});
         }
         // Keep a measured-but-unused document default visible in the Outputs section. An
@@ -2666,7 +2669,9 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         lastPreviewParameterValues_[i] = snapshot.parameterValues[i];
     }
 
-    const uint64_t coverageRevision =
+    // The request token only discards older worker results; the published snapshot's revision is
+    // the document revision captured by the bake, which is what the panel and AppFlow read expose.
+    const uint64_t coverageRequest =
         materialCoverageRevision_.fetch_add(1u, std::memory_order_acq_rel) + 1u;
     if (const auto previous = std::atomic_load_explicit(&materialCoverage_, std::memory_order_acquire)) {
         auto stale = std::make_shared<EditorMaterialCoverageSnapshot>(*previous);
@@ -2676,7 +2681,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
                                    std::memory_order_release);
     }
     materialCoverageGeneration_.fetch_add(1u, std::memory_order_release);
-    SetRecipePoolProducer([bakeRegistry, bakeCfg, coverageRevision, this]() mutable {
+    const uint64_t documentRevision = snapshot.revision;
+    SetRecipePoolProducer([bakeRegistry, bakeCfg, coverageRequest, documentRevision, this]() mutable {
         auto bakeResult = Vixen::SVO::BakeRegistryToPool(*bakeRegistry, bakeCfg);
         if (!bakeResult.ok) {
             throw std::runtime_error("BakeRegistryToPool failed: " + bakeResult.err);
@@ -2702,13 +2708,15 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
             const auto coverage = MeasureMaterialCoverage(
                 bakeResult.owned[previewEntry->octreeSlot].recipeOutputSet);
             std::ostringstream coverageLine;
-            coverageLine << "[EDITOR/material-coverage] total=" << coverage->totalSurfaceSamples;
+            coverageLine << "[EDITOR/material-coverage] documentRevision=" << documentRevision
+                         << " request=" << coverageRequest
+                         << " total=" << coverage->totalSurfaceSamples;
             for (const auto& [slot, count] : coverage->counts)
                 coverageLine << " slot" << slot << "=" << count;
             logger_->Info(coverageLine.str());
-            if (materialCoverageRevision_.load(std::memory_order_acquire) == coverageRevision) {
+            if (materialCoverageRevision_.load(std::memory_order_acquire) == coverageRequest) {
                 auto published = std::make_shared<EditorMaterialCoverageSnapshot>(*coverage);
-                published->revision = coverageRevision;
+                published->revision = documentRevision;
                 published->stale = false;
                 std::atomic_store_explicit(
                     &materialCoverage_,
@@ -4157,6 +4165,11 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
         for (const auto& material : materialRows_) {
             materials.push_back({{"slot", material.slot}, {"name", material.name}});
         }
+        const auto materialCoverage = std::atomic_load_explicit(&materialCoverage_, std::memory_order_acquire);
+        const uint64_t documentRevision = doc_.Revision();
+        const uint64_t coverageRevision = materialCoverage != nullptr ? materialCoverage->revision : 0u;
+        const bool coverageReady = materialCoverage != nullptr && !materialCoverage->stale &&
+                                   coverageRevision == documentRevision;
         return nlohmann::json{
             {"flowState", EnumRecord(rt_.Current())},
             {"undoDepth", rt_.Stack().UndoDepth()},
@@ -4167,6 +4180,9 @@ std::optional<std::string> EditorApplication::HandleAppFlowRequest(const std::st
                       {"open", openRecipeId_}, {"lastSaved", lastSavedPath_}}},
             {"panelLayout", nlohmann::json::parse(Panels().LayoutJson())},
             {"diagnostic", {{"code", lastEditorDiagnosticCode_}, {"message", lastEditorError_}}},
+            {"editor", {{"documentRevision", documentRevision},
+                         {"coverageRevision", coverageRevision},
+                         {"coverageReady", coverageReady}}},
             {"group", {{"open", channelGroupOpen_}, {"label", channelGroupLabel_}}},
             {"frame", channelPresentedFrame_}
         }.dump();
