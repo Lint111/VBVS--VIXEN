@@ -16,6 +16,7 @@
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "RecipeEmitterTable.h" // R502.2: Vixen::SVO::{EmitterTable, RecipeEmitterShapes}
+#include "Generated/InstanceBound.g.h"
 #include "WholesaleAvailability.h"
 #include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
 #include "Memory/IMemoryAllocator.h" // tracked RTAccelStructures allocations
@@ -377,6 +378,8 @@ private:
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize transformCapacity,
                              VkDeviceSize materialCapacity);           // allocate/grow both instance rings
+    void EnsureBoundsAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
+                               VkDeviceSize capacity);
     void RefreshInstanceStreams();
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
@@ -656,6 +659,7 @@ private:
     PerFrameResources transformPerFrame_;
     PerFrameResources materialPerFrame_;
     PerFrameResources motionPerFrame_;
+    PerFrameResources boundPerFrame_;
     std::vector<bool> materialDirty_;
     // Per ring slot: material rows [first, second) still to upload when the slot is not
     // wholly dirty. Empty when first >= second.
@@ -663,6 +667,7 @@ private:
     VkDeviceSize transformRingCapacity_ = 0;
     VkDeviceSize materialRingCapacity_ = 0;
     VkDeviceSize motionRingCapacity_ = 0;
+    VkDeviceSize boundRingCapacity_ = 0;
 
     // --- W-RTQUERY Slice A: per-brick-AABB TLAS (VIXEN_RTQUERY_TRAVERSAL) ---
     // One BLAS per octree (the compact ShellProxyAabb records in octree-local [0,1]^3

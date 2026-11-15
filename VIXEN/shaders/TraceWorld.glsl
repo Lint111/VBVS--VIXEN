@@ -142,6 +142,13 @@ struct WorldHit {
     uint sourceMask;
 };
 
+// Set by BodyInstanceRayMarch immediately before its camera-ray call. Other
+// TraceWorld users (probes and smoke tests) leave this disabled and continue
+// to use their full instance stream.
+ivec2 g_primaryTilePixel = ivec2(0);
+ivec2 g_primaryTileImageSize = ivec2(0);
+bool g_usePrimaryTileCandidates = false;
+
 // ============================================================================
 // getOctreeTraceBounds - conservative allocated-brick AABB, in local [0,1]^3 space
 // ============================================================================
@@ -300,19 +307,27 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     // R716: the camera ray's pixel-cone width at its origin, in world units.
     const float rayFootprintBase = pc.raySizeBias;
     const float rayFootprintPerT = VIXEN_QUERY_RAY_SIZE_COEF;
-    int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap
-    for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
-
-        // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: skip a caller-specified instance
-        // subset (see InstanceSkipMaskBuffer's comment in SceneBindings.glsl). A no-op
-        // whenever both producer regions are empty/unbound — the default,
-        // every-existing-scene case.
-        if (isInstanceSkippedForPrimary(instIdx)) {
-#ifdef VIXEN_GPU_TRACE_HOOKS
-            instanceIterCount[instIdx] = 0u;
+    int numInstances = max(pc.instanceCount, 0);
+    int candidateCount = numInstances;
+    int candidateBase = 0;
+#ifdef VIXEN_PRIMARY_TILE_CANDIDATES
+    TileHeader primaryTile;
+    if (g_usePrimaryTileCandidates) {
+        ivec2 tileCoord = g_primaryTilePixel / 8;
+        int tileWidth = (g_primaryTileImageSize.x + 7) / 8;
+        int tileIndex = tileCoord.x + tileCoord.y * tileWidth;
+        primaryTile = tileHeaders[tileIndex];
+        candidateCount = primaryTile.count;
+        candidateBase = primaryTile.index << primaryTile.capacityLog2;
+    }
 #endif
-            continue;
-        }
+    for (int candidateOffset = 0; candidateOffset < candidateCount; ++candidateOffset) {
+        int instIdx = candidateOffset;
+#ifdef VIXEN_PRIMARY_TILE_CANDIDATES
+        if (g_usePrimaryTileCandidates)
+            instIdx = int(tileCandidates[candidateBase + candidateOffset].instance);
+#endif
+        if (instIdx < 0 || instIdx >= numInstances) continue;
 
         // GB0: every instance the loop actually examines for this ray is a candidate.
         incrLeafInstrCandidate();

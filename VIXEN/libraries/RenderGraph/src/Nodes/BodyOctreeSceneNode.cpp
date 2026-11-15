@@ -18,6 +18,7 @@
 #include <cstdio>    // std::snprintf (BrickDataHash log line)
 #include <cstdlib>   // std::getenv
 #include <cstring>
+#include <cmath>
 #include <iostream>  // FIX 5: std::cout -- BrickDataHash bypasses the disabled per-node logger
 #include <stdexcept>
 #include <string>
@@ -29,6 +30,7 @@
 #include "Generated/EmitterTotals.g.h"
 #include "Generated/RecipeEmitterEntry.g.h"
 #include "Generated/SparseEmitterEntry.g.h"
+#include "Generated/InstanceBound.g.h"
 
 // R502.2: the CPU emitter records in RecipeEmitterTable.h (SVO has no RenderGraph dependency)
 // must stay byte-identical to the generated GPU records.
@@ -817,6 +819,9 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
         EnsureRingAllocated(devicePtr,
             std::max<VkDeviceSize>(transformBytes, sizeof(Vixen::SVO::BodyInstanceTransformGpu)),
             std::max<VkDeviceSize>(materialBytes, sizeof(Vixen::SVO::BodyInstanceMaterialGpu)));
+        EnsureBoundsAllocated(devicePtr,
+            std::max<VkDeviceSize>(instanceCount_ * sizeof(Vixen::Codegen::Gpu::InstanceBound),
+                                   sizeof(Vixen::Codegen::Gpu::InstanceBound)));
     }
 
     // 4) Publish outputs. Both stream handles start at ring slot 0;
@@ -827,6 +832,7 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,        configBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,    materialPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,   transformPerFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER, boundPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_MOTION_BUFFER,
             motionGuidesEnabled_ ? motionPerFrame_.GetUniformBuffer(0) : VkBuffer(VK_NULL_HANDLE));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,              instanceCount_);
@@ -1017,6 +1023,31 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
             materialPerFrame_.GetUniformBuffer(frameIndex));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,
             transformPerFrame_.GetUniformBuffer(frameIndex));
+
+    auto* boundMapped = static_cast<Vixen::Codegen::Gpu::InstanceBound*>(
+        boundPerFrame_.GetUniformBufferMapped(frameIndex));
+    if (boundMapped != nullptr) {
+        for (size_t i = 0; i < instances_.size() &&
+             i * sizeof(Vixen::Codegen::Gpu::InstanceBound) < boundRingCapacity_; ++i) {
+            const auto& rows = instances_[i].transform.localToWorld.rows;
+            const bool stored = instances_[i].material.providerKind == 0u;
+            const float halfExtent = stored ? 5.0f : 0.5f;
+            const float localCenter = stored ? 5.0f : 0.5f;
+            boundMapped[i].centerX = rows[0][0] * localCenter + rows[0][1] * localCenter +
+                                     rows[0][2] * localCenter + rows[0][3];
+            boundMapped[i].centerY = rows[1][0] * localCenter + rows[1][1] * localCenter +
+                                     rows[1][2] * localCenter + rows[1][3];
+            boundMapped[i].centerZ = rows[2][0] * localCenter + rows[2][1] * localCenter +
+                                     rows[2][2] * localCenter + rows[2][3];
+            const float axisX = std::sqrt(rows[0][0] * rows[0][0] + rows[1][0] * rows[1][0] + rows[2][0] * rows[2][0]);
+            const float axisY = std::sqrt(rows[0][1] * rows[0][1] + rows[1][1] * rows[1][1] + rows[2][1] * rows[2][1]);
+            const float axisZ = std::sqrt(rows[0][2] * rows[0][2] + rows[1][2] * rows[1][2] + rows[2][2] * rows[2][2]);
+            boundMapped[i].radius = halfExtent * std::sqrt(3.0f) * std::max(axisX, std::max(axisY, axisZ));
+        }
+        VIXEN_LEDGER_WRITTEN(boundMapped, std::min<size_t>(instances_.size() * sizeof(*boundMapped), boundRingCapacity_));
+    }
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER,
+            boundPerFrame_.GetUniformBuffer(frameIndex));
 
     // Clamp to the smaller stream capacity so no consumer can read a partial record.
     const int32_t transformCount = static_cast<int32_t>(
@@ -1752,6 +1783,20 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device,
                   std::to_string(kRingSize) + " x " +
                   std::to_string(static_cast<uint64_t>(transformCapacity)) +
                   "B transforms and " + std::to_string(static_cast<uint64_t>(materialCapacity)) + "B materials");
+}
+
+void BodyOctreeSceneNode::EnsureBoundsAllocated(VulkanDevice* device, VkDeviceSize capacity) {
+    if (boundPerFrame_.IsInitialized() && capacity <= boundRingCapacity_) return;
+    if (boundPerFrame_.IsInitialized()) {
+        vkDeviceWaitIdle(device->device);
+        boundPerFrame_.Cleanup();
+        boundRingCapacity_ = 0;
+    }
+    boundPerFrame_.Initialize(device, kRingSize);
+    for (uint32_t i = 0; i < kRingSize; ++i) {
+        boundPerFrame_.CreateStorageBuffer(i, capacity);
+    }
+    boundRingCapacity_ = capacity;
 }
 
 void BodyOctreeSceneNode::Rematerialize(
@@ -2938,9 +2983,11 @@ void BodyOctreeSceneNode::DestroyBuffers() {
     transformPerFrame_.Cleanup();
     materialPerFrame_.Cleanup();
     motionPerFrame_.Cleanup();
+    boundPerFrame_.Cleanup();
     motionRingCapacity_ = 0;
     transformRingCapacity_ = 0;
     materialRingCapacity_ = 0;
+    boundRingCapacity_ = 0;
     materialDirty_.clear();
     materialDirtyRows_.clear();
 

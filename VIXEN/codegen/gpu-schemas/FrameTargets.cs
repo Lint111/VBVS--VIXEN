@@ -31,6 +31,7 @@ public static class FrameKinds
         // hit records by the reconstruction depth pass (ReconstructionDepth.comp). The sign
         // follows the depth convention, so readers compare magnitudes.
         F<Texture2D<R32f>>("ViewDepth").Dynamic(),
+        F<Texture2D<R32f>>("TileFarDepth").Dynamic(),
         // The anti-aliasing module's linear-HDR resolve: the exposure meter and the tone map read
         // it. With the `none` provider it is the scene radiance itself.
         F<Texture2D<Rgba16f>>("ResolvedRadiance").Dynamic(),

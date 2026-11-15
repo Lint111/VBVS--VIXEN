@@ -275,6 +275,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/PickIdTargetNode.cpp
     src/Nodes/InstanceBufferNode.cpp
     src/Nodes/StorageBufferNode.cpp     # auto-sync P4 M4: generic arbitrary-sized SSBO node
+    src/Nodes/TileBinViewNode.cpp       # GB1: generated tile-list camera view upload
     src/Nodes/DynamicInstanceBufferNode.cpp
     src/Nodes/LightingConfigNode.cpp    # Sampled Lighting Inc0 M3: LightingConfig upload ring
     src/Nodes/ShadowConfigNode.cpp      # Sampled Lighting Inc1 M4: ShadowConfig upload ring

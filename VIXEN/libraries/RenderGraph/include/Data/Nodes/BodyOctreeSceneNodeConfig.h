@@ -16,7 +16,7 @@ namespace BodyOctreeSceneNodeCounts {
     // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
     // + raster-proxy AABB buffer and its exact live element count (Slice B2 binder seam).
     // + flattened runtime glyph-outline buffer (R631) + packed glyph words (R768).
-    static constexpr size_t OUTPUTS = 21;
+    static constexpr size_t OUTPUTS = 22;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -177,6 +177,11 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // GB1 (R857): lean world-space sphere stream consumed by generated tile scatter.
+    OUTPUT_SLOT(INSTANCE_BOUND_BUFFER, VkBuffer, 21,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Constructor: runtime descriptor initialization
     OUTPUT_SLOT(INSTANCE_MOTION_BUFFER, VkBuffer, 17,
         SlotNullability::Optional, SlotMutability::WriteOnly);
@@ -231,6 +236,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         instanceTransformDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(INSTANCE_TRANSFORM_BUFFER, "body_instance_transform_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
         INIT_OUTPUT_DESC(INSTANCE_MOTION_BUFFER, "body_instance_motion_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
+        INIT_OUTPUT_DESC(INSTANCE_BOUND_BUFFER, "body_instance_bound_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
 
         // Instance count — transient scalar value.
         BufferDescriptor instanceCountDesc{};

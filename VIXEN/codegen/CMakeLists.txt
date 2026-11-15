@@ -205,7 +205,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "17a31db041293c7d0b91fc1562f3046845f136a1")
+set(_vixen_tracked_yeroket_kernel_sha "8e5d8fe2a")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -454,6 +454,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightTreeBuffer.glsl" _out_lighttreebuffer_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/MiningBeamBuffer.g.h" _out_miningbeambuffer_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/MiningBeamBuffer.glsl" _out_miningbeambuffer_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated" _out_tile_binning_generated_dir)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated" _out_tile_binning_shader_dir)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h" _out_reservoirrecord_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl" _out_reservoirrecord_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/EmitterSample.g.h" _out_emittersample_cpp_run)
@@ -561,6 +563,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_lighttreebuffer_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightTreeBuffer.glsl")
         set(_out_miningbeambuffer_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/MiningBeamBuffer.g.h")
         set(_out_miningbeambuffer_glsl_run "${VIXEN_ROOT}/shaders/Generated/MiningBeamBuffer.glsl")
+        set(_out_tile_binning_generated_dir "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated")
+        set(_out_tile_binning_shader_dir "${VIXEN_ROOT}/shaders/Generated")
         set(_out_reservoirrecord_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h")
         set(_out_reservoirrecord_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl")
         set(_out_emittersample_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/EmitterSample.g.h")
@@ -1056,6 +1060,32 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         JOB_POOL msbuild
         VERBATIM)
 
+    # GB1 (R857): the native host-side tile resource node consumes the same
+    # schema-owned records as the generated scatter/sort systems. Keep these
+    # four POD headers drift-guarded beside the other config structs; the GLSL
+    # headers are also included by the primary march's generated list bindings.
+    set(_tile_binning_struct_regen)
+    foreach(_tile_struct IN ITEMS InstanceBound TileBinView TileBinCounter TileCandidate TileHeader TileSortedCandidate TileBinStats)
+        set(_tile_struct_args
+            "${_yk_dll_run}"
+            --schema "${_schema_config_run}" --struct "${_tile_struct}"
+            --out-cpp "${_out_tile_binning_generated_dir}/${_tile_struct}.g.h"
+            --out-glsl "${_out_tile_binning_shader_dir}/${_tile_struct}.glsl")
+        string(TOLOWER "${_tile_struct}" _tile_struct_lc)
+        vixen_add_codegen_check(tile_${_tile_struct_lc}_check ALL
+            COMMAND ${_CODEGEN_RUNNER} ${_tile_struct_args} --check
+            COMMENT "[codegen] golden check: ${_tile_struct}.g.h/.glsl match canonical tile-binning schema"
+            VERBATIM)
+        add_custom_target(tile_${_tile_struct_lc}_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_tile_struct_args}
+            COMMENT "[codegen] regenerate ${_tile_struct}.g.h/.glsl"
+            JOB_POOL msbuild
+            VERBATIM)
+        list(APPEND _tile_binning_struct_regen tile_${_tile_struct_lc}_regen)
+    endforeach()
+    add_custom_target(tile_binning_structs_regen)
+    add_dependencies(tile_binning_structs_regen ${_tile_binning_struct_regen})
+
     # The GPU-domain [KernelSystem]s form one generated composition consumed by
     # GeneratedSystemStages, so the build derives every system in one pass.
     if(EXISTS "${_schema_sim_framework}/SystemDeclarations.cs"
@@ -1163,7 +1193,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         # One supported refresh: schema, typed refs, composition outputs and UI SPIR-V.
         if(TARGET ui_shader_spirv_regen)
             add_custom_target(frame_targets_refresh)
-            add_dependencies(frame_targets_refresh gpu_systems_regen ui_shader_spirv_regen)
+            add_dependencies(frame_targets_refresh gpu_systems_regen ui_shader_spirv_regen tile_binning_structs_regen)
             # Merged SDI headers derive from the shaders just regenerated; without this step
             # runtime keeps stale layouts (T-5477, T-5585). A separate target, ordered after
             # the regens, so the standalone sdi_merged_regen keeps no codegen prerequisites.
@@ -1173,7 +1203,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
                     COMMENT "[codegen] regenerate merged SDI headers after shader regeneration"
                     VERBATIM)
-                add_dependencies(frame_targets_sdi_regen sdi_tool gpu_systems_regen ui_shader_spirv_regen)
+                add_dependencies(frame_targets_sdi_regen sdi_tool gpu_systems_regen ui_shader_spirv_regen tile_binning_structs_regen)
                 add_dependencies(frame_targets_refresh frame_targets_sdi_regen)
             endif()
         endif()

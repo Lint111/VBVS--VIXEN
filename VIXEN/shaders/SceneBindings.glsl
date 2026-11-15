@@ -1181,6 +1181,19 @@ layout(std430, binding = 47) readonly buffer BodyInstanceTransformBuffer {
     BodyInstanceTransform bodyInstanceTransforms[];
 };
 
+#ifdef VIXEN_PRIMARY_TILE_CANDIDATES
+// GB1 (R857): the generated tile pass publishes front-to-back candidates for
+// the primary march. The header gives the tile-local count and stride.
+#include "Generated/TileHeader.glsl"
+#include "Generated/TileSortedCandidate.glsl"
+layout(std430, binding = 48) readonly buffer TileHeaderBuffer {
+    TileHeader tileHeaders[];
+};
+layout(std430, binding = 49) readonly buffer TileSortedCandidateBuffer {
+    TileSortedCandidate tileCandidates[];
+};
+#endif
+
 vec3 instanceTransformPoint(vec4 rows[3], vec3 p) {
     vec4 hp = vec4(p, 1.0);
     return vec3(dot(rows[0], hp), dot(rows[1], hp), dot(rows[2], hp));

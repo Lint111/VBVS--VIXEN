@@ -146,6 +146,7 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "LightTree.h"  // Sampled Lighting Inc3 M4: BuildLightTreeCut/BruteForceTotalEmissivePower for the ReSTIR gate demo
 #include "Nodes/BlitNode.h"  // Sampled Lighting Inc3 M1: presentation-only blit (post-DirectLighting)
 #include "Nodes/BodyOctreeSceneNode.h"  // M-wire: sparse shell octree + instance SSBO
+#include "Nodes/TileBinViewNode.h"      // GB1: generated tile-list view producer
 #include "Nodes/CameraNode.h"
 #include "Nodes/CommandPoolNode.h"
 #include "Nodes/ComputeDispatchNode.h"
@@ -196,6 +197,13 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/SkyProjectionNode.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Nodes/StorageBufferNode.h"  // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17), extent-driven
+#include "Generated/InstanceBound.g.h"
+#include "Generated/TileBinView.g.h"
+#include "Generated/TileBinCounter.g.h"
+#include "Generated/TileCandidate.g.h"
+#include "Generated/TileBinStats.g.h"
+#include "Generated/TileHeader.g.h"
+#include "Generated/TileSortedCandidate.g.h"
 #include "Nodes/MultiDispatchNode.h"  // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
@@ -615,6 +623,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle bodyOctreeSceneNode = renderGraph->AddNode<BodyOctreeSceneNodeType>("body_octree_scene");
     static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))->SetMotionGuidesEnabled(reconstructionInputsEnabled);
     bodyOctreeSceneNode_ = bodyOctreeSceneNode;      // store so SetBodyInstances() can forward to it
+    NodeHandle tileBinViewNode = renderGraph->AddNode<TileBinViewNodeType>("tile_bin_view");
 
     // Sampled Lighting Inc0 M3: LightingConfig data (binding 16). Static default content
     // this increment (a single directional light matching Lighting.glsl's old hardcoded
@@ -658,6 +667,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // imgSize (imageSize(outputImage) in the shader) even under render-scale (<1.0) — the same
     // extent-follow cascade RenderTargetNode itself rides.
     NodeHandle hitRecordBufferNode = renderGraph->AddNode<StorageBufferNodeType>("hit_record_buffer");
+    NodeHandle tileBinCountersBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_counters_buffer");
+    NodeHandle tileBinCandidatesBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_candidates_buffer");
+    NodeHandle tileBinStatsBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_stats_buffer");
+    NodeHandle tileBinHeadersBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_headers_buffer");
+    NodeHandle tileBinSortedCandidatesBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_sorted_candidates_buffer");
 
     // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode — the shading pass split out of
     // BodyInstanceRayMarch.comp (which is now traversal-only: writes HitRecord + the pick-ID
@@ -1630,6 +1644,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // outputImage's own extent (including under render-scale).
     auto* hitRecordBuffer = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitRecordBufferNode));
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
+
+    // GB1: the generated tile passes use one header/counter per 8x8 tile and a
+    // fixed 512-entry candidate slab per tile. The list capacity is independent
+    // of the scene's instance count, so the old 192-instance storage shape is
+    // not part of this allocation contract.
+    constexpr uint32_t kTileSize = 8u;
+    constexpr uint32_t kTileListCapacityLog2 = 9u;
+    const uint32_t tileCount = ((renderExtent.width + kTileSize - 1u) / kTileSize) *
+                                ((renderExtent.height + kTileSize - 1u) / kTileSize);
+    const uint32_t tileListCapacity = 1u << kTileListCapacityLog2;
+    const auto setTileBufferBytes = [&](NodeHandle node, uint64_t bytes) {
+        static_cast<StorageBufferNode*>(renderGraph->GetInstance(node))->SetParameter(
+            StorageBufferNodeConfig::PARAM_SIZE_BYTES, static_cast<uint32_t>(bytes));
+    };
+    setTileBufferBytes(tileBinCountersBuffer,
+                       static_cast<uint64_t>(tileCount) * sizeof(Vixen::Codegen::Gpu::TileBinCounter));
+    setTileBufferBytes(tileBinCandidatesBuffer,
+                       static_cast<uint64_t>(tileCount) * tileListCapacity * sizeof(Vixen::Codegen::Gpu::TileCandidate));
+    setTileBufferBytes(tileBinStatsBuffer, sizeof(Vixen::Codegen::Gpu::TileBinStats));
+    setTileBufferBytes(tileBinHeadersBuffer,
+                       static_cast<uint64_t>(tileCount) * sizeof(Vixen::Codegen::Gpu::TileHeader));
+    setTileBufferBytes(tileBinSortedCandidatesBuffer,
+                       static_cast<uint64_t>(tileCount) * tileListCapacity * sizeof(Vixen::Codegen::Gpu::TileSortedCandidate));
 
     if (hdrExposureEnabled) {
         // ExposureHistogram.glsl: 16-byte ExposureMeterState, then 128 uint histogram bins.
@@ -4065,6 +4102,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
 
+    // GB1 tile-view producer: the generated scatter pass consumes the camera
+    // basis and the live body count through this per-frame typed buffer.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  tileBinViewNode, TileBinViewNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  tileBinViewNode, TileBinViewNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                  tileBinViewNode, TileBinViewNodeConfig::CAMERA_DATA)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                  tileBinViewNode, TileBinViewNodeConfig::WIDTH)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                  tileBinViewNode, TileBinViewNodeConfig::HEIGHT)
+         .Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                  tileBinViewNode, TileBinViewNodeConfig::INSTANCE_COUNT);
+
+    const NodeHandle tileBinStorageNodes[] = {
+        tileBinCountersBuffer, tileBinCandidatesBuffer, tileBinStatsBuffer,
+        tileBinHeadersBuffer, tileBinSortedCandidatesBuffer,
+    };
+    for (NodeHandle storage : tileBinStorageNodes) {
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      storage, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+    }
+
     // Sampled Lighting Inc0 M3: lighting config node connections (same ring pattern as
     // bodyOctreeSceneNode above — device + per-frame index so ExecuteImpl picks which
     // ring slot to upload LightingConfig into).
@@ -4475,6 +4536,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, kSceneRoles);
     sceneProviders.Provide("BodyInstanceTransformBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER, kSceneRoles);
+    // GB1 primary camera-ray candidate lists. The two bindings are declared only
+    // in the primary march variant, so these providers are inert for other shader
+    // families and keep the generated lists on the same frame-resource path.
+    sceneProviders.Provide("TileHeaderBuffer", tileBinHeadersBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("TileSortedCandidateBuffer", tileBinSortedCandidatesBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     sceneProviders.Provide("ChannelPoolBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, kSceneRoles);
     sceneProviders.Provide("BrickLookupBuffer", bodyOctreeSceneNode,
@@ -5141,6 +5209,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
         frameResources.ProvideProducer(exposureMeter, exposureReduceNode, taaSelected);
         frameResources.Provide({"Vixen.Gpu.LightingConfig", "*"}, lightingConfigNode,
                                LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
+        // GB1: generated tile-list resources. The frame-target history image is
+        // allocated from the manifest; all SSBOs are owned by the typed graph
+        // nodes above and registered under their schema identities here.
+        frameResources.Provide({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode,
+                               BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode,
+                               TileBinViewNodeConfig::VIEW_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinCounter", "*"}, tileBinCountersBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileCandidate", "*"}, tileBinCandidatesBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinStats", "*"}, tileBinStatsBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileHeader", "*"}, tileBinHeadersBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileSortedCandidate", "*"}, tileBinSortedCandidatesBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.ProvideProducer({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode);
+        frameResources.ProvideProducer({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode);
         frameResources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
                                      renderExtent.width);
         frameResources.ProvideExtent("presentation", 1, renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
