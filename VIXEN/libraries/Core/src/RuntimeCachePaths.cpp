@@ -355,19 +355,21 @@ bool AtomicWriteFile(
         return false;
     }
     const auto destinationNameBytes = destinationName.size() * sizeof(wchar_t);
-    const auto renameInfoSize = offsetof(FILE_RENAME_INFO, FileName) + destinationNameBytes;
+    const auto renameInfoSize = offsetof(FILE_RENAME_INFO, FileName) +
+                                destinationNameBytes + sizeof(wchar_t);
     std::vector<char> renameInfoStorage(renameInfoSize);
     auto* renameInfo = reinterpret_cast<FILE_RENAME_INFO*>(renameInfoStorage.data());
     renameInfo->Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
     renameInfo->FileNameLength = static_cast<DWORD>(destinationNameBytes);
     std::memcpy(renameInfo->FileName, destinationName.data(), destinationNameBytes);
+    renameInfo->FileName[destinationName.size()] = L'\0';
 
     const auto destinationDirectoryPath = destination.parent_path().empty()
         ? std::filesystem::path(".")
         : destination.parent_path();
     HANDLE destinationDirectory = ::CreateFileW(
         destinationDirectoryPath.c_str(),
-        FILE_READ_ATTRIBUTES,
+        FILE_READ_ATTRIBUTES | FILE_TRAVERSE,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr,
         OPEN_EXISTING,
