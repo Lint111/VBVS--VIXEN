@@ -8,13 +8,15 @@ namespace Vixen.Codegen.Gpu;
 public static class TileBinSortSystem
 {
     [GaiaQuery] public static QuerySpec Tiles() => Gaia.Query()
-        .All<FrameTargetsRef, R32f>(row => row.TileFarDepth);
+        .All<FrameTargetsRef, R32f>(row => row.TileFarDepth)
+        .All<TileBinView>();
 
     [Update]
-    public static void Run(in Texture2D<R32f> tileFarDepth,
+    public static void Run(in Texture2D<R32f> tileFarDepth, in TileBinView[] view,
         in TileBinCounter[] counters, in TileCandidate[] candidates,
         ref TileHeader[] tiles, ref TileSortedCandidate[] sortedCandidates, int i)
     {
+        if (i >= view[0].tilesX * view[0].tilesY) return;
         if (tileFarDepth.Previous[0].x < -3.402823e38f) return;
         int tileIndex = i;
         tiles[i].index = tileIndex;

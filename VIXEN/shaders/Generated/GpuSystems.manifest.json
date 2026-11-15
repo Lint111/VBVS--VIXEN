@@ -386,12 +386,23 @@
       },
       "arguments": [
         {
+          "name": "view",
+          "kind": "Vixen.Codegen.Gpu.TileBinView",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 1,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
           "name": "counters",
           "kind": "Vixen.Codegen.Gpu.TileBinCounter",
           "member": "*",
           "form": "storage",
           "access": "in",
-          "binding": 1,
+          "binding": 2,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
           "accessKind": "ComputeStorageRead"
@@ -402,7 +413,7 @@
           "member": "*",
           "form": "storage",
           "access": "in",
-          "binding": 2,
+          "binding": 3,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
           "accessKind": "ComputeStorageRead"
@@ -413,7 +424,7 @@
           "member": "*",
           "form": "storage",
           "access": "ref",
-          "binding": 3,
+          "binding": 4,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
           "accessKind": "ComputeStorageReadWrite"
@@ -424,7 +435,7 @@
           "member": "*",
           "form": "storage",
           "access": "ref",
-          "binding": 4,
+          "binding": 5,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
           "accessKind": "ComputeStorageReadWrite"
