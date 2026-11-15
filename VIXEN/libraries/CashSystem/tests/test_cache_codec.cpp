@@ -222,6 +222,10 @@ TEST(CacheEnvelope, ConcurrentWritersOnlyPublishCompletePayloads) {
     writing.store(false, std::memory_order_release);
     reader.join();
 
+    std::error_code existsError;
+    std::cerr << "cache path=" << path.string() << " exists="
+              << std::filesystem::exists(path, existsError)
+              << " error=" << existsError.message() << '\n';
     std::vector<char> finalPayload;
     EXPECT_EQ(CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", finalPayload),
               CashSystem::CacheFileStatus::Loaded);
