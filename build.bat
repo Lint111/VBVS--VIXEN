@@ -102,7 +102,7 @@ if /i "%ACTION%"=="provision" goto :do_provision
 
 REM Bring pinned tool paths into this process without changing the machine environment.
 REM The provisioner owns these ignored cache files and records only verified versions.
-for %%T in (git python ninja) do (
+for %%T in (git python ninja dotnet) do (
     set "TOOL_BIN_FILE=%SRC_DIR%\.win-native-toolchain\%%T-bin.txt"
     set "TOOL_BIN_DIR="
     if exist "!TOOL_BIN_FILE!" (

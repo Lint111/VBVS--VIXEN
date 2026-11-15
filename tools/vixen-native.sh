@@ -8,7 +8,7 @@
 #   jobs                       print how the ninja job count is derived (node width capped by memory, R847.4) and the count
 #   checkout                   create $VIXEN_NATIVE_ROOT/<lane> as a clone of this worktree if missing
 #   sync                       checkout, then fast-forward it to this worktree's branch tip and verify it
-#   provision                  run build.bat provision when the pinned Ninja/CMake files are missing
+#   provision                  run build.bat provision when the pinned Ninja/CMake/.NET files are missing
 #   prepare                    sync + kernel pin fetch + provision (run this before queueing the build)
 #   build [ACTION [PRESET [TARGET]]]
 #                              prepare, then build.bat (ACTION defaults to build.bat's own default)
@@ -410,7 +410,7 @@ cancel_native() {
 do_provision() {
     local dir tool missing=0
     dir="$(base_dir)"
-    for tool in ninja-bin.txt cmake-exe.txt; do
+    for tool in ninja-bin.txt cmake-exe.txt dotnet-bin.txt; do
         [[ -f "$dir/VIXEN/.win-native-toolchain/$tool" ]] || missing=1
     done
     if [[ "$missing" == 0 ]]; then say "native toolchain already provisioned in $dir"; return 0; fi
