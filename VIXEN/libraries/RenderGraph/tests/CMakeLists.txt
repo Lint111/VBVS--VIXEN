@@ -51,6 +51,7 @@ add_executable(test_rendergraph_core
     Nodes/test_reconstruction_history.cpp
     Nodes/test_texture_loader_node.cpp
     Nodes/test_generated_system_stage.cpp
+    Nodes/test_tile_binning_mirror.cpp
     Look/test_look_resolver.cpp
     Selection/test_pick_vote.cpp
 )

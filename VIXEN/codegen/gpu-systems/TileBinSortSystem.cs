@@ -25,7 +25,13 @@ public static class TileBinSortSystem
         int first = tileIndex << counters[tileIndex].listCapacityLog2;
         int capacity = 1 << counters[tileIndex].listCapacityLog2;
         tiles[i].capacityLog2 = counters[tileIndex].listCapacityLog2;
-        for (int slot = 0; slot < capacity; slot++)
+        int sortCapacity = 0;
+        if (stored > 0)
+        {
+            sortCapacity = 1;
+            while (sortCapacity < stored) sortCapacity <<= 1;
+        }
+        for (int slot = 0; slot < sortCapacity; slot++)
         {
             if (slot < stored)
             {
@@ -42,16 +48,16 @@ public static class TileBinSortSystem
             }
         }
 
-        // Sort the complete fixed-size slab with a bounded bitonic network.
-        // The prior insertion loop was quadratic in the per-tile candidate
-        // count; a full slab network keeps the generated GPU work bounded at
-        // capacity * log2(capacity)^2 even when a dense tile receives all
-        // 512 candidates.
-        for (int k = 2; k <= capacity; k <<= 1)
+        // Sort only the active power-of-two prefix.  The prior insertion loop
+        // was quadratic in the per-tile candidate count, while sorting the
+        // complete 512-entry slab made every mostly-empty tile pay the dense
+        // case.  The slab remains the declared storage stride; this bound is
+        // the actual work and is always finite because stored <= capacity.
+        for (int k = 2; k <= sortCapacity; k <<= 1)
         {
             for (int j = k >> 1; j > 0; j >>= 1)
             {
-                for (int slot = 0; slot < capacity; slot++)
+                for (int slot = 0; slot < sortCapacity; slot++)
                 {
                     int other = slot ^ j;
                     if (other <= slot) continue;

@@ -122,7 +122,16 @@ void TileBinSortSystem_Body(in TileBinView view, int i) {
     int first = tileIndex << counters.values[tileIndex].listCapacityLog2;
     int capacity = 1 << counters.values[tileIndex].listCapacityLog2;
     tiles.values[i].capacityLog2 = counters.values[tileIndex].listCapacityLog2;
-    for (int slot = 0; slot < capacity; slot++)
+    int sortCapacity = 0;
+    if (stored > 0)
+    {
+        sortCapacity = 1;
+        while (sortCapacity < stored)
+        {
+            sortCapacity <<= 1;
+        }
+    }
+    for (int slot = 0; slot < sortCapacity; slot++)
     {
         if (slot < stored)
         {
@@ -135,11 +144,11 @@ void TileBinSortSystem_Body(in TileBinView view, int i) {
             sortedCandidates.values[first + slot].instance = 4294967295u;
         }
     }
-    for (int k = 2; k <= capacity; k <<= 1)
+    for (int k = 2; k <= sortCapacity; k <<= 1)
     {
         for (int j = k >> 1; j > 0; j >>= 1)
         {
-            for (int slot = 0; slot < capacity; slot++)
+            for (int slot = 0; slot < sortCapacity; slot++)
             {
                 int other = slot ^ j;
                 if (other <= slot)
