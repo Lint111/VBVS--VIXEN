@@ -20,12 +20,14 @@
 #include "Connection/ConnectionModifier.h"
 #include "Nodes/SdiStageSynthesis.h"
 #include "Nodes/ComputeStageNode.h"
+#include "Nodes/BufferSyncGathererNode.h"
 #include "Nodes/ImageSyncGathererNode.h"
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/AccumulationHistoryNode.h"
 #include "Nodes/RenderTargetNode.h"
 #include "Nodes/SamplerNode.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"
+#include "Data/Nodes/BufferSyncGathererNodeConfig.h"
 #include "Data/Nodes/ImageSyncGathererNodeConfig.h"
 
 #include <nlohmann/json.hpp>
@@ -449,6 +451,8 @@ public:
         const GpuSystemEntry* entry = nullptr;
         NodeHandle shaderLib{};
         NodeHandle stage{};
+        NodeHandle bufferWrites{};
+        size_t bufferWriteCount = 0;
         NodeHandle imageReads{};
         size_t imageReadCount = 0;
     };
@@ -468,6 +472,15 @@ public:
             stage.entry = &entry;
             stage.shaderLib = graph->AddNode<ShaderLibraryNodeType>(entry.className + "_shader_lib");
             stage.stage = graph->AddNode<ComputeStageNodeType>(entry.className);
+            stage.bufferWriteCount = std::count_if(entry.arguments.begin(), entry.arguments.end(),
+                                                   [](const GpuSystemArgument& argument) {
+                                                       return argument.form == "storage" && argument.write;
+                                                   });
+            if (stage.bufferWriteCount > 0) {
+                stage.bufferWrites = graph->AddNode<BufferSyncGathererNodeType>(entry.className + "_buffer_writes");
+                static_cast<BufferSyncGathererNode*>(graph->GetInstance(stage.bufferWrites))
+                    ->PreRegisterBufferSlots(stage.bufferWriteCount);
+            }
             stage.imageReadCount = GpuSystemImageReads(entry).size();
             if (stage.imageReadCount > 0) {
                 stage.imageReads = graph->AddNode<ImageSyncGathererNodeType>(entry.className + "_image_reads");
@@ -556,6 +569,21 @@ public:
                                   GeneratedSystemBinding{argument.samplerBinding, VK_DESCRIPTOR_TYPE_SAMPLER},
                                   SlotRoleModifier(SlotRole::Execute));
                 }
+            }
+            // Storage-buffer refs are real GPU writes. Register their physical resources with
+            // the generated stage's sync bundle so a hand consumer can receive the same
+            // ComputeStorageWrite -> ComputeStorageRead edge as a hand-authored pass.
+            // Descriptor binding alone only supplies a handle and is intentionally untyped.
+            if (stage.bufferWriteCount > 0) {
+                uint32_t writeSlot = 0;
+                for (const auto& argument : entry.arguments) {
+                    if (argument.form != "storage" || !argument.write) continue;
+                    registry.ApplyDescriptor(argument.identity, entry.className, batch, stage.bufferWrites,
+                                             writeSlot++, argument.slot, VK_DESCRIPTOR_TYPE_MAX_ENUM);
+                }
+                batch.Connect(stage.bufferWrites, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                              stage.stage, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY,
+                              SlotRoleModifier(SlotRole::Execute));
             }
             std::array<uint32_t, 3> extent{1, 1, 1};
             uint32_t axis = 0;

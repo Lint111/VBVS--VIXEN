@@ -624,6 +624,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))->SetMotionGuidesEnabled(reconstructionInputsEnabled);
     bodyOctreeSceneNode_ = bodyOctreeSceneNode;      // store so SetBodyInstances() can forward to it
     NodeHandle tileBinViewNode = renderGraph->AddNode<TileBinViewNodeType>("tile_bin_view");
+    // GB1: the hand-authored march reads the two generated sort outputs through
+    // the same declared buffer-hazard path as the generated writer stages.
+    NodeHandle tileBinReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("tile_bin_read_gatherer");
 
     // Sampled Lighting Inc0 M3: LightingConfig data (binding 16). Static default content
     // this increment (a single directional light matching Lighting.glsl's old hardcoded
@@ -3229,6 +3232,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (reservoirBufferA + reservoirBufferB — both physical buffers, see this block's own
     // declaration comment for why BOTH are declared regardless of which is "current").
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
+    // GB1: BodyInstanceRayMarch reads {headers, sortedCandidates}; the generated
+    // TileBinSortSystem registers the matching writes in GeneratedSystemStage.
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(tileBinReadGatherer))->PreRegisterBufferSlots(2);
     // SpatialReuseShade reads HitRecordBuffer plus, in the optional cell-resolve path,
     // {cellRadiance, hitAccumTable}. One gatherer feeds the stage's single BUFFER_READ_ARRAY.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReadGatherer))
@@ -5687,6 +5693,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // before.
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                   computeDispatch, ComputeDispatchNodeConfig::BUFFER_WRITE, SlotRoleModifier(SlotRole::Execute));
+
+    // GB1: the generated tile-list sort writes the exact two buffers consumed by
+    // the march. Descriptor providers bind the handles, but only this gatherer
+    // connection declares the cross-submit read hazard to FrameSyncScheduler.
+    batch.Connect(tileBinHeadersBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  tileBinReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(tileBinSortedCandidatesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  tileBinReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(tileBinReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::BUFFER_READ_ARRAY,
+                  SlotRoleModifier(SlotRole::Execute));
+    if (const auto tileSortWriter = generatedSystems_.LastWriter({"Vixen.Codegen.Gpu.TileSortedCandidate", "*"})) {
+        // BUFFER_OUT is the first generated write buffer's handle and is used
+        // only to force the sort stage before the hand-authored march. The
+        // declared read/write resources above carry the actual memory barrier.
+        batch.Connect(*tileSortWriter, ComputeStageNodeConfig::BUFFER_OUT,
+                      computeDispatch, ComputeDispatchNodeConfig::ORDERING_WAIT_BUFFER);
+    }
     // execDep (Dependency|Execute), not Execute-only: VariadicConnectionRule only
     // populates a variadic slot's actual Resource* via a PostCompile hook when the
     // connection carries SlotRole::Dependency — see BuildFanInDemoGraph.cpp's own
