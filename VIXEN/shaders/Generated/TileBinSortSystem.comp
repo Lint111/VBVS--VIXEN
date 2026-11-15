@@ -120,23 +120,53 @@ void TileBinSortSystem_Body(in TileBinView view, int i) {
     int offered = (counters.values[tileIndex].generation == counters.values[tileIndex].activeGeneration ? counters.values[tileIndex].count : 0);
     int stored = StoredCount(offered, counters.values[tileIndex].listCapacityLog2);
     int first = tileIndex << counters.values[tileIndex].listCapacityLog2;
+    int capacity = 1 << counters.values[tileIndex].listCapacityLog2;
     tiles.values[i].capacityLog2 = counters.values[tileIndex].listCapacityLog2;
-    if (stored > 0)
+    for (int slot = 0; slot < capacity; slot++)
     {
-        sortedCandidates.values[first].nearDepth = candidates.values[first].nearDepth;
-        sortedCandidates.values[first].instance = candidates.values[first].instance;
-    }
-    for (int next = 1; next < stored; next++)
-    {
-        TileCandidate moving = candidates.values[first + next];
-        int hole = next;
-        while (hole > 0 && CandidateBefore(moving.nearDepth, moving.instance, sortedCandidates.values[first + hole - 1].nearDepth, sortedCandidates.values[first + hole - 1].instance))
+        if (slot < stored)
         {
-            sortedCandidates.values[first + hole] = sortedCandidates.values[first + hole - 1];
-            hole--;
+            sortedCandidates.values[first + slot].nearDepth = candidates.values[first + slot].nearDepth;
+            sortedCandidates.values[first + slot].instance = candidates.values[first + slot].instance;
         }
-        sortedCandidates.values[first + hole].nearDepth = moving.nearDepth;
-        sortedCandidates.values[first + hole].instance = moving.instance;
+        else
+        {
+            sortedCandidates.values[first + slot].nearDepth = 3.402823e38;
+            sortedCandidates.values[first + slot].instance = 4294967295u;
+        }
+    }
+    for (int k = 2; k <= capacity; k <<= 1)
+    {
+        for (int j = k >> 1; j > 0; j >>= 1)
+        {
+            for (int slot = 0; slot < capacity; slot++)
+            {
+                int other = slot ^ j;
+                if (other <= slot)
+                {
+                    continue;
+                }
+                bool shouldSwap = false;
+                if ((slot & k) == 0)
+                {
+                    shouldSwap = CandidateBefore(sortedCandidates.values[first + other].nearDepth, sortedCandidates.values[first + other].instance, sortedCandidates.values[first + slot].nearDepth, sortedCandidates.values[first + slot].instance);
+                }
+                else
+                {
+                    shouldSwap = CandidateBefore(sortedCandidates.values[first + slot].nearDepth, sortedCandidates.values[first + slot].instance, sortedCandidates.values[first + other].nearDepth, sortedCandidates.values[first + other].instance);
+                }
+                if (!shouldSwap)
+                {
+                    continue;
+                }
+                float movingDepth = sortedCandidates.values[first + slot].nearDepth;
+                uint movingInstance = sortedCandidates.values[first + slot].instance;
+                sortedCandidates.values[first + slot].nearDepth = sortedCandidates.values[first + other].nearDepth;
+                sortedCandidates.values[first + slot].instance = sortedCandidates.values[first + other].instance;
+                sortedCandidates.values[first + other].nearDepth = movingDepth;
+                sortedCandidates.values[first + other].instance = movingInstance;
+            }
+        }
     }
     tiles.values[i].demand = offered;
     tiles.values[i].count = stored;
