@@ -1008,7 +1008,11 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
     }
 #endif
 
-    int numInstances = max(pc.instanceCount, 0);
+    // GB1's generated candidate lists replace the camera-ray loop above. Shadow
+    // and other secondary rays remain on their pre-GB3 bounded contract until
+    // the secondary-ray world-space candidate structure lands; do not expand
+    // every shadow invocation to the full load-scenario instance stream here.
+    int numInstances = clamp(pc.instanceCount, 0, 3 * 64);
     for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
 
         // Shadow hard rule: only bucketed-dispatch ownership bits are legal here. B1's
