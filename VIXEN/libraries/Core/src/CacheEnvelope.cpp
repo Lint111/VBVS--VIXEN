@@ -3,10 +3,12 @@
 #include "RuntimeCachePaths.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <limits>
 #include <system_error>
+#include <thread>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -32,16 +34,31 @@ CacheFileReadStatus ReadCacheFile(
     std::string* error
 ) {
 #ifdef _WIN32
-    HANDLE file = ::CreateFileW(
-        path.c_str(),
-        GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_POSIX_SEMANTICS,
-        nullptr);
+    // During FileRenameInfoEx POSIX replacement, Windows briefly reports the old name as
+    // delete-pending; CreateFile documents ERROR_ACCESS_DENIED for that transition.  Treat only
+    // that state and a direct sharing violation as transient; all other open errors are final.
+    constexpr int kMaxReadOpenAttempts = 8;
+    HANDLE file = INVALID_HANDLE_VALUE;
+    DWORD openError = ERROR_SUCCESS;
+    for (int attempt = 0; attempt < kMaxReadOpenAttempts; ++attempt) {
+        file = ::CreateFileW(
+            path.c_str(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_POSIX_SEMANTICS,
+            nullptr);
+        if (file != INVALID_HANDLE_VALUE) break;
+
+        openError = ::GetLastError();
+        if ((openError != ERROR_ACCESS_DENIED && openError != ERROR_SHARING_VIOLATION) ||
+            attempt + 1 == kMaxReadOpenAttempts) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     if (file == INVALID_HANDLE_VALUE) {
-        const DWORD openError = ::GetLastError();
         if (openError == ERROR_FILE_NOT_FOUND || openError == ERROR_PATH_NOT_FOUND) {
             return CacheFileReadStatus::Missing;
         }
