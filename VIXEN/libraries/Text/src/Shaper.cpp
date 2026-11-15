@@ -101,6 +101,7 @@ ShapedText ShapeUtf8(const PresetDesc& preset,
         if (hbLanguage != HB_LANGUAGE_INVALID)
             hb_buffer_set_language(buffer.get(), hbLanguage);
         hb_buffer_set_cluster_level(buffer.get(), ClusterLevel(preset.shapingClass));
+        hb_buffer_set_content_type(buffer.get(), HB_BUFFER_CONTENT_TYPE_UNICODE);
 
         const SBUInteger runEnd = static_cast<SBUInteger>(bidiRun.byteOffset + bidiRun.byteLength);
         SBUInteger byteOffset = static_cast<SBUInteger>(bidiRun.byteOffset);
