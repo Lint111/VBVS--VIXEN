@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // auto-sync P4 M4: generic arbitrary-sized storage buffer (SSBO) node.
 
@@ -216,9 +218,7 @@ void StorageBufferNode::CreateBuffer(VulkanDevice* device, VkDeviceSize sizeByte
     bufferInfo.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | static_cast<VkBufferUsageFlags>(extraUsageFlags);
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer_) != VK_SUCCESS) {
-        throw std::runtime_error("[StorageBufferNode] vkCreateBuffer failed");
-    }
+    VK_CHECK_THROW(vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer_), "[StorageBufferNode] vkCreateBuffer failed");
 
     // --- Allocate host-visible / host-coherent memory via real memory-type selection ---
     VkMemoryRequirements req{};
@@ -253,9 +253,7 @@ void StorageBufferNode::CreateBuffer(VulkanDevice* device, VkDeviceSize sizeByte
 
     // --- Zero-initialise the buffer ---
     void* mapped = nullptr;
-    if (vkMapMemory(vkDevice, memory_, 0, sizeBytes, 0, &mapped) != VK_SUCCESS) {
-        throw std::runtime_error("[StorageBufferNode] vkMapMemory failed");
-    }
+    VK_CHECK_THROW(vkMapMemory(vkDevice, memory_, 0, sizeBytes, 0, &mapped), "[StorageBufferNode] vkMapMemory failed");
     std::memset(mapped, 0, static_cast<size_t>(sizeBytes));
     vkUnmapMemory(vkDevice, memory_);
 

@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 // Copyright (C) 2026 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Raster-proxy B1 M4: depth ping-pong pair for the occlusion probe — march writes
 // [frame&1], HiZ reduce reads [(frame+1)&1]; no sync edges by construction
@@ -119,9 +121,7 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
         imgInfo.usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
         imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        if (vkCreateImage(vkDevice, &imgInfo, nullptr, &images_[slot]) != VK_SUCCESS) {
-            throw std::runtime_error("[DepthTargetNode] vkCreateImage failed");
-        }
+        VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &images_[slot]), "[DepthTargetNode] vkCreateImage failed");
 
         VkMemoryRequirements req{};
         vkGetImageMemoryRequirements(vkDevice, images_[slot], &req);
@@ -144,9 +144,7 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
         viewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.format           = kFormat;
         viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &views_[slot]) != VK_SUCCESS) {
-            throw std::runtime_error("[DepthTargetNode] vkCreateImageView failed");
-        }
+        VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &views_[slot]), "[DepthTargetNode] vkCreateImageView failed");
     }
 
     // One-shot: UNDEFINED -> TRANSFER_DST, clear both slots to the miss sentinel,
@@ -158,9 +156,7 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
     allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = 1;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[DepthTargetNode] vkAllocateCommandBuffers (clear) failed");
-    }
+    VK_CHECK_THROW(vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd), "[DepthTargetNode] vkAllocateCommandBuffers (clear) failed");
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -206,9 +202,7 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
     // R715: the one-shot rides the graph's submission stream (queue order and its barrier
     // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
     // so there is no submit-then-wait-idle here.
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[DepthTargetNode] queue-owner clear submit failed");
-    }
+    VK_CHECK_THROW(GetOwningGraph()->SubmitOneShot(this, commandPool, cmd), "[DepthTargetNode] queue-owner clear submit failed");
 
     NODE_LOG_INFO("[DepthTargetNode] Created R32_SFLOAT ping-pong pair at " +
                   std::to_string(width_) + "x" + std::to_string(height_) +

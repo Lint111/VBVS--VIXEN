@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Sampled Lighting Inc3 M1 (KI-018): presentation-only render-target->swapchain blit node.
@@ -82,10 +84,8 @@ void BlitNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     std::vector<VkCommandBuffer> cmdBuffers(cmdBufferCount);
     VkResult result = vkAllocateCommandBuffers(GetDevice()->device, &allocInfo, cmdBuffers.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[BlitNode::CompileImpl] vkAllocateCommandBuffers failed: " +
+    VK_CHECK_THROW(result, "[BlitNode::CompileImpl] vkAllocateCommandBuffers failed: " +
                                  std::to_string(result));
-    }
     for (uint32_t i = 0; i < cmdBufferCount; ++i) {
         commandBuffers_[i] = cmdBuffers[i];
         commandBuffers_.MarkDirty(i);
@@ -273,9 +273,7 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t imageIndex,
                                   uint32_t frameIndex, bool leaveImageInGeneral) {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("[BlitNode::RecordBlitCommands] vkBeginCommandBuffer failed");
-    }
+    VK_CHECK_THROW(vkBeginCommandBuffer(cmd, &beginInfo), "[BlitNode::RecordBlitCommands] vkBeginCommandBuffer failed");
 
     if (gpuPerfLogger_) {
         gpuPerfLogger_->BeginFrame(cmd, frameIndex);
@@ -310,9 +308,7 @@ void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t im
         gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, extent.width, extent.height);
     }
 
-    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[BlitNode::RecordBlitCommands] vkEndCommandBuffer failed");
-    }
+    VK_CHECK_THROW(vkEndCommandBuffer(cmd), "[BlitNode::RecordBlitCommands] vkEndCommandBuffer failed");
 }
 
 // ============================================================================

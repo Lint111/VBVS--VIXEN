@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "error/VulkanError.h"
 #include "PipelineCacher.h"
 #include "PipelineLayoutCacher.h"
 #include "MainCacher.h"
@@ -292,9 +293,7 @@ void PipelineCacher::CreatePipeline(const PipelineCreateParams& ci, PipelineWrap
         &wrapper.pipeline
     );
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create graphics pipeline");
-    }
+    VK_CHECK_THROW(result, "Failed to create graphics pipeline");
 }
 
 void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {

@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/PickIdTargetNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -148,9 +150,7 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
         imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
         imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        if (vkCreateImage(vkDevice, &imgInfo, nullptr, &img.image) != VK_SUCCESS) {
-            throw std::runtime_error("[PickIdTargetNode] vkCreateImage failed");
-        }
+        VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &img.image), "[PickIdTargetNode] vkCreateImage failed");
 
         // --- Allocate device-local memory via real memory-type selection ---
         VkMemoryRequirements req{};
@@ -182,9 +182,7 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
         viewInfo.format           = kFormat;
         viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-        if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &img.view) != VK_SUCCESS) {
-            throw std::runtime_error("[PickIdTargetNode] vkCreateImageView failed");
-        }
+        VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &img.view), "[PickIdTargetNode] vkCreateImageView failed");
     }
 
     // One-time UNDEFINED -> GENERAL transition for every ring image. Storage images stay GENERAL
@@ -208,9 +206,7 @@ void PickIdTargetNode::TransitionAllToGeneral(VkCommandPool commandPool) {
     allocInfo.commandBufferCount = 1;
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[PickIdTargetNode] vkAllocateCommandBuffers (transition) failed");
-    }
+    VK_CHECK_THROW(vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd), "[PickIdTargetNode] vkAllocateCommandBuffers (transition) failed");
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -254,9 +250,7 @@ void PickIdTargetNode::TransitionAllToGeneral(VkCommandPool commandPool) {
     // R715: the one-shot rides the graph's submission stream (queue order and its barrier
     // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
     // so there is no submit-then-wait-idle here.
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[PickIdTargetNode] queue-owner transition submit failed");
-    }
+    VK_CHECK_THROW(GetOwningGraph()->SubmitOneShot(this, commandPool, cmd), "[PickIdTargetNode] queue-owner transition submit failed");
 
 }
 

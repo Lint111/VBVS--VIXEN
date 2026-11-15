@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Core/PerFrameResources.h"
 #include "FrameTrace.h"
 #include "VulkanDevice.h"
@@ -53,9 +55,7 @@ VkBuffer PerFrameResources::CreateBufferImpl(uint32_t frameIndex, VkDeviceSize b
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     VkResult result = vkCreateBuffer(device->device, &bufferInfo, nullptr, &frame.uniformBuffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("PerFrameResources::CreateBufferImpl - vkCreateBuffer failed");
-    }
+    VK_CHECK_THROW(result, "PerFrameResources::CreateBufferImpl - vkCreateBuffer failed");
 
     // Get memory requirements
     VkMemoryRequirements memRequirements;

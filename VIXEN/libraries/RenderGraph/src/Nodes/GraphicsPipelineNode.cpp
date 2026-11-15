@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/GraphicsPipelineNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -235,9 +237,7 @@ void GraphicsPipelineNode::CreatePipelineCache() {
         &pipelineCache
     );
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create pipeline cache");
-    }
+    VK_CHECK_THROW(result, "Failed to create pipeline cache");
 }
 
 void GraphicsPipelineNode::CreatePipelineLayout() {
@@ -266,9 +266,7 @@ void GraphicsPipelineNode::CreatePipelineLayout() {
         &pipelineLayout
     );
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create pipeline layout");
-    }
+    VK_CHECK_THROW(result, "Failed to create pipeline layout");
 }
 
 void GraphicsPipelineNode::BuildShaderStages(std::shared_ptr<ShaderManagement::ShaderDataBundle> bundle) {
@@ -530,9 +528,7 @@ void GraphicsPipelineNode::CreatePipeline(TypedCompileContext& ctx) {
         device->device, pipelineCache, 1, &pipelineInfo, nullptr, &pipeline
     );
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create graphics pipeline");
-    }
+    VK_CHECK_THROW(result, "Failed to create graphics pipeline");
 
     ctx.Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
     ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);

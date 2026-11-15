@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Persistent worldPos/depth companion history pair, with immutable previous-frame input and
 // separate current-frame output roles matching AccumulationHistoryNode.
@@ -148,9 +150,7 @@ void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool comman
     imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (vkCreateImage(vkDevice, &imgInfo, nullptr, &image) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] vkCreateImage failed");
-    }
+    VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &image), "[WorldPosHistoryNode] vkCreateImage failed");
 
     // --- Allocate device-local memory via real memory-type selection ---
     VkMemoryRequirements req{};
@@ -182,9 +182,7 @@ void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool comman
     viewInfo.format           = kFormat;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &view) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] vkCreateImageView failed");
-    }
+    VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &view), "[WorldPosHistoryNode] vkCreateImageView failed");
 
     // One-time UNDEFINED -> GENERAL transition. Storage images stay GENERAL across dispatches.
     TransitionToGeneral(commandPool, image);
@@ -204,9 +202,7 @@ void WorldPosHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkImage
     allocInfo.commandBufferCount = 1;
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] vkAllocateCommandBuffers (transition) failed");
-    }
+    VK_CHECK_THROW(vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd), "[WorldPosHistoryNode] vkAllocateCommandBuffers (transition) failed");
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -245,9 +241,7 @@ void WorldPosHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkImage
     // R715: the one-shot rides the graph's submission stream (queue order and its barrier
     // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
     // so there is no submit-then-wait-idle here.
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] queue-owner transition submit failed");
-    }
+    VK_CHECK_THROW(GetOwningGraph()->SubmitOneShot(this, commandPool, cmd), "[WorldPosHistoryNode] queue-owner transition submit failed");
 
 }
 

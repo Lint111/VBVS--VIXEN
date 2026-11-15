@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/FrameSyncNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -70,9 +72,7 @@ void FrameSyncNode::TypedCompileImpl(TypedCompileContext& ctx) {
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled so first frame doesn't wait
 
     for (uint32_t i = 0; i < flightCount; i++) {
-        if (vkCreateFence(device->device, &fenceInfo, nullptr, &frameSyncData[i].inFlightFence) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create in-flight fence for frame " + std::to_string(i));
-        }
+        VK_CHECK_THROW(vkCreateFence(device->device, &fenceInfo, nullptr, &frameSyncData[i].inFlightFence), "Failed to create in-flight fence for frame " + std::to_string(i));
         NODE_LOG_INFO("Flight " + std::to_string(i) + ": fence=0x"
                       + std::to_string(reinterpret_cast<uint64_t>(frameSyncData[i].inFlightFence)));
     }
@@ -96,9 +96,7 @@ void FrameSyncNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     // Create per-FLIGHT acquisition semaphores
     for (uint32_t i = 0; i < flightCount; i++) {
-        if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create imageAvailable semaphore for flight " + std::to_string(i));
-        }
+        VK_CHECK_THROW(vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]), "Failed to create imageAvailable semaphore for flight " + std::to_string(i));
     }
 
     isCreated = true;
@@ -117,9 +115,7 @@ void FrameSyncNode::TypedCompileImpl(TypedCompileContext& ctx) {
         semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         semInfo.pNext = &typeInfo;
 
-        if (vkCreateSemaphore(device->device, &semInfo, nullptr, &timelineSemaphore_) != VK_SUCCESS) {
-            throw std::runtime_error("FrameSyncNode: failed to create per-loop timeline semaphore");
-        }
+        VK_CHECK_THROW(vkCreateSemaphore(device->device, &semInfo, nullptr, &timelineSemaphore_), "FrameSyncNode: failed to create per-loop timeline semaphore");
         std::fill(frameCompletionValues_.begin(), frameCompletionValues_.end(), 0);
         NODE_LOG_INFO("Created per-loop timeline semaphore (auto-sync P5a M1)");
     }

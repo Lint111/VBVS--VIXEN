@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Ui/VixenRmlRenderInterface.h"
 #include "Ui/UiShaderSpirv.g.h"
 #include "Text/Abi.h"
@@ -20,7 +22,7 @@ namespace Vixen::Ui {
 namespace {
 
 void Check(VkResult r, const char* what) {
-    if (r != VK_SUCCESS) throw std::runtime_error(std::string("VixenRmlRenderInterface: ") + what);
+    VK_CHECK_THROW(r, std::string("VixenRmlRenderInterface: ") + what);
 }
 
 VkShaderModule MakeShaderModule(VkDevice device, const uint32_t* code, size_t sizeBytes) {

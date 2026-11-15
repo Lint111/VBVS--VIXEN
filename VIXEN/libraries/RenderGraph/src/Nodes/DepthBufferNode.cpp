@@ -228,8 +228,7 @@ void DepthBufferNode::TransitionDepthImageLayout(VkCommandPool cmdPool) {
 
     // R715: the transition rides the graph's submission stream; the command buffer is freed once
     // the queue timeline reaches it (no submit-then-wait-idle).
-    if (GetOwningGraph()->SubmitOneShot(this, cmdPool, cmdBuffer) != VK_SUCCESS)
-        throw std::runtime_error("[DepthBufferNode] depth layout transition submit failed");
+    VK_CHECK_THROW(GetOwningGraph()->SubmitOneShot(this, cmdPool, cmdBuffer), "[DepthBufferNode] depth layout transition submit failed");
 }
 
 void DepthBufferNode::TransitionImageLayout(

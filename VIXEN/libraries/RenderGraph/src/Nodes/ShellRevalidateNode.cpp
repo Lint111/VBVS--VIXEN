@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Surface-Shell ESVO cache — GPU dispatch of shaders/ShellDerive.comp.
 
@@ -53,9 +55,7 @@ void CreateHostBuffer(VulkanDevice* device, VkDeviceSize size, VkBufferUsageFlag
     bufferInfo.usage       = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &outBuffer) != VK_SUCCESS) {
-        throw std::runtime_error(std::string("[ShellRevalidateNode] vkCreateBuffer failed for ") + context);
-    }
+    VK_CHECK_THROW(vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &outBuffer), std::string("[ShellRevalidateNode] vkCreateBuffer failed for ") + context);
 
     VkMemoryRequirements req{};
     vkGetBufferMemoryRequirements(vkDevice, outBuffer, &req);
@@ -87,9 +87,7 @@ void CreateHostBuffer(VulkanDevice* device, VkDeviceSize size, VkBufferUsageFlag
 
     if (data != nullptr && size > 0) {
         void* mapped = nullptr;
-        if (vkMapMemory(vkDevice, outMemory, 0, size, 0, &mapped) != VK_SUCCESS) {
-            throw std::runtime_error(std::string("[ShellRevalidateNode] vkMapMemory failed for ") + context);
-        }
+        VK_CHECK_THROW(vkMapMemory(vkDevice, outMemory, 0, size, 0, &mapped), std::string("[ShellRevalidateNode] vkMapMemory failed for ") + context);
         std::memcpy(mapped, data, static_cast<size_t>(size));
         vkUnmapMemory(vkDevice, outMemory);
     }
@@ -166,9 +164,7 @@ void ShellRevalidateNode::TypedCompileImpl(TypedCompileContext& ctx) {
     allocInfo.commandPool        = commandPool_;
     allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = 1;
-    if (vkAllocateCommandBuffers(vulkanDevice_->device, &allocInfo, &commandBuffer_) != VK_SUCCESS) {
-        throw std::runtime_error("[ShellRevalidateNode::CompileImpl] Failed to allocate command buffer");
-    }
+    VK_CHECK_THROW(vkAllocateCommandBuffers(vulkanDevice_->device, &allocInfo, &commandBuffer_), "[ShellRevalidateNode::CompileImpl] Failed to allocate command buffer");
 
     NODE_LOG_INFO("[ShellRevalidateNode::CompileImpl] Compiled OK");
 }
@@ -186,9 +182,7 @@ void ShellRevalidateNode::BuildPipeline() {
     smc.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     smc.codeSize = spirv.size() * 4;
     smc.pCode    = spirv.data();
-    if (vkCreateShaderModule(vulkanDevice_->device, &smc, nullptr, &shaderModule_) != VK_SUCCESS) {
-        throw std::runtime_error("[ShellRevalidateNode] vkCreateShaderModule failed");
-    }
+    VK_CHECK_THROW(vkCreateShaderModule(vulkanDevice_->device, &smc, nullptr, &shaderModule_), "[ShellRevalidateNode] vkCreateShaderModule failed");
 
     // Immutable input frontier and distinct output frontier, all storage buffers.
     auto bindL = [](uint32_t b) {
@@ -239,9 +233,7 @@ void ShellRevalidateNode::BuildPipeline() {
     dpci.maxSets       = 2;
     dpci.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     dpci.pPoolSizes    = poolSizes.data();
-    if (vkCreateDescriptorPool(vulkanDevice_->device, &dpci, nullptr, &descriptorPool_) != VK_SUCCESS) {
-        throw std::runtime_error("[ShellRevalidateNode] vkCreateDescriptorPool failed");
-    }
+    VK_CHECK_THROW(vkCreateDescriptorPool(vulkanDevice_->device, &dpci, nullptr, &descriptorPool_), "[ShellRevalidateNode] vkCreateDescriptorPool failed");
 
     VkDescriptorSetAllocateInfo dsai{};
     dsai.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -249,9 +241,7 @@ void ShellRevalidateNode::BuildPipeline() {
     const std::array<VkDescriptorSetLayout, 2> setLayouts{descriptorSetLayout_, descriptorSetLayout_};
     dsai.descriptorSetCount = static_cast<uint32_t>(setLayouts.size());
     dsai.pSetLayouts        = setLayouts.data();
-    if (vkAllocateDescriptorSets(vulkanDevice_->device, &dsai, descriptorSets_.data()) != VK_SUCCESS) {
-        throw std::runtime_error("[ShellRevalidateNode] vkAllocateDescriptorSets failed");
-    }
+    VK_CHECK_THROW(vkAllocateDescriptorSets(vulkanDevice_->device, &dsai, descriptorSets_.data()), "[ShellRevalidateNode] vkAllocateDescriptorSets failed");
     descriptorSet_ = descriptorSets_[0];
 }
 
@@ -313,8 +303,7 @@ void ShellRevalidateNode::RecordDispatch(VkCommandBuffer cmd, uint32_t brickCoun
                                           uint32_t mode, uint32_t firstGroup, uint32_t groups, uint32_t output) {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS)
-        throw std::runtime_error("[ShellRevalidateNode] vkBeginCommandBuffer failed");
+    VK_CHECK_THROW(vkBeginCommandBuffer(cmd, &beginInfo), "[ShellRevalidateNode] vkBeginCommandBuffer failed");
     if (mode == 1 && firstGroup == 0) {
         VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
         barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -327,8 +316,7 @@ void ShellRevalidateNode::RecordDispatch(VkCommandBuffer cmd, uint32_t brickCoun
     const PushConstants pc{brickCount, bpa, mode, 0};
     vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
     vkCmdDispatchBase(cmd, firstGroup, 0, 0, groups, 1, 1);
-    if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
-        throw std::runtime_error("[ShellRevalidateNode] vkEndCommandBuffer failed");
+    VK_CHECK_THROW(vkEndCommandBuffer(cmd), "[ShellRevalidateNode] vkEndCommandBuffer failed");
 }
 
 // ============================================================================
@@ -366,8 +354,7 @@ void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
             allocInfo.commandPool = commandPool_;
             allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             allocInfo.commandBufferCount = 1;
-            if (vkAllocateCommandBuffers(vulkanDevice_->device, &allocInfo, &chunkCommand) != VK_SUCCESS)
-                throw std::runtime_error("[ShellRevalidateNode] failed to allocate chunk command buffer");
+            VK_CHECK_THROW(vkAllocateCommandBuffers(vulkanDevice_->device, &allocInfo, &chunkCommand), "[ShellRevalidateNode] failed to allocate chunk command buffer");
             RecordDispatch(chunkCommand, brickCount, bpa, phase == 0 ? 0u : 1u,
                 first, std::min(4u, groupCount - first), phase % 2);
             VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};

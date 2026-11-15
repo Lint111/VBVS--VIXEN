@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/SwapChainNode.h"
 #include "Core/NodeRegistration.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"  // Phase 0.4: For CURRENT_FRAME_INDEX input
@@ -720,9 +722,7 @@ void SwapChainNode::CreatePerImageSyncResources() {
     VkSemaphoreCreateInfo semInfo{};
     semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     for (uint32_t i = 0; i < imageCount; ++i) {
-        if (vkCreateSemaphore(device, &semInfo, nullptr, &renderCompleteSemaphores[i]) != VK_SUCCESS) {
-            throw std::runtime_error("SwapChainNode: failed to create renderComplete semaphore for image " + std::to_string(i));
-        }
+        VK_CHECK_THROW(vkCreateSemaphore(device, &semInfo, nullptr, &renderCompleteSemaphores[i]), "SwapChainNode: failed to create renderComplete semaphore for image " + std::to_string(i));
     }
 
     // Per-IMAGE present fences (VK_EXT_swapchain_maintenance1). Left empty if unavailable;
@@ -735,9 +735,7 @@ void SwapChainNode::CreatePerImageSyncResources() {
             fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
             fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // start signaled (no wait on first use)
             for (uint32_t i = 0; i < imageCount; ++i) {
-                if (vkCreateFence(device, &fenceInfo, nullptr, &presentFences[i]) != VK_SUCCESS) {
-                    throw std::runtime_error("SwapChainNode: failed to create present fence for image " + std::to_string(i));
-                }
+                VK_CHECK_THROW(vkCreateFence(device, &fenceInfo, nullptr, &presentFences[i]), "SwapChainNode: failed to create present fence for image " + std::to_string(i));
             }
         },
         [] {});

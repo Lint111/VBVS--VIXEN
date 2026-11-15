@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/DescriptorSetNode.h"
 #include "FrameTrace.h"
 #include "Core/NodeRegistration.h"
@@ -181,9 +183,7 @@ void DescriptorSetNode::CreateDescriptorPool(const ShaderManagement::ShaderDataB
         &descriptorPool
     );
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("DescriptorSetNode: Failed to create descriptor pool");
-    }
+    VK_CHECK_THROW(result, "DescriptorSetNode: Failed to create descriptor pool");
 
     NODE_LOG_DEBUG("[DescriptorSetNode::CreatePool] Created descriptor pool: " + std::to_string(reinterpret_cast<uint64_t>(descriptorPool)));
 }
@@ -206,9 +206,7 @@ void DescriptorSetNode::AllocateDescriptorSets(uint32_t imageCount) {
         descriptorSets.data()
     );
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("DescriptorSetNode: Failed to allocate descriptor sets");
-    }
+    VK_CHECK_THROW(result, "DescriptorSetNode: Failed to allocate descriptor sets");
 
     NODE_LOG_INFO("[DescriptorSetNode::AllocateSets] Allocated " + std::to_string(imageCount) + " descriptor sets (per-image)");
 }

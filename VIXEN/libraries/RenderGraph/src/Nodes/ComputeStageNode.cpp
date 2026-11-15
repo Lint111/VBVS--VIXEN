@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "FrameTrace.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
@@ -84,10 +86,8 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     std::vector<VkCommandBuffer> cmdBuffers(cmdBufferCount);
     VkResult result = vkAllocateCommandBuffers(GetDevice()->device, &allocInfo, cmdBuffers.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeStageNode::CompileImpl] vkAllocateCommandBuffers failed: " +
+    VK_CHECK_THROW(result, "[ComputeStageNode::CompileImpl] vkAllocateCommandBuffers failed: " +
                                  std::to_string(result));
-    }
     for (uint32_t i = 0; i < cmdBufferCount; ++i) {
         commandBuffers_[i] = cmdBuffers[i];
         commandBuffers_.MarkDirty(i);

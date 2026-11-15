@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image (irradiance or visibility),
 // allocated + transitioned + wired, but not yet read/written by a shader (see ProbeAtlasNode.h).
@@ -136,9 +138,7 @@ void ProbeAtlasNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool
     imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (vkCreateImage(vkDevice, &imgInfo, nullptr, &b.image) != VK_SUCCESS) {
-        throw std::runtime_error("[ProbeAtlasNode] vkCreateImage failed");
-    }
+    VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &b.image), "[ProbeAtlasNode] vkCreateImage failed");
 
     // --- Allocate device-local memory via real memory-type selection ---
     VkMemoryRequirements req{};
@@ -170,9 +170,7 @@ void ProbeAtlasNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool
     viewInfo.format           = format_;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &b.view) != VK_SUCCESS) {
-        throw std::runtime_error("[ProbeAtlasNode] vkCreateImageView failed");
-    }
+    VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &b.view), "[ProbeAtlasNode] vkCreateImageView failed");
 
     // One-time UNDEFINED -> GENERAL transition. Storage images stay GENERAL across dispatches, so
     // this single transition makes the descriptor (always GENERAL) correct for every frame.
@@ -195,9 +193,7 @@ void ProbeAtlasNode::TransitionToGeneral(VkCommandPool commandPool) {
     allocInfo.commandBufferCount = 1;
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[ProbeAtlasNode] vkAllocateCommandBuffers (transition) failed");
-    }
+    VK_CHECK_THROW(vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd), "[ProbeAtlasNode] vkAllocateCommandBuffers (transition) failed");
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -236,9 +232,7 @@ void ProbeAtlasNode::TransitionToGeneral(VkCommandPool commandPool) {
     // R715: the one-shot rides the graph's submission stream (queue order and its barrier
     // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
     // so there is no submit-then-wait-idle here.
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[ProbeAtlasNode] queue-owner transition submit failed");
-    }
+    VK_CHECK_THROW(GetOwningGraph()->SubmitOneShot(this, commandPool, cmd), "[ProbeAtlasNode] queue-owner transition submit failed");
 
     target_.SetImageLayout(0, VK_IMAGE_LAYOUT_GENERAL);
 }

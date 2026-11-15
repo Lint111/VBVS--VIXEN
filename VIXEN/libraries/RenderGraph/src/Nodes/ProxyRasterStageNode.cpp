@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/ProxyRasterStageNode.h"
 
 #include "Core/NodeRegistration.h"
@@ -78,10 +80,8 @@ void ProxyRasterStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
     allocate.commandBufferCount = kCommandBufferRingDepth;
     const VkResult result = vkAllocateCommandBuffers(
         device->device, &allocate, buffers.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ProxyRasterStageNode] vkAllocateCommandBuffers failed: " +
+    VK_CHECK_THROW(result, "[ProxyRasterStageNode] vkAllocateCommandBuffers failed: " +
                                  std::to_string(result));
-    }
     for (uint32_t i = 0u; i < kCommandBufferRingDepth; ++i) {
         commandBuffers_[i] = buffers[i];
         commandBuffers_.MarkDirty(i);
@@ -188,13 +188,9 @@ void ProxyRasterStageNode::RecordCommands(TypedExecuteContext& ctx,
         throw std::runtime_error("[ProxyRasterStageNode] selected descriptor-set ring is too small");
     }
 
-    if (vkResetCommandBuffer(commandBuffer, 0u) != VK_SUCCESS) {
-        throw std::runtime_error("[ProxyRasterStageNode] vkResetCommandBuffer failed");
-    }
+    VK_CHECK_THROW(vkResetCommandBuffer(commandBuffer, 0u), "[ProxyRasterStageNode] vkResetCommandBuffer failed");
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    if (vkBeginCommandBuffer(commandBuffer, &begin) != VK_SUCCESS) {
-        throw std::runtime_error("[ProxyRasterStageNode] vkBeginCommandBuffer failed");
-    }
+    VK_CHECK_THROW(vkBeginCommandBuffer(commandBuffer, &begin), "[ProxyRasterStageNode] vkBeginCommandBuffer failed");
 
     // The candidate buffer is intentionally one 32-byte record per pixel, not
     // multiplied by frames-in-flight. Both B2 submits use the same Vulkan queue,
@@ -307,9 +303,7 @@ void ProxyRasterStageNode::RecordCommands(TypedExecuteContext& ctx,
                       (extent.height + 7u) / 8u,
                       bodyCount);
     }
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("[ProxyRasterStageNode] vkEndCommandBuffer failed");
-    }
+    VK_CHECK_THROW(vkEndCommandBuffer(commandBuffer), "[ProxyRasterStageNode] vkEndCommandBuffer failed");
 }
 
 void ProxyRasterStageNode::TypedCleanupImpl(TypedCleanupContext&) {

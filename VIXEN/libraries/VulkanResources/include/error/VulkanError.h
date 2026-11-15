@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdio>
 #include <expected>
+#include <stdexcept>
 #include <string>
 #include <vulkan/vulkan.h>
 
@@ -87,6 +88,23 @@ using VulkanStatus = std::expected<void, VulkanError>;
         VkResult result = (expr); \
         if (result != VK_SUCCESS) { \
             return std::unexpected(VulkanError{result, msg}); \
+        } \
+    } while(0)
+
+/**
+ * @brief Helper macro to check Vulkan result and throw on failure
+ *
+ * This is the throwing counterpart to VK_CHECK for setup paths that cannot
+ * return a VulkanStatus/VulkanResult without changing their public contract.
+ * The original message is preserved and the numeric VkResult is appended.
+ */
+#define VK_CHECK_THROW(expr, msg) \
+    do { \
+        VkResult _vk_check_throw_result = (expr); \
+        if (_vk_check_throw_result != VK_SUCCESS) { \
+            throw std::runtime_error( \
+                std::string(msg) + " (VkResult: " + \
+                std::to_string(static_cast<int>(_vk_check_throw_result)) + ")"); \
         } \
     } while(0)
 

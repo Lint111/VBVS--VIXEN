@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // auto-sync P4 M3: PassGroupNode — generic multi-pass node (one cmd buf + one submit)
@@ -106,10 +108,8 @@ void PassGroupNode::VariadicCompileImpl(VariadicCompileContext& ctx) {
 
     std::vector<VkCommandBuffer> rawBuffers(imageCount);
     VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, rawBuffers.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[PassGroupNode::CompileImpl] Failed to allocate command buffers: " +
+    VK_CHECK_THROW(result, "[PassGroupNode::CompileImpl] Failed to allocate command buffers: " +
                                  std::to_string(result));
-    }
 
     for (uint32_t i = 0; i < imageCount; ++i) {
         commandBuffers_[i] = rawBuffers[i];
@@ -161,10 +161,8 @@ void PassGroupNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     VkResult result = vkBeginCommandBuffer(cmd, &beginInfo);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[PassGroupNode::ExecuteImpl] Failed to begin command buffer: " +
+    VK_CHECK_THROW(result, "[PassGroupNode::ExecuteImpl] Failed to begin command buffer: " +
                                  std::to_string(result));
-    }
 
     // ---- Record all passes (barriers + compute dispatches + graphics draws) ----
     RecordPassGroup(cmd, passes_, intraSchedule_, imageIndex,
@@ -178,10 +176,8 @@ void PassGroupNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
 
     // ---- End command buffer ----
     result = vkEndCommandBuffer(cmd);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[PassGroupNode::ExecuteImpl] Failed to end command buffer: " +
+    VK_CHECK_THROW(result, "[PassGroupNode::ExecuteImpl] Failed to end command buffer: " +
                                  std::to_string(result));
-    }
 
     // ---- Submit (lifted from ComputeDispatchNode:246-269) ----
     // Wait imageAvailable[frame], signal renderComplete[image], fence inFlightFence.

@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/GeometryRenderNode.h"
 #include "Core/NodeRegistration.h"
@@ -87,9 +89,7 @@ void GeometryRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     allocInfo.commandBufferCount = imageCount;
 
     VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, rawCommandBuffers.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("GeometryRenderNode: Failed to allocate command buffers");
-    }
+    VK_CHECK_THROW(result, "GeometryRenderNode: Failed to allocate command buffers");
 
     // Phase 0.3: Store in stateful container (all start as Dirty - need initial recording)
     for (uint32_t i = 0; i < imageCount; i++) {
@@ -356,9 +356,7 @@ void GeometryRenderNode::BeginCommandBuffer(VkCommandBuffer cmdBuffer) {
     beginInfo.pInheritanceInfo = nullptr;
 
     VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("GeometryRenderNode: Failed to begin command buffer");
-    }
+    VK_CHECK_THROW(result, "GeometryRenderNode: Failed to begin command buffer");
 }
 
 void GeometryRenderNode::ValidateInputs(
@@ -526,9 +524,7 @@ void GeometryRenderNode::RecordDrawCall(VkCommandBuffer cmdBuffer, Context& ctx)
 
 void GeometryRenderNode::EndCommandBuffer(VkCommandBuffer cmdBuffer) {
     VkResult result = vkEndCommandBuffer(cmdBuffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("GeometryRenderNode: Failed to end command buffer");
-    }
+    VK_CHECK_THROW(result, "GeometryRenderNode: Failed to end command buffer");
 }
 
 } // namespace Vixen::RenderGraph

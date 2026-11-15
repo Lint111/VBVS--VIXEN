@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Core/NodeRegistration.h"  // M3: VIXEN_REGISTER_NODE self-registration
 #include "Core/RenderGraph.h"
@@ -132,9 +134,7 @@ void CreateHostBuffer(VulkanDevice* device,
     bufferInfo.usage       = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &outBuffer) != VK_SUCCESS) {
-        throw std::runtime_error(std::string("[BodyOctreeSceneNode] vkCreateBuffer failed for ") + context);
-    }
+    VK_CHECK_THROW(vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &outBuffer), std::string("[BodyOctreeSceneNode] vkCreateBuffer failed for ") + context);
 
     VkMemoryRequirements req{};
     vkGetBufferMemoryRequirements(vkDevice, outBuffer, &req);
@@ -166,9 +166,7 @@ void CreateHostBuffer(VulkanDevice* device,
 
     if (data != nullptr && size > 0) {
         void* mapped = nullptr;
-        if (vkMapMemory(vkDevice, outMemory, 0, size, 0, &mapped) != VK_SUCCESS) {
-            throw std::runtime_error(std::string("[BodyOctreeSceneNode] vkMapMemory failed for ") + context);
-        }
+        VK_CHECK_THROW(vkMapMemory(vkDevice, outMemory, 0, size, 0, &mapped), std::string("[BodyOctreeSceneNode] vkMapMemory failed for ") + context);
         std::memcpy(mapped, data, static_cast<size_t>(size));
         vkUnmapMemory(vkDevice, outMemory);
     }
@@ -2425,18 +2423,14 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     poolInfo.queueFamilyIndex = device->graphicsQueueIndex;
     VkCommandPool buildPool = VK_NULL_HANDLE;
-    if (vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &buildPool) != VK_SUCCESS) {
-        throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateCommandPool failed");
-    }
+    VK_CHECK_THROW(vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &buildPool), "[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateCommandPool failed");
 
     // R715: each build rides the graph's submission stream instead of submit plus wait idle. The
     // command buffer (and a BLAS's scratch) is released once the queue timeline reaches it; queue
     // order plus the barriers recorded in the TLAS command order the TLAS after every BLAS and
     // every later frame read after the TLAS.
     auto submitOneShot = [&](VkCommandBuffer cmd, std::function<void()> release) {
-        if (GetOwningGraph()->SubmitOneShot(this, buildPool, cmd, std::move(release)) != VK_SUCCESS) {
-            throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkQueueSubmit failed");
-        }
+        VK_CHECK_THROW(GetOwningGraph()->SubmitOneShot(this, buildPool, cmd, std::move(release)), "[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkQueueSubmit failed");
     };
     // A failure path must not destroy the pool under its still-pending BLAS command buffers.
     auto releasePool = [&] {
@@ -2509,9 +2503,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         createInfo.buffer = blas.asAllocation.buffer;
         createInfo.size = sizeInfo.accelerationStructureSize;
         createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-        if (vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle) != VK_SUCCESS) {
-            throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
-        }
+        VK_CHECK_THROW(vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle), "[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
         buildInfo.dstAccelerationStructure = blas.handle;
         buildInfo.scratchData.deviceAddress = scratchAllocation.deviceAddress != 0
             ? scratchAllocation.deviceAddress
@@ -2611,9 +2603,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         createInfo.buffer = blas.asAllocation.buffer;
         createInfo.size = sizeInfo.accelerationStructureSize;
         createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-        if (vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle) != VK_SUCCESS) {
-            throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
-        }
+        VK_CHECK_THROW(vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle), "[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
 
         buildInfo.dstAccelerationStructure = blas.handle;
         buildInfo.scratchData.deviceAddress = scratchAllocation.deviceAddress != 0
