@@ -181,21 +181,16 @@ TEST(CacheEnvelope, ConcurrentWritersOnlyPublishCompletePayloads) {
     const auto path = TempPath("concurrent_writers.cache");
     const std::vector<char> payloadA(64 * 1024, 'A');
     const std::vector<char> payloadB(64 * 1024, 'B');
-    std::string initialError;
-    ASSERT_TRUE(CashSystem::WriteCacheEnvelopeBytesAtomically(
-        path, 0x1234, "test-cacher", payloadA, &initialError)) << initialError;
+    ASSERT_TRUE(CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadA));
 
     std::atomic<bool> writing{true};
     std::atomic<bool> invalidRead{false};
     std::thread reader([&] {
         while (writing.load(std::memory_order_acquire)) {
             std::vector<char> payload;
-            std::string error;
-            const auto status = CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", payload, &error);
+            const auto status = CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", payload);
             if (status != CashSystem::CacheFileStatus::Loaded ||
                 (payload != payloadA && payload != payloadB)) {
-                std::cerr << "concurrent read status=" << static_cast<int>(status)
-                          << " error=" << error << " payload=" << payload.size() << '\n';
                 invalidRead.store(true, std::memory_order_release);
                 return;
             }
@@ -203,18 +198,14 @@ TEST(CacheEnvelope, ConcurrentWritersOnlyPublishCompletePayloads) {
     });
     std::thread writerA([&] {
         for (int i = 0; i < 20; ++i) {
-            std::string error;
-            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadA, &error)) {
-                std::cerr << "writer A error=" << error << '\n';
+            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadA)) {
                 invalidRead.store(true, std::memory_order_release);
             }
         }
     });
     std::thread writerB([&] {
         for (int i = 0; i < 20; ++i) {
-            std::string error;
-            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadB, &error)) {
-                std::cerr << "writer B error=" << error << '\n';
+            if (!CashSystem::WriteCacheEnvelopeBytesAtomically(path, 0x1234, "test-cacher", payloadB)) {
                 invalidRead.store(true, std::memory_order_release);
             }
         }
@@ -224,10 +215,6 @@ TEST(CacheEnvelope, ConcurrentWritersOnlyPublishCompletePayloads) {
     writing.store(false, std::memory_order_release);
     reader.join();
 
-    std::error_code existsError;
-    std::cerr << "cache path=" << path.string() << " exists="
-              << std::filesystem::exists(path, existsError)
-              << " error=" << existsError.message() << '\n';
     std::vector<char> finalPayload;
     EXPECT_EQ(CashSystem::ReadCacheEnvelopeBytes(path, 0x1234, "test-cacher", finalPayload),
               CashSystem::CacheFileStatus::Loaded);
