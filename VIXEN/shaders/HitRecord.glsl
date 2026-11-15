@@ -79,15 +79,6 @@
 // shadow rays (0x10) used its whole step budget. Counted from readback; never a silent miss.
 #define HITRECORD_FLAG_TRACE_EXHAUSTED 0x8u
 #define HITRECORD_FLAG_SHADOW_TRACE_EXHAUSTED 0x10u
-#define HITRECORD_MATERIAL_SHIFT 16u
-#define HITRECORD_MATERIAL_MASK 0xffffu
-
-// The material readback channel shares _pad0[2] with the policy stencil: bits 16..31 carry
-// the procedural field's categorical id, while bits 8..15 retain the primary policy word.
-uint hitRecordMaterialId(uint policyWord) {
-    return (policyWord >> HITRECORD_MATERIAL_SHIFT) & HITRECORD_MATERIAL_MASK;
-}
-
 struct HitRecord {
     vec3  albedo;
     float roughness;

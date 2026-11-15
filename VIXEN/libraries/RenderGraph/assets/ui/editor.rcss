@@ -73,8 +73,8 @@ body.layers .outputs-pinned:focus-within {
     overflow-y: auto;
 }
 body.layers .outputs-pinned {
-    max-height: 112px;
-    overflow-y: auto;
+    max-height: 24px;
+    overflow: hidden;
 }
 .section-summary {
     display: block;
@@ -106,6 +106,9 @@ body.layers .outputs-pinned {
 .material-chip { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .material-coverage-percent { flex: 0 0 auto; min-width: 32px; text-align: right; }
 .material-coverage { white-space: nowrap; }
+.material-coverage.stale,
+.material-coverage.stale .material-chip,
+.material-coverage.stale .material-coverage-percent { opacity: 0.55; }
 .col-op { display: inline-block; min-width: 72px; max-width: 96px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .node-material-chip { flex: 0 0 auto; margin-top: 4px; font-size: 11px; }
 

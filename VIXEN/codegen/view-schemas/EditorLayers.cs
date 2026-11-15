@@ -208,6 +208,7 @@ namespace Vixen.ViewSchemas
         public string defaultId;
         public string color;
         public string coverage;
+        public bool coverageStale;
     }
 
     // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML

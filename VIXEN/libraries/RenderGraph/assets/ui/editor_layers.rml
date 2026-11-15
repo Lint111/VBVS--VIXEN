@@ -28,8 +28,12 @@
             <div class="hint" data-if="parameters.size == 0">This document declares no inputs.</div>
         </div>
         <div class="outputs-pinned">
-            <div class="section-summary">Outputs <span class="section-detail">Distance + MaterialId</span></div>
-            <div class="material-coverage" data-for="material : materials" data-if="material.coverage != ''">
+            <div class="section-summary">Outputs
+                <span class="section-detail" data-if="materials.size == 0">Distance + MaterialId</span>
+                <span class="section-detail" data-if="materials.size != 0">{{materials.size}} materials</span>
+            </div>
+            <div class="material-coverage" data-for="material : materials" data-if="material.coverage != ''"
+                 data-class-stale="material.coverageStale">
                 <span class="material-chip" data-attr-style="'--material-color: ' + material.color">{{material.name}}</span>
                 <span class="material-coverage-percent">{{material.coverage}}</span>
             </div>
@@ -38,8 +42,8 @@
                 <ut-button variant="row" data-attr-id="material.defaultId" data-attr-label="material.name"
                             data-attr-style="'--material-color: ' + material.color"> </ut-button>
             </div>
-            <div class="hint" data-if="materials.size == 0">No pack material table; default is neutral.</div>
-            <div class="hint" data-if="materials.size != 0">Document default is visible here but not saved with the document yet.</div>
+            <div class="hint" data-if="materials.size == 0">No sampled material coverage yet.</div>
+            <div class="hint" data-if="materials.size != 0">Coverage is measured from the current stored bake.</div>
         </div>
         <ut-list class="fill">
             <div class="ut-row" data-for="row : layers">

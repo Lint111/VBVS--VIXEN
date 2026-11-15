@@ -388,6 +388,7 @@ public:
             row.defaultId = Rml::String(material.defaultId);
             row.color = Rml::String(material.color);
             row.coverage = Rml::String(material.coverage);
+            row.coverageStale = material.coverageStale;
             materials_.push_back(std::move(row));
         }
         if (model_) model_.DirtyVariable("materials");

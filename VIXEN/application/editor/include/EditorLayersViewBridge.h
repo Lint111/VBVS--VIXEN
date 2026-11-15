@@ -188,6 +188,7 @@ struct EditorMaterialData {
     std::string defaultId;
     std::string color;
     std::string coverage;
+    bool coverageStale = false;
 };
 
 // R766: the status-line panel's content.

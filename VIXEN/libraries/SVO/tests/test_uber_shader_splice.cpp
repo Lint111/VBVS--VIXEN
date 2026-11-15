@@ -196,10 +196,10 @@ TEST(UberShaderSplice, NeutralRecipeKeepsPreMaterialShaderDigest) {
     ASSERT_EQ(registry.Register(2u, entry), RecipeRegistry::RegisterResult::Ok);
 
     const std::string spliced = SpliceProceduralRecipesIntoSource(raw, registry);
-    // The neutral source now contains the guarded HitRecord material channel. The editor
+    // The neutral source has no hand-written HitRecord material side-channel. The editor
     // deliberately forces the material-capable variant for every document; this digest guards
     // the neutral, non-active-variant text while the active macro remains absent here.
-    EXPECT_EQ(Fnv1a(spliced), 0xa8d7b44abe6a6b63ull)
+    EXPECT_EQ(Fnv1a(spliced), 0x34f08d40ca26d63cull)
         << "digest=" << std::hex << Fnv1a(spliced);
     EXPECT_EQ(spliced.find("#define VIXEN_UBER_RECIPE_MATERIAL 1"), std::string::npos);
 }

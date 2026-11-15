@@ -18,6 +18,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <initializer_list>
 #include <iostream>
 #include <limits>
@@ -1787,9 +1788,70 @@ TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeS
     std::cout
               << " totalMaterialSurfaceSamples=" << totalMaterialSurfaceSamples
               << "\n";
-    for (const auto& instruction : materialEntry.bytecode)
-        std::cout << "[material-diagnosis] opcode=" << static_cast<unsigned>(instruction.opCode)
-                  << " data0=" << instruction.data[0] << "\n";
+    std::cout << "[material-diagnosis] flattened-bytes=";
+    for (const auto& instruction : materialEntry.bytecode) {
+        const auto* bytes = reinterpret_cast<const std::uint8_t*>(&instruction);
+        for (std::size_t byte = 0; byte < sizeof(instruction); ++byte)
+            std::cout << std::hex << std::setw(2) << std::setfill('0')
+                      << static_cast<unsigned>(bytes[byte]);
+        std::cout << ' ';
+    }
+    std::cout << std::dec << "\n";
+    std::cout << "[material-diagnosis] neutral-bytes=";
+    for (const auto& instruction : neutralEntry.bytecode) {
+        const auto* bytes = reinterpret_cast<const std::uint8_t*>(&instruction);
+        for (std::size_t byte = 0; byte < sizeof(instruction); ++byte)
+            std::cout << std::hex << std::setw(2) << std::setfill('0')
+                      << static_cast<unsigned>(bytes[byte]);
+        std::cout << ' ';
+    }
+    std::cout << std::dec << "\n";
+
+    struct MaterialWitnessPoint {
+        const char* name;
+        glm::vec3 position;
+    };
+    // These are document-space probes chosen on the box/sphere silhouette, the smooth-union
+    // transition, and the cylindrical cut wall. Keep the coordinates fixed so the CPU table is
+    // comparable with any future procedural-frame witness.
+    constexpr MaterialWitnessPoint kWitnessPoints[] = {
+        {"box-face-centre", {1.0f, 0.9f, 0.0f}},
+        {"box-face-lower", {1.0f, -0.9f, 0.0f}},
+        {"box-corner-region", {1.0f, 1.0f, 0.0f}},
+        {"box-corner-3d", {1.0f, 1.0f, 1.0f}},
+        {"bulge-crest", {0.0f, 0.0f, 1.2f}},
+        {"bulge-crest-x", {1.2f, 0.0f, 0.0f}},
+        {"smooth-union-seam", {1.03f, 0.7f, 0.0f}},
+        {"cut-wall-front", {0.35f, 0.0f, 0.0f}},
+        {"cut-wall-side", {0.0f, 0.0f, 0.35f}},
+    };
+    ASSERT_EQ(std::size(kWitnessPoints), 9u);
+    ASSERT_EQ(materialSimd.OutputCount(), 2u);
+    const auto& materialDistanceOutput = materialSimd.OutputAt(0u);
+    const auto& materialIdOutput = materialSimd.OutputAt(1u);
+    ASSERT_EQ(materialDistanceOutput.channel, static_cast<uint32_t>(Vixen::SVO::SEM_SDF));
+    ASSERT_EQ(materialIdOutput.channel, static_cast<uint32_t>(Vixen::SVO::SEM_MATERIAL_ID));
+    std::cout << "[material-diagnosis] simd-points=";
+    for (std::size_t first = 0; first < std::size(kWitnessPoints); first += 4u) {
+        glm::vec3 positions[4]{};
+        const std::size_t count = std::min<std::size_t>(4u, std::size(kWitnessPoints) - first);
+        for (std::size_t lane = 0; lane < count; ++lane)
+            positions[lane] = kWitnessPoints[first + lane].position;
+        for (std::size_t lane = count; lane < 4u; ++lane)
+            positions[lane] = positions[count - 1u];
+        float output[2u * 4u]{};
+        std::string evaluateError;
+        ASSERT_TRUE(materialSimd.EvaluateOutputSet4(
+            positions, output, std::size(output), nullptr, &evaluateError)) << evaluateError;
+        for (std::size_t lane = 0; lane < count; ++lane) {
+            const float distance = output[materialDistanceOutput.valueOffset * 4u + lane];
+            const float materialId = output[materialIdOutput.valueOffset * 4u + lane];
+            std::cout << kWitnessPoints[first + lane].name << "@"
+                      << positions[lane].x << "," << positions[lane].y << "," << positions[lane].z
+                      << "=distance:" << distance << ":id:" << materialId << ";";
+        }
+    }
+    std::cout << "\n";
 }
 
 }  // namespace

@@ -35,6 +35,7 @@
 
 #include <memory>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <string>
@@ -56,6 +57,8 @@ namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 struct EditorMaterialCoverageSnapshot {
     std::unordered_map<uint32_t, uint64_t> counts;
     uint64_t totalSurfaceSamples = 0;
+    uint64_t revision = 0;
+    bool stale = false;
 };
 
 class EditorApplication : public VulkanGraphApplication {
@@ -139,7 +142,6 @@ private:
     // E15: gives the AppFlow runtime the engine's event bus and mirrors its events into the channel log.
     void AttachAppFlowEventBus();
     void StartPendingReadbacks();
-    void CompletePendingMaterialProbe();
 
     // Replays the consumer-owned handler wiring after AppFlowRuntime replaces its primitives.
     void RegisterAppFlowHandlers();
@@ -277,6 +279,9 @@ private:
     std::vector<MaterialRow> materialRows_;
     std::string defaultMaterial_;
     std::shared_ptr<const EditorMaterialCoverageSnapshot> materialCoverage_;
+    std::atomic<uint64_t> materialCoverageRevision_{0};
+    std::atomic<uint64_t> materialCoverageGeneration_{0};
+    uint64_t materialCoverageUiGeneration_ = 0;
     std::unordered_map<std::string, uint32_t> packRecipeRegistryIds_;
     std::unordered_map<uint32_t, Vixen::SVO::RecipeRegistry::RecipeEntry> packRecipeEntries_;
     std::unordered_set<std::string> unavailablePackReferences_;
@@ -358,12 +363,5 @@ private:
     std::unordered_map<std::string, PendingReadback> channelReadbacks_;
     std::unordered_map<std::string, std::string> channelReadbackResults_;
     std::unordered_map<std::string, std::string> channelDeferredDispatchResults_;
-    struct PendingMaterialProbe {
-        std::string requestKey;
-        std::vector<std::pair<uint32_t, uint32_t>> pixels;
-    };
-    std::optional<PendingMaterialProbe> pendingMaterialProbe_;
-    std::unordered_map<std::string, std::string> channelMaterialProbeResults_;
-
     std::shared_ptr<Vixen::Log::Logger> logger_ = std::make_shared<Vixen::Log::Logger>("editor", true);
 };

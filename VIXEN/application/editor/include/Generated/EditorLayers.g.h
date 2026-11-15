@@ -16,7 +16,7 @@ struct EditorLayerOpRow { Rml::String name; Rml::String elementId; bool isCurren
 struct EditorShapeFieldRow { Rml::String label; float value; bool hasRange; float minimum; float maximum; Rml::String upId; Rml::String downId; Rml::String valueId; float defaultValue; bool hasDefault; bool isDefault; Rml::String resetId; };
 struct EditorRecipeRow { Rml::String id; Rml::String elementId; bool isOpen; };
 struct EditorPackRecipeRow { Rml::String id; Rml::String elementId; };
-struct EditorMaterialRow { Rml::String id; Rml::String name; Rml::String elementId; Rml::String defaultId; Rml::String color; Rml::String coverage; };
+struct EditorMaterialRow { Rml::String id; Rml::String name; Rml::String elementId; Rml::String defaultId; Rml::String color; Rml::String coverage; bool coverageStale; };
 struct EditorNodeRow { int nodeIndex; Rml::String name; Rml::String category; Rml::String addOp; Rml::String summary; Rml::String elementId; Rml::String addId; Rml::String removeId; Rml::String toggleId; bool canRemove; bool isExpanded; Rml::String addReason; Rml::String removeReason; Rml::String removeTitle; int indent; Rml::String warning; Rml::String materialName; Rml::String materialColor; };
 struct EditorNodeArgumentRow { int nodeIndex; Rml::String field; Rml::String component; Rml::String label; float value; bool hasRange; float minimum; float maximum; float defaultValue; bool hasDefault; bool isDefault; Rml::String valueId; Rml::String upId; Rml::String downId; Rml::String resetId; bool isPort; Rml::String portType; Rml::String portEmptyReason; };
 struct EditorNodePortChoiceRow { int nodeIndex; Rml::String argument; Rml::String label; Rml::String elementId; Rml::String removeId; bool isSelected; };
@@ -145,6 +145,7 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("defaultId", &EditorMaterialRow::defaultId);
         sh.RegisterMember("color", &EditorMaterialRow::color);
         sh.RegisterMember("coverage", &EditorMaterialRow::coverage);
+        sh.RegisterMember("coverageStale", &EditorMaterialRow::coverageStale);
     }
     if (auto sh = c.RegisterStruct<EditorNodeRow>()) {
         sh.RegisterMember("nodeIndex", &EditorNodeRow::nodeIndex);

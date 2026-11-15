@@ -9,6 +9,7 @@
 
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/generated/RecipeGlslLiterals.g.h"
+#include "VoxelChannelFormat.h"
 
 #include <array>
 #include <cmath>
@@ -361,7 +362,9 @@ struct RecipeSceneAnalysis {
                     (readInstructionOperands ? YK_RECIPE_GPU_FIELD_TAPE_OPERANDS : 0u);
     request.alias = recipeId;
     request.glyphIndexBase = glyphIndexBase;
-    request.outputChannelMask = carryMaterialId ? (1u << 7u) : 0u;
+    // MaterialId is a generated semantic channel. Keep the GPU request keyed to the generated
+    // vocabulary rather than duplicating its current ordinal in this consumer.
+    request.outputChannelMask = carryMaterialId ? (1u << static_cast<std::uint32_t>(SEM_MATERIAL_ID)) : 0u;
     request.materialDefault = materialDefault;
     YkRecipeGpuModule* module = nullptr;
     YkRecipeGpuDiagnostic diagnostic{};
