@@ -679,6 +679,10 @@ void BodyOctreeSceneNode::SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes
     emitterTableDirty_ = true;
 }
 
+void BodyOctreeSceneNode::SetRecipeBoundSpheres(RecipeBoundSpheres spheres) {
+    recipeBoundSpheres_ = std::move(spheres);
+}
+
 const Vixen::SVO::EmitterTable& BodyOctreeSceneNode::GetEmitterTable() {
     if (emitterTableDirty_ || emitterTableMipData_ != concatenated_.mipPool.data() ||
         emitterTableMipSize_ != concatenated_.mipPool.size()) {
@@ -1029,20 +1033,7 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     if (boundMapped != nullptr) {
         for (size_t i = 0; i < instances_.size() &&
              i * sizeof(Vixen::Codegen::Gpu::InstanceBound) < boundRingCapacity_; ++i) {
-            const auto& rows = instances_[i].transform.localToWorld.rows;
-            const bool stored = instances_[i].material.providerKind == 0u;
-            const float halfExtent = stored ? 5.0f : 0.5f;
-            const float localCenter = stored ? 5.0f : 0.5f;
-            boundMapped[i].centerX = rows[0][0] * localCenter + rows[0][1] * localCenter +
-                                     rows[0][2] * localCenter + rows[0][3];
-            boundMapped[i].centerY = rows[1][0] * localCenter + rows[1][1] * localCenter +
-                                     rows[1][2] * localCenter + rows[1][3];
-            boundMapped[i].centerZ = rows[2][0] * localCenter + rows[2][1] * localCenter +
-                                     rows[2][2] * localCenter + rows[2][3];
-            const float axisX = std::sqrt(rows[0][0] * rows[0][0] + rows[1][0] * rows[1][0] + rows[2][0] * rows[2][0]);
-            const float axisY = std::sqrt(rows[0][1] * rows[0][1] + rows[1][1] * rows[1][1] + rows[2][1] * rows[2][1]);
-            const float axisZ = std::sqrt(rows[0][2] * rows[0][2] + rows[1][2] * rows[1][2] + rows[2][2] * rows[2][2]);
-            boundMapped[i].radius = halfExtent * std::sqrt(3.0f) * std::max(axisX, std::max(axisY, axisZ));
+            boundMapped[i] = DeriveInstanceBound(instances_[i], recipeBoundSpheres_);
         }
         VIXEN_LEDGER_WRITTEN(boundMapped, std::min<size_t>(instances_.size() * sizeof(*boundMapped), boundRingCapacity_));
     }

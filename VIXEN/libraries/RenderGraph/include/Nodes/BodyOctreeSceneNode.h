@@ -17,6 +17,7 @@
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "RecipeEmitterTable.h" // R502.2: Vixen::SVO::{EmitterTable, RecipeEmitterShapes}
 #include "Generated/InstanceBound.g.h"
+#include "Nodes/InstanceBoundDerivation.h"
 #include "WholesaleAvailability.h"
 #include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
 #include "Memory/IMemoryAllocator.h" // tracked RTAccelStructures allocations
@@ -230,6 +231,13 @@ public:
      * the GPU yet; S1 binds it.
      */
     void SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes shapes);
+
+    /**
+     * @brief GB1 (R857): the registry bound spheres the march's getRecipeBoundSphere bakes,
+     * keyed by recipe id. Called from the same shader-splice callback, so the tile scatter's
+     * InstanceBound stream always uses the bounds the current march shader tests.
+     */
+    void SetRecipeBoundSpheres(RecipeBoundSpheres spheres);
 
     /**
      * @brief R502.2 — recipe + sparse emitter CDFs and EmitterTotals for the CURRENT instance
@@ -537,6 +545,7 @@ private:
     // R502.2 emitter table (CPU only in S0). Rebuilt by GetEmitterTable() when dirty or when
     // the concatenated mip stream it read the sparse power lanes from has been replaced.
     Vixen::SVO::RecipeEmitterShapes emitterShapes_;
+    RecipeBoundSpheres              recipeBoundSpheres_;  // GB1 InstanceBound source
     Vixen::SVO::EmitterTable        emitterTable_;
     std::vector<float>              publishedEmitterRootPowers_;
     bool                            emitterTableDirty_ = true;

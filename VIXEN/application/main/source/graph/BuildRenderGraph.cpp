@@ -2111,6 +2111,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     : std::vector<Vixen::SVO::Recipe::RecipeChunkAabb>{});
                 bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
                 bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
+                // GB1: the tile scatter bins each body by the bound sphere this splice bakes.
+                bodyScene->SetRecipeBoundSpheres(
+                    Vixen::RenderGraph::CollectRecipeBoundSpheres(proceduralRecipes_));
             }
 
             // Round 11 (far-field dispatch attribution): tag this shader as the
