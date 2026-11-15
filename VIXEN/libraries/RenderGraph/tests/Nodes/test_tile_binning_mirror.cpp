@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "TileBinningMirror.h"
+#include "Nodes/TileBinViewProjection.h"
 
 #include <glm/glm.hpp>
 
@@ -156,4 +157,48 @@ TEST(TileBinningMirror, SortZeroesCountersSoNextFrameStartsEmpty) {
     const auto empty = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &counters);
     EXPECT_EQ(empty.metrics.consumerCandidateIterations, 0u);
     for (const auto& counter : counters) EXPECT_EQ(counter.count, 0);
+}
+
+TEST(TileBinningMirror, ViewRecordProjectsPrimaryRayPixelsIntoTheirTiles) {
+    // The scatter must bin an instance into the tiles whose primary rays can hit
+    // it. Build the record the node uploads, march a point along the exact
+    // CameraRay.glsl getRayDir() ray of several pixels, and require the projected
+    // rectangle to contain that pixel's tile. fov is in degrees and pixel rows
+    // grow downward (the shader flips ndc.y); a radians-as-degrees or upward-Y
+    // record bins instances into the wrong tiles and the march misses them.
+    constexpr uint32_t width = 500;
+    constexpr uint32_t height = 400;
+    Vixen::RenderGraph::CameraData camera{};
+    camera.cameraPos = glm::vec3(3.0f, 4.0f, -20.0f);
+    camera.fov = 60.0f;
+    camera.aspect = static_cast<float>(width) / static_cast<float>(height);
+    const glm::vec3 forward = glm::normalize(glm::vec3(1.0f, 2.0f, 6.0f) - camera.cameraPos);
+    const glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 up = glm::normalize(glm::cross(right, forward));
+    camera.cameraDir = forward;
+    camera.cameraRight = right;
+    camera.cameraUp = up;
+
+    const TileBinView view = Vixen::RenderGraph::MakeTileBinView(camera, width, height, 1);
+    const float tanHalfFov = std::tan(glm::radians(camera.fov * 0.5f));
+    const glm::ivec2 pixels[] = {{0, 0}, {499, 0}, {0, 399}, {499, 399},
+                                 {250, 200}, {17, 333}, {123, 45}, {401, 288}};
+    for (const glm::ivec2 pixel : pixels) {
+        const glm::vec2 uv = (glm::vec2(pixel) + 0.5f) / glm::vec2(width, height);
+        glm::vec2 ndc = uv * 2.0f - 1.0f;
+        ndc.y = -ndc.y;
+        const glm::vec3 dir = glm::normalize(forward + right * ndc.x * tanHalfFov * camera.aspect +
+                                             up * ndc.y * tanHalfFov);
+        const glm::vec3 point = camera.cameraPos + dir * 37.0f;
+        const auto rect = Vixen::RenderGraph::Mirror::MirrorProjectBound(
+            point.x, point.y, point.z, 1.0e-4f, view);
+        const int tileX = pixel.x / 8;
+        const int tileY = pixel.y / 8;
+        EXPECT_EQ(rect.cull, 0) << "pixel " << pixel.x << "," << pixel.y;
+        EXPECT_TRUE(rect.minX <= tileX && tileX <= rect.maxX && rect.minY <= tileY && tileY <= rect.maxY)
+            << "pixel " << pixel.x << "," << pixel.y << " tile " << tileX << "," << tileY
+            << " rect x[" << rect.minX << "," << rect.maxX << "] y[" << rect.minY << "," << rect.maxY << "]";
+        EXPECT_LE(rect.maxX - rect.minX, 1);
+        EXPECT_LE(rect.maxY - rect.minY, 1);
+    }
 }

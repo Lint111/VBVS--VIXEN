@@ -1,11 +1,7 @@
 #include "Nodes/TileBinViewNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/NodeLogging.h"
-#include "Generated/TileBinView.g.h"
-#include <algorithm>
-#include <cmath>
-#include <cstring>
-#include <glm/glm.hpp>
+#include "Nodes/TileBinViewProjection.h"
 
 namespace Vixen::RenderGraph {
 
@@ -45,26 +41,7 @@ void TileBinViewNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     auto* view = static_cast<TileBinView*>(viewRing_.GetUniformBufferMapped(frame));
     if (!view) return;
 
-    *view = {};
-    const glm::vec3 forward = glm::normalize(camera.cameraDir);
-    const glm::vec3 right = glm::normalize(camera.cameraRight);
-    const glm::vec3 up = glm::normalize(camera.cameraUp);
-    view->viewXx = right.x; view->viewXy = right.y; view->viewXz = right.z;
-    view->viewXw = -glm::dot(right, camera.cameraPos);
-    view->viewYx = up.x; view->viewYy = up.y; view->viewYz = up.z;
-    view->viewYw = -glm::dot(up, camera.cameraPos);
-    view->viewZx = forward.x; view->viewZy = forward.y; view->viewZz = forward.z;
-    view->viewZw = -glm::dot(forward, camera.cameraPos);
-    view->focalX = 0.5f * static_cast<float>(height) / std::tan(0.5f * camera.fov);
-    view->focalY = view->focalX;
-    view->centerX = 0.5f * static_cast<float>(width);
-    view->centerY = 0.5f * static_cast<float>(height);
-    view->nearPlane = 0.001f;
-    view->tileSize = 8.0f;
-    view->tilesX = static_cast<int32_t>((width + 7u) / 8u);
-    view->tilesY = static_cast<int32_t>((height + 7u) / 8u);
-    view->listCapacityLog2 = 9; // 512 candidates per tile; no 192-instance cap.
-    view->instanceCount = std::max(ctx.In(TileBinViewNodeConfig::INSTANCE_COUNT), 0);
+    *view = MakeTileBinView(camera, width, height, ctx.In(TileBinViewNodeConfig::INSTANCE_COUNT));
     ctx.Out(TileBinViewNodeConfig::VIEW_BUFFER, viewRing_.GetUniformBuffer(frame));
 }
 
