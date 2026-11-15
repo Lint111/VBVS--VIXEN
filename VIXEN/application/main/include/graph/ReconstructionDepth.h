@@ -6,6 +6,7 @@
 #include "Data/ReconstructionDepth.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Nodes/BufferSyncGathererNode.h"
+#include "Nodes/AccumulationHistoryNode.h"
 #include "Nodes/ComputeStageNode.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "Nodes/ConstantNode.h"
@@ -23,7 +24,7 @@
 
 namespace Vixen::RenderGraph {
 
-CONSTEXPR_NODE_CONFIG(ReconstructionDepthPorts, 0, 5, SlotArrayMode::Single) {
+CONSTEXPR_NODE_CONFIG(ReconstructionDepthPorts, 0, 7, SlotArrayMode::Single) {
     OUTPUT_SLOT(VIEW_DEPTH, Vixen::Vulkan::Resources::IRenderTarget*, 0,
                 SlotNullability::Required, SlotMutability::WriteOnly);
     OUTPUT_SLOT(NORMALIZED_DEPTH, Vixen::Vulkan::Resources::IRenderTarget*, 1,
@@ -32,7 +33,11 @@ CONSTEXPR_NODE_CONFIG(ReconstructionDepthPorts, 0, 5, SlotArrayMode::Single) {
                 SlotNullability::Required, SlotMutability::WriteOnly);
     OUTPUT_SLOT(NORMALIZED_DEPTH_VIEW, VkImageView, 3,
                 SlotNullability::Required, SlotMutability::WriteOnly);
-    OUTPUT_SLOT(RENDER_COMPLETE, VkSemaphore, 4,
+    OUTPUT_SLOT(VIEW_DEPTH_PREVIOUS, Vixen::Vulkan::Resources::IRenderTarget*, 4,
+                SlotNullability::Required, SlotMutability::WriteOnly);
+    OUTPUT_SLOT(VIEW_DEPTH_PREVIOUS_VIEW, VkImageView, 5,
+                SlotNullability::Required, SlotMutability::WriteOnly);
+    OUTPUT_SLOT(RENDER_COMPLETE, VkSemaphore, 6,
                 SlotNullability::Required, SlotMutability::WriteOnly);
 
     ReconstructionDepthPorts() {
@@ -43,6 +48,8 @@ CONSTEXPR_NODE_CONFIG(ReconstructionDepthPorts, 0, 5, SlotArrayMode::Single) {
         INIT_OUTPUT_DESC(NORMALIZED_DEPTH, "normalized_depth", ResourceLifetime::Persistent, target);
         INIT_OUTPUT_DESC(VIEW_DEPTH_VIEW, "view_depth_view", ResourceLifetime::Persistent, view);
         INIT_OUTPUT_DESC(NORMALIZED_DEPTH_VIEW, "normalized_depth_view", ResourceLifetime::Persistent, view);
+        INIT_OUTPUT_DESC(VIEW_DEPTH_PREVIOUS, "view_depth_previous", ResourceLifetime::Persistent, target);
+        INIT_OUTPUT_DESC(VIEW_DEPTH_PREVIOUS_VIEW, "view_depth_previous_view", ResourceLifetime::Persistent, view);
         INIT_OUTPUT_DESC(RENDER_COMPLETE, "render_complete", ResourceLifetime::Transient, semaphore);
     }
 };
@@ -75,7 +82,7 @@ public:
             throw std::invalid_argument("Reconstruction depth module is missing its frame-input producers");
         }
         auto& batch = *params.batch;
-        const auto view = scope.AddNode<RenderTargetNodeType>("view_depth");
+        const auto view = scope.AddNode<AccumulationHistoryNodeType>("view_depth_history");
         const auto normalized = scope.AddNode<RenderTargetNodeType>("normalized_depth");
         const auto shader = scope.AddNode<ShaderLibraryNodeType>("depth_shader");
         const auto stage = scope.AddNode<ComputeStageNodeType>("depth");
@@ -86,19 +93,28 @@ public:
         scope.GetInstance<BufferSyncGathererNode>(reads)->PreRegisterBufferSlots(1);
         scope.GetInstance<ImageSyncGathererNode>(writes)->PreRegisterImageSlots(2);
 
-        for (auto target : {view, normalized}) {
-            scope.GetInstance<RenderTargetNode>(target)->SetParameter(
-                RenderTargetNodeConfig::PARAM_FORMAT, static_cast<uint32_t>(VK_FORMAT_R32_SFLOAT));
-            batch.Connect(params.common.device, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                          target, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
-                 .Connect(params.sourceTarget, RenderTargetNodeConfig::RENDER_TARGET,
-                          target, RenderTargetNodeConfig::EXTENT_SOURCE);
-        }
+        scope.GetInstance<AccumulationHistoryNode>(view)->SetParameter(
+            AccumulationHistoryNodeConfig::PARAM_FORMAT, static_cast<uint32_t>(VK_FORMAT_R32_SFLOAT));
+        batch.Connect(params.common.device, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      view, AccumulationHistoryNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(params.common.commandPool, CommandPoolNodeConfig::COMMAND_POOL,
+                      view, AccumulationHistoryNodeConfig::COMMAND_POOL)
+             .Connect(params.sourceTarget, RenderTargetNodeConfig::WIDTH_OUT,
+                      view, AccumulationHistoryNodeConfig::WIDTH)
+             .Connect(params.sourceTarget, RenderTargetNodeConfig::HEIGHT_OUT,
+                      view, AccumulationHistoryNodeConfig::HEIGHT);
+        scope.GetInstance<RenderTargetNode>(normalized)->SetParameter(
+            RenderTargetNodeConfig::PARAM_FORMAT, static_cast<uint32_t>(VK_FORMAT_R32_SFLOAT));
+        batch.Connect(params.common.device, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      normalized, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(params.sourceTarget, RenderTargetNodeConfig::RENDER_TARGET,
+                      normalized, RenderTargetNodeConfig::EXTENT_SOURCE);
         params.registerShaderFamily(shader, params.makeShaderFamily("ReconstructionDepth.comp", "ReconstructionDepth"));
         SdiProviderRegistry providers;
         providers.Provide("HitRecordBuffer", params.hitRecords, StorageBufferNodeConfig::STORAGE_BUFFER,
                           SlotRole::Dependency | SlotRole::Execute);
-        providers.Provide("viewDepthImage", view, RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+        providers.Provide("viewDepthImage", view, AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW,
+                          SlotRole::Execute);
         providers.Provide("normalizedDepthImage", normalized, RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
         providers.Provide("depthEncoding", encoding, ConstantNodeConfig::OUTPUT, SlotRole::Dependency);
         const auto cameraField = [&](const char* name, auto member) {
@@ -120,7 +136,7 @@ public:
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
              .Connect(reads, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                       stage, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute))
-             .Connect(view, RenderTargetNodeConfig::RENDER_TARGET, writes, 0,
+             .Connect(view, AccumulationHistoryNodeConfig::CURRENT_HISTORY_TARGET, writes, 0,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
              .Connect(normalized, RenderTargetNodeConfig::RENDER_TARGET, writes, 1,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
@@ -128,10 +144,16 @@ public:
                       stage, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
         batch.Connect(params.hitProducer, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       stage, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
-        scope.BindOutput(ReconstructionDepthPorts::VIEW_DEPTH, view, RenderTargetNodeConfig::RENDER_TARGET);
+        scope.BindOutput(ReconstructionDepthPorts::VIEW_DEPTH, view,
+                         AccumulationHistoryNodeConfig::CURRENT_HISTORY_TARGET);
         scope.BindOutput(ReconstructionDepthPorts::NORMALIZED_DEPTH, normalized, RenderTargetNodeConfig::RENDER_TARGET);
-        scope.BindOutput(ReconstructionDepthPorts::VIEW_DEPTH_VIEW, view, RenderTargetNodeConfig::CURRENT_VIEW);
+        scope.BindOutput(ReconstructionDepthPorts::VIEW_DEPTH_VIEW, view,
+                         AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW);
         scope.BindOutput(ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW, normalized, RenderTargetNodeConfig::CURRENT_VIEW);
+        scope.BindOutput(ReconstructionDepthPorts::VIEW_DEPTH_PREVIOUS, view,
+                         AccumulationHistoryNodeConfig::HISTORY_TARGET);
+        scope.BindOutput(ReconstructionDepthPorts::VIEW_DEPTH_PREVIOUS_VIEW, view,
+                         AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW);
         scope.BindOutput(ReconstructionDepthPorts::RENDER_COMPLETE, stage, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE);
         if (params.registerPassMetric) params.registerPassMetric("reconstruction_depth", stage);
     }

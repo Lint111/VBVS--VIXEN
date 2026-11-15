@@ -5204,6 +5204,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             frameResources.ProvideSubGraph({"frame_targets", "ViewDepth"}, *reconstructionDepthModule,
                                            ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index,
                                            ReconstructionDepthPorts::VIEW_DEPTH.index, SlotRole::Execute);
+            frameResources.ProvideSubGraph({"frame_targets", "ViewDepth"}, *reconstructionDepthModule,
+                                           ReconstructionDepthPorts::VIEW_DEPTH_PREVIOUS_VIEW.index,
+                                           ReconstructionDepthPorts::VIEW_DEPTH_PREVIOUS.index, SlotRole::Execute,
+                                           FrameSlot::Previous);
         }
         frameResources.Provide({"Vixen.Gpu.PrevCameraConfig", "*"}, prevCameraConfigNode,
                                PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER, kSceneRoles);
