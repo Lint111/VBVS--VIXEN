@@ -80,6 +80,7 @@ inline std::string SpliceProceduralRecipesIntoSource(
 
     const auto hasMaterialOutput = [](const RecipeRegistry::RecipeEntry* entry) {
         if (!entry) return false;
+        if (entry->defaultMaterialId != 0u) return true;
         for (const auto& instruction : entry->bytecode) {
             const auto op = static_cast<SdfOpCode>(instruction.opCode);
             if (op == SdfOpCode::MaterialRef || op == SdfOpCode::Attach) return true;
@@ -147,7 +148,7 @@ inline std::string SpliceProceduralRecipesIntoSource(
                                            /*boundedGlyph=*/true,
                                            /*readInstructionOperands=*/materialVariant,
                                            /*carryMaterialId=*/materialVariant,
-                                           /*materialDefault=*/0u);
+                                           /*materialDefault=*/entry->defaultMaterialId);
         if (field.empty()) {
             for (std::size_t instructionIndex = 0; instructionIndex < entry->bytecode.size(); ++instructionIndex) {
                 const auto op = static_cast<SdfOpCode>(entry->bytecode[instructionIndex].opCode);

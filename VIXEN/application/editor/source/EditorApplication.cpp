@@ -864,7 +864,7 @@ void EditorApplication::RefreshLayersView() {
             if (count == materialCoverage->counts.end() || count->second == 0u) continue;
             materials.push_back({std::to_string(materialRow.slot), materialRow.name,
                                  "layer-" + std::to_string(selectedId) + "-material-" + materialRow.name,
-                                 defaultMaterial_ == materialRow.name
+                                 doc_.DocumentDefaultMaterial() == materialRow.name
                                      ? "document-material-default-" + materialRow.name : "",
                                  MaterialColorHex(materialRow.srgbColor),
                                  CoveragePercent(count->second, materialCoverage->totalSurfaceSamples),
@@ -1095,9 +1095,6 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     }
 
     doc_ = std::move(candidate);
-    // The generated VDC1 codec currently has no field for this editor-only selection. Do not
-    // make a reopen look successful by leaking the previous document's in-memory default.
-    defaultMaterial_.clear();
     materialCoverageRevision_.fetch_add(1u, std::memory_order_acq_rel);
     std::atomic_store_explicit(&materialCoverage_,
                                std::shared_ptr<const EditorMaterialCoverageSnapshot>{},
@@ -1682,25 +1679,23 @@ void EditorApplication::RegisterAppFlowHandlers() {
     rt_.RegisterHandler(FlowActionId::SetDocumentDefaultMaterial,
         [this, recordEdit, refuse, materialSlot](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         std::string material;
-        if (!ParseTextParam(p, "material", material) || material.empty()) {
-            refuse("SetDocumentDefaultMaterial", "needs a material content id");
+        if (!ParseTextParam(p, "material", material)) {
+            refuse("SetDocumentDefaultMaterial", "needs a material content id or an empty value to clear");
             return;
         }
         uint32_t slot = 0u;
-        if (!materialSlot(material, slot)) {
+        if (!material.empty() && !materialSlot(material, slot)) {
             refuse("SetDocumentDefaultMaterial", "unknown material '" + material + "' at the default control");
             return;
         }
-        const std::string before = defaultMaterial_;
+        const std::string before = doc_.DocumentDefaultMaterial();
         if (before == material) return;
         recordEdit(FlowActionId::SetDocumentDefaultMaterial, "SetDocumentDefaultMaterial",
-                   [this, material](Vixen::Editor::DocumentDiagnostic&) {
-                       defaultMaterial_ = material;
-                       return true;
+                   [this, material](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetDocumentDefaultMaterial(material, d);
                    },
-                   [this, before](Vixen::Editor::DocumentDiagnostic&) {
-                       defaultMaterial_ = before;
-                       return true;
+                   [this, before](Vixen::Editor::DocumentDiagnostic& d) {
+                       return doc_.SetDocumentDefaultMaterial(before, d);
                    });
     });
     const auto setBlend = [this, recordEdit, refuse](FlowActionId actionId, uint32_t index, float radius) {
@@ -2320,12 +2315,16 @@ void EditorApplication::BuildRenderGraph() {
         const auto snapshot = doc_.CaptureBakeSnapshot();
         Vixen::SVO::RecipeRegistry::RecipeEntry entry;
         Vixen::Editor::DocumentDiagnostic diagnostic;
-        if (doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), MaterialResolver(), true, diagnostic)) {
+        uint32_t documentDefaultMaterial = 0u;
+        if (doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), MaterialResolver(), true,
+                                      documentDefaultMaterial, diagnostic)) {
+            entry.defaultMaterialId = documentDefaultMaterial;
             ApplyEditorPreviewBounds(entry, doc_);
             const auto result = RegisterProceduralRecipe(kEditorProceduralRecipeId, entry);
             if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
                 proceduralPreviewRegistered_ = true;
                 lastProceduralProgram_ = entry.bytecode;
+                lastProceduralMaterialDefault_ = entry.defaultMaterialId;
             } else {
                 ReportEditorError("RegisterProceduralRecipe failed (code " +
                     std::to_string(static_cast<int>(result)) + ")");
@@ -2534,10 +2533,13 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
     Vixen::Editor::DocumentDiagnostic diagnostic;
     const Vixen::Editor::DocumentBakeSnapshot snapshot = doc_.CaptureBakeSnapshot();
-    if (!doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), MaterialResolver(), true, diagnostic)) {
+    uint32_t documentDefaultMaterial = 0u;
+    if (!doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), MaterialResolver(), true,
+                                   documentDefaultMaterial, diagnostic)) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
+    entry.defaultMaterialId = documentDefaultMaterial;
     ApplyEditorPreviewBounds(entry, doc_);
     TraceEditorLatency("flatten", "end", updateTick_);
     TraceEditorLatency("registry", "begin", updateTick_);
@@ -2554,11 +2556,15 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         }
         proceduralPreviewRegistered_ = true;
         lastProceduralProgram_ = entry.bytecode;
+        lastProceduralMaterialDefault_ = entry.defaultMaterialId;
         TraceEditorLatency("shader_request", "begin", updateTick_);
         RecompileProceduralShader();
         TraceEditorLatency("shader_request", "end", updateTick_);
-    } else if (!SameProgram(entry.bytecode, lastProceduralProgram_)) {
-        const bool tapeOnlyMaterialEdit = SameProceduralShaderProgram(entry.bytecode, lastProceduralProgram_);
+    } else if (!SameProgram(entry.bytecode, lastProceduralProgram_) ||
+               entry.defaultMaterialId != lastProceduralMaterialDefault_) {
+        const bool defaultMaterialChanged = entry.defaultMaterialId != lastProceduralMaterialDefault_;
+        const bool tapeOnlyMaterialEdit = !defaultMaterialChanged &&
+            SameProceduralShaderProgram(entry.bytecode, lastProceduralProgram_);
         const auto result = ReplaceProceduralRecipe(kEditorProceduralRecipeId, entry);
         if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
             ReportEditorError("ReplaceProceduralRecipe failed (code " +
@@ -2566,6 +2572,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
             return false;
         }
         lastProceduralProgram_ = entry.bytecode;
+        lastProceduralMaterialDefault_ = entry.defaultMaterialId;
         if (tapeOnlyMaterialEdit) {
             RefreshProceduralRecipeOperands();
             logger_->Info("[EditorApplication] material edit refreshed procedural tape without shader compile");
@@ -2634,7 +2641,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     bakeCfg.center = glm::vec3(static_cast<float>(kEditorBakeResolution) * 0.5f);
     bakeCfg.defaultResolution = kEditorBakeResolution;
     bakeCfg.recipeUnitsPerVoxel = kEditorRecipeUnitsPerVoxel;
-    bakeCfg.defaultMaterialId = Vixen::SVO::kMaterialRefNone;
+    bakeCfg.defaultMaterialId = documentDefaultMaterial;
     auto bakeRegistry = std::make_shared<Vixen::SVO::RecipeRegistry>(std::move(reg));
     TraceEditorLatency("publish", "begin", updateTick_);
     lastBakeSnapshot_ = snapshot;
@@ -2876,6 +2883,7 @@ bool EditorApplication::SaveDocument() {
     lastSavedProgram_ = std::move(canonical.bytecode);
     lastSavedParameters_ = snapshot.parameterValues;
     lastSavedMask_ = doc_.EnabledMask();
+    lastSavedDefaultMaterial_ = doc_.DocumentDefaultMaterial();
     ClearEditorError();
     logger_->Info("[EditorApplication] Saved document to " + outPath);
     std::ostringstream state;
@@ -2909,8 +2917,9 @@ bool EditorApplication::ReopenSavedDocument() {
     const bool parametersMatch = std::equal(snapshot.parameterValues.begin(), snapshot.parameterValues.end(),
                                             lastSavedParameters_.begin());
     const bool maskMatch = candidate.EnabledMask() == lastSavedMask_;
-    if (!programMatch || !parametersMatch || !maskMatch) {
-        ReportEditorError("reopened document differs from the saved canonical program, parameters, or layer mask");
+    const bool defaultMaterialMatch = candidate.DocumentDefaultMaterial() == lastSavedDefaultMaterial_;
+    if (!programMatch || !parametersMatch || !maskMatch || !defaultMaterialMatch) {
+        ReportEditorError("reopened document differs from the saved canonical program, parameters, layer mask, or document default material");
         std::ostringstream mismatch;
         mismatch << "[EditorApplication] " << lastEditorError_
                  << " program=" << (programMatch ? "match" : "mismatch")
@@ -2918,7 +2927,9 @@ bool EditorApplication::ReopenSavedDocument() {
                  << " parameters=" << (parametersMatch ? "match" : "mismatch")
                  << "(" << snapshot.parameterValues.size() << "/" << lastSavedParameters_.size() << ")"
                  << " mask=" << (maskMatch ? "match" : "mismatch")
-                 << "(" << candidate.EnabledMask() << "/" << lastSavedMask_ << ")";
+                 << "(" << candidate.EnabledMask() << "/" << lastSavedMask_ << ")"
+                 << " defaultMaterial=" << (defaultMaterialMatch ? "match" : "mismatch")
+                 << "(" << candidate.DocumentDefaultMaterial() << "/" << lastSavedDefaultMaterial_ << ")";
         if (!programMatch && canonical.bytecode.size() == lastSavedProgram_.size()) {
             for (size_t i = 0; i < canonical.bytecode.size(); ++i) {
                 if (std::memcmp(&canonical.bytecode[i], &lastSavedProgram_[i],
@@ -2941,7 +2952,7 @@ bool EditorApplication::ReopenSavedDocument() {
         ReportEditorError(pendingReferenceDiagnostic_, "RecipeReference");
     }
     logger_->Info("[EDITOR/state] reopen revision=" + std::to_string(doc_.Revision()) +
-                  " programMatch=1 parametersMatch=1 maskMatch=1");
+                  " programMatch=1 parametersMatch=1 maskMatch=1 defaultMaterialMatch=1");
     return true;
 }
 
@@ -2955,9 +2966,6 @@ bool EditorApplication::AdoptDocument(Vixen::Editor::EditorDocumentModel candida
     channelGroupOpen_ = false;  // the reloaded runtime starts with an empty undo history
     channelGroupLabel_.clear();
     doc_ = std::move(candidate);
-    // SetDocumentDefaultMaterial is not part of the generated VDC1 payload yet; clear the
-    // process-local value on every adopted document so the missing persistence remains visible.
-    defaultMaterial_.clear();
     materialCoverageRevision_.fetch_add(1u, std::memory_order_acq_rel);
     std::atomic_store_explicit(&materialCoverage_,
                                std::shared_ptr<const EditorMaterialCoverageSnapshot>{},

@@ -105,10 +105,11 @@ bool MaterialSuffix(const std::vector<SdfInstruction>& program, size_t& suffixIn
 }
 
 void PruneTrailingUnusedReferences(const std::vector<EditableDocumentLayer>& layers,
-                                   std::vector<std::string>& references) {
+                                   std::vector<std::string>& references,
+                                   const std::string& protectedReference) {
     while (!references.empty()) {
         const uint32_t candidate = static_cast<uint32_t>(references.size() - 1u);
-        bool used = false;
+        bool used = !protectedReference.empty() && references[candidate] == protectedReference;
         for (const auto& layer : layers) {
             for (const auto& instruction : layer.program) {
                 const auto opcode = static_cast<SdfOpCode>(instruction.opCode);
@@ -681,7 +682,8 @@ bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diag
                           std::to_string(kMaximumLayerCount)};
         return false;
     }
-    if (!IsValidMaterialTriple(candidateView.header.majorMaterialId,
+    if (candidateView.header.formatVersion < kVdc1LayerPortVersion &&
+        !IsValidMaterialTriple(candidateView.header.majorMaterialId,
                                candidateView.header.minorMaterialId,
                                candidateView.header.majorWeightPercent)) {
         diagnostic = {DocumentDiagnosticCode::InvalidDocumentMaterial,
@@ -705,6 +707,15 @@ bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diag
             return false;
         }
         candidateReferences.push_back(id);
+    }
+    std::string candidateDefaultMaterial;
+    if (candidateView.defaultMaterialReference != 0u) {
+        if (candidateView.defaultMaterialReference > candidateReferences.size()) {
+            diagnostic = {DocumentDiagnosticCode::InvalidDocumentMaterial,
+                          "VoxelDocument default material reference is outside the reference table"};
+            return false;
+        }
+        candidateDefaultMaterial = candidateReferences[candidateView.defaultMaterialReference - 1u];
     }
 
     std::vector<uint32_t> candidateLayerIds(candidateView.header.layerCount);
@@ -796,9 +807,19 @@ bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diag
     bindings_ = std::move(candidateBindings);
     soloLayerId_.reset();
     provideFallbackOps_.clear();
-    majorMaterialId_ = view_.header.majorMaterialId;
-    minorMaterialId_ = view_.header.minorMaterialId;
-    majorMaterialPercent_ = view_.header.majorWeightPercent;
+    if (view_.header.formatVersion >= kVdc1LayerPortVersion) {
+        // In v5 the header major slot is the generated +1 default-reference encoding, not
+        // the legacy material-region triple. Keep the legacy accessors clear for the located
+        // v1-v4 compatibility note and expose the typed value through DocumentDefaultMaterial().
+        majorMaterialId_ = 0u;
+        minorMaterialId_ = 0u;
+        majorMaterialPercent_ = 0u;
+    } else {
+        majorMaterialId_ = view_.header.majorMaterialId;
+        minorMaterialId_ = view_.header.minorMaterialId;
+        majorMaterialPercent_ = view_.header.majorWeightPercent;
+    }
+    defaultMaterial_ = std::move(candidateDefaultMaterial);
     references_ = std::move(candidateReferences);
     serializationDirty_ = false;
     RefreshLayerGraphs();
@@ -928,6 +949,32 @@ bool EditorDocumentModel::SetDocumentMaterials(uint32_t major, uint32_t minor,
     majorMaterialId_ = oldMajor;
     minorMaterialId_ = oldMinor;
     majorMaterialPercent_ = oldPercent;
+    return false;
+}
+
+bool EditorDocumentModel::SetDocumentDefaultMaterial(const std::string& material,
+                                                     DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (!material.empty() && !ValidateReferenceId(material, diagnostic)) return false;
+    if (material == defaultMaterial_) return true;
+
+    const auto savedReferences = references_;
+    const std::string savedDefault = defaultMaterial_;
+    const bool savedV5 = v5FeaturesUsed_;
+    if (!material.empty() && std::find(references_.begin(), references_.end(), material) == references_.end()) {
+        if (references_.size() >= kMaximumReferences) {
+            diagnostic = {DocumentDiagnosticCode::TooManyReferences,
+                          "a document supports at most 32 recipe and material references"};
+            return false;
+        }
+        references_.push_back(material);
+    }
+    defaultMaterial_ = material;
+    v5FeaturesUsed_ = true;
+    if (Rebuild(CopyLayers(), CopyParameters(), enabledMask_, diagnostic)) return true;
+    references_ = savedReferences;
+    defaultMaterial_ = savedDefault;
+    v5FeaturesUsed_ = savedV5;
     return false;
 }
 
@@ -1127,7 +1174,7 @@ bool EditorDocumentModel::SetLayerMaterial(uint32_t layerId, const std::string& 
     if (MaterialSuffix(program, suffixIndex, ignoredIndex)) {
         program.erase(program.begin() + static_cast<std::ptrdiff_t>(suffixIndex), program.end());
     }
-    PruneTrailingUnusedReferences(layers, references_);
+    PruneTrailingUnusedReferences(layers, references_, defaultMaterial_);
 
     auto found = std::find(references_.begin(), references_.end(), material);
     uint32_t referenceIndex = 0u;
@@ -1171,7 +1218,7 @@ bool EditorDocumentModel::ClearLayerMaterial(uint32_t layerId,
     if (!MaterialSuffix(program, suffixIndex, ignoredIndex)) return true;
     program.erase(program.begin() + static_cast<std::ptrdiff_t>(suffixIndex), program.end());
     const auto savedReferences = references_;
-    PruneTrailingUnusedReferences(layers, references_);
+    PruneTrailingUnusedReferences(layers, references_, defaultMaterial_);
     if (Rebuild(std::move(layers), CopyParameters(), enabledMask_, diagnostic)) return true;
     references_ = savedReferences;
     return false;
@@ -1472,6 +1519,12 @@ bool EditorDocumentModel::Rebuild(
     }
 
     const auto referenceRows = CopyReferences();
+    const auto defaultReference = std::find(references_.begin(), references_.end(), defaultMaterial_);
+    const uint32_t defaultMaterialReference = defaultMaterial_.empty()
+        ? 0u
+        : (defaultReference == references_.end()
+               ? 0u
+               : static_cast<uint32_t>(defaultReference - references_.begin()) + 1u);
     std::vector<uint32_t> idsForWrite;
     idsForWrite.reserve(layers.size());
     for (const auto& layer : layers) idsForWrite.push_back(layer.id);
@@ -1493,7 +1546,7 @@ bool EditorDocumentModel::Rebuild(
                              candidateNextLayerId, idsForWrite.data(), static_cast<uint32_t>(idsForWrite.size()),
                              wireRows.data(), static_cast<uint32_t>(wireRows.size()),
                              bindingRows.data(), static_cast<uint32_t>(bindingRows.size()),
-                             majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                             defaultMaterialReference, 0u, 0u,
                              nullptr, 0, required, authoredFormatVersion_);
     } else {
         WriteVoxelDocument(view_.channels, view_.header.channelCount,
@@ -1513,7 +1566,7 @@ bool EditorDocumentModel::Rebuild(
                                candidateNextLayerId, idsForWrite.data(), static_cast<uint32_t>(idsForWrite.size()),
                                wireRows.data(), static_cast<uint32_t>(wireRows.size()),
                                bindingRows.data(), static_cast<uint32_t>(bindingRows.size()),
-                               majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                               defaultMaterialReference, 0u, 0u,
                                candidateBytes.data(), candidateBytes.size(), written, authoredFormatVersion_)
         : WriteVoxelDocument(view_.channels, view_.header.channelCount,
                              parameters.data(), static_cast<uint32_t>(parameters.size()),
@@ -1540,6 +1593,11 @@ bool EditorDocumentModel::Rebuild(
     enabledMask_ = enabledMask;
     nextLayerId_ = candidateNextLayerId;
     v5FeaturesUsed_ = hasV5;
+    if (hasV5) {
+        majorMaterialId_ = 0u;
+        minorMaterialId_ = 0u;
+        majorMaterialPercent_ = 0u;
+    }
     layerIds_ = std::move(idsForWrite);
     serializationDirty_ = true;
     RefreshLayerGraphs();
@@ -2512,10 +2570,31 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
     const MaterialReferenceResolver& materialResolver,
     bool skipUnresolvedReferences,
     DocumentDiagnostic& diagnostic) const {
+    uint32_t ignoredDefaultMaterial = 0u;
+    return FlattenToRecipeEntry(outEntry, snapshot, recipeResolver, materialResolver,
+                                skipUnresolvedReferences, ignoredDefaultMaterial, diagnostic);
+}
+
+bool EditorDocumentModel::FlattenToRecipeEntry(
+    Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+    const DocumentBakeSnapshot& snapshot,
+    const RecipeReferenceResolver& recipeResolver,
+    const MaterialReferenceResolver& materialResolver,
+    bool skipUnresolvedReferences,
+    uint32_t& documentDefaultMaterial,
+    DocumentDiagnostic& diagnostic) const {
     using Yeroket::Sdf::Generated::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
 
     diagnostic.Clear();
+    documentDefaultMaterial = 0u;
+    if (!defaultMaterial_.empty()) {
+        if (!materialResolver || !materialResolver(defaultMaterial_, documentDefaultMaterial)) {
+            diagnostic = {DocumentDiagnosticCode::FlattenError,
+                          "unknown document default material '" + defaultMaterial_ + "'"};
+            return false;
+        }
+    }
     if (snapshot.revision != revision_) {
         diagnostic = {DocumentDiagnosticCode::StaleBakeSnapshot,
                       "bake snapshot revision does not match the accepted document revision"};
@@ -2673,6 +2752,7 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
     outEntry.bytecode = std::move(instructions);
     outEntry.parameterValues.assign(snapshot.parameterValues.begin(),
                                     snapshot.parameterValues.end());
+    outEntry.defaultMaterialId = documentDefaultMaterial;
     outEntry.bakeResolution = 64u;
     outEntry.bandVoxels = 2.5f;
     outEntry.brickDepth = 3u;
@@ -2698,6 +2778,12 @@ bool EditorDocumentModel::Serialize(std::vector<uint8_t>& bytes,
     }
     const auto parameters = CopyParameters();
     const auto referenceRows = CopyReferences();
+    const auto defaultReference = std::find(references_.begin(), references_.end(), defaultMaterial_);
+    const uint32_t defaultMaterialReference = defaultMaterial_.empty()
+        ? 0u
+        : (defaultReference == references_.end()
+               ? 0u
+               : static_cast<uint32_t>(defaultReference - references_.begin()) + 1u);
     std::vector<VoxelDocWire> wireRows(wires_.size());
     for (size_t i = 0; i < wires_.size(); ++i) {
         wireRows[i].readerLayerId = wires_[i].readerLayerId;
@@ -2717,7 +2803,7 @@ bool EditorDocumentModel::Serialize(std::vector<uint8_t>& bytes,
                              nextLayerId_, layerIds_.data(), static_cast<uint32_t>(layerIds_.size()),
                              wireRows.data(), static_cast<uint32_t>(wireRows.size()),
                              bindingRows.data(), static_cast<uint32_t>(bindingRows.size()),
-                             majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                             defaultMaterialReference, 0u, 0u,
                              nullptr, 0, required, authoredFormatVersion_);
     } else {
         WriteVoxelDocument(view_.channels, view_.header.channelCount,
@@ -2737,7 +2823,7 @@ bool EditorDocumentModel::Serialize(std::vector<uint8_t>& bytes,
                                nextLayerId_, layerIds_.data(), static_cast<uint32_t>(layerIds_.size()),
                                wireRows.data(), static_cast<uint32_t>(wireRows.size()),
                                bindingRows.data(), static_cast<uint32_t>(bindingRows.size()),
-                               majorMaterialId_, minorMaterialId_, majorMaterialPercent_,
+                               defaultMaterialReference, 0u, 0u,
                                bytes.data(), bytes.size(), written, authoredFormatVersion_)
         : WriteVoxelDocument(view_.channels, view_.header.channelCount,
                              parameters.data(), static_cast<uint32_t>(parameters.size()),

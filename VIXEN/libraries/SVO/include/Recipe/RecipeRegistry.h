@@ -36,6 +36,9 @@ public:
 
     struct RecipeEntry {
         std::vector<Recipe::SdfInstruction> bytecode;
+        // Typed document default for the material output. Zero means the neutral instance
+        // colour; the editor fills this from EditorDocumentModel's generated flatten seam.
+        uint32_t defaultMaterialId = 0;
         // Explicit bake-time scalar snapshot. The transport contract remains the existing
         // six-float BodyInstanceGpu carrier; this CPU-side vector carries the same effective
         // values into BakeRegistryToPool without creating per-recipe GPU parameter blocks.

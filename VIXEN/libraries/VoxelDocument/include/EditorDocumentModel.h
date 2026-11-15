@@ -193,6 +193,14 @@ public:
     bool SetDocumentMaterials(uint32_t major, uint32_t minor, uint32_t majorPercent,
                               DocumentDiagnostic& diagnostic);
 
+    // R872.13: the v5 header's major slot is a +1 reference-table index for this typed
+    // document default. Empty means that unmaterialized surfaces use the neutral instance
+    // colour. The model owns the authored string; consumers resolve it through the normal
+    // material resolver at flatten time.
+    const std::string& DocumentDefaultMaterial() const { return defaultMaterial_; }
+    bool SetDocumentDefaultMaterial(const std::string& material,
+                                    DocumentDiagnostic& diagnostic);
+
     // VDC1 v4 recipe-reference table. Ids are the authored <pack>:<recipe> strings; layers carry
     // one InvokeRecipe instruction whose data[0] is the table index.
     const std::vector<std::string>& References() const { return references_; }
@@ -381,6 +389,13 @@ public:
                               const MaterialReferenceResolver& materialResolver,
                               bool skipUnresolvedReferences,
                               DocumentDiagnostic& diagnostic) const;
+    bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+                              const DocumentBakeSnapshot& snapshot,
+                              const RecipeReferenceResolver& recipeResolver,
+                              const MaterialReferenceResolver& materialResolver,
+                              bool skipUnresolvedReferences,
+                              uint32_t& documentDefaultMaterial,
+                              DocumentDiagnostic& diagnostic) const;
 
     // Encodes the accepted document (layers, enabled state, parameter values) as VDC1 bytes.
     bool Serialize(std::vector<uint8_t>& bytes, DocumentDiagnostic& diagnostic) const;
@@ -424,6 +439,7 @@ private:
     uint32_t majorMaterialId_ = 0;
     uint32_t minorMaterialId_ = 0;
     uint32_t majorMaterialPercent_ = 0;
+    std::string defaultMaterial_;
     std::vector<std::string> references_;
     bool serializationDirty_ = false;
     std::vector<LayerGraph> layerGraphs_;

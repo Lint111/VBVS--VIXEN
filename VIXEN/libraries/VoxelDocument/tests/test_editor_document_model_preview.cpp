@@ -1361,6 +1361,59 @@ TEST(EditorDocumentModelVdc1, LayerMaterialRoundTripsThroughTypedReferenceAndRes
     EXPECT_EQ(before, original) << "clearing the only material reference restores the exact document bytes";
 }
 
+TEST(EditorDocumentModelVdc1, DocumentDefaultMaterialPersistsAndFeedsFlattenOutput) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+
+    ASSERT_TRUE(model.SetDocumentDefaultMaterial("core:emissive_trim", diagnostic))
+        << diagnostic.message;
+    EXPECT_EQ(model.DocumentDefaultMaterial(), "core:emissive_trim");
+    EXPECT_EQ(model.FormatVersion(), 5u);
+
+    std::vector<uint8_t> savedBytes;
+    ASSERT_TRUE(model.Serialize(savedBytes, diagnostic)) << diagnostic.message;
+    Yeroket::Sdf::Generated::VoxelDocumentView savedView{};
+    ASSERT_TRUE(Yeroket::Sdf::Generated::ReadVoxelDocument(
+        savedBytes.data(), savedBytes.size(), savedView));
+    EXPECT_EQ(savedView.header.formatVersion, 5u);
+    EXPECT_EQ(savedView.defaultMaterialReference, 1u);
+    EXPECT_EQ(savedView.header.minorMaterialId, 0u);
+    EXPECT_EQ(savedView.header.majorWeightPercent, 0u);
+
+    const auto path = MakeTempDocumentPath("document-default");
+    ASSERT_TRUE(model.Save(path.path, diagnostic)) << diagnostic.message;
+    EditorDocumentModel reopened;
+    ASSERT_TRUE(reopened.Load(path.path, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(reopened.DocumentDefaultMaterial(), "core:emissive_trim");
+    std::vector<uint8_t> reopenedBytes;
+    ASSERT_TRUE(reopened.Serialize(reopenedBytes, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(reopenedBytes, savedBytes);
+
+    uint32_t resolvedDefault = 0u;
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    const auto materialResolver = [](const std::string& reference, uint32_t& materialId) {
+        if (reference != "core:emissive_trim") return false;
+        materialId = 8u;
+        return true;
+    };
+    ASSERT_TRUE(reopened.FlattenToRecipeEntry(
+        entry, reopened.CaptureBakeSnapshot(), EditorDocumentModel::RecipeReferenceResolver{},
+        materialResolver, true, resolvedDefault, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(resolvedDefault, 8u);
+    EXPECT_EQ(entry.defaultMaterialId, 8u);
+
+    ASSERT_TRUE(reopened.SetDocumentDefaultMaterial({}, diagnostic)) << diagnostic.message;
+    EXPECT_TRUE(reopened.DocumentDefaultMaterial().empty());
+    std::vector<uint8_t> clearedBytes;
+    ASSERT_TRUE(reopened.Serialize(clearedBytes, diagnostic)) << diagnostic.message;
+    Yeroket::Sdf::Generated::VoxelDocumentView clearedView{};
+    ASSERT_TRUE(Yeroket::Sdf::Generated::ReadVoxelDocument(
+        clearedBytes.data(), clearedBytes.size(), clearedView));
+    EXPECT_EQ(clearedView.header.formatVersion, 5u);
+    EXPECT_EQ(clearedView.defaultMaterialReference, 0u);
+}
+
 TEST(EditorDocumentModelVdc1, UnresolvedReferencesAreLocatedAndCanBeSkippedForPreview) {
     const std::string recipeId = std::string("missing") + ":" + "recipe";
     EditorDocumentModel model;

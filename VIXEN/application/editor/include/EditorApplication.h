@@ -264,9 +264,11 @@ private:
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastSavedProgram_;
     std::array<float, 6> lastSavedParameters_{};
     uint32_t lastSavedMask_ = 0;
+    std::string lastSavedDefaultMaterial_;
     Vixen::Editor::DocumentBakeSnapshot lastBakeSnapshot_{};
     std::array<float, 6> lastPreviewParameterValues_{};
     std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastProceduralProgram_;
+    uint32_t lastProceduralMaterialDefault_ = 0;
     bool proceduralPreviewRegistered_ = false;
     struct MaterialRow {
         uint32_t slot = 0;
@@ -277,7 +279,6 @@ private:
     // document-default controls. They remain pack-owned; authored layer references are stored by
     // EditorDocumentModel and resolve through this table at flatten time.
     std::vector<MaterialRow> materialRows_;
-    std::string defaultMaterial_;
     std::shared_ptr<const EditorMaterialCoverageSnapshot> materialCoverage_;
     std::atomic<uint64_t> materialCoverageRevision_{0};
     std::atomic<uint64_t> materialCoverageGeneration_{0};

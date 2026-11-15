@@ -50,8 +50,7 @@ struct RecipeBakeConfig {
     // Recipe-space distance represented by one bake-grid voxel. Stored distances remain in
     // grid units for the octree marcher; evaluators sample at this scale and convert distance.
     float     recipeUnitsPerVoxel = 1.0f;
-    // Material sidecars use an explicit document default when no carried ref is present.
-    // VDC1 has no persisted document default yet, so the editor passes the generated none value.
+    // Material sidecars use this only when a RecipeEntry does not carry its own typed default.
     uint32_t  defaultMaterialId = 0u;
     // 0 = unbounded.  >0 = hard budget in bytes:
     //   sum of (nodes + bricks + channelPool + mipPool) bytes across all baked octrees.
@@ -120,9 +119,11 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
             std::string lowerError;
             const std::span<const float> parameters(entry->parameterValues.data(),
                                                      entry->parameterValues.size());
+            const uint32_t defaultMaterialId = entry->defaultMaterialId != 0u
+                ? entry->defaultMaterialId : cfg.defaultMaterialId;
             if (!outputProgram.Lower(entry->bytecode.data(),
                     static_cast<std::uint32_t>(entry->bytecode.size()), parameters,
-                    true, cfg.defaultMaterialId, lowerError)) {
+                    true, defaultMaterialId, lowerError)) {
                 res.ok = false;
                 res.err = "recipe output-set lowering failed for recipe " +
                           std::to_string(id) + ": " + lowerError;
