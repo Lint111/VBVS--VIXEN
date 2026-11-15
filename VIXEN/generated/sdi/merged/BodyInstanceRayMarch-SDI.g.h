@@ -279,21 +279,23 @@ namespace Set0 {
     };
 
     struct Binding48 {
-        static constexpr const char* NAME = "TileHeaderBuffer";
+        static constexpr const char* NAME = "motionVectorImage";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 48;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
+        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RECONSTRUCTION_INPUTS"};
     };
 
     struct Binding49 {
-        static constexpr const char* NAME = "TileSortedCandidateBuffer";
+        static constexpr const char* NAME = "motionValidityImage";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 49;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
+        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RECONSTRUCTION_INPUTS"};
     };
 
     struct Binding50 {
@@ -319,6 +321,24 @@ namespace Set0 {
         static constexpr const char* NAME = "GlyphOutlineFlatBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 52;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct Binding53 {
+        static constexpr const char* NAME = "TileHeaderBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 53;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct Binding54 {
+        static constexpr const char* NAME = "TileSortedCandidateBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 54;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -355,11 +375,13 @@ using ProxyIntervalBuffer = Set0::Binding42;
 using RtQueryProxyAabbBuffer = Set0::Binding43;
 using RecipeChunkAabbBuffer = Set0::Binding44;
 using BodyInstanceTransformBuffer = Set0::Binding47;
-using TileHeaderBuffer = Set0::Binding48;
-using TileSortedCandidateBuffer = Set0::Binding49;
+using motionVectorImage = Set0::Binding48;
+using motionValidityImage = Set0::Binding49;
 using BodyInstanceMotionBuffer = Set0::Binding50;
 using GlyphOutlineBuffer = Set0::Binding51;
 using GlyphOutlineFlatBuffer = Set0::Binding52;
+using TileHeaderBuffer = Set0::Binding53;
+using TileSortedCandidateBuffer = Set0::Binding54;
 } // namespace Bind
 
 namespace Push {
@@ -507,6 +529,8 @@ inline constexpr const char* const kFeatures_Set0_Binding41[] = {"VIXEN_POLICY_S
 inline constexpr const char* const kFeatures_Set0_Binding42[] = {"VIXEN_B2_PROXY_PREPASS"};
 inline constexpr const char* const kFeatures_Set0_Binding43[] = {"VIXEN_RTQUERY_TRAVERSAL"};
 inline constexpr const char* const kFeatures_Set0_Binding44[] = {"VIXEN_RECIPE_CHUNK_CULL"};
+inline constexpr const char* const kFeatures_Set0_Binding48[] = {"VIXEN_RECONSTRUCTION_INPUTS"};
+inline constexpr const char* const kFeatures_Set0_Binding49[] = {"VIXEN_RECONSTRUCTION_INPUTS"};
 inline constexpr const char* const kFeatures_Set0_Binding50[] = {"VIXEN_RECONSTRUCTION_INPUTS"};
 inline constexpr const char* const kFeatures_Push_proxyAabbCount[] = {"VIXEN_B2_PROXY_PREPASS"};
 
@@ -539,11 +563,13 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"RtQueryProxyAabbBuffer", false, 0, 43, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding43},
     {"RecipeChunkAabbBuffer", false, 0, 44, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding44},
     {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
-    {"TileHeaderBuffer", false, 0, 48, 0, Access::ReadOnly, 0, nullptr},
-    {"TileSortedCandidateBuffer", false, 0, 49, 0, Access::ReadOnly, 0, nullptr},
+    {"motionVectorImage", false, 0, 48, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding48},
+    {"motionValidityImage", false, 0, 49, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding49},
     {"BodyInstanceMotionBuffer", false, 0, 50, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding50},
     {"GlyphOutlineBuffer", false, 0, 51, 0, Access::ReadOnly, 0, nullptr},
     {"GlyphOutlineFlatBuffer", false, 0, 52, 0, Access::ReadOnly, 0, nullptr},
+    {"TileHeaderBuffer", false, 0, 53, 0, Access::ReadOnly, 0, nullptr},
+    {"TileSortedCandidateBuffer", false, 0, 54, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -563,7 +589,7 @@ inline constexpr MemberInfo MEMBERS[] = {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "BodyInstanceRayMarch";
-    static constexpr uint32_t NUM_MEMBERS = 48;
+    static constexpr uint32_t NUM_MEMBERS = 50;
     static constexpr uint32_t NUM_FEATURES = 8;
 };
 
