@@ -73,8 +73,8 @@ body.layers .outputs-pinned:focus-within {
     overflow-y: auto;
 }
 body.layers .outputs-pinned {
-    max-height: 18px;
-    overflow: hidden;
+    max-height: 84px;
+    overflow-y: auto;
 }
 .section-summary {
     display: block;
