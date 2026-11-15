@@ -148,7 +148,7 @@ TileRect ProjectBound(float centerX, float centerY, float centerZ, float radius,
 }
 
 bool IsBehindTileDepth(float nearDepth, float tileFarDepth) {
-    return nearDepth > tileFarDepth;
+    return tileFarDepth > 0.0 && nearDepth > tileFarDepth;
 }
 
 

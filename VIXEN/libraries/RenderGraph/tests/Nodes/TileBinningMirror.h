@@ -209,7 +209,9 @@ inline TileBinMirrorResult RunTileBinMirror(
                 MirrorRequire(depthY < static_cast<size_t>(imageHeight),
                               "depth sample index outside image");
                 const float tileFarDepth = previousDepth[depthY * imageWidth + depthX];
-                if (rect.nearDepth > tileFarDepth) continue;
+                // TileBinOps.IsBehindTileDepth: a zero (cleared, never written)
+                // history depth occludes nothing.
+                if (tileFarDepth > 0.0f && rect.nearDepth > tileFarDepth) continue;
 
                 std::vector<TileCandidate>& tileExpected = expected[static_cast<size_t>(tile)];
                 tileExpected.push_back(TileCandidate{rect.nearDepth, static_cast<uint32_t>(i)});

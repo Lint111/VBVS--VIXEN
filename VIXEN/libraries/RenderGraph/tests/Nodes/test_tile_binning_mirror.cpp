@@ -144,6 +144,14 @@ TEST(TileBinningMirror, SortZeroesCountersSoNextFrameStartsEmpty) {
         EXPECT_EQ(first.headers[tile].count, repeated.headers[tile].count) << "tile " << tile;
     EXPECT_GT(first.metrics.consumerCandidateIterations, 0u);
 
+    // A ViewDepth history nobody has written (first frame, or no reconstruction
+    // depth producer) is cleared to zero and must not cull: the lists match the
+    // far-depth history exactly.
+    const std::vector<float> clearedDepth(static_cast<size_t>(kWidth) * kHeight, 0.0f);
+    const auto cleared = RunTileBinMirror(view, bounds, clearedDepth, kWidth, kHeight, &counters);
+    EXPECT_EQ(cleared.metrics.consumerCandidateIterations,
+              first.metrics.consumerCandidateIterations);
+
     view.instanceCount = 0;
     const auto empty = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &counters);
     EXPECT_EQ(empty.metrics.consumerCandidateIterations, 0u);

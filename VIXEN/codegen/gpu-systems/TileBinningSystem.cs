@@ -50,8 +50,13 @@ public static class TileBinOps
         return new TileRect(minX, minY, maxX, maxY, nearDepth, CullNone);
     }
 
+    // Zero is the ViewDepth history clear value: nothing has written depth yet (the
+    // first frame) or this configuration has no ViewDepth producer (no reconstruction
+    // module, e.g. the look-dev captures). Such a tile occludes nothing; comparing
+    // against it culled every instance and the march rendered sky only.
     [KernelCallable]
-    public static bool IsBehindTileDepth(float nearDepth, float tileFarDepth) => nearDepth > tileFarDepth;
+    public static bool IsBehindTileDepth(float nearDepth, float tileFarDepth)
+        => tileFarDepth > 0.0f && nearDepth > tileFarDepth;
 
     [KernelCallable]
     public static bool CandidateBefore(float depth, uint instance, float otherDepth, uint otherInstance)
