@@ -65,6 +65,12 @@ body.layers .outputs-pinned {
     border-color: #303050;
     padding: 0;
 }
+/* The layers inspector's material input row must keep its number fields reachable. */
+body.layers .inputs-pinned {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
 body.layers .inputs-pinned:hover,
 body.layers .inputs-pinned:focus-within,
 body.layers .outputs-pinned:hover,
