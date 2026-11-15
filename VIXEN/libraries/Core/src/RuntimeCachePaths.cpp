@@ -338,14 +338,30 @@ bool AtomicWriteFile(
     }
 
 #ifdef _WIN32
-    // A reader opened without FILE_SHARE_DELETE can transiently block replacement on Windows.
-    // Readers in the cache envelope path explicitly opt into delete sharing, but keep this small
-    // retry for other callers of AtomicWriteFile that may still have an older handle open.
+    // ReplaceFileW preserves the destination name while replacing its contents, which avoids the
+    // delete-then-move window in MoveFileExW when readers hold the destination open.  MoveFileExW
+    // remains the correct operation when publishing a destination for the first time.
+    const DWORD destinationAttributes = ::GetFileAttributesW(destination.c_str());
+    const bool destinationExists = destinationAttributes != INVALID_FILE_ATTRIBUTES;
+    if (!destinationExists) {
+        const DWORD attributesError = ::GetLastError();
+        if (attributesError != ERROR_FILE_NOT_FOUND && attributesError != ERROR_PATH_NOT_FOUND) {
+            if (error) *error = "GetFileAttributesW failed with error " +
+                                std::to_string(attributesError);
+            std::filesystem::remove(temporary, ec);
+            return false;
+        }
+    }
+
     constexpr int kMaxReplaceAttempts = 8;
     DWORD lastError = ERROR_SUCCESS;
     for (int attempt = 0; attempt < kMaxReplaceAttempts; ++attempt) {
-        if (::MoveFileExW(temporary.c_str(), destination.c_str(),
-                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        const BOOL replaced = destinationExists
+            ? ::ReplaceFileW(destination.c_str(), temporary.c_str(), nullptr,
+                             REPLACEFILE_WRITE_THROUGH, nullptr, nullptr)
+            : ::MoveFileExW(temporary.c_str(), destination.c_str(),
+                            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+        if (replaced) {
             return true;
         }
 
@@ -355,7 +371,8 @@ bool AtomicWriteFile(
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    if (error) *error = "MoveFileExW failed with error " + std::to_string(lastError);
+    if (error) *error = std::string(destinationExists ? "ReplaceFileW" : "MoveFileExW") +
+                        " failed with error " + std::to_string(lastError);
     std::filesystem::remove(temporary, ec);
     return false;
 #else
