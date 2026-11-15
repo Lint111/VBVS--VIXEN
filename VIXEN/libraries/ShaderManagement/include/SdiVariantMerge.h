@@ -26,6 +26,7 @@ namespace ShaderManagement {
 struct SdiVariant {
     std::vector<std::string> features;   // defines injected for this compile
     SpirvReflectionData data;
+    std::string sourcePath;               // source file used for this compile (diagnostics)
 };
 
 /**

@@ -69,6 +69,22 @@ SdiMergeResult Fail(std::string message) {
     return r;
 }
 
+std::string DescribeVariant(const SdiVariant& variant, size_t index) {
+    std::ostringstream out;
+    out << "variant " << index << " [";
+    if (variant.features.empty()) {
+        out << "baseline";
+    } else {
+        for (size_t i = 0; i < variant.features.size(); ++i) {
+            if (i != 0) out << ", ";
+            out << variant.features[i];
+        }
+    }
+    out << "] file '" << (variant.sourcePath.empty() ? "<unknown>" : variant.sourcePath)
+        << "'";
+    return out.str();
+}
+
 } // namespace
 
 SdiMergeResult MergeSdiVariants(const std::string& programName,
@@ -120,8 +136,11 @@ SdiMergeResult MergeSdiVariants(const std::string& programName,
                     std::ostringstream msg;
                     msg << "MergeSdiVariants(" << programName << "): conflicting"
                         << " declarations at set " << setIndex << " binding "
-                        << b.binding << ": '" << occ.representative->name
-                        << "' vs '" << b.name << "'";
+                        << b.binding << ": resource '" << occ.representative->name
+                        << "' from " << DescribeVariant(variants[occ.representativeVariant],
+                                                           occ.representativeVariant)
+                        << " conflicts with resource '" << b.name << "' from "
+                        << DescribeVariant(variants[v], v);
                     return Fail(msg.str());
                 }
                 occ.presentIn.insert(v);

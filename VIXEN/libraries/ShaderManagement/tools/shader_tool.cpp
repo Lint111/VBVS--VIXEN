@@ -1573,6 +1573,7 @@ int CommandMergeVariants(const ToolOptions& options) {
 
             SdiVariant variant;
             variant.features = std::move(features);
+            variant.sourcePath = srcPath.generic_string();
             variant.data = *result.bundle->reflectionData;
             variants.push_back(std::move(variant));
         }
