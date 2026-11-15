@@ -28,6 +28,7 @@ class Witness:
         catalog = client.list()
         self.actions = {item["name"]: item for item in catalog["actions"]}
         self.events: list[dict] = []
+        self.coverage_states: list[dict] = []
 
     def log_compile_count(self) -> int:
         if not self.log_path.exists():
@@ -46,11 +47,35 @@ class Witness:
         self.events.append(event)
         return event, after - before
 
+    def await_coverage(self) -> dict:
+        deadline = time.monotonic() + 180
+        last_state = None
+        while True:
+            state = self.client.read()
+            editor = state.get("editor", {})
+            coverage_state = {
+                "frame": state["frame"],
+                "documentRevision": editor.get("documentRevision"),
+                "coverageRevision": editor.get("coverageRevision"),
+                "coverageReady": editor.get("coverageReady", False),
+            }
+            signature = tuple(coverage_state.values())
+            if signature != last_state:
+                self.coverage_states.append(coverage_state)
+                last_state = signature
+            if coverage_state["coverageReady"]:
+                return coverage_state
+            if time.monotonic() > deadline:
+                raise RuntimeError(f"coverage did not settle: {coverage_state}")
+            self.client.await_frame(after_frame=state["frame"] + 3)
+
     def shot(self, label: str, *, selection: dict | None = None) -> dict:
+        coverage_state = self.await_coverage()
         shot = self.client.readback(selection or {"type": "fullFrame"}, format="png")
         path = self.capture_dir / f"{label}.png"
         path.write_bytes(base64.b64decode(shot["pixelsBase64"]))
         shot["path"] = str(path)
+        shot["coverage"] = coverage_state
         return shot
 
     def changed_within(self, label: str, baseline_hash: int, baseline_frame: int, limit: int = 4) -> dict:
@@ -214,6 +239,7 @@ class Witness:
                                "parameterEdit": parameter_visible},
                     "materialProbe": probes, "probeLabels": points, "cutFaceProbe": cut_probe,
                     "events": witness.events,
+                    "coverageStates": witness.coverage_states,
                     "compileCounts": {"bulgeChange": change_compiles, "bulgeUndo": undo_compiles,
                                       "parameterEdit": parameter_compiles},
                     "savedDocumentSha256": saved_hash, "reopenedDocumentSha256": reopened_hash,
