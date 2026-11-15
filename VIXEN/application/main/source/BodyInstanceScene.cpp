@@ -14,8 +14,6 @@ BodyInstanceSceneStats BodyInstanceScenePiece::Update(
     lastRevision_ = sectionRevision;
     hasRevision_ = true;
     BodyInstanceSceneStats result;
-    result.dropped = instances.size() > kMaxInstances ? instances.size() - kMaxInstances : 0;
-    if (result.dropped) instances.resize(kMaxInstances); // deterministic first-row overflow policy
     result.submitted = instances.size();
     application_.SetBodyInstances(std::move(instances));
     sceneInitialized_ = true;

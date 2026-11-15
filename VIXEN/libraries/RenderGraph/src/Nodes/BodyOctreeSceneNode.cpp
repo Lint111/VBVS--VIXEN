@@ -343,7 +343,7 @@ int32_t BodyOctreeSceneNode::MarchedInstanceCount() const {
         static_cast<int32_t>(materialRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceMaterialGpu)));
     if (motionGuidesEnabled_) capacity = std::min(capacity,
         static_cast<int32_t>(motionRingCapacity_ / sizeof(Vixen::Gpu::BodyInstanceMotion)));
-    return std::clamp(std::min(instanceCount_, capacity), 0, kMarchLoopInstanceCap);
+    return std::max(0, std::min(instanceCount_, capacity));
 }
 
 void BodyOctreeSceneNode::RefreshInstanceStreams() {

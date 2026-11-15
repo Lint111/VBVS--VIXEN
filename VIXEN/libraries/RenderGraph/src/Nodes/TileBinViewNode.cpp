@@ -20,13 +20,11 @@ std::unique_ptr<NodeInstance> TileBinViewNodeType::CreateInstance(const std::str
 }
 
 TileBinViewNode::TileBinViewNode(const std::string& name, NodeType* type)
-    : TypedNode<TileBinViewNodeConfig>(name, type) {
-    graphExecutionKind = GraphExecutionKind::Cpu;
-}
+    : TypedNode<TileBinViewNodeConfig>(name, type) {}
 
-void TileBinViewNode::SetupImpl(TypedSetupContext&) {}
+void TileBinViewNode::TypedSetupImpl(TypedSetupContext&) {}
 
-void TileBinViewNode::CompileImpl(TypedCompileContext& ctx) {
+void TileBinViewNode::TypedCompileImpl(TypedCompileContext& ctx) {
     device_ = ctx.In(TileBinViewNodeConfig::VULKAN_DEVICE_IN);
     if (!device_) throw std::runtime_error("[TileBinViewNode] VULKAN_DEVICE_IN is null");
     if (!viewRing_.IsInitialized()) viewRing_.Initialize(device_, kRingSize);
@@ -37,7 +35,7 @@ void TileBinViewNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(TileBinViewNodeConfig::VIEW_BUFFER, viewRing_.GetUniformBuffer(0));
 }
 
-void TileBinViewNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void TileBinViewNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t frame = ctx.In(TileBinViewNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
     const uint32_t width = ctx.In(TileBinViewNodeConfig::WIDTH);
     const uint32_t height = ctx.In(TileBinViewNodeConfig::HEIGHT);
@@ -64,13 +62,13 @@ void TileBinViewNode::ExecuteImpl(TypedExecuteContext& ctx) {
     view->tilesX = static_cast<int32_t>((width + 7u) / 8u);
     view->tilesY = static_cast<int32_t>((height + 7u) / 8u);
     view->listCapacityLog2 = 9; // 512 candidates per tile; no 192-instance cap.
-    ++view->generation;
+    view->generation = ++generation_;
     view->instanceCount = std::max(ctx.In(TileBinViewNodeConfig::INSTANCE_COUNT), 0);
     ctx.Out(TileBinViewNodeConfig::VIEW_BUFFER, viewRing_.GetUniformBuffer(frame));
 }
 
-void TileBinViewNode::CleanupImpl(TypedCleanupContext& ctx) {
-    if (ctx.reason != CleanupReason::Recompile) viewRing_.Cleanup();
+void TileBinViewNode::TypedCleanupImpl(TypedCleanupContext&) {
+    viewRing_.Cleanup();
 }
 
 } // namespace Vixen::RenderGraph

@@ -78,7 +78,7 @@ void TileBinSortSystem_Body(int i) {
     {
         return;
     }
-    int tileIndex = tiles.values[i].index;
+    int tileIndex = i;
     tiles.values[i].index = tileIndex;
     int offered = (counters.values[tileIndex].generation == counters.values[tileIndex].activeGeneration ? counters.values[tileIndex].count : 0);
     int stored = StoredCount(offered, counters.values[tileIndex].listCapacityLog2);

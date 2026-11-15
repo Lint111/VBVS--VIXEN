@@ -21,8 +21,6 @@ struct BodyInstanceSceneStats {
 
 class BodyInstanceScenePiece final {
 public:
-    static constexpr std::size_t kMaxInstances = 192; // R213 bounded scene upload
-
     explicit BodyInstanceScenePiece(VulkanGraphApplication& application) : application_(application) {}
 
     BodyInstanceSceneStats Update(std::vector<Vixen::SVO::BodyInstanceGpu> instances,

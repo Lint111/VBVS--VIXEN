@@ -45,6 +45,7 @@ struct VoxelDocumentView {
     const VoxelDocParameterHeader* parameters;
     const VoxelDocReference* references;   // null unless the document is a version 4 file with a table
     uint32_t referenceCount;
+    uint32_t defaultMaterialReference;   // v5 header major: reference-table index + 1, zero = none
     uint32_t nextLayerId;
     const uint32_t* layerIds;
     uint32_t layerIdCount;
@@ -59,16 +60,21 @@ inline bool IsValidVoxelDocumentMaterialRegions(uint32_t majorMaterialId, uint32
     if (majorMaterialId == 0u && minorMaterialId == 0u && majorWeightPercent == 0u) return true;
     return majorMaterialId != 0u && minorMaterialId != 0u && majorWeightPercent >= 1u && majorWeightPercent <= 99u;
 }
+inline bool IsValidVoxelDocumentLegacyMaterialFields(uint32_t majorMaterialId, uint32_t minorMaterialId, uint32_t majorWeightPercent) {
+    if (minorMaterialId == 0u && majorWeightPercent == 0u) return true;
+    return IsValidVoxelDocumentMaterialRegions(majorMaterialId, minorMaterialId, majorWeightPercent);
+}
 
 inline bool ResolveVoxelDocumentWriteFormat(uint32_t authoredFormatVersion, uint32_t parameterCount,
     uint32_t majorMaterialId, uint32_t minorMaterialId, uint32_t majorWeightPercent,
-    uint32_t referenceCount, bool hasLayerPorts, uint32_t& writeFormat) {
+    uint32_t referenceCount, bool hasDefaultMaterial, bool hasLayerPorts, uint32_t& writeFormat) {
     uint32_t requested = authoredFormatVersion == 0u ? 3u : authoredFormatVersion;
     if (requested != 1u && requested != 2u && requested != 3u && requested != 4u && requested != 5u) return false;
     uint32_t required = 1u;
     if (parameterCount > 0u && required < 2u) required = 2u;
-    if ((majorMaterialId != 0u || minorMaterialId != 0u || majorWeightPercent != 0u) && required < 3u) required = 3u;
+    if ((minorMaterialId != 0u || majorWeightPercent != 0u) && required < 3u) required = 3u;
     if (referenceCount > 0u && required < 4u) required = 4u;
+    if (hasDefaultMaterial && required < 5u) required = 5u;
     if (hasLayerPorts && required < 5u) required = 5u;
     writeFormat = requested > required ? requested : required;
     return true;
@@ -82,8 +88,8 @@ inline bool ReadVoxelDocument(const uint8_t* blob, size_t len, VoxelDocumentView
     if (h.magic != 0x31434456u) return false;          // 'VDC1'
     if (h.formatVersion != 1u && h.formatVersion != 2u && h.formatVersion != 3u && h.formatVersion != 4u && h.formatVersion != 5u) return false;
     if (h.formatVersion == 1u && h.parameterCount != 0u) return false;
-    if (h.formatVersion < 3u && (h.majorMaterialId != 0u || h.minorMaterialId != 0u || h.majorWeightPercent != 0u)) return false;
-    if (h.formatVersion >= 3u && !IsValidVoxelDocumentMaterialRegions(h.majorMaterialId, h.minorMaterialId, h.majorWeightPercent)) return false;
+    if (h.formatVersion < 5u && !IsValidVoxelDocumentLegacyMaterialFields(h.majorMaterialId, h.minorMaterialId, h.majorWeightPercent)) return false;
+    if (h.formatVersion == 5u && (h.minorMaterialId != 0u || h.majorWeightPercent != 0u)) return false;
     if (h.layerCount > 256) return false;   // VoxelDocLayerView capacity bound
     const uint32_t parameterCount = h.formatVersion == 1u ? 0u : h.parameterCount;
     if (parameterCount > 6u) return false;
@@ -162,6 +168,7 @@ inline bool ReadVoxelDocument(const uint8_t* blob, size_t len, VoxelDocumentView
     view.parameters = parameters;
     view.references = references;
     view.referenceCount = referenceCount;
+    view.defaultMaterialReference = h.formatVersion == 5u ? h.majorMaterialId : 0u;
     view.nextLayerId = nextLayerId; view.layerIds = layerIds; view.layerIdCount = layerIdCount;
     view.wires = wires; view.wireCount = wireCount; view.bindings = bindings; view.bindingCount = bindingCount;
     for (uint32_t l = 0; l < h.layerCount; ++l) {
@@ -175,6 +182,16 @@ inline bool ReadVoxelDocument(const uint8_t* blob, size_t len, VoxelDocumentView
         view.layers[l].header = lh;
         view.layers[l].instructions = reinterpret_cast<const SdfInstruction*>(blob + offset);
         offset += (size_t)lh->instructionCount * sizeof(SdfInstruction);
+    }
+    if (h.formatVersion == 5u && h.majorMaterialId != 0u) {
+        if (h.majorMaterialId > referenceCount) return false;
+        const uint32_t defaultIndex = h.majorMaterialId - 1u;
+        for (uint32_t l = 0; l < h.layerCount; ++l) {
+            for (uint32_t i = 0; i < view.layers[l].header->instructionCount; ++i) {
+                const SdfInstruction& instruction = view.layers[l].instructions[i];
+                if (instruction.opCode == 113u && std::isfinite(instruction.data[0]) && instruction.data[0] >= 0.0f && std::trunc(instruction.data[0]) == instruction.data[0] && static_cast<uint32_t>(instruction.data[0]) == defaultIndex) return false;
+            }
+        }
     }
     if (offset != len) return false;   // strict total-length check
     out = view;
@@ -194,11 +211,11 @@ inline bool WriteVoxelDocument(
     uint32_t majorMaterialId, uint32_t minorMaterialId, uint32_t majorWeightPercent,
     uint8_t* outBuf, size_t outCap, size_t& outLen, uint32_t authoredFormatVersion = 0u) {
     uint32_t writeFormat = 0u;
-    if (!ResolveVoxelDocumentWriteFormat(authoredFormatVersion, parameterCount, majorMaterialId, minorMaterialId, majorWeightPercent, referenceCount, false, writeFormat)) return false;
+    if (!ResolveVoxelDocumentWriteFormat(authoredFormatVersion, parameterCount, majorMaterialId, minorMaterialId, majorWeightPercent, referenceCount, false, false, writeFormat)) return false;
     if (writeFormat > 4u) return false;   // v5 needs the layer-port overload
     if (parameterCount > 6u || (parameterCount > 0u && !parameters)) return false;
     if (referenceCount > 32u || (referenceCount > 0u && !references)) return false;
-    if (!IsValidVoxelDocumentMaterialRegions(majorMaterialId, minorMaterialId, majorWeightPercent)) return false;
+    if (!IsValidVoxelDocumentLegacyMaterialFields(majorMaterialId, minorMaterialId, majorWeightPercent)) return false;
     size_t need = sizeof(VoxelDocumentHeader) + (size_t)channelCount * sizeof(VoxelDocChannel)
                 + (size_t)parameterCount * sizeof(VoxelDocParameterHeader);
     if (writeFormat >= 4u) need += sizeof(uint32_t) + (size_t)referenceCount * sizeof(VoxelDocReference);
@@ -271,12 +288,12 @@ inline bool WriteVoxelDocumentV5(
     if (referenceCount > 0u && !references) return false;
     if (wireCount > 0u && !wires) return false;
     if (bindingCount > 0u && !bindings) return false;
-    if (parameterCount > 6u || referenceCount > 32u || !IsValidVoxelDocumentMaterialRegions(majorMaterialId, minorMaterialId, majorWeightPercent)) return false;
+    if (parameterCount > 6u || referenceCount > 32u || minorMaterialId != 0u || majorWeightPercent != 0u || (majorMaterialId > referenceCount)) return false;
     size_t need = sizeof(VoxelDocumentHeader) + (size_t)channelCount * sizeof(VoxelDocChannel) + (size_t)parameterCount * sizeof(VoxelDocParameterHeader) + sizeof(uint32_t) + (size_t)referenceCount * sizeof(VoxelDocReference) + sizeof(uint32_t) * 2u + (size_t)layerIdCount * sizeof(uint32_t) + sizeof(uint32_t) + (size_t)wireCount * sizeof(VoxelDocWire) + sizeof(uint32_t) + (size_t)bindingCount * sizeof(VoxelDocBinding);
     for (uint32_t l = 0; l < layerCount; ++l) need += sizeof(VoxelDocLayerHeader) + (size_t)layers[l].header.instructionCount * sizeof(SdfInstruction);
     if (!outBuf || outCap < need) { outLen = need; return false; }
     VoxelDocumentHeader h{}; h.magic = 
-0x31434456u; h.formatVersion = 5u; h.channelCount = channelCount; h.layerCount = layerCount; h.parameterCount = parameterCount; h.majorMaterialId = majorMaterialId; h.minorMaterialId = minorMaterialId; h.majorWeightPercent = majorWeightPercent;
+0x31434456u; h.formatVersion = 5u; h.channelCount = channelCount; h.layerCount = layerCount; h.parameterCount = parameterCount; h.majorMaterialId = majorMaterialId; h.minorMaterialId = 0u; h.majorWeightPercent = 0u;
     size_t offset = 0;
     for (size_t i = 0; i < sizeof(h); ++i) { outBuf[offset + i] = reinterpret_cast<const uint8_t*>(&h)[i]; }
     offset += sizeof(h);

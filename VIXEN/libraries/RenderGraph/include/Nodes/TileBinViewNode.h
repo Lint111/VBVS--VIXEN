@@ -12,7 +12,9 @@ namespace Vixen::RenderGraph {
 class TileBinViewNodeType : public TypedNodeType<TileBinViewNodeConfig> {
 public:
     explicit TileBinViewNodeType(const std::string& typeName = "TileBinView")
-        : TypedNodeType<TileBinViewNodeConfig>(typeName) {}
+        : TypedNodeType<TileBinViewNodeConfig>(typeName) {
+        graphExecutionKind = GraphExecutionKind::Cpu;
+    }
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& name) const override;
 };
 
@@ -23,15 +25,16 @@ public:
     ~TileBinViewNode() override = default;
 
 protected:
-    void SetupImpl(TypedSetupContext& ctx) override;
-    void CompileImpl(TypedCompileContext& ctx) override;
-    void ExecuteImpl(TypedExecuteContext& ctx) override;
-    void CleanupImpl(TypedCleanupContext& ctx) override;
+    void TypedSetupImpl(TypedSetupContext& ctx) override;
+    void TypedCompileImpl(TypedCompileContext& ctx) override;
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override;
+    void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     static const uint32_t kRingSize;
     PerFrameResources viewRing_;
     VulkanDevice* device_ = nullptr;
+    uint32_t generation_ = 0;
 };
 
 } // namespace Vixen::RenderGraph

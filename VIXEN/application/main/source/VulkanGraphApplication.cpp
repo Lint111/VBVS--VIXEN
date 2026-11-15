@@ -2834,20 +2834,6 @@ void VulkanGraphApplication::SetBodyInstances(std::vector<Vixen::SVO::BodyInstan
     // Replaces the StarSystemGenerator::Register + MarkVoxelSceneDirty flow for body rendering.
     auto* node = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
         renderGraph->GetInstance(bodyOctreeSceneNode_));
-    // R796 (R857.9): a scene over the march loop's capacity silently loses its tail. Say so once per
-    // change of the requested count (hosts re-submit every frame), located and actionable. The
-    // application logger is used because node loggers are off unless a diagnostic enables them.
-    const auto requested = static_cast<int32_t>(instances.size());
-    constexpr int32_t kCap = Vixen::RenderGraph::BodyOctreeSceneNode::kMarchLoopInstanceCap;
-    if (requested > kCap && requested != capWarnedBodyInstanceCount_ && mainLogger) {
-        mainLogger->Warning("[VulkanGraphApplication::SetBodyInstances] " + std::to_string(requested) +
-            " instances exceed the march loop capacity of " + std::to_string(kCap) +
-            " (VIXEN/shaders/TraceWorld.glsl, `clamp(pc.instanceCount, 0, 3 * 64)` in TraceWorld and TraceWorldShadowImpl): instances " +
-            std::to_string(kCap) + ".." + std::to_string(requested - 1) +
-            " are never marched or shadowed. Submit " + std::to_string(kCap) +
-            " instances or fewer; the tile candidate lists (GB1) remove this cap.");
-    }
-    capWarnedBodyInstanceCount_ = requested > kCap ? requested : 0;
     if (node) {
         node->SetInstances(std::move(instances));
         AdvanceRecipeEditSerial();
@@ -3055,11 +3041,9 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
 
     const Vixen::RenderGraph::CameraData& cam = camera->GetCurrentCameraData();
 
-    // Change-detection only (not part of the trigger formula itself) — re-evaluating every
-    // frame is cheap, but SortInstancesFrontToBack is a real (if small) per-frame sort, so
-    // skip it on a genuinely static camera. Orientation matters independently of position
-    // (M4b: it moves bodies in/out of frustum on its own), so cameraDir is compared too —
-    // not just cameraPos/fov.
+    // Change-detection only (not part of the trigger formula itself). Orientation matters
+    // independently of position (M4b: it moves bodies in/out of frustum on its own), so
+    // cameraDir is compared too — not just cameraPos/fov.
     constexpr float kPosEpsilon = 1e-4f;
     constexpr float kDirEpsilon = 1e-5f;
     constexpr float kFovEpsilon = 1e-4f;
@@ -3178,12 +3162,6 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     bodyScene->RequestBrickResidency(anyInstanceWantsBricks);
     lastResidencyGranted_ = anyInstanceWantsBricks;  // Inc2 M3: next re-check's occlusion-gate input
 
-    // M4b: re-sort front-to-back so the shader's per-ray gridT.x>bestT occlusion reject
-    // (BodyInstanceRayMarch.comp) actually has closer instances visited first in the
-    // instance loop — this is the live call site the M4b Progress Log flagged as missing
-    // (SortInstancesFrontToBack existed and was tested in isolation, but had zero
-    // production call sites until this milestone).
-    bodyScene->SortInstancesFrontToBack(cam.cameraPos);
 }
 
 GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {

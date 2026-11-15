@@ -16,7 +16,7 @@ public static class TileBinSortSystem
         ref TileHeader[] tiles, ref TileSortedCandidate[] sortedCandidates, int i)
     {
         if (tileFarDepth.Previous[0].x < -3.402823e38f) return;
-        int tileIndex = tiles[i].index;
+        int tileIndex = i;
         tiles[i].index = tileIndex;
         int offered = counters[tileIndex].generation == counters[tileIndex].activeGeneration ? counters[tileIndex].count : 0;
         int stored = TileBinOps.StoredCount(offered, counters[tileIndex].listCapacityLog2);

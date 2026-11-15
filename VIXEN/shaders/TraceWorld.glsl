@@ -360,24 +360,6 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             ? 1.0
             : min(instanceMinimumAxisScale(instanceIndex) * instRayScale, 1.0);
 
-#ifdef VIXEN_B2_PROXY_PREPASS
-        // Proxy AABBs exist for stored/octree bodies. Procedural providers keep
-        // their analytic path unconditionally: proxies accelerate, geometry
-        // decides visibility, and an absent proxy can never suppress a caster.
-        if (pc.proxyAabbCount > 0u && inst.providerKind != PROVIDER_PROCEDURAL) {
-            const uint candidateIndex = uint(instIdx);
-            const bool candidate = candidateIndex < 192u &&
-                (g_b2CandidateMask[candidateIndex >> 5u] &
-                 (1u << (candidateIndex & 31u))) != 0u;
-            if (!candidate) {
-#ifdef VIXEN_GPU_TRACE_HOOKS
-                instanceIterCount[instIdx] = 0u;
-#endif
-                continue;
-            }
-        }
-#endif
-
         // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
         // Lazy-Procedural-Delta-Baseline Inc0 M5/M6 Task 11/12/13: recipeId < 2 stays on
         // the hand-written legacy analytic path (byte-identical formula); recipeId >= 2 is
@@ -1020,7 +1002,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
     }
 #endif
 
-    int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap, matches TraceWorld
+    int numInstances = max(pc.instanceCount, 0);
     for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
 
         // Shadow hard rule: only bucketed-dispatch ownership bits are legal here. B1's
