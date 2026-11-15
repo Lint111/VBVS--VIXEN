@@ -335,6 +335,18 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #endif
         if (instIdx < 0 || instIdx >= numInstances) continue;
 
+        // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 + B1: skip a caller-specified instance
+        // subset (bucketed-dispatch ownership and camera-visibility culling, see
+        // InstanceSkipMaskBuffer in SceneBindings.glsl). The tile list decides which
+        // instances a ray examines; it never overrides the skip contract. A no-op whenever
+        // both producer regions are empty/unbound.
+        if (isInstanceSkippedForPrimary(instIdx)) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
+            instanceIterCount[instIdx] = 0u;
+#endif
+            continue;
+        }
+
         // GB0: every instance the loop actually examines for this ray is a candidate.
         incrLeafInstrCandidate();
         BodyInstance inst = bodyInstances[instIdx];
@@ -365,6 +377,27 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         const float conservativeSdfStepScale = axisAlignedUniform
             ? 1.0
             : min(instanceMinimumAxisScale(instanceIndex) * instRayScale, 1.0);
+
+#ifdef VIXEN_B2_PROXY_PREPASS
+        // Proxy AABBs exist for stored/octree bodies. Procedural providers keep
+        // their analytic path unconditionally: proxies accelerate, geometry
+        // decides visibility, and an absent proxy can never suppress a caster.
+        // The candidate mask covers the first 192 instances only; with GB1 the
+        // march can reach later instances, which have no proxy verdict and so
+        // stay candidates (conservative) instead of being dropped.
+        if (pc.proxyAabbCount > 0u && inst.providerKind != PROVIDER_PROCEDURAL) {
+            const uint candidateIndex = uint(instIdx);
+            const bool candidate = candidateIndex >= 192u ||
+                (g_b2CandidateMask[candidateIndex >> 5u] &
+                 (1u << (candidateIndex & 31u))) != 0u;
+            if (!candidate) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
+                instanceIterCount[instIdx] = 0u;
+#endif
+                continue;
+            }
+        }
+#endif
 
         // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
         // Lazy-Procedural-Delta-Baseline Inc0 M5/M6 Task 11/12/13: recipeId < 2 stays on
