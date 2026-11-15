@@ -255,13 +255,14 @@ TEST(RecipeRegistry, ArityTableCoversAllValidOpcodes) {
     constexpr uint8_t kLegitimateNoOps[] = {
         (uint8_t)SdfOpCode::Output,
         (uint8_t)SdfOpCode::ComposeFloat3,
-        // SampleSurface consumes/produces a typed set rather than the scalar
-        // value/position stacks represented by RecipeStackStaticArity.
-        (uint8_t)SdfOpCode::SampleSurface,
     };
     auto isLegitNoOp = [&](uint8_t v) {
         for (auto n : kLegitimateNoOps) if (v == n) return true;
-        return false;
+        // Set-category opcodes (SampleSurface, SamplePath, Filter, ...) consume and
+        // produce typed set ports rather than the scalar value/position stacks that
+        // RecipeStackStaticArity describes; the generated catalogue says which they are.
+        const Recipe::SdfOpInfo* info = Recipe::FindSdfOpInfo(static_cast<SdfOpCode>(v));
+        return info != nullptr && info->category == Recipe::SdfOpCategory::Set;
     };
 
     std::vector<uint8_t> missing;
