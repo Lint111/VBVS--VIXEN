@@ -782,6 +782,12 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         set(_tool_cached_bin_run "${_tool_cached_bin}")
         set(_tool_artifacts_run "${_tool_cache}/artifacts")
         set(_tool_build_command "${VIXEN_DOTNET}" build "${_yk_tool}/CodegenTool.csproj")
+        # The Windows kernel snapshot is an immutable source materialization. Its
+        # ignored Roslyn analyzer cache/stamp is not part of the snapshot, and the
+        # native consumer build must not try to deploy that analyzer back into it.
+        # Analyzer deployment is build plumbing only; CodegenTool's compiled
+        # assembly and generated output remain the same as the WSL build.
+        list(APPEND _tool_build_command -p:DisableUnityAnalyzerAutoDeploy=true)
     endif()
     # NETSDK1188 is the SDK complaining that Microsoft.CodeAnalysis 4.8.0 ships
     # resource folders with locales .NET does not recognise (26 warnings per pin
