@@ -358,7 +358,7 @@ bool AtomicWriteFile(
     const auto renameInfoSize = offsetof(FILE_RENAME_INFO, FileName) + destinationNameBytes;
     std::vector<char> renameInfoStorage(renameInfoSize);
     auto* renameInfo = reinterpret_cast<FILE_RENAME_INFO*>(renameInfoStorage.data());
-    renameInfo->Flags = FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS;
+    renameInfo->Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
     renameInfo->RootDirectory = nullptr;
     renameInfo->FileNameLength = static_cast<DWORD>(destinationNameBytes);
     std::memcpy(renameInfo->FileName, destinationName.data(), destinationNameBytes);
