@@ -333,7 +333,17 @@ run_bat() {
     # The last link/stage step of a native build is silent and uses almost no WSL-side CPU, which
     # the queue's idle watchdog reads as a stall (T-6207). Say that the Windows process is alive.
     local heartbeat_pid started=$SECONDS
-    (while sleep "${VIXEN_NATIVE_HEARTBEAT_S:-30}"; do echo "[vixen-native] heartbeat: $bat_name running $((SECONDS - started))s"; done) &
+    heartbeat_loop() {
+        local sleep_pid=""
+        trap 'if [[ "$sleep_pid" =~ ^[1-9][0-9]*$ ]]; then kill "$sleep_pid" 2>/dev/null || true; fi; exit 0' TERM INT HUP
+        while :; do
+            sleep "${VIXEN_NATIVE_HEARTBEAT_S:-30}" & sleep_pid=$!
+            wait "$sleep_pid" || exit 0
+            sleep_pid=""
+            echo "[vixen-native] heartbeat: $bat_name running $((SECONDS - started))s"
+        done
+    }
+    heartbeat_loop &
     heartbeat_pid=$!
     # Background + wait so a SIGTERM/SIGINT/SIGHUP reaches the trap at once; bash defers traps
     # until a foreground pipeline ends, and the interop client exiting does not stop the
