@@ -105,6 +105,24 @@ TEST_F(TextShapingFixture, LatinGlyphIdsAndByteClustersAreStable) {
     EXPECT_EQ(FormatGlyphs(shaped.visualRuns[0].glyphs), "105:0,72:1,49:4,55:5");
 }
 
+TEST_F(TextShapingFixture, DirectCodepointInputCanBeShaped) {
+    latinFace = LoadFace(TEXT_LATO_FONT_PATH);
+    ASSERT_NE(latinFace, nullptr);
+
+    const auto preset = MakePreset(Vixen::Text::TextDirection::LeftToRight,
+                                   Vixen::Text::ShapingClass::Default,
+                                   Vixen::Text::LineBreakingClass::Word, 1);
+    constexpr std::array<std::uint32_t, 1> requiredScripts{ScriptTag('L', 'a', 't', 'n')};
+    const Vixen::Text::ShapedText shaped = Vixen::Text::ShapeUtf8(
+        preset, requiredScripts, latinFace, "A", "en");
+
+    ASSERT_EQ(shaped.visualRuns.size(), 1U);
+    ASSERT_EQ(shaped.visualRuns[0].glyphs.size(), 1U);
+    EXPECT_EQ(shaped.visualRuns[0].glyphs[0].glyphId,
+              FT_Get_Char_Index(latinFace, U'A'));
+    EXPECT_EQ(shaped.visualRuns[0].glyphs[0].cluster, 0U);
+}
+
 TEST_F(TextShapingFixture, GlyphOutlinePayloadPreservesCurveTypesAndHoles) {
     latinFace = LoadFace(TEXT_LATO_FONT_PATH);
     ASSERT_NE(latinFace, nullptr);
