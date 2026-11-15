@@ -205,7 +205,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "b96c9abc67b4f84731624f44af0cdda3f85d6482")
+set(_vixen_tracked_yeroket_kernel_sha "a001ab9b080f4357b86f51467098da8815cc6d6c")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()

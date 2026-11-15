@@ -148,6 +148,6 @@ void main()
     if (axisX >= pc._ExtentX) return;
     if (axisY >= pc._ExtentY) return;
     uint linearId = (axisX + axisY * pc._ExtentX);
-    if (int(linearId) >= view.tilesX * view.tilesY) return;
+    if (int(linearId) >= view.values[0].tilesX * view.values[0].tilesY) return;
     TileBinSortSystem_Body(view.values[0], int(linearId));
 }

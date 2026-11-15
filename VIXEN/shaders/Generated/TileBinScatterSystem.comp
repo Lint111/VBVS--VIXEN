@@ -232,6 +232,6 @@ void main()
     if (axisX >= pc._ExtentX) return;
     if (axisY >= pc._ExtentY) return;
     uint linearId = (axisX + axisY * pc._ExtentX);
-    if (int(linearId) >= view.instanceCount) return;
+    if (int(linearId) >= view.values[0].instanceCount) return;
     TileBinScatterSystem_Body(bounds.values[linearId], view.values[0], int(linearId));
 }
