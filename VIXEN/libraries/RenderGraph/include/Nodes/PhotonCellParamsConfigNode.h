@@ -12,6 +12,8 @@
 
 namespace Vixen::RenderGraph {
 
+class PhotonCellParamsConfigNode;
+
 struct PhotonCellConfiguration {
     float cellSize0 = Vixen::SVO::PhotonCells::kCellSize0;
     float temporalAlpha = Vixen::SVO::PhotonCells::kTemporalAlpha;
@@ -23,15 +25,13 @@ struct PhotonCellConfiguration {
 };
 
 class PhotonCellParamsConfigNodeType
-    : public TypedNodeType<PhotonCellParamsConfigNodeConfig> {
+    : public TypedNodeType<PhotonCellParamsConfigNodeConfig, PhotonCellParamsConfigNode> {
 public:
     explicit PhotonCellParamsConfigNodeType(
         const std::string& typeName = "PhotonCellParamsConfig")
-        : TypedNodeType<PhotonCellParamsConfigNodeConfig>(typeName) {}
+        : TypedNodeType<PhotonCellParamsConfigNodeConfig, PhotonCellParamsConfigNode>(typeName) {}
     ~PhotonCellParamsConfigNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName) const override;
 };
 
 /**

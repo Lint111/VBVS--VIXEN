@@ -58,9 +58,6 @@ Vixen::Gpu::ShadowConfig MakeDefaultShadowConfig() {
 
 // ====== ShadowConfigNodeType ======
 
-std::unique_ptr<NodeInstance> ShadowConfigNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<ShadowConfigNode>(n, const_cast<ShadowConfigNodeType*>(this));
-}
 
 // ====== ShadowConfigNode ======
 

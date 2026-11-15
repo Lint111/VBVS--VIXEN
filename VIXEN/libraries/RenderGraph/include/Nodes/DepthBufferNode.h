@@ -71,14 +71,13 @@ private:
 /**
  * @brief Type definition for DepthBufferNode
  */
-class DepthBufferNodeType : public TypedNodeType<DepthBufferNodeConfig> {
+class DepthBufferNode;
+
+class DepthBufferNodeType : public TypedNodeType<DepthBufferNodeConfig, DepthBufferNode> {
 public:
     DepthBufferNodeType(const std::string& typeName = "DepthBuffer")
-        : TypedNodeType<DepthBufferNodeConfig>(typeName) {}
+        : TypedNodeType<DepthBufferNodeConfig, DepthBufferNode>(typeName) {}
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 } // namespace Vixen::RenderGraph

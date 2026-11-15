@@ -22,13 +22,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for ShellRevalidateNode (Surface-Shell ESVO cache — GPU dispatch)
  */
-class ShellRevalidateNodeType : public TypedNodeType<ShellRevalidateNodeConfig> {
+class ShellRevalidateNode;
+
+class ShellRevalidateNodeType : public TypedNodeType<ShellRevalidateNodeConfig, ShellRevalidateNode> {
 public:
     ShellRevalidateNodeType(const std::string& typeName = "ShellRevalidate")
-        : TypedNodeType<ShellRevalidateNodeConfig>(typeName) {}
+        : TypedNodeType<ShellRevalidateNodeConfig, ShellRevalidateNode>(typeName) {}
     ~ShellRevalidateNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

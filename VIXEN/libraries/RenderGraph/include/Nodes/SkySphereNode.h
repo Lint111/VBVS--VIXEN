@@ -15,13 +15,14 @@
 namespace Vixen::RenderGraph {
 
 /** @brief Node type for the persistent octahedral sky-sphere image. */
-class SkySphereNodeType : public TypedNodeType<SkySphereNodeConfig> {
+class SkySphereNode;
+
+class SkySphereNodeType : public TypedNodeType<SkySphereNodeConfig, SkySphereNode> {
 public:
     SkySphereNodeType(const std::string& typeName = "SkySphere")
-        : TypedNodeType<SkySphereNodeConfig>(typeName) {}
+        : TypedNodeType<SkySphereNodeConfig, SkySphereNode>(typeName) {}
     virtual ~SkySphereNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

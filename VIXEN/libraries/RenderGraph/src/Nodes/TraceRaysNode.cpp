@@ -21,13 +21,6 @@ namespace Vixen::RenderGraph {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> TraceRaysNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::unique_ptr<NodeInstance>(
-        new TraceRaysNode(instanceName, const_cast<TraceRaysNodeType*>(this))
-    );
-}
 
 // ============================================================================
 // TRACE RAYS NODE IMPLEMENTATION

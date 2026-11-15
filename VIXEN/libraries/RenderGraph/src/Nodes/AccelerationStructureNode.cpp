@@ -16,13 +16,6 @@ namespace Vixen::RenderGraph {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> AccelerationStructureNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::unique_ptr<NodeInstance>(
-        new AccelerationStructureNode(instanceName, const_cast<AccelerationStructureNodeType*>(this))
-    );
-}
 
 // ============================================================================
 // ACCELERATION STRUCTURE NODE IMPLEMENTATION

@@ -16,13 +16,14 @@ bool ResolveAccumulationReprojectionEnabled();
 /**
  * @brief Node type for AccumulationConfigNode.
  */
-class AccumulationConfigNodeType : public TypedNodeType<AccumulationConfigNodeConfig> {
+class AccumulationConfigNode;
+
+class AccumulationConfigNodeType : public TypedNodeType<AccumulationConfigNodeConfig, AccumulationConfigNode> {
 public:
     AccumulationConfigNodeType(const std::string& typeName = "AccumulationConfig")
-        : TypedNodeType<AccumulationConfigNodeConfig>(typeName) {}
+        : TypedNodeType<AccumulationConfigNodeConfig, AccumulationConfigNode>(typeName) {}
     virtual ~AccumulationConfigNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

@@ -12,14 +12,6 @@ namespace Vixen::RenderGraph {
 
 // ====== GeometryRenderNodeType ======
 
-std::unique_ptr<NodeInstance> GeometryRenderNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<GeometryRenderNode>(
-        instanceName,
-        const_cast<GeometryRenderNodeType*>(this)
-    );
-}
 
 // ====== GeometryRenderNode ======
 

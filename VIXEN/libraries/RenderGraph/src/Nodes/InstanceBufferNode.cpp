@@ -34,9 +34,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== InstanceBufferNodeType ======
 
-std::unique_ptr<NodeInstance> InstanceBufferNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<InstanceBufferNode>(n, const_cast<InstanceBufferNodeType*>(this));
-}
 
 // ====== InstanceBufferNode ======
 

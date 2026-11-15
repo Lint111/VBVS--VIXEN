@@ -23,15 +23,14 @@ namespace Vixen::RenderGraph {
  *
  * Factory for creating MultiDispatchNode instances.
  */
-class MultiDispatchNodeType : public TypedNodeType<MultiDispatchNodeConfig> {
+class MultiDispatchNode;
+
+class MultiDispatchNodeType : public TypedNodeType<MultiDispatchNodeConfig, MultiDispatchNode> {
 public:
     MultiDispatchNodeType(const std::string& typeName = "MultiDispatch")
-        : TypedNodeType<MultiDispatchNodeConfig>(typeName) {}
+        : TypedNodeType<MultiDispatchNodeConfig, MultiDispatchNode>(typeName) {}
     virtual ~MultiDispatchNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

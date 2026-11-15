@@ -35,9 +35,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== DepthTargetNodeType ======
 
-std::unique_ptr<NodeInstance> DepthTargetNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<DepthTargetNode>(n, const_cast<DepthTargetNodeType*>(this));
-}
 
 // ====== DepthTargetNode ======
 

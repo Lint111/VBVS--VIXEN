@@ -233,9 +233,6 @@ namespace Vixen::RenderGraph {
 
 using namespace Vixen::Vulkan::Resources;
 
-std::unique_ptr<NodeInstance> SkySphereNodeType::CreateInstance(const std::string& name) const {
-    return std::make_unique<SkySphereNode>(name, const_cast<SkySphereNodeType*>(this));
-}
 
 SkySphereNode::SkySphereNode(const std::string& name, NodeType* type)
     : TypedNode<SkySphereNodeConfig>(name, type) {

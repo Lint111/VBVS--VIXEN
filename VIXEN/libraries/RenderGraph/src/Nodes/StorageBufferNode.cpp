@@ -35,9 +35,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== StorageBufferNodeType ======
 
-std::unique_ptr<NodeInstance> StorageBufferNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<StorageBufferNode>(n, const_cast<StorageBufferNodeType*>(this));
-}
 
 // ====== StorageBufferNode ======
 

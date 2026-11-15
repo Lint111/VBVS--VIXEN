@@ -3,10 +3,6 @@
 
 namespace Vixen::RenderGraph {
 
-std::unique_ptr<NodeInstance> ReconstructionHistoryStateNodeType::CreateInstance(const std::string& name) const {
-    return std::make_unique<ReconstructionHistoryStateNode>(name,
-        const_cast<ReconstructionHistoryStateNodeType*>(this));
-}
 
 void ReconstructionHistoryStateNode::TypedCompileImpl(TypedCompileContext& ctx) {
     state_.Invalidate(ReconstructionHistoryReset::Recompile);

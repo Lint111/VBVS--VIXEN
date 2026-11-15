@@ -34,11 +34,6 @@ static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> ComputeDispatchNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<ComputeDispatchNode>(instanceName, const_cast<ComputeDispatchNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR

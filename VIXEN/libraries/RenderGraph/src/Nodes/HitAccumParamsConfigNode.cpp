@@ -24,9 +24,6 @@ static constexpr VkDeviceSize kHitAccumParamsBufferSize = 48;
 
 // ====== HitAccumParamsConfigNodeType ======
 
-std::unique_ptr<NodeInstance> HitAccumParamsConfigNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<HitAccumParamsConfigNode>(n, const_cast<HitAccumParamsConfigNodeType*>(this));
-}
 
 // ====== HitAccumParamsConfigNode ======
 

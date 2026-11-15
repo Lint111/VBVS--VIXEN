@@ -145,9 +145,6 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
 
 // ====== ProbeGridConfigNodeType ======
 
-std::unique_ptr<NodeInstance> ProbeGridConfigNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<ProbeGridConfigNode>(n, const_cast<ProbeGridConfigNodeType*>(this));
-}
 
 // ====== ProbeGridConfigNode ======
 

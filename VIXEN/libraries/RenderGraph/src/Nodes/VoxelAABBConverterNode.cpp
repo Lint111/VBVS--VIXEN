@@ -12,13 +12,6 @@ namespace Vixen::RenderGraph {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> VoxelAABBConverterNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::unique_ptr<NodeInstance>(
-        new VoxelAABBConverterNode(instanceName, const_cast<VoxelAABBConverterNodeType*>(this))
-    );
-}
 
 // ============================================================================
 // VOXEL AABB CONVERTER NODE IMPLEMENTATION

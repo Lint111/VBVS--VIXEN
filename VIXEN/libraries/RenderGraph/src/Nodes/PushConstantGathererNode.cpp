@@ -190,11 +190,6 @@ private:
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> PushConstantGathererNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<PushConstantGathererNode>(instanceName, const_cast<PushConstantGathererNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR

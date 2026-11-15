@@ -22,14 +22,6 @@ namespace Vixen::RenderGraph {
 
 // ====== GraphicsPipelineNodeType ======
 
-std::unique_ptr<NodeInstance> GraphicsPipelineNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<GraphicsPipelineNode>(
-        instanceName,
-        const_cast<GraphicsPipelineNodeType*>(this)
-    );
-}
 
 // ====== GraphicsPipelineNode ======
 

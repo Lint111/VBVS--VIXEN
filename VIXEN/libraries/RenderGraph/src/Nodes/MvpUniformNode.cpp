@@ -33,9 +33,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== MvpUniformNodeType ======
 
-std::unique_ptr<NodeInstance> MvpUniformNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<MvpUniformNode>(n, const_cast<MvpUniformNodeType*>(this));
-}
 
 // ====== MvpUniformNode ======
 

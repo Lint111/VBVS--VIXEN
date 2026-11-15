@@ -37,9 +37,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== RenderTargetNodeType ======
 
-std::unique_ptr<NodeInstance> RenderTargetNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<RenderTargetNode>(n, const_cast<RenderTargetNodeType*>(this));
-}
 
 // ====== RenderTargetNode ======
 

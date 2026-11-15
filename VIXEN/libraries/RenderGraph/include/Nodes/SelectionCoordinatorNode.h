@@ -13,15 +13,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for the engine-wide selection coordinator (SEL-P2).
  */
-class SelectionCoordinatorNodeType : public TypedNodeType<SelectionCoordinatorNodeConfig> {
+class SelectionCoordinatorNode;
+
+class SelectionCoordinatorNodeType : public TypedNodeType<SelectionCoordinatorNodeConfig, SelectionCoordinatorNode> {
 public:
     SelectionCoordinatorNodeType(const std::string& typeName = "SelectionCoordinator")
-        : TypedNodeType<SelectionCoordinatorNodeConfig>(typeName) {}
+        : TypedNodeType<SelectionCoordinatorNodeConfig, SelectionCoordinatorNode>(typeName) {}
     ~SelectionCoordinatorNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

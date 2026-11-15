@@ -33,9 +33,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== WorldPosHistoryNodeType ======
 
-std::unique_ptr<NodeInstance> WorldPosHistoryNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<WorldPosHistoryNode>(n, const_cast<WorldPosHistoryNodeType*>(this));
-}
 
 // ====== WorldPosHistoryNode ======
 

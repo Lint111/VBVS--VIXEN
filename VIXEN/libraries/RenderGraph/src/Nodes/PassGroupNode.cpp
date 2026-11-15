@@ -20,14 +20,6 @@ namespace Vixen::RenderGraph {
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> PassGroupNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<PassGroupNode>(
-        instanceName,
-        const_cast<PassGroupNodeType*>(this)
-    );
-}
 
 // ============================================================================
 // CONSTRUCTOR

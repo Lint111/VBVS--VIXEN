@@ -32,15 +32,14 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 107
  */
-class DescriptorSetNodeType : public TypedNodeType<DescriptorSetNodeConfig> {
+class DescriptorSetNode;
+
+class DescriptorSetNodeType : public TypedNodeType<DescriptorSetNodeConfig, DescriptorSetNode> {
 public:
     DescriptorSetNodeType(const std::string& typeName = "DescriptorSet")
-        : TypedNodeType<DescriptorSetNodeConfig>(typeName) {}
+        : TypedNodeType<DescriptorSetNodeConfig, DescriptorSetNode>(typeName) {}
     virtual ~DescriptorSetNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

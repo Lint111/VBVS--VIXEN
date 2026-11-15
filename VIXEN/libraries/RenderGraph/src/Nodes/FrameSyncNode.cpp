@@ -15,14 +15,6 @@ namespace Vixen::RenderGraph {
 
 // ====== FrameSyncNodeType ======
 
-std::unique_ptr<NodeInstance> FrameSyncNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<FrameSyncNode>(
-        instanceName,
-        const_cast<NodeType*>(static_cast<const NodeType*>(this))
-    );
-}
 
 // ====== FrameSyncNode ======
 

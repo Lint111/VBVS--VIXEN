@@ -34,9 +34,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== AccumulationHistoryNodeType ======
 
-std::unique_ptr<NodeInstance> AccumulationHistoryNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<AccumulationHistoryNode>(n, const_cast<AccumulationHistoryNodeType*>(this));
-}
 
 // ====== AccumulationHistoryNode ======
 

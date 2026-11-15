@@ -31,11 +31,6 @@ namespace Vixen::RenderGraph {
 // InstanceNodeType
 // ============================================================================
 
-std::unique_ptr<NodeInstance> InstanceNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<InstanceNode>(instanceName, const_cast<InstanceNodeType*>(this));
-}
 
 // ============================================================================
 // InstanceNode

@@ -33,11 +33,10 @@ private:
     }
 };
 
-class RenderTargetExtentNodeType final : public TypedNodeType<RenderTargetExtentNodeConfig> {
+class RenderTargetExtentNode;
+
+class RenderTargetExtentNodeType final : public TypedNodeType<RenderTargetExtentNodeConfig, RenderTargetExtentNode> {
 public:
     RenderTargetExtentNodeType() : TypedNodeType("RenderTargetExtent") { graphExecutionKind = GraphExecutionKind::Cpu; }
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& name) const override {
-        return std::make_unique<RenderTargetExtentNode>(name, const_cast<RenderTargetExtentNodeType*>(this));
-    }
 };
 }

@@ -15,13 +15,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for LightingConfigNode.
  */
-class LightingConfigNodeType : public TypedNodeType<LightingConfigNodeConfig> {
+class LightingConfigNode;
+
+class LightingConfigNodeType : public TypedNodeType<LightingConfigNodeConfig, LightingConfigNode> {
 public:
     LightingConfigNodeType(const std::string& typeName = "LightingConfig")
-        : TypedNodeType<LightingConfigNodeConfig>(typeName) {}
+        : TypedNodeType<LightingConfigNodeConfig, LightingConfigNode>(typeName) {}
     virtual ~LightingConfigNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

@@ -30,13 +30,14 @@ struct InputConfig {
 /**
  * @brief Node type for input handling
  */
-class InputNodeType : public TypedNodeType<InputNodeConfig> {
+class InputNode;
+
+class InputNodeType : public TypedNodeType<InputNodeConfig, InputNode> {
 public:
     InputNodeType(const std::string& typeName = "Input")
-        : TypedNodeType<InputNodeConfig>(typeName) {}
+        : TypedNodeType<InputNodeConfig, InputNode>(typeName) {}
     virtual ~InputNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

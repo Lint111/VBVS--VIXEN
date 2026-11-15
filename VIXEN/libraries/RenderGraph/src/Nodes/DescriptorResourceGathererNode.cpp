@@ -16,11 +16,6 @@ namespace Vixen::RenderGraph {
 // DescriptorResourceGathererNodeType Implementation
 //-----------------------------------------------------------------------------
 
-std::unique_ptr<NodeInstance> DescriptorResourceGathererNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<DescriptorResourceGathererNode>(instanceName, const_cast<DescriptorResourceGathererNodeType*>(this));
-}
 
 //-----------------------------------------------------------------------------
 // DescriptorResourceGathererNode Implementation

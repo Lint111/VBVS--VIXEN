@@ -31,14 +31,6 @@ static constexpr uint32_t DESCRIPTOR_SET_RING_DEPTH = 4;
 
 // ===== NODE TYPE =====
 
-std::unique_ptr<NodeInstance> DescriptorSetNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<DescriptorSetNode>(
-        instanceName,
-        const_cast<DescriptorSetNodeType*>(this)
-    );
-}
 
 // ===== NODE INSTANCE =====
 

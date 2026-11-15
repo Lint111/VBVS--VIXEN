@@ -13,9 +13,6 @@ namespace Vixen::RenderGraph {
 
 // ====== VertexBufferNodeType ======
 
-std::unique_ptr<NodeInstance> VertexBufferNodeType::CreateInstance(const std::string& instanceName) const {
-    return std::make_unique<VertexBufferNode>(instanceName, const_cast<VertexBufferNodeType*>(this));
-}
 
 // ====== VertexBufferNode ======
 

@@ -11,13 +11,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for the persistent DDGI probe atlas image (irradiance or visibility).
  */
-class ProbeAtlasNodeType : public TypedNodeType<ProbeAtlasNodeConfig> {
+class ProbeAtlasNode;
+
+class ProbeAtlasNodeType : public TypedNodeType<ProbeAtlasNodeConfig, ProbeAtlasNode> {
 public:
     ProbeAtlasNodeType(const std::string& typeName = "ProbeAtlas")
-        : TypedNodeType<ProbeAtlasNodeConfig>(typeName) {}
+        : TypedNodeType<ProbeAtlasNodeConfig, ProbeAtlasNode>(typeName) {}
     virtual ~ProbeAtlasNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

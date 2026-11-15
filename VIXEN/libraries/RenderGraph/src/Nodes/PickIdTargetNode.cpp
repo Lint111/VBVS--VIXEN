@@ -35,9 +35,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== PickIdTargetNodeType ======
 
-std::unique_ptr<NodeInstance> PickIdTargetNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<PickIdTargetNode>(n, const_cast<PickIdTargetNodeType*>(this));
-}
 
 // ====== PickIdTargetNode ======
 

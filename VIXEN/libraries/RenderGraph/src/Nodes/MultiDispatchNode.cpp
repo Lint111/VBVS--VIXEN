@@ -19,14 +19,6 @@ namespace Vixen::RenderGraph {
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> MultiDispatchNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<MultiDispatchNode>(
-        instanceName,
-        const_cast<MultiDispatchNodeType*>(this)
-    );
-}
 
 // ============================================================================
 // CONSTRUCTOR

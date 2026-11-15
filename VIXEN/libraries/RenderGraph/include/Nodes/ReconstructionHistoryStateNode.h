@@ -22,12 +22,13 @@ private:
     ReconstructionHistoryState state_;
 };
 
-class ReconstructionHistoryStateNodeType final : public TypedNodeType<ReconstructionHistoryStateNodeConfig> {
+class ReconstructionHistoryStateNode;
+
+class ReconstructionHistoryStateNodeType final : public TypedNodeType<ReconstructionHistoryStateNodeConfig, ReconstructionHistoryStateNode> {
 public:
     ReconstructionHistoryStateNodeType() : TypedNodeType("ReconstructionHistoryState") {
         graphExecutionKind = GraphExecutionKind::Cpu;
     }
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& name) const override;
 };
 
 } // namespace Vixen::RenderGraph

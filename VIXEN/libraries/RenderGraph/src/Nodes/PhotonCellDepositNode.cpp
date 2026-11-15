@@ -7,11 +7,6 @@
 
 namespace Vixen::RenderGraph {
 
-std::unique_ptr<NodeInstance> PhotonCellDepositNodeType::CreateInstance(
-    const std::string& instanceName) const {
-    return std::make_unique<PhotonCellDepositNode>(
-        instanceName, const_cast<PhotonCellDepositNodeType*>(this));
-}
 
 PhotonCellDepositNode::PhotonCellDepositNode(const std::string& instanceName, NodeType* nodeType)
     : ComputeStageNode(instanceName, nodeType) {

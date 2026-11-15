@@ -30,9 +30,6 @@ static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> BlitNodeType::CreateInstance(const std::string& instanceName) const {
-    return std::make_unique<BlitNode>(instanceName, const_cast<BlitNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR / SETUP

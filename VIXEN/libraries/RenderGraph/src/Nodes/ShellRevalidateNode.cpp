@@ -112,12 +112,6 @@ std::vector<uint32_t> ReadSpirv(const char* path) {
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> ShellRevalidateNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<ShellRevalidateNode>(
-        instanceName, const_cast<ShellRevalidateNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR / DESTRUCTOR

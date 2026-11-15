@@ -16,15 +16,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for ray tracing pipeline creation
  */
-class RayTracingPipelineNodeType : public TypedNodeType<RayTracingPipelineNodeConfig> {
+class RayTracingPipelineNode;
+
+class RayTracingPipelineNodeType : public TypedNodeType<RayTracingPipelineNodeConfig, RayTracingPipelineNode> {
 public:
     RayTracingPipelineNodeType(const std::string& typeName = "RayTracingPipeline")
-        : TypedNodeType<RayTracingPipelineNodeConfig>(typeName) {}
+        : TypedNodeType<RayTracingPipelineNodeConfig, RayTracingPipelineNode>(typeName) {}
     virtual ~RayTracingPipelineNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

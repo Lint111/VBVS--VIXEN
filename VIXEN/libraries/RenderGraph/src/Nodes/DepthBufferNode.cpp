@@ -19,14 +19,6 @@ namespace Vixen::RenderGraph {
 
 // ====== DepthBufferNodeType ======
 
-std::unique_ptr<NodeInstance> DepthBufferNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<DepthBufferNode>(
-        instanceName,
-        const_cast<NodeType*>(static_cast<const NodeType*>(this))
-    );
-}
 
 // ====== DepthBufferNode ======
 

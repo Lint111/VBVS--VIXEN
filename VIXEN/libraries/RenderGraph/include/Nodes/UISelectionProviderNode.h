@@ -14,17 +14,16 @@ class UIRenderNode;  // provides the Rml::Context to hit-test (set at wiring via
 /**
  * @brief Node type for the UI-domain selection provider (SEL-P3).
  */
-class UISelectionProviderNodeType : public TypedNodeType<UISelectionProviderNodeConfig> {
+class UISelectionProviderNode;
+
+class UISelectionProviderNodeType : public TypedNodeType<UISelectionProviderNodeConfig, UISelectionProviderNode> {
 public:
     UISelectionProviderNodeType(const std::string& typeName = "UISelectionProvider")
-        : TypedNodeType<UISelectionProviderNodeConfig>(typeName) {
+        : TypedNodeType<UISelectionProviderNodeConfig, UISelectionProviderNode>(typeName) {
         graphExecutionKind = GraphExecutionKind::Cpu;
     }
     ~UISelectionProviderNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

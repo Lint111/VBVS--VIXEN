@@ -14,13 +14,14 @@ namespace Vixen::RenderGraph {
  * @brief Node type for the per-frame animated per-instance model-matrix SSBO
  * Type ID: 124
  */
-class DynamicInstanceBufferNodeType : public TypedNodeType<DynamicInstanceBufferNodeConfig> {
+class DynamicInstanceBufferNode;
+
+class DynamicInstanceBufferNodeType : public TypedNodeType<DynamicInstanceBufferNodeConfig, DynamicInstanceBufferNode> {
 public:
     DynamicInstanceBufferNodeType(const std::string& typeName = "DynamicInstanceBuffer")
-        : TypedNodeType<DynamicInstanceBufferNodeConfig>(typeName) {}
+        : TypedNodeType<DynamicInstanceBufferNodeConfig, DynamicInstanceBufferNode>(typeName) {}
     virtual ~DynamicInstanceBufferNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

@@ -96,9 +96,6 @@ static_assert(sizeof(PushConstantLayout) == 48, "must match SkyProjection.vert's
 
 // ====== SkyProjectionNodeType ======
 
-std::unique_ptr<NodeInstance> SkyProjectionNodeType::CreateInstance(const std::string& instanceName) const {
-    return std::make_unique<SkyProjectionNode>(instanceName, const_cast<SkyProjectionNodeType*>(this));
-}
 
 // ====== SkyProjectionNode ======
 

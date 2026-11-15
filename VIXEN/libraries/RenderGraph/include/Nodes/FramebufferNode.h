@@ -63,12 +63,13 @@ private:
 /**
  * @brief Type definition for FramebufferNode
  */
-class FramebufferNodeType : public TypedNodeType<FramebufferNodeConfig> {
+class FramebufferNode;
+
+class FramebufferNodeType : public TypedNodeType<FramebufferNodeConfig, FramebufferNode> {
 public:
     FramebufferNodeType(const std::string& typeName = "Framebuffer")
-        : TypedNodeType<FramebufferNodeConfig>(typeName) {}
+        : TypedNodeType<FramebufferNodeConfig, FramebufferNode>(typeName) {}
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 } // namespace Vixen::RenderGraph

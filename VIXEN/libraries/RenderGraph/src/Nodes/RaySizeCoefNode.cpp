@@ -5,9 +5,6 @@
 
 namespace Vixen::RenderGraph {
 
-std::unique_ptr<NodeInstance> RaySizeCoefNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<RaySizeCoefNode>(n, const_cast<RaySizeCoefNodeType*>(this));
-}
 
 RaySizeCoefNode::RaySizeCoefNode(const std::string& n, NodeType* t)
     : TypedNode<RaySizeCoefNodeConfig>(n, t)

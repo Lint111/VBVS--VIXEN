@@ -34,9 +34,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== ProbeAtlasNodeType ======
 
-std::unique_ptr<NodeInstance> ProbeAtlasNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<ProbeAtlasNode>(n, const_cast<ProbeAtlasNodeType*>(this));
-}
 
 // ====== ProbeAtlasNode ======
 

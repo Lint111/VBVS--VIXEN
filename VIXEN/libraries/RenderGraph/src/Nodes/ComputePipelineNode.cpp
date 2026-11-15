@@ -66,11 +66,6 @@ CashSystem::PipelineLayoutCreateParams PipelineLayoutParams(
 
 // ===== NodeType Factory =====
 
-std::unique_ptr<NodeInstance> ComputePipelineNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<ComputePipelineNode>(instanceName, const_cast<ComputePipelineNodeType*>(this));
-}
 
 // ===== ComputePipelineNode Implementation =====
 

@@ -30,15 +30,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for voxel grid generation
  */
-class VoxelGridNodeType : public TypedNodeType<VoxelGridNodeConfig> {
+class VoxelGridNode;
+
+class VoxelGridNodeType : public TypedNodeType<VoxelGridNodeConfig, VoxelGridNode> {
 public:
     VoxelGridNodeType(const std::string& typeName = "VoxelGrid")
-        : TypedNodeType<VoxelGridNodeConfig>(typeName) {}
+        : TypedNodeType<VoxelGridNodeConfig, VoxelGridNode>(typeName) {}
     virtual ~VoxelGridNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

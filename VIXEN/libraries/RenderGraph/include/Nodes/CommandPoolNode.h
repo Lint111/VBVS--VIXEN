@@ -11,13 +11,12 @@ namespace Vixen::RenderGraph {
 /**
  * @brief CommandPoolNodeType - Defines command pool creation node
  */
-class CommandPoolNodeType : public TypedNodeType<CommandPoolNodeConfig> {
+class CommandPoolNode;
+
+class CommandPoolNodeType : public TypedNodeType<CommandPoolNodeConfig, CommandPoolNode> {
 public:
     CommandPoolNodeType(const std::string& typeName = "CommandPool");
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

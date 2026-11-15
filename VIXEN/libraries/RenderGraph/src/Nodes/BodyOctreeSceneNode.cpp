@@ -237,12 +237,6 @@ uint64_t Fnv1a64(const std::vector<T>& v) {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> BodyOctreeSceneNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::unique_ptr<NodeInstance>(
-        new BodyOctreeSceneNode(instanceName, const_cast<BodyOctreeSceneNodeType*>(this)));
-}
 
 // ============================================================================
 // BODY OCTREE SCENE NODE

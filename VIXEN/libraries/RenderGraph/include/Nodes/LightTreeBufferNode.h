@@ -14,13 +14,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for LightTreeBufferNode.
  */
-class LightTreeBufferNodeType : public TypedNodeType<LightTreeBufferNodeConfig> {
+class LightTreeBufferNode;
+
+class LightTreeBufferNodeType : public TypedNodeType<LightTreeBufferNodeConfig, LightTreeBufferNode> {
 public:
     LightTreeBufferNodeType(const std::string& typeName = "LightTreeBuffer")
-        : TypedNodeType<LightTreeBufferNodeConfig>(typeName) {}
+        : TypedNodeType<LightTreeBufferNodeConfig, LightTreeBufferNode>(typeName) {}
     virtual ~LightTreeBufferNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

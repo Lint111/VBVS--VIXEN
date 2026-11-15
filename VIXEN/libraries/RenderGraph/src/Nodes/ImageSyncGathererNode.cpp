@@ -14,10 +14,6 @@ namespace Vixen::RenderGraph {
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> ImageSyncGathererNodeType::CreateInstance(
-    const std::string& instanceName) const {
-    return std::make_unique<ImageSyncGathererNode>(instanceName, const_cast<ImageSyncGathererNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR

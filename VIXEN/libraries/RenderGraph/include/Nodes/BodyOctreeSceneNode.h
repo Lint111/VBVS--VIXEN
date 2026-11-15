@@ -61,15 +61,14 @@ struct UploadLedgerEntry {
 /**
  * @brief Node type for BodyOctreeSceneNode (SP2 Task 5b).
  */
-class BodyOctreeSceneNodeType : public TypedNodeType<BodyOctreeSceneNodeConfig> {
+class BodyOctreeSceneNode;
+
+class BodyOctreeSceneNodeType : public TypedNodeType<BodyOctreeSceneNodeConfig, BodyOctreeSceneNode> {
 public:
     BodyOctreeSceneNodeType(const std::string& typeName = "BodyOctreeScene")
-        : TypedNodeType<BodyOctreeSceneNodeConfig>(typeName) {}
+        : TypedNodeType<BodyOctreeSceneNodeConfig, BodyOctreeSceneNode>(typeName) {}
     virtual ~BodyOctreeSceneNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

@@ -31,11 +31,6 @@ static_assert(sizeof(ProxyRasterPushConstants) == 128,
               "B2 raster push block must fit Vulkan's guaranteed 128-byte range");
 } // namespace
 
-std::unique_ptr<NodeInstance> ProxyRasterStageNodeType::CreateInstance(
-    const std::string& instanceName) const {
-    return std::make_unique<ProxyRasterStageNode>(
-        instanceName, const_cast<ProxyRasterStageNodeType*>(this));
-}
 
 ProxyRasterStageNode::ProxyRasterStageNode(const std::string& instanceName,
                                            NodeType* nodeType)

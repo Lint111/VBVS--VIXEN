@@ -15,15 +15,14 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 110
  */
-class LoopBridgeNodeType : public TypedNodeType<LoopBridgeNodeConfig> {
+class LoopBridgeNode;
+
+class LoopBridgeNodeType : public TypedNodeType<LoopBridgeNodeConfig, LoopBridgeNode> {
 public:
     LoopBridgeNodeType(const std::string& typeName = "LoopBridge")
-        : TypedNodeType<LoopBridgeNodeConfig>(typeName) {}
+        : TypedNodeType<LoopBridgeNodeConfig, LoopBridgeNode>(typeName) {}
     virtual ~LoopBridgeNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

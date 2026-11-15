@@ -11,13 +11,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for PrevCameraConfigNode.
  */
-class PrevCameraConfigNodeType : public TypedNodeType<PrevCameraConfigNodeConfig> {
+class PrevCameraConfigNode;
+
+class PrevCameraConfigNodeType : public TypedNodeType<PrevCameraConfigNodeConfig, PrevCameraConfigNode> {
 public:
     PrevCameraConfigNodeType(const std::string& typeName = "PrevCameraConfig")
-        : TypedNodeType<PrevCameraConfigNodeConfig>(typeName) {}
+        : TypedNodeType<PrevCameraConfigNodeConfig, PrevCameraConfigNode>(typeName) {}
     virtual ~PrevCameraConfigNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

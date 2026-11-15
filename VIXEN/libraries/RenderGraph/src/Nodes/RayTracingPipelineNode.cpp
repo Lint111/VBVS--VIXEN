@@ -18,13 +18,6 @@ namespace Vixen::RenderGraph {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> RayTracingPipelineNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::unique_ptr<NodeInstance>(
-        new RayTracingPipelineNode(instanceName, const_cast<RayTracingPipelineNodeType*>(this))
-    );
-}
 
 // ============================================================================
 // RAY TRACING PIPELINE NODE IMPLEMENTATION
