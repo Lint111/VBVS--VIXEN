@@ -26,6 +26,10 @@ namespace Vixen::SVO {
 namespace detail {
 
 inline bool HasNonDistanceRecipeOutput(const RecipeRegistry::RecipeEntry& entry) {
+    // A document default is a material output even when no layer carries a MaterialRef/Attach
+    // suffix. Without this seed the baker takes the distance-only path and drops the categorical
+    // surface channel for the valid "all operands transparent, document default B" case.
+    if (entry.defaultMaterialId != 0u) return true;
     for (const Recipe::SdfInstruction& instruction : entry.bytecode) {
         const auto* metadata = Recipe::FindRecipeOpcodeMetadata(instruction.opCode);
         if (metadata == nullptr) continue;

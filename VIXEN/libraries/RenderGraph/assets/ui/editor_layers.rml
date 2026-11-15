@@ -42,6 +42,7 @@
                 <span class="ut-field-label">Default</span>
                 <ut-button variant="row" data-attr-id="material.defaultId" data-attr-label="material.name"
                             data-attr-style="'--material-color: ' + material.color"> </ut-button>
+                <span class="default-material-unused" data-if="material.coverage == ''">not used: every surface has a material</span>
             </div>
             <div class="hint" data-if="materials.size == 0">No sampled material coverage yet.</div>
             <div class="hint" data-if="materials.size != 0">Coverage is measured from the current stored bake.</div>

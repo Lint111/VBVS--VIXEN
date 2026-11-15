@@ -853,6 +853,8 @@ void EditorApplication::RefreshLayersView() {
     std::vector<Vixen::App::EditorMaterialData> materials;
     materials.reserve(materialRows_.size());
     const uint32_t selectedId = doc_.LayerCount() == 0u ? 0u : doc_.LayerId(selectedLayer_);
+    const std::string& documentDefaultMaterial = doc_.DocumentDefaultMaterial();
+    bool defaultMaterialPublished = false;
     const auto materialCoverage = std::atomic_load_explicit(&materialCoverage_, std::memory_order_acquire);
     const bool coverageStale = materialCoverage != nullptr &&
                                (materialCoverage->stale ||
@@ -862,10 +864,11 @@ void EditorApplication::RefreshLayersView() {
         for (const auto& materialRow : materialRows_) {
             const auto count = materialCoverage->counts.find(materialRow.slot);
             if (count == materialCoverage->counts.end() || count->second == 0u) continue;
+            const bool isDocumentDefault = documentDefaultMaterial == materialRow.name;
+            defaultMaterialPublished = defaultMaterialPublished || isDocumentDefault;
             materials.push_back({std::to_string(materialRow.slot), materialRow.name,
                                  "layer-" + std::to_string(selectedId) + "-material-" + materialRow.name,
-                                 doc_.DocumentDefaultMaterial() == materialRow.name
-                                     ? "document-material-default-" + materialRow.name : "",
+                                 isDocumentDefault ? "document-material-default-" + materialRow.name : "",
                                  MaterialColorHex(materialRow.srgbColor),
                                  CoveragePercent(count->second, materialCoverage->totalSurfaceSamples),
                                  coverageStale});
@@ -877,6 +880,20 @@ void EditorApplication::RefreshLayersView() {
                                  MaterialColorHex(0x808080u),
                                  CoveragePercent(none->second, materialCoverage->totalSurfaceSamples),
                                  coverageStale});
+        }
+        // Keep a measured-but-unused document default visible in the Outputs section. An
+        // unmaterialed operand is transparent, so a default B is not part of the result when
+        // another operand already carries material A; hiding B made the UI ambiguous about
+        // whether the default was selected or simply unused.
+        if (!documentDefaultMaterial.empty() && !defaultMaterialPublished) {
+            const auto defaultRow = std::find_if(materialRows_.begin(), materialRows_.end(),
+                [&](const MaterialRow& row) { return row.name == documentDefaultMaterial; });
+            if (defaultRow != materialRows_.end()) {
+                materials.push_back({std::to_string(defaultRow->slot), defaultRow->name,
+                                     "layer-" + std::to_string(selectedId) + "-material-" + defaultRow->name,
+                                     "document-material-default-" + defaultRow->name,
+                                     MaterialColorHex(defaultRow->srgbColor), "", coverageStale});
+            }
         }
     }
     Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);

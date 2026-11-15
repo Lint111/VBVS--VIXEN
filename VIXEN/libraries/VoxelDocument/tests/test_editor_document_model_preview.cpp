@@ -1670,6 +1670,9 @@ TEST(EditorDocumentModelMaterialCarry, FlattenAndSimdUseTransparentAndDocumentDe
         "core:emissive_trim", diagnostic)) << diagnostic.message;
     expectMaterialCase("c: base A, transparent bulge, default B", baseAWithDefaultB,
                        kMaterialB, kMaterialA);
+    ASSERT_TRUE(baseAWithDefaultB.SetDocumentDefaultMaterial({}, diagnostic)) << diagnostic.message;
+    expectMaterialCase("c-clear: base A, transparent bulge, no default", baseAWithDefaultB,
+                       Vixen::SVO::kMaterialRefNone, kMaterialA);
 }
 
 TEST(EditorDocumentModelVdc1, UnresolvedReferencesAreLocatedAndCanBeSkippedForPreview) {

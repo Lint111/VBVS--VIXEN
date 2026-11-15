@@ -205,6 +205,45 @@ TEST(RecipeBaker, MaterialRefAttachStoresCategoricalSurfaceSamples) {
     EXPECT_TRUE(sawMaterialFive) << "serialized stored material channel must contain the layer id";
 }
 
+TEST(RecipeBaker, DefaultMaterialStoresCategoricalSurfaceSamplesWithoutLayerSuffix) {
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode = {sphereInstr(glm::vec3(0.0f), 4.0f)};
+    entry.defaultMaterialId = 8u;
+    ASSERT_EQ(reg.Register(1u, entry), RecipeRegistry::RegisterResult::Ok);
+
+    RecipeBakeConfig cfg{};
+    cfg.center = glm::vec3(8.0f);
+    cfg.defaultResolution = 16u;
+    const RecipeBakeResult result = BakeRegistryToPool(reg, cfg);
+    ASSERT_TRUE(result.ok) << result.err;
+    ASSERT_EQ(result.owned.size(), 1u);
+
+    const auto& output = result.owned.front().recipeOutputSet;
+    const Recipe::RecipeOutputDescriptor* distance = nullptr;
+    const Recipe::RecipeOutputDescriptor* material = nullptr;
+    for (const auto& descriptor : output.outputs) {
+        if (descriptor.channel == static_cast<uint32_t>(SEM_SDF)) distance = &descriptor;
+        if (descriptor.channel == static_cast<uint32_t>(SEM_MATERIAL_ID)) material = &descriptor;
+    }
+    ASSERT_NE(distance, nullptr);
+    ASSERT_NE(material, nullptr) << "default-only material output must retain the categorical sidecar";
+    uint64_t surfaceSamples = 0u;
+    uint64_t materialEight = 0u;
+    for (int z = 0; z < output.resolution; ++z) {
+        for (int y = 0; y < output.resolution; ++y) {
+            for (int x = 0; x < output.resolution; ++x) {
+                const float* values = output.sample({x, y, z});
+                if (values == nullptr || std::abs(values[distance->valueOffset]) > 0.5f) continue;
+                ++surfaceSamples;
+                if (values[material->valueOffset] == 8.0f) ++materialEight;
+            }
+        }
+    }
+    EXPECT_GT(surfaceSamples, 0u);
+    EXPECT_EQ(materialEight, surfaceSamples);
+}
+
 TEST(RecipeRegistry, ReplaceValidatesAndPublishesProgramAtomically) {
     RecipeRegistry registry;
     RecipeRegistry::RecipeEntry original{};

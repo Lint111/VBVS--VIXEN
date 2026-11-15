@@ -107,7 +107,8 @@ class Witness:
             raise RuntimeError("could not locate adjacent material boundary")
         return {"body": base, "bulge": bulge, "boundaryBase": pair[0], "boundaryBulge": pair[1]}
 
-    def run(self, width: int, height: int, editor: Path, pack: Path) -> dict:
+    def run(self, width: int, height: int, editor: Path, pack: Path,
+            skip_material_probe: bool = False) -> dict:
         descriptor = self.capture_dir / "appflow-session.json"
         descriptor.unlink(missing_ok=True)
         env = os.environ.copy()
@@ -148,13 +149,19 @@ class Witness:
                 witness.dispatch("SetLayerMaterial", layer=1, material="core:hull_metal_major")
                 witness.dispatch("SetLayerMaterial", layer=2, material="core:emissive_trim")
                 two_materials = witness.shot("02-two-materials")
-                scan = witness.scan_materials("02-two-materials", width // 2 - 100, width // 2 + 100,
-                                             height // 2 - 100, height // 2 + 100, step=8)
-                points = self.pick_points(scan)
-                probes = witness.material_probe(
-                    [{"x": x, "y": y} for x, y in points.values()], "probe-five-pixels")
-                (self.capture_dir / "probe-five-pixels.json").write_text(json.dumps(
-                    {"labels": list(points), "result": probes}, indent=2) + "\n")
+                # The presented frame can precede the procedural HitRecord hand-off by a
+                # few frames at larger window sizes. Let that producer publish before probing.
+                witness.client.await_frame(after_frame=two_materials["frame"] + 5)
+                points = {}
+                probes = {"unavailable": True}
+                if not skip_material_probe:
+                    scan = witness.scan_materials("02-two-materials", width // 2 - 100, width // 2 + 100,
+                                                 height // 2 - 100, height // 2 + 100, step=8)
+                    points = self.pick_points(scan)
+                    probes = witness.material_probe(
+                        [{"x": x, "y": y} for x, y in points.values()], "probe-five-pixels")
+                    (self.capture_dir / "probe-five-pixels.json").write_text(json.dumps(
+                        {"labels": list(points), "result": probes}, indent=2) + "\n")
 
                 before_change = two_materials["hash"]
                 change_event, change_compiles = witness.dispatch(
@@ -187,13 +194,15 @@ class Witness:
                 cut_event, _ = witness.dispatch("SetLayerMaterial", layer=3, material="core:hull_metal_minor")
                 witness.client.await_frame(after_frame=cut_event["presentedFrame"])
                 cut_own = witness.shot("03-cut-own-material")
-                cut_scan = witness.scan_materials("03-cut-own-material", width // 2 - 100, width // 2 + 100,
-                                                  height // 2 - 100, height // 2 + 100, step=8)
-                cut_points = [p for p in cut_scan["points"] if int(p["materialId"]) == 6]
-                if not cut_points:
-                    raise RuntimeError("cut material id 6 did not appear in the HitRecord probe")
-                cut_probe = witness.material_probe([{"x": cut_points[len(cut_points) // 2]["x"],
-                                                     "y": cut_points[len(cut_points) // 2]["y"]}], "probe-cut-face")
+                cut_probe = {"unavailable": True}
+                if not skip_material_probe:
+                    cut_scan = witness.scan_materials("03-cut-own-material", width // 2 - 100, width // 2 + 100,
+                                                      height // 2 - 100, height // 2 + 100, step=8)
+                    cut_points = [p for p in cut_scan["points"] if int(p["materialId"]) == 6]
+                    if not cut_points:
+                        raise RuntimeError("cut material id 6 did not appear in the HitRecord probe")
+                    cut_probe = witness.material_probe([{"x": cut_points[len(cut_points) // 2]["x"],
+                                                         "y": cut_points[len(cut_points) // 2]["y"]}], "probe-cut-face")
                 witness.dispatch("ClearLayerMaterial", layer=3)
                 cut_without = witness.shot("04-cut-without-material")
 
@@ -232,12 +241,14 @@ def main() -> int:
     parser.add_argument("--capture-dir", type=Path, required=True)
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
+    parser.add_argument("--skip-material-probe", action="store_true",
+                        help="continue with pixel-only captures when MaterialId probes are unavailable")
     args = parser.parse_args()
     args.capture_dir.mkdir(parents=True, exist_ok=True)
     # Pack mode opens the first recipe by id; the witness then explicitly reopens it through AppFlow.
     runner = Witness.__new__(Witness)
     runner.capture_dir = args.capture_dir
-    result = runner.run(args.width, args.height, args.editor, args.pack)
+    result = runner.run(args.width, args.height, args.editor, args.pack, args.skip_material_probe)
     print(json.dumps(result, indent=2))
     return 0
 
