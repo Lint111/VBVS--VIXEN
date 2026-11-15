@@ -10,11 +10,12 @@
 #include "EmitterPower.h"  // R502.2: EmitterRootPowers
 #include "Recipe/RecipeBaker.h" // runtime recipe edits bake on the shared RunAsync producer
 #include "ResidencyDefault.h"  // Lazy-Procedural-Delta-Baseline Inc0 M2: DeriveResidencyDefault
+#include "EnvironmentFlags.h"
 
 #include <algorithm>
 #include <bit>
 #include <chrono>
-#include <cctype>    // std::isspace for whitespace-safe boolean env flags
+#include <cctype>    // std::isspace for VIXEN_RT_LIGHTING parsing
 #include <cstdio>    // std::snprintf (BrickDataHash log line)
 #include <cstdlib>   // std::getenv
 #include <cstring>
@@ -81,15 +82,6 @@ using namespace Vixen::Vulkan::Resources;
 const uint32_t BodyOctreeSceneNode::kRingSize = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
 namespace {
-
-bool envFlagEnabled(const char* name) {
-    const char* value = std::getenv(name);
-    if (value == nullptr) return false;
-    for (; *value != '\0'; ++value) {
-        if (!std::isspace(static_cast<unsigned char>(*value))) return true;
-    }
-    return false;
-}
 
 enum class RtLightingMode { Auto, Off, Force };
 
@@ -251,8 +243,8 @@ std::unique_ptr<NodeInstance> BodyOctreeSceneNodeType::CreateInstance(
 BodyOctreeSceneNode::BodyOctreeSceneNode(const std::string& instanceName, NodeType* nodeType)
     : TypedNode<BodyOctreeSceneNodeConfig>(instanceName, nodeType)
 {
-    wholesaleAdmissionEnabled_ = envFlagEnabled("VIXEN_WHOLESALE_ADMISSION");
-    if (envFlagEnabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
+    wholesaleAdmissionEnabled_ = Vixen::Core::Env::Enabled("VIXEN_WHOLESALE_ADMISSION");
+    if (Vixen::Core::Env::Enabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
         residencyRequested_ = true;
     }
     NODE_LOG_INFO("[BodyOctreeSceneNode] constructor");
@@ -406,7 +398,7 @@ void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstr
         // mip, normal, and optional anisotropic pools are consequently part of the job.
         auto recipe = bakeRecipe_;
         if (!recipe.empty() &&
-            (envFlagEnabled("VIXEN_STORED_SDF_DEMO") || envFlagEnabled("VIXEN_BRICKMAP_SCENE"))) {
+            (Vixen::Core::Env::Enabled("VIXEN_STORED_SDF_DEMO") || Vixen::Core::Env::Enabled("VIXEN_BRICKMAP_SCENE"))) {
             requestedPoolProducer_ = [recipe = std::move(recipe)]() mutable {
                 Vixen::SVO::RecipeRegistry registry;
                 Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
@@ -683,7 +675,7 @@ const Vixen::SVO::EmitterTable& BodyOctreeSceneNode::GetEmitterTable() {
 }
 
 void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
-    if (wholesaleAdmissionEnabled_ && envFlagEnabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
+    if (wholesaleAdmissionEnabled_ && Vixen::Core::Env::Enabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
         resident = true;
     }
     // Stash only — mirrors SetBakeRecipe/SetRecipePool's dirty-flag pattern. ExecuteImpl
@@ -784,7 +776,7 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
             : 1u;
         ShellGenerationPayload initial = BuildShellGenerationPayload(
             std::move(concatenated_), shellDilation_,
-            envFlagEnabled("VIXEN_SHELL_NORMALS"), workers);
+            Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS"), workers);
         concatenated_ = std::move(initial.pool);
         shellCache_ = std::move(initial.shell);
         publishedEmitterRootPowers_ = std::move(initial.emitterRootPowers);
@@ -1118,7 +1110,7 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
     // true default-coef tier-crossing distance (596.75wu) -- the first 3 near
     // bodies (D≈507-539wu, see plan ledger's Batch 11 entry) can never cross it.
     // VIXEN_STORED_SDF_DEMO keeps the original 3-body bake unchanged.
-    const bool isBrickmapScene = envFlagEnabled("VIXEN_BRICKMAP_SCENE");
+    const bool isBrickmapScene = Vixen::Core::Env::Enabled("VIXEN_BRICKMAP_SCENE");
     // Round-18 multi-distance close: +2 more far bodies (kinds 4/5, D~800/D~1200) past
     // the round-12 far body (kind 3), reusing the plain-sphere recipe.
     // Deep-field-mip-policy design-doc regime-3 divergence scene (2026-08-08): +1 more
@@ -1138,7 +1130,7 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
     // to a solid body whose mips saturate to coverage=1.
     // ponytail: sparse body only ever asked for alongside the brickmap scene (the
     // divergence matrix is brickmap-based end to end) -- no standalone combination.
-    const bool isSparseBody = isBrickmapScene && envFlagEnabled("VIXEN_SPARSE_BODY");
+    const bool isSparseBody = isBrickmapScene && Vixen::Core::Env::Enabled("VIXEN_SPARSE_BODY");
     // Batch 50 / KI-047 residual (VIXEN_SPARSE_BODY_OVERLAP, sol-b49-validation.md
     // V1.3): +1 more kind, a plain sphere placed directly behind the round-12
     // D~612wu body on the SAME camera ray (BuildRenderGraph.cpp's
@@ -1148,11 +1140,11 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
     // VIXEN_SPARSE_BODY the same way NEBULA is orthogonal to FAR: gated only on
     // VIXEN_SPARSE_BODY being set too, so an overlap-off boot bakes exactly the
     // same kind count as before (byte-identical, criterion C1).
-    const bool isSparseBodyOverlap = isSparseBody && envFlagEnabled("VIXEN_SPARSE_BODY_OVERLAP");
+    const bool isSparseBodyOverlap = isSparseBody && Vixen::Core::Env::Enabled("VIXEN_SPARSE_BODY_OVERLAP");
     const uint32_t sdfKindCount =
         (isBrickmapScene ? kKindCount + 3 : kKindCount) + (isSparseBody ? 1 : 0) +
         (isSparseBodyOverlap ? 1 : 0);
-    if (envFlagEnabled("VIXEN_STORED_SDF_DEMO") || isBrickmapScene) {
+    if (Vixen::Core::Env::Enabled("VIXEN_STORED_SDF_DEMO") || isBrickmapScene) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_STORED_SDF_DEMO/VIXEN_BRICKMAP_SCENE/VIXEN_SPARSE_BODY: baking " +
                       std::to_string(sdfKindCount) + " Stored-SDF octrees");
 
@@ -1321,9 +1313,9 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         // Flag-off (default) keeps this call byte-identical to before —
         // ConcatenateSdfWithMips only, no mipAnisoPool attached, identity
         // hash unmoved.
-        if (envFlagEnabled("VIXEN_MIP_ANISO_BAKE")) {
+        if (Vixen::Core::Env::Enabled("VIXEN_MIP_ANISO_BAKE")) {
             concatenated_ = Vixen::SVO::ConcatenateSdfWithAniso(
-                sdfPtrs, {}, envFlagEnabled("VIXEN_SHELL_NORMALS"));
+                sdfPtrs, {}, Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS"));
             // Batch-32 JOB 2a: the [MipAnisoPool] print RecipeBaker.h emits
             // lives off this runtime path (BodyOctreeSceneNode's Stored-SDF
             // demo boot never calls into RecipeBaker) -- reuses the pool
@@ -1334,7 +1326,7 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
                         sdfPtrs.size(), concatenated_.mipAnisoPool.size());
         } else {
             concatenated_ = Vixen::SVO::ConcatenateSdfWithMips(
-                sdfPtrs, {}, envFlagEnabled("VIXEN_SHELL_NORMALS"));
+                sdfPtrs, {}, Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS"));
         }
         octreesBuilt_ = true;
 
@@ -1834,7 +1826,7 @@ void BodyOctreeSceneNode::ScheduleShellGeneration() {
 
     auto payload = std::make_shared<ShellGenerationPayload>();
     const uint32_t dilation = shellDilation_;
-    const bool bakeNormals = envFlagEnabled("VIXEN_SHELL_NORMALS");
+    const bool bakeNormals = Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS");
     const uint64_t owner = static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(this));
     const Vixen::KernelDispatch::TaskId taskId{owner == 0 ? 1u : owner,
                                                 static_cast<uint32_t>(requestId)};

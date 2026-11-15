@@ -825,18 +825,14 @@ void VulkanGraphApplication::Update() {
         // (defaults 2560x1440) through the exact same GLFW callback -> WindowResizedMessage path a
         // user-driven maximize takes.
         if (renderGraph) {
-            static const long resizeAtFrame = [] {
-                const char* env = std::getenv("VIXEN_RESIZE_AT_FRAME");
-                return env ? std::strtol(env, nullptr, 10) : 0L;
-            }();
             static long updateTick = 0;
             ++updateTick;
-            if (resizeAtFrame > 0 && updateTick == resizeAtFrame) {
+            if (updateEnvironmentFlags_.resizeAtFrame > 0 &&
+                updateTick == updateEnvironmentFlags_.resizeAtFrame) {
                 if (auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode_))) {
                     if (GLFWwindow* glfwWin = window->GetWindow()) {
-                        int w = 2560, h = 1440;
-                        if (const char* e = std::getenv("VIXEN_RESIZE_WIDTH"))  { const int v = std::atoi(e); if (v > 0) w = v; }
-                        if (const char* e = std::getenv("VIXEN_RESIZE_HEIGHT")) { const int v = std::atoi(e); if (v > 0) h = v; }
+                        const int w = updateEnvironmentFlags_.resizeWidth;
+                        const int h = updateEnvironmentFlags_.resizeHeight;
                         if (mainLogger) {
                             mainLogger->Info("[PerfProbe] programmatic resize to " + std::to_string(w) + "x" + std::to_string(h)
                                              + " at update tick " + std::to_string(updateTick));
@@ -876,7 +872,7 @@ void VulkanGraphApplication::Update() {
         // buffers would double-count every pixel, since the buffer that was NOT written this
         // frame still holds its own last-written (stale but non-empty) reservoir content, not
         // zeros.
-        if (renderGraph && std::getenv("VIXEN_RESTIR_GATE_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsRestirGateDemoEnabled()) {
             static long restirGateTick = 0;
             ++restirGateTick;
             // kReadbackTick: chosen well past the point where ReservoirConfig.temporalCap=32
@@ -1128,7 +1124,7 @@ void VulkanGraphApplication::Update() {
         // SCRIPT the camera to actually look at it (SetPositionForTest, mirroring the
         // residency gate's own established live-camera-override pattern), rather than
         // reworking either scene's geometry or the shared default orbit other gates depend on.
-        if (renderGraph && std::getenv("VIXEN_M5_SHADE_GATE_DEMO") && std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsM5ShadeGateDemoEnabled() && updateEnvironmentFlags_.IsDdgiLeakGateDemoEnabled()) {
             if (auto* m5Camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
                 // FIRST ATTEMPT (superseded): SetPositionForTest + SetLookTargetNoOrbitForTest
                 // (the FIXED-mode combo CameraNode.h documents for Task 19's flight path) --
@@ -1182,7 +1178,7 @@ void VulkanGraphApplication::Update() {
             }
         }
 
-        if (renderGraph && std::getenv("VIXEN_M5_SHADE_GATE_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsM5ShadeGateDemoEnabled()) {
             static long m5ShadeGateTick = 0;
             ++m5ShadeGateTick;
             constexpr long kM5ShadeReadTick = 150;  // well past hysteresis convergence (>>1/0.02=50)
@@ -1273,7 +1269,7 @@ void VulkanGraphApplication::Update() {
             }
         }
 
-        if (renderGraph && std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsDdgiLeakGateDemoEnabled()) {
             static long ddgiGateTick = 0;
             ++ddgiGateTick;
 
@@ -1340,7 +1336,7 @@ void VulkanGraphApplication::Update() {
                 // own seed) -- reading AFTER the seed-reset below would only ever see the sentinel
                 // THIS call just wrote, never the prior dispatch's result (a bug caught before
                 // trusting this diagnostic's output).
-                if (std::getenv("VIXEN_DDGI_AMORTIZATION_PROBE_LOG") && ddgiGateTick >= 2 && ddgiGateTick <= 17) {
+                if (updateEnvironmentFlags_.IsDdgiAmortizationProbeLogEnabled() && ddgiGateTick >= 2 && ddgiGateTick <= 17) {
                     void* probeLogMapped = debugBuf->MapForReadback(deviceDdgi);
                     if (probeLogMapped) {
                         const auto* rec = reinterpret_cast<const DDGILeakGateDebugHost*>(probeLogMapped);
@@ -1379,7 +1375,7 @@ void VulkanGraphApplication::Update() {
                     // env var is set; ordinary diagNearProbeHitCount reads (the existing
                     // kChebyshevReadTick/kAblationReadTick gate below) are unaffected -- by then the
                     // field has long since been overwritten by real dispatches either way.
-                    if (std::getenv("VIXEN_DDGI_AMORTIZATION_PROBE_LOG")) {
+                    if (updateEnvironmentFlags_.IsDdgiAmortizationProbeLogEnabled()) {
                         rec->diagNearProbeHitCount = 0xFFFFFFFFu;  // sentinel: "not touched this tick"
                     }
                     debugBuf->UnmapReadback(deviceDdgi);
@@ -1426,7 +1422,7 @@ void VulkanGraphApplication::Update() {
         // of ddgiLeakGateEnabled's near/far-gather fields) at several ticks before/after to
         // show BOUNDED convergence within the hysteresis window, per the plan's own explicit
         // "not instant, but bounded" gate requirement.
-        if (renderGraph && std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsDdgiEditLoopDemoEnabled()) {
             static long editLoopTick = 0;
             ++editLoopTick;
 
@@ -1546,10 +1542,7 @@ void VulkanGraphApplication::Update() {
         // VIXEN_DDGI_CORNELL_MIXED_DEMO (mixed-provider variants) -- same hit_record_buffer
         // readback mechanism applies unchanged regardless of which bodies are STORED vs
         // PROCEDURAL, so these variants get the same instIdx-map/OOB gate evidence for free.
-        if (renderGraph && (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") ||
-                            std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") ||
-                            std::getenv("VIXEN_DDGI_CORNELL_HYBRID_DEMO") ||
-                            std::getenv("VIXEN_DDGI_CORNELL_MIXED_DEMO"))) {
+        if (renderGraph && updateEnvironmentFlags_.IsDdgiCornellDemoEnabled()) {
             static long cornellDiagTick = 0;
             ++cornellDiagTick;
             constexpr long kCornellDiagReadTick = 150;  // matches the camera-pose diagnostic's own settle tick
@@ -1740,7 +1733,7 @@ void VulkanGraphApplication::Update() {
                         // true per-pixel winner over a window centered on that seam so the real
                         // extent of the disagreement (single-pixel aliasing vs a contiguous wrong
                         // wedge) is visible from the log alone. Legend identical to the 25x25 map.
-                        if (std::getenv("VIXEN_CORNELL_SEAM_WINDOW")) {
+                        if (updateEnvironmentFlags_.IsCornellSeamWindowEnabled()) {
                             constexpr int wx0 = 250, wx1 = 340, wy0 = 355, wy1 = 405;
                             mainLogger->Info("[CornellDiag] SEAM window instIdx (x=" +
                                              std::to_string(wx0) + ".." + std::to_string(wx1) +
@@ -1786,7 +1779,7 @@ void VulkanGraphApplication::Update() {
                         // at every pixel, so a mean length well below 1 (or a low variance of a
                         // faceted field) is the direct numeric fingerprint of a coarse/quantized
                         // baked normal vs a crisp analytic one. Env-gated, off by default.
-                        if (std::getenv("VIXEN_CORNELL_NORMAL_DUMP")) {
+                        if (updateEnvironmentFlags_.IsCornellNormalDumpEnabled()) {
                             constexpr int kMaxInst = 9;  // 0..7 bodies + one ?-bucket
                             size_t nCount[kMaxInst] = {0};
                             double nLenSum[kMaxInst] = {0};
@@ -1841,9 +1834,9 @@ void VulkanGraphApplication::Update() {
                         //   pad0[2]: float grid-arc-length to crossing (from brick entry)
                         // This is the LIVE d-distribution / occluder-identity probe -- no CPU
                         // mirror, the actual value marchBrickSdfAnyHit crossed on.
-                        if (std::getenv("VIXEN_SHADOW_DBG_PX") && std::getenv("VIXEN_SHADOW_DBG_PY") && mainLogger) {
-                            const int tpx = std::atoi(std::getenv("VIXEN_SHADOW_DBG_PX"));
-                            const int tpy = std::atoi(std::getenv("VIXEN_SHADOW_DBG_PY"));
+                        if (updateEnvironmentFlags_.HasShadowDebugPixel() && mainLogger) {
+                            const int tpx = updateEnvironmentFlags_.shadowDbgPx;
+                            const int tpy = updateEnvironmentFlags_.shadowDbgPy;
                             const size_t ti = static_cast<size_t>(tpy) * static_cast<size_t>(kImgSize) + static_cast<size_t>(tpx);
                             if (ti < recordCount) {
                                 uint32_t packed0, dBits, sBits, flagsField;
@@ -1900,8 +1893,8 @@ void VulkanGraphApplication::Update() {
         // suppresses this demo's far->near camera animation, allowing a fixed
         // VIXEN_TIER_OBSERVABLE_DISTANCE leg to be measured without changing the
         // default residency-gate sweep when VIXEN_RESIDENCY_GATE_STATIC is unset.
-        if (renderGraph && std::getenv("VIXEN_RESIDENCY_GATE_DEMO") &&
-            !std::getenv("VIXEN_RESIDENCY_GATE_STATIC")) {
+        if (renderGraph && updateEnvironmentFlags_.IsResidencyGateDemoEnabled() &&
+            !updateEnvironmentFlags_.IsResidencyGateStaticEnabled()) {
             static long gateTick = 0;
             ++gateTick;
             if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
@@ -1934,7 +1927,7 @@ void VulkanGraphApplication::Update() {
         // continuous camera motion (the no-ghosting/temporal-stability gate), a full
         // 0->2pi sweep held over the whole run rather than a phase within a larger
         // distance sweep.
-        if (renderGraph && std::getenv("VIXEN_RESTIR_ORBIT_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsRestirOrbitDemoEnabled()) {
             static long orbitTick = 0;
             ++orbitTick;
             constexpr long kOrbitPeriodTicks = 300;
@@ -1956,7 +1949,7 @@ void VulkanGraphApplication::Update() {
         // orbitCenter at tick 1 (one-shot, mirrors the RequestBrickResidency one-shot pattern
         // above) so a later HUD capture shows a visibly different view than the same tick with
         // the env var unset.
-        if (renderGraph && std::getenv("VIXEN_LOOK_TARGET_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsLookTargetDemoEnabled()) {
             static long lookTargetTick = 0;
             ++lookTargetTick;
             if (lookTargetTick == 1) {
@@ -2001,7 +1994,7 @@ void VulkanGraphApplication::Update() {
         // flip is scripted at tick 24 (distance ~24, still well inside the "crosses" zone) so the
         // mip->real transition is observed BEFORE the later real->mip LOD transition, not
         // confounded with it.
-        if (renderGraph && std::getenv("VIXEN_TIER_ZOOM_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsTierZoomDemoEnabled()) {
             static long zoomTick = 0;
             ++zoomTick;
             constexpr long  kResidencyFlipTick = 24;
@@ -2047,7 +2040,7 @@ void VulkanGraphApplication::Update() {
         // the camera; it deliberately does NOT call RequestBrickResidency directly (unlike
         // VIXEN_TIER_ZOOM_DEMO), so the live grant is genuinely trigger-driven, the same
         // path a real flythrough exercises.
-        if (renderGraph && std::getenv("VIXEN_STORED_SDF_DEMO") && std::getenv("VIXEN_BOOT_LAZY_GATE_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsStoredSdfDemoEnabled() && updateEnvironmentFlags_.IsBootLazyGateDemoEnabled()) {
             static long bootLazyTick = 0;
             ++bootLazyTick;
             constexpr long  kAwayHoldEnd     = 60;    // 1) hold facing away — proves boot-lazy (mip-shaded, no brick upload)
@@ -2152,8 +2145,8 @@ void VulkanGraphApplication::Update() {
         // 1024x SMALLER: ~32.23/1024 ~= 0.0315 (predicted transition TICK ~200 of 400).
         // Both are well inside [0,400] and well-separated from each other and from the
         // schedule's own endpoints.
-        if (renderGraph && std::getenv("VIXEN_TIER_EARTH_DEMO") &&
-            (std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_SCRIPT"))) {
+        if (renderGraph && updateEnvironmentFlags_.IsTierEarthDemoEnabled() &&
+            (updateEnvironmentFlags_.IsTierEarthZoomDemoEnabled() || updateEnvironmentFlags_.IsTierEarthZoomScriptEnabled())) {
             static long earthZoomTick = 0;
             ++earthZoomTick;
             constexpr long  kEarthResidencyFlipTick = 50;   // well before BOTH predicted transitions
@@ -2185,7 +2178,7 @@ void VulkanGraphApplication::Update() {
                 // units) and childScale=2^-10 compounded over 2 hops, not a fixable camera aim;
                 // see the M6 Progress Log for the full analysis and options going forward.
             }
-            if (earthZoomTick == kEarthResidencyFlipTick && std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
+            if (earthZoomTick == kEarthResidencyFlipTick && updateEnvironmentFlags_.IsTierEarthZoomDemoEnabled()) {
                 if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
                         renderGraph->GetInstance(bodyOctreeSceneNode_))) {
                     bodyScene->RequestBrickResidency(true);
@@ -2237,8 +2230,8 @@ void VulkanGraphApplication::Update() {
         // 1.2wu/far=120.0wu over kObsPhase1End=400 ticks):
         //   hop1 (T1->T2 decline, zooming out) -> tick ~244
         //   hop0 (T0->T1 decline, zooming out) -> tick ~364
-        if (renderGraph && std::getenv("VIXEN_TIER_OBSERVABLE_DEMO") &&
-            (std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_DEMO") || std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_SCRIPT"))) {
+        if (renderGraph && updateEnvironmentFlags_.IsTierObservableDemoEnabled() &&
+            (updateEnvironmentFlags_.IsTierObservableZoomDemoEnabled() || updateEnvironmentFlags_.IsTierObservableZoomScriptEnabled())) {
             static long obsZoomTick = 0;
             ++obsZoomTick;
             constexpr long  kObsResidencyFlipTick = 50;   // well before both predicted transitions (~244, ~364)
@@ -2253,7 +2246,7 @@ void VulkanGraphApplication::Update() {
                 const double dist    = std::pow(10.0, logNear + t * (logFar - logNear));
                 camera->SetOrbitDistanceForTest(static_cast<float>(dist));
             }
-            if (obsZoomTick == kObsResidencyFlipTick && std::getenv("VIXEN_TIER_OBSERVABLE_ZOOM_DEMO")) {
+            if (obsZoomTick == kObsResidencyFlipTick && updateEnvironmentFlags_.IsTierObservableZoomDemoEnabled()) {
                 if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
                         renderGraph->GetInstance(bodyOctreeSceneNode_))) {
                     bodyScene->RequestBrickResidency(true);
@@ -2277,8 +2270,8 @@ void VulkanGraphApplication::Update() {
         // renderScale=0.1), same predicted tier handoffs (hop1 T1->T2 ~=19.89wu, hop0
         // T0->T1 ~=79.58wu, perf/e7-t2-multirung-fixture-design.md Sec.1). Deterministic,
         // tick-indexed, no input injection -- gated on VIXEN_TIER_OBSERVABLE_PLATEAU_DEMO.
-        if (renderGraph && std::getenv("VIXEN_TIER_OBSERVABLE_DEMO") &&
-            std::getenv("VIXEN_TIER_OBSERVABLE_PLATEAU_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsTierObservableDemoEnabled() &&
+            updateEnvironmentFlags_.IsTierObservablePlateauDemoEnabled()) {
             static long obsPlateauTick = 0;
             ++obsPlateauTick;
             // Design Sec.2 hold list (near-to-far-to-near omitted -- far ceiling is the
@@ -2322,8 +2315,8 @@ void VulkanGraphApplication::Update() {
         // orbital hold to near-field detail. The explicit gate keeps the shipped
         // plateau fixture byte-identical and gives the capture a stable, named
         // hold for each frame requested by VIXEN_HUD_CAPTURE_FRAMES.
-        if (renderGraph && std::getenv("VIXEN_TIER_OBSERVABLE_DEMO") &&
-            std::getenv("VIXEN_TIER_OBSERVABLE_SHOWCASE_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsTierObservableDemoEnabled() &&
+            updateEnvironmentFlags_.IsTierObservableShowcaseDemoEnabled()) {
             static long obsShowcaseTick = 0;
             ++obsShowcaseTick;
             static constexpr double kObsShowcaseDistances[] = {
@@ -2405,8 +2398,8 @@ void VulkanGraphApplication::Update() {
         // hop1 (T1->T2) is NOT demonstrated by this schedule -- see the Progress Log for why
         // it is structurally unreachable via ANY body-center-orbit schedule at true 2^-10, a
         // genuine finding surfaced honestly rather than hidden or silently re-scoped.
-        if (renderGraph && std::getenv("VIXEN_TIER_M8_EARTH_DEMO") &&
-            (std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_DEMO") || std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_SCRIPT"))) {
+        if (renderGraph && updateEnvironmentFlags_.IsTierM8EarthDemoEnabled() &&
+            (updateEnvironmentFlags_.IsTierM8EarthZoomDemoEnabled() || updateEnvironmentFlags_.IsTierM8EarthZoomScriptEnabled())) {
             static long m8ZoomTick = 0;
             ++m8ZoomTick;
             // SECOND correction (found after the near=30wu attempt rendered near-total
@@ -2448,7 +2441,7 @@ void VulkanGraphApplication::Update() {
                     }
                 }
             }
-            if (m8ZoomTick == kM8ResidencyFlipTick && std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_DEMO")) {
+            if (m8ZoomTick == kM8ResidencyFlipTick && updateEnvironmentFlags_.IsTierM8EarthZoomDemoEnabled()) {
                 if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
                         renderGraph->GetInstance(bodyOctreeSceneNode_))) {
                     bodyScene->RequestBrickResidency(true);
@@ -2496,7 +2489,7 @@ void VulkanGraphApplication::Update() {
         // Both inside [0,400], well-separated, and (unlike Task 17) BOTH hops are geometrically
         // reachable by this schedule — the flight path is the fix for Task 17's hop1 wall, not
         // just a different-shaped camera move.
-        if (renderGraph && std::getenv("VIXEN_TIER_M8_EARTH_DEMO") && std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+        if (renderGraph && updateEnvironmentFlags_.IsTierM8EarthDemoEnabled() && updateEnvironmentFlags_.IsTierM8FlightDemoEnabled()) {
             static long m8FlightTick = 0;
             ++m8FlightTick;
             constexpr long   kM8FlightResidencyFlipTick = 10;    // well before both Task 23 handoffs
@@ -2536,8 +2529,8 @@ void VulkanGraphApplication::Update() {
                 // rather than an extrapolated point past it. The camera approaches ALONG the same
                 // line from body center through the octant, but the near/far endpoints are placed
                 // relative to the octant's own position, not a separately-derived sphere radius.
-                const bool debugZDir = std::getenv("VIXEN_TIER_M8_FLIGHT_DEBUG_ZDIR") != nullptr;
-                const bool debugZPosOctantAim = std::getenv("VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM") != nullptr;
+                const bool debugZDir = updateEnvironmentFlags_.IsTierM8FlightDebugZDirEnabled();
+                const bool debugZPosOctantAim = updateEnvironmentFlags_.IsTierM8FlightDebugZPosOctantAimEnabled();
                 // M8 Task 23: optional rebuild-free aim calibration -- the child's VISIBLE
                 // surface window sits a small, construction-specific offset inside the
                 // marked leaf relative to the recorded child anchor (the anchor itself
@@ -2545,13 +2538,7 @@ void VulkanGraphApplication::Update() {
                 // reachable through the crossing). VIXEN_TIER_M8_FLIGHT_AIM_OFFSET="dx,dy,dz"
                 // (world units) shifts the flight axis/aim point so the live session can
                 // center the window without a rebuild per attempt.
-                glm::vec3 aimOffset(0.0f);
-                if (const char* aimOffsetEnv = std::getenv("VIXEN_TIER_M8_FLIGHT_AIM_OFFSET")) {
-                    float dx = 0.0f, dy = 0.0f, dz = 0.0f;
-                    if (std::sscanf(aimOffsetEnv, "%f,%f,%f", &dx, &dy, &dz) == 3) {
-                        aimOffset = glm::vec3(dx, dy, dz);
-                    }
-                }
+                const glm::vec3 aimOffset = updateEnvironmentFlags_.tierM8FlightAimOffset;
                 const glm::vec3 flightAnchor = m8EarthHop0OctantWorld_ + aimOffset;
                 glm::vec3 dir;
                 if (debugZDir || debugZPosOctantAim) {
@@ -2988,7 +2975,8 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // residency on the very same tick, since both run inside the same Update() call before
     // ExecuteImpl). This mirrors VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_RESIDENCY_GATE_DEMO's own
     // precedent of a demo env knob taking deliberate, exclusive control of one subsystem.
-    if (std::getenv("VIXEN_TIER_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
+    if (updateEnvironmentFlags_.IsTierZoomDemoEnabled() ||
+        updateEnvironmentFlags_.IsTierEarthZoomDemoEnabled()) {
         return;
     }
 
@@ -3002,7 +2990,7 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // path (grey/flat-normal, geometrically-incoherent leaf-node hits — the "fragmented Cornell
     // box" this demo was reported broken with). Take exclusive control here, exactly like
     // VIXEN_TIER_ZOOM_DEMO above (a demo env knob owning one subsystem's schedule).
-    if (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
+    if (updateEnvironmentFlags_.IsDdgiCornellBakedDemoEnabled()) {
         return;
     }
 
@@ -3125,7 +3113,7 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
         }
         anyInstanceWantsBricks = true;
     }
-    if (mainLogger && std::getenv("VIXEN_RESIDENCY_GATE_DEMO")) {
+    if (mainLogger && updateEnvironmentFlags_.IsResidencyGateDemoEnabled()) {
         std::string disagreementBodies;
         for (size_t n = 0; n < policyDisagreements.size(); ++n) {
             if (n != 0) disagreementBodies += ",";
