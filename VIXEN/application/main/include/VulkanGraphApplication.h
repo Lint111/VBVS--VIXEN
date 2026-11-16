@@ -322,6 +322,91 @@ protected:
     void UpdateBodySceneResidency();
 
 private:
+    struct UpdateEnvironmentFlags {
+        long resizeAtFrame = 0;
+        int resizeWidth = 2560;
+        int resizeHeight = 1440;
+
+        bool restirGateDemo = false;
+        bool m5ShadeGateDemo = false;
+        bool ddgiLeakGateDemo = false;
+        bool ddgiAmortizationProbeLog = false;
+        bool ddgiEditLoopDemo = false;
+        bool ddgiCornellBakedDemo = false;
+        bool ddgiCornellVirtualDemo = false;
+        bool ddgiCornellHybridDemo = false;
+        bool ddgiCornellMixedDemo = false;
+        bool cornellSeamWindow = false;
+        bool cornellNormalDump = false;
+        bool shadowDbgPxSet = false;
+        bool shadowDbgPySet = false;
+        int shadowDbgPx = 0;
+        int shadowDbgPy = 0;
+        bool residencyGateDemo = false;
+        bool residencyGateStatic = false;
+        bool restirOrbitDemo = false;
+        bool lookTargetDemo = false;
+        bool tierZoomDemo = false;
+        bool storedSdfDemo = false;
+        bool bootLazyGateDemo = false;
+        bool tierEarthDemo = false;
+        bool tierEarthZoomDemo = false;
+        bool tierEarthZoomScript = false;
+        bool tierObservableDemo = false;
+        bool tierObservableZoomDemo = false;
+        bool tierObservableZoomScript = false;
+        bool tierObservablePlateauDemo = false;
+        bool tierObservableShowcaseDemo = false;
+        bool tierM8EarthDemo = false;
+        bool tierM8EarthZoomDemo = false;
+        bool tierM8EarthZoomScript = false;
+        bool tierM8FlightDemo = false;
+        bool tierM8FlightDebugZDir = false;
+        bool tierM8FlightDebugZPosOctantAim = false;
+        bool tierM8FlightAimOffsetSet = false;
+        glm::vec3 tierM8FlightAimOffset{0.0f};
+
+        bool IsRestirGateDemoEnabled() const noexcept { return restirGateDemo; }
+        bool IsM5ShadeGateDemoEnabled() const noexcept { return m5ShadeGateDemo; }
+        bool IsDdgiLeakGateDemoEnabled() const noexcept { return ddgiLeakGateDemo; }
+        bool IsDdgiAmortizationProbeLogEnabled() const noexcept { return ddgiAmortizationProbeLog; }
+        bool IsDdgiEditLoopDemoEnabled() const noexcept { return ddgiEditLoopDemo; }
+        bool IsDdgiCornellBakedDemoEnabled() const noexcept { return ddgiCornellBakedDemo; }
+        bool IsDdgiCornellDemoEnabled() const noexcept {
+            return ddgiCornellBakedDemo || ddgiCornellVirtualDemo ||
+                ddgiCornellHybridDemo || ddgiCornellMixedDemo;
+        }
+        bool IsCornellSeamWindowEnabled() const noexcept { return cornellSeamWindow; }
+        bool IsCornellNormalDumpEnabled() const noexcept { return cornellNormalDump; }
+        bool HasShadowDebugPixel() const noexcept { return shadowDbgPxSet && shadowDbgPySet; }
+        bool IsResidencyGateDemoEnabled() const noexcept { return residencyGateDemo; }
+        bool IsResidencyGateStaticEnabled() const noexcept { return residencyGateStatic; }
+        bool IsRestirOrbitDemoEnabled() const noexcept { return restirOrbitDemo; }
+        bool IsLookTargetDemoEnabled() const noexcept { return lookTargetDemo; }
+        bool IsTierZoomDemoEnabled() const noexcept { return tierZoomDemo; }
+        bool IsStoredSdfDemoEnabled() const noexcept { return storedSdfDemo; }
+        bool IsBootLazyGateDemoEnabled() const noexcept { return bootLazyGateDemo; }
+        bool IsTierEarthDemoEnabled() const noexcept { return tierEarthDemo; }
+        bool IsTierEarthZoomDemoEnabled() const noexcept { return tierEarthZoomDemo; }
+        bool IsTierEarthZoomScriptEnabled() const noexcept { return tierEarthZoomScript; }
+        bool IsTierObservableDemoEnabled() const noexcept { return tierObservableDemo; }
+        bool IsTierObservableZoomDemoEnabled() const noexcept { return tierObservableZoomDemo; }
+        bool IsTierObservableZoomScriptEnabled() const noexcept { return tierObservableZoomScript; }
+        bool IsTierObservablePlateauDemoEnabled() const noexcept { return tierObservablePlateauDemo; }
+        bool IsTierObservableShowcaseDemoEnabled() const noexcept { return tierObservableShowcaseDemo; }
+        bool IsTierM8EarthDemoEnabled() const noexcept { return tierM8EarthDemo; }
+        bool IsTierM8EarthZoomDemoEnabled() const noexcept { return tierM8EarthZoomDemo; }
+        bool IsTierM8EarthZoomScriptEnabled() const noexcept { return tierM8EarthZoomScript; }
+        bool IsTierM8FlightDemoEnabled() const noexcept { return tierM8FlightDemo; }
+        bool IsTierM8FlightDebugZDirEnabled() const noexcept { return tierM8FlightDebugZDir; }
+        bool IsTierM8FlightDebugZPosOctantAimEnabled() const noexcept {
+            return tierM8FlightDebugZPosOctantAim;
+        }
+        bool HasTierM8FlightAimOffset() const noexcept { return tierM8FlightAimOffsetSet; }
+    };
+
+    static UpdateEnvironmentFlags ReadUpdateEnvironmentFlags();
+
     void CreateEngineContext();
     // Prepare()'s provider-fallback loop. Prepare() clears the failure list first; a mid-run
     // demotion re-enters here with the faulted provider already recorded.
@@ -366,6 +451,7 @@ private:
     Vixen::Core::EngineTime time;                    // Time management
     bool graphCompiled;                              // Graph compilation state
     int width, height;                               // Window dimensions
+    UpdateEnvironmentFlags updateEnvironmentFlags_{}; // Update() demo gates, captured at startup
     PresentationTarget presentationTarget_ = PresentationTarget::Window;
     RenderPathConfig renderPathConfig_{};
 

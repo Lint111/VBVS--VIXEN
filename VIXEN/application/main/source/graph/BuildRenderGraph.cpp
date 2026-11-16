@@ -213,36 +213,13 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "Nodes/VoxelGridNode.h"
 #include "Nodes/VoxelSelectionProviderNode.h"
 #include "Nodes/WindowNode.h"
+#include "EnvironmentFlags.h"
 
 namespace {
 #ifdef VIXEN_SHADER_SOURCE_DIR
 std::string ShaderSourceDir() { return Vixen::RenderGraph::ResolveShaderSourceDir(VIXEN_SHADER_SOURCE_DIR); }
 #endif
 
-
-bool envFlagEnabled(const char* name) {
-    const char* value = std::getenv(name);
-    if (value == nullptr) return false;
-    for (; *value != '\0'; ++value) {
-        if (!std::isspace(static_cast<unsigned char>(*value))) return true;
-    }
-    return false;
-}
-
-bool envFlagIsSet(const char* name, bool& value) {
-    const char* raw = std::getenv(name);
-    if (raw == nullptr) return false;
-    while (*raw != '\0' && std::isspace(static_cast<unsigned char>(*raw))) ++raw;
-    if (*raw == '0') {
-        value = false;
-        return true;
-    }
-    if (*raw == '1') {
-        value = true;
-        return true;
-    }
-    return false;
-}
 
 bool PopulateSelectedDeviceCapabilities(VkInstance instance,
                                        Vixen::CapabilityGraph& capabilities) {
@@ -275,15 +252,6 @@ std::string_view RuntimeOperatingSystem() noexcept {
 #else
     return "unknown";
 #endif
-}
-
-bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
-    const char* raw = std::getenv(name);
-    if (raw == nullptr) return defaultValue;
-
-    bool explicitValue = false;
-    if (envFlagIsSet(name, explicitValue)) return explicitValue;
-    return envFlagEnabled(name);
 }
 
 // Dynamic exposure config: the built-in scenes are the default SceneLook, so they contribute it as the
@@ -386,7 +354,7 @@ std::string ReadShaderSourceWithTraceHooksGate(const std::filesystem::path& comp
     std::ostringstream buf;
     buf << file.rdbuf();
     std::string source = buf.str();
-    if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_DEBUG_CAPTURE")) {
         const size_t firstNewline = source.find('\n');
         const std::string defineLine = "#define VIXEN_GPU_TRACE_HOOKS 1\n";
         if (firstNewline == std::string::npos) {
@@ -428,8 +396,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // disconnected desktop cannot turn a capture into a zero-extent surface failure. The explicit
     // HUD flag remains supported for callers that do not set the capture frame list.
     const bool hudCaptureRequested = std::getenv("VIXEN_HUD_CAPTURE_FRAMES") != nullptr;
-    const bool headlessPresentation = envFlagEnabled("VIXEN_HEADLESS") ||
-        envFlagEnabled("VIXEN_HUD_OFFSCREEN_CAPTURE") || hudCaptureRequested;
+    const bool headlessPresentation = Vixen::Core::Env::Enabled("VIXEN_HEADLESS") ||
+        Vixen::Core::Env::Enabled("VIXEN_HUD_OFFSCREEN_CAPTURE") || hudCaptureRequested;
     if (headlessPresentation) {
         SetPresentationTarget(PresentationTarget::Offscreen);
         if (mainLogger && mainLogger->IsEnabled()) {
@@ -438,11 +406,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     const RenderPathConfig& renderPathConfig = GetRenderPathConfig();
-    const bool hdrExposureEnabled = envFlagEnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
+    const bool hdrExposureEnabled = Vixen::Core::Env::EnabledOrDefault("VIXEN_HDR_EXPOSURE", true);
     const bool accumulationHistoryEnabled = ResolveAccumulationEnabled();
 #if defined(VIXEN_CAPTURE_TEST_HOOKS)
     // Explicit 0 selects the system tone map (same contract as VIXEN_HDR_EXPOSURE), not the reference.
-    const bool exposureReference = envFlagEnabledOrDefault("VIXEN_EXPOSURE_TONEMAP_REFERENCE", false);
+    const bool exposureReference = Vixen::Core::Env::EnabledOrDefault("VIXEN_EXPOSURE_TONEMAP_REFERENCE", false);
 #else
     constexpr bool exposureReference = false;
 #endif
@@ -459,8 +427,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // same conditions the temporal-sampling guard below enforces). The capture-test hand tone-map
     // reference replaces the generated systems, so it has no temporal resolve either.
     const bool temporalInputsAvailable = interactiveSampling && hdrExposureEnabled && !exposureReference &&
-        !envFlagEnabled("VIXEN_B1_OCCLUSION_CULL") && !envFlagEnabled("VIXEN_B2_PROXY_PREPASS") &&
-        !envFlagEnabled("VIXEN_DEBUG_CAPTURE");
+        !Vixen::Core::Env::Enabled("VIXEN_B1_OCCLUSION_CULL") && !Vixen::Core::Env::Enabled("VIXEN_B2_PROXY_PREPASS") &&
+        !Vixen::Core::Env::Enabled("VIXEN_DEBUG_CAPTURE");
     const AntiAliasingFrameDescription antiAliasingFrame{
         .presentationSampling = interactiveSampling,
         .temporalUpscalerSelected = renderPathConfig.upscaler == UpscalerKind::Fsr3,
@@ -499,25 +467,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const bool jitterEnabled = (renderPathConfig.temporalJitter || taaSelected ||
         renderPathConfig.upscaler == UpscalerKind::Fsr3) &&
         renderPathConfig.samplingPath == ReconstructionSamplingPath::InteractiveVisual;
-    const bool reconstructionInputsEnabled = envFlagEnabled("VIXEN_RECONSTRUCTION_DEPTH") || jitterEnabled;
+    const bool reconstructionInputsEnabled = Vixen::Core::Env::Enabled("VIXEN_RECONSTRUCTION_DEPTH") || jitterEnabled;
     // The capture executable is the only binary that registers this test module.
     // Keep its explicit opt-in out of every ordinary/default graph build.
     const bool testIndirectLightingEnabled =
-        envFlagEnabled("VIXEN_LOOKDEV_TEST_INDIRECT_LIGHTING");
-    if (jitterEnabled && (!hdrExposureEnabled || envFlagEnabled("VIXEN_B1_OCCLUSION_CULL") ||
-        envFlagEnabled("VIXEN_B2_PROXY_PREPASS") || envFlagEnabled("VIXEN_DEBUG_CAPTURE")))
+        Vixen::Core::Env::Enabled("VIXEN_LOOKDEV_TEST_INDIRECT_LIGHTING");
+    if (jitterEnabled && (!hdrExposureEnabled || Vixen::Core::Env::Enabled("VIXEN_B1_OCCLUSION_CULL") ||
+        Vixen::Core::Env::Enabled("VIXEN_B2_PROXY_PREPASS") || Vixen::Core::Env::Enabled("VIXEN_DEBUG_CAPTURE")))
         throw std::invalid_argument("Temporal sampling requires HDR inputs and non-proxy traversal without trace capture");
     const bool hdrExposureFixed = hdrExposureEnabled &&
-                                 envFlagEnabled("VIXEN_HDR_EXPOSURE_FIXED");
+                                 Vixen::Core::Env::Enabled("VIXEN_HDR_EXPOSURE_FIXED");
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
-    const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
+    const bool waveSlotSwizzleEnabled = Vixen::Core::Env::Enabled("VIXEN_WAVE_SLOT_SWIZZLE");
     if (!renderGraph) {
         mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
         return;
     }
 
     // S0: opt into the UI-only RmlUi demo graph via env var, leaving the voxel path untouched.
-    if (envFlagEnabled("VIXEN_UI_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_UI_DEMO")) {
         mainLogger->Info("VIXEN_UI_DEMO set - building UI-only RmlUi demo graph");
         BuildUIGraph();
         SelectNativeUpscalerForModulelessGraph();
@@ -526,7 +494,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // AR#31: opt into the isolated instanced-cube raster demo via env var, leaving the
     // live voxel-compute path untouched.
-    if (envFlagEnabled("VIXEN_INSTANCING_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_INSTANCING_DEMO")) {
         mainLogger->Info("VIXEN_INSTANCING_DEMO set - building instanced-cube raster demo graph");
         BuildInstancingDemoGraph();
         SelectNativeUpscalerForModulelessGraph();
@@ -536,7 +504,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // AR#21 P4: opt into the isolated auto-sync FrameGraph demo via env var. Proves
     // buffer-hazard auto-synchronization (compute->compute->render->present in ONE
     // command buffer via PassGroupNode). Leaves the live voxel-compute path untouched.
-    if (envFlagEnabled("VIXEN_AUTOSYNC_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_AUTOSYNC_DEMO")) {
         mainLogger->Info("VIXEN_AUTOSYNC_DEMO set - building auto-sync FrameGraph demo graph");
         BuildAutoSyncDemoGraph();
         SelectNativeUpscalerForModulelessGraph();
@@ -548,7 +516,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // compute submits write 2 buffers, 1 consumer compute submit waits BOTH via 2 baked
     // timeline edges (NO binary handoff between them) + writes the swapchain. Leaves the
     // live voxel-compute path untouched.
-    if (envFlagEnabled("VIXEN_FANIN_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_FANIN_DEMO")) {
         mainLogger->Info("VIXEN_FANIN_DEMO set - building multi-submit fan-in timeline demo graph");
         BuildFanInDemoGraph();
         SelectNativeUpscalerForModulelessGraph();
@@ -642,7 +610,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // The native capture witness compares the preserved Lambert+GGX path with the
     // lane's untouched baseline. Product hosts select this same mode through the
     // node parameter; this environment hook exists only in BUILD_TESTS binaries.
-    if (envFlagEnabled("VIXEN_TEST_CELSHADE_LAMBERT_GGX")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_TEST_CELSHADE_LAMBERT_GGX")) {
         if (auto* lighting = static_cast<LightingConfigNode*>(renderGraph->GetInstance(lightingConfigNode))) {
             lighting->SetParameter(LightingConfigNodeConfig::PARAM_SHADING_MODE,
                                    LightingConfigNodeConfig::SHADING_MODE_LAMBERT_GGX);
@@ -1020,7 +988,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the CPU mirror (HitAccumulation.h) over the same records. B1-shape
     // conditional creation on VIXEN_HIT_ACCUM (default off): zero nodes when
     // unset.
-    const bool hitAccumEnabled = envFlagEnabled("VIXEN_HIT_ACCUM");
+    const bool hitAccumEnabled = Vixen::Core::Env::Enabled("VIXEN_HIT_ACCUM");
     hitAccumEnabled_ = hitAccumEnabled;
     // B2 determinism slice: VIXEN_HIT_ACCUM_DIAG_FRAME=<n> -- sample the diag
     // readback (RunHitAccumDiagReadback) at a fixed frame n instead of only at
@@ -1033,7 +1001,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // flag-off keeps HitAccumulate.comp's compiled variant byte-identical
     // (B1's conditional-creation shape, same as VIXEN_HIT_ACCUM_RESOLVE below).
     const bool hitAccumPremergeEnabled =
-        hitAccumEnabled && envFlagEnabled("VIXEN_HIT_ACCUM_PREMERGE");
+        hitAccumEnabled && Vixen::Core::Env::Enabled("VIXEN_HIT_ACCUM_PREMERGE");
     // B2 (batch-27): the table-wide clear (batch-26) is OFF by default now.
     // The diag readback already scans a single named epoch (VulkanGraphApplication
     // .cpp's maxEpoch filter) -- for diag purposes the clear is redundant. Worse,
@@ -1045,7 +1013,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // reclaim mechanism (accepted: counts/occupied-slot settles below CPU-predict's
     // 2.46 under multi-epoch staleness, not a diag-readback concern).
     const bool hitAccumClearEnabled =
-        hitAccumEnabled && envFlagEnabled("VIXEN_HIT_ACCUM_CLEAR");
+        hitAccumEnabled && Vixen::Core::Env::Enabled("VIXEN_HIT_ACCUM_CLEAR");
     NodeHandle hitAccumTableBuffer{};
     NodeHandle hitAccumParamsBuffer{};
     NodeHandle hitAccumClearShaderLib{}, hitAccumClearNode{};
@@ -1148,7 +1116,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the graph — and the frames — bit-identical (B1's conditional-creation
     // shape, again).
     const bool hitAccumResolveEnabled =
-        hitAccumEnabled && envFlagEnabled("VIXEN_HIT_ACCUM_RESOLVE");
+        hitAccumEnabled && Vixen::Core::Env::Enabled("VIXEN_HIT_ACCUM_RESOLVE");
     hitAccumResolveEnabled_ = hitAccumResolveEnabled;
     NodeHandle hitAccumCellRadianceBuffer{};
     NodeHandle hitAccumCellShadeShaderLib{}, hitAccumCellShadeNode{};
@@ -1220,12 +1188,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // When UNSET (default): none of the nodes below are created at all -- the graph builds EXACTLY
     // as it did pre-M3, satisfying the milestone's own "flag-unset is a genuine, provable no-op"
     // bar at the strongest level (no new node, not just an inert one).
-    const bool recipeBucketedDispatchEnabled = envFlagEnabled("VIXEN_RECIPE_BUCKETED_DISPATCH");
+    const bool recipeBucketedDispatchEnabled = Vixen::Core::Env::Enabled("VIXEN_RECIPE_BUCKETED_DISPATCH");
     recipeBucketedDispatchEnabled_ = recipeBucketedDispatchEnabled;  // stored for PreTick's live orchestration
     // W2b: the identity bucket-shade skeleton rides the bucketed-dispatch
     // machinery (BucketMeta/indirect commands/MultiDispatchNode), so it
     // REQUIRES that flag — shade-without-buckets has nothing to dispatch over.
-    bucketedShadeEnabled_ = recipeBucketedDispatchEnabled && envFlagEnabled("VIXEN_BUCKETED_SHADE");
+    bucketedShadeEnabled_ = recipeBucketedDispatchEnabled && Vixen::Core::Env::Enabled("VIXEN_BUCKETED_SHADE");
 
     NodeHandle recipeBucketCountBuffer{};
     NodeHandle recipeBucketIndicesBuffer{};
@@ -1526,7 +1494,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // This synthetic fixture is available to focused tests with VIXEN_SKY_PROJECTION_FIXTURE=1.
     // Keep its render-pass/framebuffer/node triple out of ordinary frames and captures by default.
     const bool skyProjectionFixtureEnabled =
-        envFlagEnabledOrDefault("VIXEN_SKY_PROJECTION_FIXTURE", false);
+        Vixen::Core::Env::EnabledOrDefault("VIXEN_SKY_PROJECTION_FIXTURE", false);
     NodeHandle skyProjectionRenderPassNode{};
     NodeHandle skyProjectionFramebufferNode{};
     NodeHandle skyProjectionNode{};
@@ -2109,7 +2077,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
                     renderGraph->GetInstance(bodyOctreeSceneNode_))) {
                 bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
-                bodyScene->SetRecipeChunkBoxes(envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")
+                bodyScene->SetRecipeChunkBoxes(Vixen::Core::Env::Enabled("VIXEN_RECIPE_CHUNK_CULL")
                     ? Vixen::SVO::Recipe::DeriveRecipeChunkBoxes(proceduralRecipes_)
                     : std::vector<Vixen::SVO::Recipe::RecipeChunkAabb>{});
                 bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
@@ -2145,7 +2113,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // the compact oct8 payload reuses the existing channelPool binding.
             // Keep the define in the canonical family source so the analytic
             // gradient remains the exact flag-off twin.
-            if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
+            if (Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS")) {
                 const size_t firstNewlineNormals = splicedSource.find('\n');
                 const std::string normalsDefine = "#define VIXEN_SHELL_NORMALS 1\n";
                 if (firstNewlineNormals == std::string::npos) {
@@ -2162,7 +2130,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // through eight independently resolved voxel taps. The ordinary
             // path keeps its contiguous same-brick fast path; both paths use
             // the same brick map, distances and unallocated-brick sentinel.
-            if (envFlagEnabled("VIXEN_SDF_FORCE_SLOW_TRILINEAR")) {
+            if (Vixen::Core::Env::Enabled("VIXEN_SDF_FORCE_SLOW_TRILINEAR")) {
                 const size_t firstNewlineSlowSdf = splicedSource.find('\n');
                 const std::string slowSdfDefine = "#define VIXEN_SDF_FORCE_SLOW_TRILINEAR 1\n";
                 if (firstNewlineSlowSdf == std::string::npos) {
@@ -2183,7 +2151,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // (SVOTypes.glsl) instead of the per-hop single-brick-rung crossing
             // check; flag-off leaves that loop's source byte-identical to
             // pre-batch-29.
-            if (envFlagEnabled("VIXEN_MIP_POLICY")) {
+            if (Vixen::Core::Env::Enabled("VIXEN_MIP_POLICY")) {
                 const size_t firstNewline = splicedSource.find('\n');
                 const std::string mipPolicyDefine = "#define VIXEN_MIP_POLICY 1\n";
                 if (firstNewline == std::string::npos) {
@@ -2201,7 +2169,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // its ladder machinery -- descendToNodeOrdinal/shadeFromMipSample -- so it cannot be
                 // meaningfully engaged alone). Off by default; flag-off leaves the entry dispatch's
                 // source byte-identical to pre-regime-3.
-                if (envFlagEnabled("VIXEN_REGIME3")) {
+                if (Vixen::Core::Env::Enabled("VIXEN_REGIME3")) {
                     const size_t firstNewlineR3 = splicedSource.find('\n');
                     const std::string regime3Define = "#define VIXEN_REGIME3 1\n";
                     if (firstNewlineR3 == std::string::npos) {
@@ -2251,7 +2219,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // nested inside the VIXEN_MIP_POLICY block, contradicting this very comment and making
             // the composite-alone neutrality control VACUOUS -- it must inject the define so the
             // inertness being tested is the RUNTIME no-op, not the absence of the code).
-            if (envFlagEnabled("VIXEN_REGIME3_COMPOSITE")) {
+            if (Vixen::Core::Env::Enabled("VIXEN_REGIME3_COMPOSITE")) {
                 const size_t firstNewlineR3c = splicedSource.find('\n');
                 const std::string regime3CompositeDefine = "#define VIXEN_REGIME3_COMPOSITE 1\n";
                 if (firstNewlineR3c == std::string::npos) {
@@ -2280,13 +2248,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     std::vector<std::string> marchShaderFeatures;
     if (reconstructionInputsEnabled) marchShaderFeatures.push_back(kFeatureReconstructionInputs.define);
     if (jitterEnabled) marchShaderFeatures.push_back(kFeaturePrimaryJitter.define);
-    if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_DEBUG_CAPTURE")) {
         marchShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
     }
-    if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_COMPOSITION_COUNTERS")) {
         marchShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
-    if (envFlagEnabled("VIXEN_LEAF_COUNTERS")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_LEAF_COUNTERS")) {
         marchShaderFeatures.push_back(kFeatureLeafInstrCounters.define);
     }
     if (const char* leafInstr = std::getenv("VIXEN_LEAF_INSTR"); leafInstr && *leafInstr) {
@@ -2301,8 +2269,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         std::cout << "[LeafInstr] march variant=" << mode << " (not pixel-valid)" << std::endl;
     }
     const bool policyStencilTilesEnabled =
-        envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES");
-    if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
+        Vixen::Core::Env::Enabled("VIXEN_POLICY_STENCIL") && Vixen::Core::Env::Enabled("VIXEN_POLICY_STENCIL_TILES");
+    if (Vixen::Core::Env::Enabled("VIXEN_POLICY_STENCIL")) {
         marchShaderFeatures.push_back(kFeaturePolicyStencil.define);
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] VIXEN_POLICY_STENCIL: primary policy-stencil materialization ENGAGED");
@@ -2320,23 +2288,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (b2ProxyPrepassEnabled) {
         marchShaderFeatures.push_back(kFeatureB2ProxyPrepass.define);
     }
-    if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS")) {
         marchShaderFeatures.push_back(kFeatureShellNormals.define);
     }
-    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_RECIPE_CHUNK_CULL")) {
         marchShaderFeatures.push_back(kFeatureRecipeChunkCull.define);
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_CHUNK_CULL: procedural surface-shell chunk TLAS/software culling ENGAGED");
         }
     }
-    if (envFlagEnabled("VIXEN_BRICKMAP_DEBUG")) {  // W-BRICKMAP Gate-B bisection
+    if (Vixen::Core::Env::Enabled("VIXEN_BRICKMAP_DEBUG")) {  // W-BRICKMAP Gate-B bisection
         marchShaderFeatures.push_back(kFeatureBrickmapDebug.define);
     }
     // W-RTQUERY Slice A: VK_KHR_ray_query per-brick-AABB TLAS backend (third search
     // backend alongside ESVO/DDA -- see kFeatureRtQueryTraversal's header comment).
     // Developer A/B override for the ray-query tier. Normal composed traversal
     // selects this feature only through the CapabilityGraph below.
-    if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_RTQUERY_TRAVERSAL")) {
         marchShaderFeatures.push_back(kFeatureRtQueryTraversal.define);
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] VIXEN_RTQUERY_TRAVERSAL: VK_KHR_ray_query TLAS backend ENGAGED (FORMAT_STORED_SDF instances route through traverseRayQueryWorld)");
@@ -2360,10 +2328,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Scene demand still controls whether the graph contains far-field structures;
     // it no longer gates the composed traversal backend.
     const bool sceneRequestsFarFieldTraversal =
-        envFlagEnabled("VIXEN_TIER_OBSERVABLE_STRUCTURE");
+        Vixen::Core::Env::Enabled("VIXEN_TIER_OBSERVABLE_STRUCTURE");
     bool composedTraversalOverride = false;
     const bool hasComposedTraversalOverride =
-        envFlagIsSet("VIXEN_COMPOSED_TRAVERSAL", composedTraversalOverride);
+        Vixen::Core::Env::IsSet("VIXEN_COMPOSED_TRAVERSAL", composedTraversalOverride);
     const bool composedTraversalRequested = hasComposedTraversalOverride
         ? composedTraversalOverride : true;
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -2449,7 +2417,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // generally -- see VulkanDevice.cpp), so this is a defensive floor, not a real bump
         // on any device this feature runs on; a flag-off compile never touches spirvVer.
         const int effectiveSpirvVer =
-            (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") || composedUsesRtQuery)
+            (Vixen::Core::Env::Enabled("VIXEN_RTQUERY_TRAVERSAL") || composedUsesRtQuery)
                 ? std::max(spirvVer, 140) : spirvVer;
         builder.SetTargetVulkanVersion(vulkanVer)
                .SetTargetSpirvVersion(effectiveSpirvVer)
@@ -2558,7 +2526,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // M10 causation A/B (env-gated, off by default): disables the coarse
                 // mip-coverage any-hit occlusion paths (SceneBindings.glsl) so a shadow
                 // ray only reports occlusion on a real SDF/DDA leaf crossing.
-                if (envFlagEnabled("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
+                if (Vixen::Core::Env::Enabled("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
                     const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
                     const size_t fnl2 = source.find('\n');
                     if (fnl2 == std::string::npos) source += "\n" + noMipDef;
@@ -2588,22 +2556,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (recipeConsumerFamilies->count(family.get()) != 0) proceduralShaderLibNodes_.push_back(libHandle);
     };
     std::vector<std::string> lightingShaderFeatures;
-    if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_DEBUG_CAPTURE")) {
         lightingShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
     }
-    if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_COMPOSITION_COUNTERS")) {
         lightingShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
-    if (envFlagEnabled("VIXEN_SHADER_CLOCK")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_SHADER_CLOCK")) {
         lightingShaderFeatures.push_back(kFeatureLeafShaderClock.define);
     }
-    if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_POLICY_STENCIL")) {
         lightingShaderFeatures.push_back(kFeaturePolicyStencil.define);
     }
-    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_RECIPE_CHUNK_CULL")) {
         lightingShaderFeatures.push_back(kFeatureRecipeChunkCull.define);
     }
-    if (envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_POLICY_STENCIL") && Vixen::Core::Env::Enabled("VIXEN_POLICY_STENCIL_TILES")) {
         // E11-T1: only ShadowVisibilityWave.comp #includes PolicyStencilTileBuffer;
         // every other lighting family just gets an inert #define (same shape as
         // kFeaturePolicyStencil's own broad share above).
@@ -2953,7 +2921,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 });
         };
         std::vector<std::string> b1ShaderFeatures;
-        if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
+        if (Vixen::Core::Env::Enabled("VIXEN_DEBUG_CAPTURE")) {
             b1ShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
         }
         const auto registerFamily = [this, b1ShaderFeatures](
@@ -3187,7 +3155,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // per-pixel bits ARE the image): skip per-pixel shadow traces for
             // pixels the composite fully replaces (w == 1).
             hitAccumLeanEnabled_ = hitAccumResolveEnabled &&
-                                   envFlagEnabled("VIXEN_HIT_ACCUM_LEAN");
+                                   Vixen::Core::Env::Enabled("VIXEN_HIT_ACCUM_LEAN");
             auto* tableInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumTableBuffer));
             // uint32_t, matching the ValueTag the node reads (the ddgiLeakGateDebug
             // precedent's own `60u` — a uint64_t here stores a mismatched tag and
@@ -3379,7 +3347,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         lightingConfigNode, kRaymarchCameraFovDegrees);
     ConfigureRenderGraphDiagnostics(voxelGridNode, descriptorGatherer, computeDispatch,
                                     pushConstantGatherer, debugCaptureNode,
-                                    envFlagEnabled("VIXEN_DEBUG_CAPTURE"));
+                                    Vixen::Core::Env::Enabled("VIXEN_DEBUG_CAPTURE"));
     BuildPresentationGraph(computeDispatch, skyProjectionFixtureEnabled,
                            skyProjectionRenderPassNode, skyProjectionFramebufferNode,
                            uiRenderPassNode, uiFramebufferNode, uiCompositeNode, usesWsi);
@@ -4722,10 +4690,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (b2ProxyPrepassEnabled) {
         marchFeatures.Enable(kFeatureB2ProxyPrepass);
     }
-    if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS")) {
         marchFeatures.Enable(kFeatureShellNormals);
     }
-    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_RECIPE_CHUNK_CULL")) {
         marchFeatures.Enable(kFeatureRecipeChunkCull);
     }
     // W-RTQUERY Slice A: gate the rtQueryTlas member (binding 40) the SAME way
@@ -4740,7 +4708,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // traversal is REQUESTED, same as the plain VIXEN_RTQUERY_TRAVERSAL gate --
     // an unused binding when composed resolves to DDA is inert (same precedent
     // as the comment above: provider registered-but-unused is not an error).
-    if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") || composedTraversalRequested) {
+    if (Vixen::Core::Env::Enabled("VIXEN_RTQUERY_TRAVERSAL") || composedTraversalRequested) {
         marchFeatures.Enable(kFeatureRtQueryTraversal);
     }
     // E11-T1: gates the PolicyStencilTileBuffer member (binding 41) the same
@@ -5998,7 +5966,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (rtLightingMode != RtLightingMode::Off) {
         waveSdiFeatures.Enable(kFeatureRayQueryLighting);
     }
-    if (envFlagEnabled("VIXEN_RECIPE_CHUNK_CULL")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_RECIPE_CHUNK_CULL")) {
         waveSdiFeatures.Enable(kFeatureRecipeChunkCull);
     }
     if (waveSlotSwizzleEnabled) {

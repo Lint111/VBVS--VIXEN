@@ -13,7 +13,7 @@
 #include "Nodes/LightingConfigNode.h"
 #include "Nodes/VoxelGridNode.h"
 #include "graph/SceneLook.h"
-#include <cctype>
+#include "EnvironmentFlags.h"
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -24,15 +24,6 @@
 #include <vector>
 
 namespace {
-bool envFlagEnabled(const char* name) {
-    const char* value = std::getenv(name);
-    if (value == nullptr) return false;
-    for (; *value != '\0'; ++value) {
-        if (!std::isspace(static_cast<unsigned char>(*value))) return true;
-    }
-    return false;
-}
-
 // Sampled Lighting Cornell Box Demo M2: never-baked proof for the virtual demo's eight
 // rendered bodies. The light-tree's own side bake is deliberately tracked separately.
 uint32_t g_cornellVirtualLightTreeSideBakeCount = 0;
@@ -152,7 +143,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
     // frames, not a tier-crossing or aim bug). Widen near-clip for this demo only, the same
     // "widen the bound, own justified commit" precedent CameraNode.h's kOrbitDistanceMin
     // widening already established for an analogous too-coarse-default problem.
-    if (envFlagEnabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
         // M8 Task 23: with the corrected (camera-anchored) crossing gate at the REAL
         // unoverridden raySizeCoef, hop1 (T1->T2) fires only below ~7.3e-3wu camera-to-child
         // and T2's own content needs an approach to ~2e-4wu to subtend more than a few
@@ -187,7 +178,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
     // until this was added). Configuring PARAM_ORBIT_CENTER_* here declares orbit-mode intent
     // from SetupImpl (CameraNode.cpp's own orbitActive_ latch), so EngageOrbit()'s idempotent
     // guard makes the zoom demo's first SetOrbitDistanceForTest call a no-op re-seed.
-    if (envFlagEnabled("VIXEN_TIER_ZOOM_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_TIER_ZOOM_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -203,7 +194,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
     // orbitDistance (caught live: this milestone's first capture pass showed a tiny distant
     // dot at EVERY tick, near and far alike, until this was added -- the exact class of bug
     // M5's own comment above already documents and warns about).
-    if (envFlagEnabled("VIXEN_TIER_EARTH_ZOOM_DEMO") || envFlagEnabled("VIXEN_TIER_EARTH_ZOOM_SCRIPT")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_TIER_EARTH_ZOOM_DEMO") || Vixen::Core::Env::Enabled("VIXEN_TIER_EARTH_ZOOM_SCRIPT")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -218,7 +209,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
     // hand-picked distance (e.g. the predicted hop0/hop1 handoffs), without needing a scripted
     // zoom -- this milestone's own gate is "confirm concentric magnification on the
     // reconstructed body", not the live zoom (that is M7 Task 14, a separate milestone).
-    if (envFlagEnabled("VIXEN_TIER_OBSERVABLE_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_TIER_OBSERVABLE_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -245,14 +236,14 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
     // at scene-build time). The flight-path demo needs FIXED mode (cameraPosition authoritative
     // at rest, per the "bodies-0" convention) so its own scripted position writes are what
     // actually drives the camera.
-    if (envFlagEnabled("VIXEN_TIER_M8_EARTH_DEMO") && !envFlagEnabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_TIER_M8_EARTH_DEMO") && !Vixen::Core::Env::Enabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 236.0f);
         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: orbitCenter set to demo "
                           "body's world center (64,64,64) so the scripted zoom actually orbits the body");
-    } else if (envFlagEnabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+    } else if (Vixen::Core::Env::Enabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_FLIGHT_DEMO: skipping orbit-param "
                           "wiring -- camera stays in FIXED mode so the Task 19 scripted "
                           "SetPositionForTest flight path is authoritative, not overridden by "
@@ -270,7 +261,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
     // Pitch angled downward (looking down at the grid from above-and-outside, not a flat
     // horizontal view into a wall of overlapping-in-screen-space spheres) gives the widest
     // legible view of the grid's near corner within the distance cap.
-    if (envFlagEnabled("VIXEN_RECIPE_DIVERSITY_STRESS_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_RECIPE_DIVERSITY_STRESS_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -281,7 +272,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
                           "the grid's near region from above; the full grid may extend beyond frame "
                           "at high N, which the live-run gate accounts for");
     }
-    if (envFlagEnabled("VIXEN_STARLIGHT_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_STARLIGHT_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -309,8 +300,8 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
     // VoxelGridNode PRESET-1 default, pointed away from the actual scene -- symptom was a
     // near-total scene miss (3279/250000 hits) that looked like a rendering bug but was
     // purely a wrong camera transform.
-    if (envFlagEnabled("VIXEN_DDGI_CORNELL_BAKED_DEMO") || envFlagEnabled("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") ||
-        envFlagEnabled("VIXEN_DDGI_CORNELL_HYBRID_DEMO") || envFlagEnabled("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
+    if (Vixen::Core::Env::Enabled("VIXEN_DDGI_CORNELL_BAKED_DEMO") || Vixen::Core::Env::Enabled("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") ||
+        Vixen::Core::Env::Enabled("VIXEN_DDGI_CORNELL_HYBRID_DEMO") || Vixen::Core::Env::Enabled("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
         using namespace Vixen::App::CornellBox;
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, kCameraOrbitCenter.x);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, kCameraOrbitCenter.y);
@@ -349,7 +340,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
     // near-white per instance (slight warm/neutral/cool bias) so each stays bright and the three are
     // distinguishable by both base material and tint.
     {
-        if (envFlagEnabled("VIXEN_TIER_CROSSING_DEMO")) {
+        if (Vixen::Core::Env::Enabled("VIXEN_TIER_CROSSING_DEMO")) {
             // Tiered-ESVO Inc2 M3 Task 8: live gate — a single tier-crossing leaf,
             // one PARENT SDF octree (octree 0) with ONE leaf marked farBit=1 via
             // MarkLeafAsTierCrossing, pointing at an independently-built CHILD SDF
@@ -598,8 +589,8 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
                 // above, so the scripted zoom (VulkanGraphApplication::Update) has a real 0->1
                 // transition to exercise mid-flight via its own scripted RequestBrickResidency(true)
                 // at tick 24 -- proving the composed lifecycle live, not just as two separate runs.
-                const bool forceNonResident = envFlagEnabled("VIXEN_TIER_CROSSING_NONRESIDENT")
-                                            || envFlagEnabled("VIXEN_TIER_ZOOM_DEMO");
+                const bool forceNonResident = Vixen::Core::Env::Enabled("VIXEN_TIER_CROSSING_NONRESIDENT")
+                                            || Vixen::Core::Env::Enabled("VIXEN_TIER_ZOOM_DEMO");
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(cat));
@@ -881,7 +872,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
                                  std::to_string(n) + " zero-bake procedural body instances "
                                  "(0 BakeSdfWorld/BuildSdfBodyOctree calls for these bodies)");
             }
-        } else if (envFlagEnabled("VIXEN_RECIPE_HOT_COLD_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_RECIPE_HOT_COLD_DEMO")) {
             // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live-gate scene construction --
             // registers a mix of "hot" recipes (>= kRecipeBucketingHotnessThreshold instances
             // each, so VIXEN_RECIPE_BUCKETED_DISPATCH's bucketing pass promotes them) and "cold"
@@ -1277,7 +1268,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
                                  std::to_string(gridCols) + "x" + std::to_string(gridRows) + " grid "
                                  "(spacing=" + std::to_string(kGridSpacing) + ")");
             }
-        } else if (envFlagEnabled("VIXEN_TIER_CHAIN_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_TIER_CHAIN_DEMO")) {
             // Tiered-ESVO Inc3 M3 Task 5 live gate: a THREE-tree chain, T0 -> T1 -> T2,
             // reusing the EXACT construction pattern the two-tree VIXEN_TIER_CROSSING_DEMO
             // above already live-gates (SDF sphere per tree, magenta/color-override for
@@ -1467,7 +1458,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
-        } else if (envFlagEnabled("VIXEN_TIER_EARTH_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_TIER_EARTH_DEMO")) {
             // Tiered-ESVO Inc3 M4 Task 6 (the epic gate): the SAME T0->T1->T2 chained
             // construction as VIXEN_TIER_CHAIN_DEMO above, but at the REAL per-hop tier
             // ratio the epic exists for (childScale=2^-10 at BOTH hops, not M3's
@@ -1714,7 +1705,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
                 // Inc2 M5 pattern exactly (see the Update()/PreTick scripted-zoom block).
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(cat));
-                    if (envFlagEnabled("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
+                    if (Vixen::Core::Env::Enabled("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
                         bodyScene->RequestBrickResidency(false);
                         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_EARTH_ZOOM_DEMO: "
                                           "RequestBrickResidency(false) -- all octrees mip-only at start");
@@ -1740,7 +1731,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_EARTH_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
-        } else if (envFlagEnabled("VIXEN_TIER_OBSERVABLE_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_TIER_OBSERVABLE_DEMO")) {
             // Tiered-ESVO Inc3 M7 Task 13: the SAME T0->T1->T2 chained construction as
             // VIXEN_TIER_CHAIN_DEMO/VIXEN_TIER_EARTH_DEMO above (per-tier color override,
             // camera-facing-octant selection, RootLeafOctantCenterLocal concentric
@@ -2228,7 +2219,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
-        } else if (envFlagEnabled("VIXEN_RESTIR_GATE_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_RESTIR_GATE_DEMO")) {
             // Sampled Lighting Inc3 M4 live gate: the equal-error-vs-brute-force check the
             // plan's Task 4 requires. Bakes THE SAME >=10^3-emissive-voxel gate scene
             // test_light_tree.cpp's BakeEmissiveGateScene uses (n=32, r=10, center(16,16,16),
@@ -2347,7 +2338,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
                 bodyScene->SetInstances({inst});
                 mainLogger->Info("[BuildRenderGraph] VIXEN_RESTIR_GATE_DEMO: seeded 1 Stored-SDF body instance");
             }
-        } else if (envFlagEnabled("VIXEN_TIER_M8_EARTH_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_TIER_M8_EARTH_DEMO")) {
             // Tiered-ESVO Inc3 M8 Task 17: the TRUE Earth-scale (childScale=2^-10 at BOTH
             // hops) observable surface-to-orbit demo -- the epic's literal original ask,
             // finally attempted with a genuinely controllable camera (Task 16's look-target
@@ -2639,7 +2630,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
-        } else if (envFlagEnabled("VIXEN_SHADOW_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_SHADOW_DEMO")) {
             // VIXEN_SHADOW_DEMO — Sampled Lighting Inc1 M4 live gate: two Procedural
             // spheres positioned so the smaller "occluder" sits directly between the
             // larger "target" sphere's CAMERA-FACING surface and the default directional
@@ -2702,7 +2693,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
                 bodyScene->SetInstances(std::move(shadowBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
             }
-        } else if (envFlagEnabled("VIXEN_STARLIGHT_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_STARLIGHT_DEMO")) {
             // T-1139 witness scene: the emissive procedural sphere also authors
             // one entry in the existing shared LightingConfig light set.
             const glm::vec3 starCenter(64.0f, 64.0f, 64.0f);
@@ -2752,7 +2743,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             if (auto* lighting = static_cast<LightingConfigNode*>(renderGraph->GetInstance(lightingConfigNode))) {
                 Vixen::App::SetSceneLightsLayer(*lighting, LookLightSet::From({starLight}, 0.04f, {1.5f}));
             }
-        } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M1 (baked variant).
             // Plan: Vixen-Docs/01-Architecture/Sampled-Lighting-Cornell-Box-Demo-Plan-2026-07.md
             //
@@ -3323,7 +3314,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (probe grid must be on for this "
                               "demo's own point -- visible bounce lighting -- to be visible at all)");
-        } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M2 (virtual/zero-bake variant).
             // Plan: Vixen-Docs/01-Architecture/Sampled-Lighting-Cornell-Box-Demo-Plan-2026-07.md
             //
@@ -3522,7 +3513,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_VIRTUAL_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (probe grid must be on for this "
                               "demo's own point -- visible bounce lighting -- to be visible at all)");
-        } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_HYBRID_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_DDGI_CORNELL_HYBRID_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M6b Task 6b.1 (hybrid
             // provider variant, "hole in the wall"). Plan: Baked-Perf-Fix-Pipeline-Plan-2026-07.md
             // Milestone M6b.
@@ -3747,7 +3738,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
 #endif
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1");
-        } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M6b Task 6b.2 (mixed-provider
             // split). Plan: Baked-Perf-Fix-Pipeline-Plan-2026-07.md Milestone M6b.
             //
@@ -3935,7 +3926,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
 #endif
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_MIXED_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1");
-        } else if (envFlagEnabled("VIXEN_DDGI_LEAK_GATE_DEMO") || envFlagEnabled("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_DDGI_LEAK_GATE_DEMO") || Vixen::Core::Env::Enabled("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
             // Sampled Lighting Inc4 M6 reuses this EXACT scene (geometry, probe placement,
             // near/far indices) for the edit-loop responsiveness gate when
             // VIXEN_DDGI_EDIT_LOOP_DEMO=1 -- same "don't invent a new mechanism" discipline
@@ -3944,7 +3935,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             // construction time (the source starts "off") and the REAL cut is stashed via
             // g_ddgiEditLoopWorldCut for VulkanGraphApplication.cpp's readback hook to flip in
             // live at a chosen tick -- a genuine mid-run scene-content edit, not a restart.
-            const bool isEditLoopMode = envFlagEnabled("VIXEN_DDGI_EDIT_LOOP_DEMO");
+            const bool isEditLoopMode = Vixen::Core::Env::Enabled("VIXEN_DDGI_EDIT_LOOP_DEMO");
 
             // Sampled Lighting Inc4 M4 live gate: the leak-test scene the plan's Task 4
             // requires -- thin-wall occluder geometry between an emissive source and a
@@ -4175,7 +4166,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: source body octree is null -- gate scene not built");
             }
-        } else if (envFlagEnabled("VIXEN_BRICKMAP_SCENE")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_BRICKMAP_SCENE")) {
             // W-BRICKMAP Slice 2 round 3 RETARGET: the default (env-unset) fallback below is
             // Procedural (providerKind=1, no octree at all -- see its own comment), so an A/B
             // against it is a no-op by construction. The coarse-grid DDA backend now serves
@@ -4215,14 +4206,14 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             // so level 2 (leaf*4) begins at 2387.32 world units. Keep the default
             // scene untouched; the FAR gate adds a 10% margin and also moves the
             // existing kind-5 body behind the sparse shell for the composite leg.
-            const bool sparseBodyEnabled = envFlagEnabled("VIXEN_SPARSE_BODY");
+            const bool sparseBodyEnabled = Vixen::Core::Env::Enabled("VIXEN_SPARSE_BODY");
             const bool sparseBodyFarEnabled = sparseBodyEnabled &&
-                                              envFlagEnabled("VIXEN_SPARSE_BODY_FAR");
+                                              Vixen::Core::Env::Enabled("VIXEN_SPARSE_BODY_FAR");
             // Batch 47 / NEBULA: a second gate on top of VIXEN_SPARSE_BODY.
             // The historical near and FAR placements remain byte-identical
             // when this flag is absent.
             const bool sparseBodyNebulaEnabled = sparseBodyEnabled &&
-                                                  envFlagEnabled("VIXEN_SPARSE_BODY_NEBULA");
+                                                  Vixen::Core::Env::Enabled("VIXEN_SPARSE_BODY_NEBULA");
             // Batch 50 / KI-047 residual: a THIRD independent gate on top of
             // VIXEN_SPARSE_BODY. Sol's V1.3 finding (sol-b49-validation.md) was
             // that the regime-3 composite blend genuinely EXECUTES at
@@ -4237,7 +4228,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
             // hit" second candidate. Historical near/FAR/NEBULA placements are
             // untouched when this flag is unset (byte-identical, criterion C1).
             const bool sparseBodyOverlapEnabled = sparseBodyEnabled &&
-                                                   envFlagEnabled("VIXEN_SPARSE_BODY_OVERLAP");
+                                                   Vixen::Core::Env::Enabled("VIXEN_SPARSE_BODY_OVERLAP");
             constexpr float kSmokeFrameHeight = 500.0f;
             constexpr float kCameraFovDegrees = 45.0f;
             constexpr float kPi = 3.14159265358979323846f;
@@ -4395,7 +4386,7 @@ void VulkanGraphApplication::BuildRecipeSvoGraph(NodeHandle cameraNode,
                                    sparseBodyFarEnabled ? "level2+" : "off") +
                                   "; OVERLAP=" + (sparseBodyOverlapEnabled ? "on" : "off") + ")");
             }
-        } else if (envFlagEnabled("VIXEN_STORED_SDF_DEMO")) {
+        } else if (Vixen::Core::Env::Enabled("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
             // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,
             // setting configs[k].formatId = STORED_SDF and populating the sdfBricks /
