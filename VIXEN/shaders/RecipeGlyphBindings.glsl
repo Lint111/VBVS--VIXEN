@@ -56,6 +56,29 @@ float SdfCore_GlyphOutlineBounded(vec3 p, uint glyphIndex) {
         precise vec2 p3 = vec2(uintBitsToFloat(glyphOutlineWords[segmentBase + 9u]),
                                uintBitsToFloat(glyphOutlineWords[segmentBase + 10u]));
         uint segmentKind = glyphOutlineWords[segmentBase + 12u];
+        // Exact segment skip (row 106): every sampled point of a Bezier segment lies in the hull
+        // of its control points, so a segment whose padded control-point box is farther than the
+        // distance found so far cannot lower the minimum, and one whose box is above, below or
+        // left of p crosses no +x ray. Skipping it leaves the result bit-identical while the
+        // per-sample cost stops scaling with every segment of every merged row.
+        vec2 hullMin = min(p0, p1);
+        vec2 hullMax = max(p0, p1);
+        if (segmentKind != 0u) {
+            hullMin = min(hullMin, p2);
+            hullMax = max(hullMax, p2);
+        }
+        if (segmentKind > 1u) {
+            hullMin = min(hullMin, p3);
+            hullMax = max(hullMax, p3);
+        }
+        // The pad dwarfs the rounding of the 16-step polyline (relative ~1e-7 of the coordinates).
+        float hullPad = max(max(abs(hullMin.x), abs(hullMin.y)), max(abs(hullMax.x), abs(hullMax.y))) *
+            (1.0 / 4096.0) + (1.0 / 4096.0);
+        hullMin -= vec2(hullPad);
+        hullMax += vec2(hullPad);
+        vec2 outside = max(max(hullMin - p.xy, p.xy - hullMax), vec2(0.0));
+        bool crossesNoRay = !checkWinding || p.y < hullMin.y || p.y > hullMax.y || p.x > hullMax.x;
+        if (crossesNoRay && length(outside) > minimumDistance) continue;
         precise vec2 previous = p0;
         [[dont_unroll]] for (int sampleIndex = 1; sampleIndex <= 16; ++sampleIndex) {
             precise float t = float(sampleIndex) / uintBitsToFloat(1098907648u);
