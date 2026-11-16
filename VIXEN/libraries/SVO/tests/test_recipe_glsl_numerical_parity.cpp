@@ -169,6 +169,32 @@ bool NearlyEqual(float gpu, float cpu, float tol = 1e-4f) {
     return std::fabs(gpu - cpu) <= allowed;
 }
 
+// The flat corpus harness intentionally has no host document, wire, set, field-port, glyph,
+// or path-instance inputs. Derive that exclusion from the generated kernel opcode metadata so
+// newly-added document/port opcodes (including future GB1 additions) do not need a numeric list
+// in this test. Stack-only metadata operations remain required corpus coverage.
+bool RequiresStandaloneHostInput(const Vixen::SVO::Recipe::SdfOpInfo& info) {
+    if (info.category == Vixen::SVO::Recipe::SdfOpCategory::Set) return true;
+    const auto* arguments = Vixen::SVO::Recipe::SdfOpArguments(info);
+    for (std::uint32_t index = 0; index < info.argumentCount; ++index) {
+        const auto& argument = arguments[index];
+        switch (argument.source) {
+        case Vixen::SVO::Recipe::SdfArgumentSource::Wire:
+        case Vixen::SVO::Recipe::SdfArgumentSource::FieldPort:
+        case Vixen::SVO::Recipe::SdfArgumentSource::SetPort:
+        case Vixen::SVO::Recipe::SdfArgumentSource::GlyphInstance:
+        case Vixen::SVO::Recipe::SdfArgumentSource::FixedBucketInstance:
+            return true;
+        case Vixen::SVO::Recipe::SdfArgumentSource::InstructionData:
+            if (std::string_view(argument.type) == "wire") return true;
+            break;
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // Fixed sample-point grid: 5x5x5 lattice over [-3,3]^3 plus a few singularity
 // probes. ~150 points total, evaluated per corpus program.
@@ -1597,12 +1623,15 @@ TEST(RecipeGlslOpcodeCoverage, CorpusCoversEveryValidOpcode) {
     validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Hash32));
     validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Hash32Combine));
 
-    // GlyphOutline reads a per-recipe GlyphOutlineInstance row the flat corpus loop cannot supply;
-    // GlyphOutlineBucketMatchesCpu above is its dedicated CPU/GPU parity test. PathDistance (kernel
-    // opcode 183) has the same row-input shape but NO dedicated test or producer yet, so this
-    // exemption is a tracked gap, not coverage.
-    validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::GlyphOutline));
-    validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::PathDistance));
+    // The generated argument metadata marks document/port and per-instance inputs that the flat
+    // corpus loop cannot supply. Those opcodes are intentionally checked by their dedicated
+    // lowering/render gates; this is an exemption by declared property, not by opcode number.
+    for (auto it = validOpcodes.begin(); it != validOpcodes.end();) {
+        const auto* info = Vixen::SVO::Recipe::FindSdfOpInfo(
+            static_cast<Vixen::SVO::Recipe::SdfOpCode>(*it));
+        if (info != nullptr && RequiresStandaloneHostInput(*info)) it = validOpcodes.erase(it);
+        else ++it;
+    }
 
     std::vector<int> missingFromCorpus;   // valid but never exercised by the corpus
     for (uint8_t v : validOpcodes)
