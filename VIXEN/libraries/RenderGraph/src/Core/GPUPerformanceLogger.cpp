@@ -1,5 +1,7 @@
 #include "Core/GPUPerformanceLogger.h"
+#include <cstdio>
 #include <iostream>
+#include <mutex>
 
 namespace Vixen::RenderGraph {
 
@@ -8,6 +10,7 @@ GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, std::shared_
     : Logger(name + "_GPUPerf", true)
     , queryManager_(queryManager)
     , rollingWindowSize_(rollingWindowSize)
+    , passName_(name)
 {
     if (queryManager_) {
         // Allocate a query slot from the shared manager
@@ -102,11 +105,9 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
 
     // Calculate timing from query manager
     lastDispatchMs_ = queryManager_->GetElapsedMs(frameIndex, querySlot_);
-    if (reportedReads_ < kReportedReads) {
-        ++reportedReads_;
-        Info("[GPU_SUBMIT_TIME] read=" + std::to_string(reportedReads_) +
-             " gpu_ms=" + std::to_string(lastDispatchMs_));
-    }
+    const bool report = reportedReads_ < kReportedReads;
+    if (report) ++reportedReads_;
+    if (!spansSeveralSubmissions_) RecordSubmission(*this, passName_, lastDispatchMs_, report);
 
 #if UNDERSET_NATIVE_BENCHMARK
     // Task 0.1: raw absolute ticks for cross-pass whole-frame GPU span computation.
@@ -139,6 +140,50 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
         }
     }
 #endif
+}
+
+// ============================================================================
+// SUBMIT WATCHDOG GUARD
+// ============================================================================
+
+namespace {
+std::mutex& WorstSubmissionMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+GPUPerformanceLogger::MeasuredSubmission& WorstSubmissionRecord() {
+    static GPUPerformanceLogger::MeasuredSubmission worst;
+    return worst;
+}
+}  // namespace
+
+void GPUPerformanceLogger::RecordSubmission(Logger& reporter, const std::string& pass, double gpuMs,
+                                            bool report) {
+    if (!(gpuMs > 0.0)) return;
+    // stdout, not the node logger: capture executables print only the application logger at INFO.
+    if (report) {
+        std::printf("[GPU_SUBMIT_TIME] pass=%s gpu_ms=%.3f\n", pass.c_str(), gpuMs);
+        std::fflush(stdout);
+    }
+    {
+        std::lock_guard lock(WorstSubmissionMutex());
+        auto& worst = WorstSubmissionRecord();
+        if (gpuMs > worst.gpuMs) worst = {gpuMs, pass};
+    }
+    if (gpuMs > kSubmitGuardMs) {
+        std::printf("[GPU_SUBMIT_GUARD] pass=%s gpu_ms=%.3f guard_ms=%.0f EXCEEDED\n", pass.c_str(), gpuMs,
+                    kSubmitGuardMs);
+        std::fflush(stdout);
+        reporter.Error("[GPU_SUBMIT_GUARD] pass=" + pass + " gpu_ms=" + std::to_string(gpuMs) +
+                       " exceeds the submit guard " + std::to_string(kSubmitGuardMs) +
+                       " ms (a quarter of the " + std::to_string(kNativeWatchdogMs) +
+                       " ms native watchdog): bound this pass's per-invocation work or split it");
+    }
+}
+
+GPUPerformanceLogger::MeasuredSubmission GPUPerformanceLogger::WorstSubmission() {
+    std::lock_guard lock(WorstSubmissionMutex());
+    return WorstSubmissionRecord();
 }
 
 // ============================================================================
