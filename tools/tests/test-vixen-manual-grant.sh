@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# sn-qregrant1: a manual queue grant in UT_QUEUE_GRANT_FILE sets the native build width at the start of each step; an automatic grant does not.
+# sn-qregrant1: a queue grant in UT_QUEUE_GRANT_FILE sets the native build width at the start of each step;
+# manual and automatic grants use the same live grant-cpus field.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 work="$(mktemp -d "${TMPDIR:-$here}/vixen-manual-grant.XXXXXX")"
@@ -22,6 +23,6 @@ grep -Fq "source=manual queue grant" <<<"$out" && echo "ok   log names the manua
 printf 'job pid=1 granted=2 grant-cpus=4 grant-manual=1\n' >"$grant"
 check "$(tail -n 1 <<<"$(jobs_now)")" 4 "the next step re-reads a changed grant"
 printf 'job pid=1 granted=2 grant-cpus=4\n' >"$grant"
-check "$(tail -n 1 <<<"$(jobs_now)")" 16 "after a reset the node width rule applies again"
+check "$(tail -n 1 <<<"$(jobs_now)")" 4 "after a reset the automatic queue grant applies"
 check "$(UT_QUEUE_GRANT_FILE=/nonexistent nw_manual_grant_cpus; echo "rc=$?")" "rc=1" "a missing grant file is not a manual grant"
 exit "$fails"

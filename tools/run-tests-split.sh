@@ -320,14 +320,14 @@ run_gpu_shards() {
         bash "$queue_wrapper" --agent "${agent}-gpu${index}" --resource gpu \
           --label "$agent:split-gpu-$index" "${token_args[@]}" -- \
           env "${witness_env[@]}" "${shard_env[@]}" \
-          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
             --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
           >"$shard_dir/shard-$index.log" 2>&1
       else
         env "${witness_env[@]}" "${shard_env[@]}" \
-          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
             --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
