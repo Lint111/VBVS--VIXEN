@@ -2,7 +2,7 @@
 
 ## STATUS
 
-COMPLETED / LANDABLE. Round 3 implements and witnesses the owner-scoped, lock-free Gaia allocator on upstream and the Lint111 pin, then points VIXEN at the pin. No process-wide lock is enabled. The Gaia commits are intentionally unpushed for the controller to land.
+COMPLETED / LANDABLE. Round 4 makes the owner-scoped, lock-free Gaia allocator safe for generic singleton semantics and cross-thread frees, then witnesses the upstream branch, Lint111 pin, and VIXEN on WSL and native Windows. No process-wide lock is enabled. The Gaia commits are intentionally unpushed for the controller to land.
 
 ## SHAs
 
@@ -10,9 +10,9 @@ COMPLETED / LANDABLE. Round 3 implements and witnesses the owner-scoped, lock-fr
 - `origin/wave/authoring-convergence` was fetched and merged; it was already at the base SHA.
 - Round 1 reference commit: `7bff05f9b881` (`fix: enable Gaia arena locking for parallel materialization`), rejected by R760.
 - Round 2 revert: `6901112639b0` (`revert: remove rejected process-wide Gaia lock`). The current VIXEN tree does not define `GAIA_ALLOC_ARENA_LOCK=1`.
-- Upstream Gaia base checked from `origin-upstream/main`: `4eaf6f208ee693779e8b1c261a0c6bdfb278de78f`; upstream fix: `8bd1cbff407ec3f0ed36df6892d0072baa9d570f` (`fix(mem): use thread-local allocation arenas`).
-- Lint111 pin base: `84ba7f10dfabd376a862c6fc54d3d43ed365ae54`; pin fix: `34cf2534f838fb44259a5b3cafd04befacbcdb09` (`fix(mem): use thread-local allocation arenas`).
-- VIXEN pin commit: `0fa3e62fdd1ecbb4d84ca21e08d691b69757df3c` (`deps(gaia): pin owner-scoped allocators`).
+- Upstream Gaia base checked from `origin-upstream/main`: `4eaf6f208ee693779e8b1c261a0c6bdfb278de78`; Round 4 fix: `22bc59b0cfbe7019bf9c65ea0d9803f2af0f442f` (`fix(mem): use owner-scoped allocation arenas`).
+- Lint111 pin base: `84ba7f10dfabd376a862c6fc54d3d43ed365ae54`; Round 4 pin fix: `0ff5e6f9a3b44af551c7d105693146cf387ed00e` (`fix(mem): use owner-scoped allocation arenas`).
+- VIXEN pin commit: `cce4d10d8e04764b253b5b7a28d9e5e27c0cfeab` (`deps(gaia): pin owner-scoped allocator fix`).
 
 ## ROOT CAUSE
 
@@ -194,9 +194,66 @@ This change makes Gaia's allocation singletons thread-local, giving each materia
 - Controller should update Undertow and kernel `toolchain/providers/gaia.pin` copies to `34cf2534f838...` in the same batch; this lane intentionally changed only VIXEN's `VIXEN/dependencies/native/gaia.pin`.
 - The generated header is part of both Gaia commits; do not recapture or hand-edit it.
 
+## ROUND 4 — OWNER-SCOPED ALLOCATOR SAFETY
+
+STATUS: COMPLETED / LANDABLE. Round 4 replaces the rejected generic-TLS singleton change with a focused, owner-scoped allocator implementation. Nothing was pushed and no upstream PR was opened.
+
+SHAs:
+
+- Gaia latest-upstream PR branch `fix/owner-scoped-allocators`: `22bc59b0cfbe7019bf9c65ea0d9803f2af0f442f`, based on `origin-upstream/main` `4eaf6f208ee693779e8b1c261a0c6bdfb278de78`.
+- Gaia Lint111 pin branch `pin/soa31-arena-2026-11-16`: `0ff5e6f9a3b44af551c7d105693146cf387ed00e`, one cherry-picked focused commit with the pin's surrounding source/header differences regenerated.
+- VIXEN `lane-gaiaarena1`: `cce4d10d8e04764b253b5b7a28d9e5e27c0cfeab`, updating `VIXEN/dependencies/native/gaia.pin` to the pin SHA.
+
+The latest upstream issue/PR search found no allocator-arena-specific report. Gaia issue #39 remains the known broader concurrent World/query restriction, but it does not describe this page-arena defect.
+
+Root cause and change: the prior Round 3 change made every `dyn_singleton<T>::get()` thread-local. Round 4 restores the generic singleton to process-wide semantics at `include/gaia/core/dyn_singleton.h:21-35`. A separate `mem::detail::arena_singleton<T>` at `include/gaia/mem/mem_alloc.h:48-69` is used only by `SmallBlockAllocator` (`include/gaia/mem/smallblock_allocator.h:384-395`), `PagedAllocator` (`include/gaia/mem/paged_allocator.h:313-335`), and `ChunkAllocator` (`include/gaia/ecs/chunk_allocator.h:89-102`). `rg dyn_singleton include src single_include` now finds only the generic definition and its generated copy; there are no other Gaia instantiations or allocator aliases using it.
+
+Each page now carries its creating arena state. A free issued through another allocator instance compares the page's arena pointer and atomically sets a pending-free bit; the owning arena drains those bits before changing page lists. The detector at `include/gaia/mem/mem_alloc.h:104-143` still owns a stable inline TLS thread token and asserts at line 118 when a non-owning thread directly enters the same arena. The optional `GAIA_ALLOC_ARENA_LOCK` remains only as a compatibility serialization mode and is not enabled by VIXEN.
+
+Cross-thread analysis: cross-thread frees are a real Gaia path, not a documented contract. `mt::Job` stores `util::SmallFunc` (`include/gaia/mt/jobcommon.h:45-53`); worker execution finalizes and releases the job at `include/gaia/mt/threadpool.h:1664-1689`, and the job manager frees the callable storage at `include/gaia/mt/threadpool.h:428-434`. A job allocated on one thread can therefore be destroyed on a different worker. The new page-header route handles this without entering the foreign arena. Normal deferred system work is waited and deleted before the owning World proceeds (`include/gaia/ecs/world.h:15187-15202`), so structural World cleanup remains scheduled by the caller. World teardown is explicit and non-movable (`include/gaia/ecs/world.h:962-980` and `10132-10162`); if teardown is called on another thread, the same page-owner route handles chunk/data frees. Chunk allocation/free is centralized at `include/gaia/ecs/chunk.h:430-477`, and World cleanup flushes the chunk arena at `include/gaia/ecs/world.h:14258-14265`. Chunk moves relocate data inside a World; they do not transfer page ownership. The focused cross-thread test allocates all three arena kinds on a worker, frees them on main, then makes the owner drain and release the pages.
+
+Gaia witnesses:
+
+| Witness | Result | Evidence |
+|---|---|---|
+| Upstream focused two-World repro | PASS, 1 case / 3 assertions | `/home/liory/.local/state/undertow/undertow-box-logs/1794819504-test-round4-upstream-two-worlds3.log` |
+| Upstream cross-thread SmallBlock/Paged/Chunk free repro | PASS, 1 case / 66 assertions | `/home/liory/.local/state/undertow/undertow-box-logs/1794819497-test-round4-upstream-cross-free5.log` |
+| Upstream full Gaia CTest | PASS, 51/51 | `/home/liory/.local/state/undertow/undertow-box-logs/1794820841-test-round4-upstream-full-suite-final3.log` |
+| Pin focused cross-thread repro | PASS, 1 case / 66 assertions | `/home/liory/.local/state/undertow/undertow-box-logs/1794821856-test-round4-pin-cross-free1.log` |
+| Pin focused two-World repro | PASS, 1 case / 3 assertions | `/home/liory/.local/state/undertow/undertow-box-logs/1794821862-test-round4-pin-two-worlds1.log` |
+| Upstream amalgamated-header generation | PASS, formatter `clang-format 18.1.8`, 91,513 lines | `/home/liory/.local/state/undertow/undertow-box-logs/1794820381-light-round4-upstream-single-header-final2.log` |
+
+The final Gaia test compile used `-Wall -Wextra -pedantic-errors -Werror` and the complete warning-enabled build passed (`1794820450-build-round4-upstream-full-build-final2.log`).
+
+VIXEN witnesses against pin `0ff5e6f9a3b44af551c7d105693146cf387ed00e`:
+
+| Witness | Result | Evidence |
+|---|---|---|
+| WSL configure, exact Gaia revision check | PASS; CMake verified full pin SHA | `/home/liory/.local/state/undertow/undertow-box-logs/1794821972-build-round4-vixen-wsl-configure-pin2.log` |
+| WSL CPU target build | PASS | `/home/liory/.local/state/undertow/undertow-box-logs/1794822596-build-round4-vixen-wsl-build-cpu-test2.log` |
+| WSL CPU parity test | PASS, 20/20 | `/home/liory/.local/state/undertow/undertow-box-logs/1794822709-test-round4-vixen-wsl-20x2.log` |
+| WSL CPU CTest | PASS, 1/1, CTest #143 | `/home/liory/.local/state/undertow/undertow-box-logs/1794822720-test-round4-vixen-wsl-ctest2.log` |
+| Native Windows configure | PASS; CMake verified full pin SHA | `/home/liory/.local/state/undertow/undertow-box-logs/1794822968-build-round4-vixen-native-configure2.log` |
+| Native Windows CPU target build | PASS | `/home/liory/.local/state/undertow/undertow-box-logs/1794823068-build-round4-vixen-native-build-cpu-test3.log` |
+| Native Windows CPU parity test | PASS, 20/20 | `/home/liory/.local/state/undertow/undertow-box-logs/1794823186-test-round4-vixen-native-20x2.log` |
+| Native Windows CPU CTest | PASS, 1/1, CTest #143 | `/home/liory/.local/state/undertow/undertow-box-logs/1794823203-test-round4-vixen-native-ctest2.log` |
+
+Timing and throughput: the stored Round 2 references are no-lock serial `13,600.1609 ms / 537.2 bytes/ms` and global lock `17,170.9365 ms / 425.5 bytes/ms`; the global lock is 26.3% slower on the n=64 bake. The fresh owner-scoped WSL n=64 run was `8,201.1303 ms / 890.8 bytes/ms`, with unchanged output `nodeCount=581`, `brickCount=508`, and `poolBytes=7,305,928`. The fresh result is materially faster than the stored references because this run used the current warm/cache state; the comparable safety result is the 20x parity pass on both platforms. Evidence: `/home/liory/.local/state/undertow/undertow-box-logs/1794822776-test-round4-vixen-wsl-bake64-3.log`.
+
+Recovery findings: the first post-change upstream full suite was red while same-thread frees were incorrectly classified as foreign (`1794818430-test-cx-gaiaarena1:round4-upstream-full-suite.log` and final retry `1794818874-test-cx-gaiaarena1:round4-upstream-full-suite-final.log`); page-pointer routing fixed it. The first cross-thread repro post-flush assertion (`1794818982-test-cx-gaiaarena1:round4-upstream-cross-free4.log`) was a test bug that allocated a local block and did not free it before requiring zero live bytes; the repro now frees it and passes. The first native build failed before compile because `build.ninja` did not exist (`/home/liory/.local/state/undertow/undertow-box-logs/1794822912-build-round4-vixen-native-build-cpu-test2.log`); documented native configure recovery passed, followed by the target build. The mandatory queue rejected one earlier CMake invocation carrying the .NET-only `-nodeReuse:false` flag; it was retried with the correct CMake command and is recorded in SPT proposal `31e9f7ea0401`. The formatter was provisioned in the upstream worktree with `python3 -m pip install --target .tmp/clang-format clang-format==18.1.8`; the existing formatter-provisioning proposal covers that workaround. No STOP remains.
+
+VIXEN consumes Gaia through `VIXEN/dependencies/native/gaia.pin`. The Undertow and kernel `toolchain/providers/gaia.pin` copies are intentionally unchanged in this lane; the controller must update those shared copies to the pin SHA in the landing batch. No KFR or launcher pin changed.
+
+### Upstream PR text (not submitted)
+
+Subject: `fix(mem): use owner-scoped allocation arenas`
+
+Concurrent Worlds previously entered the same mutable Gaia allocation arenas through dyn_singleton and could corrupt page lists or trip the arena assertion. The two-World concurrent allocation test reproduces the failure, and the cross-thread allocation test covers a worker allocation freed by the main thread. The fix restores process-wide semantics for the generic dyn_singleton and gives only the three allocation arena aliases owner-scoped thread-local holders. Every page records its creating arena; a foreign free sets an atomic pending-free bit and the owner drains those frees before mutating page or arena lists. Assert builds retain the ArenaLock detector and abort when a non-owning thread directly enters an arena. The global arena lock is rejected: the n=64 bake measured 13,600 ms for no-lock serial execution and 17,171 ms with the global lock, about 26 percent slower. Per-World allocators were also rejected because SmallFunc, MoveFunc, and ThreadPool metadata use these arenas outside a single World; owner-scoped pages handle those paths while preserving lock-free independent arenas.
+
 ## CONSOLIDATION ISSUES
 
 - proposed: Box queue tee can abort a queued VIXEN build before payload completion
 - proposed: Native direct-test PowerShell relay does not reap an aborted Windows test
 - proposed: Gaia single-header generation needs a provisioned formatter
 - proposed: VIXEN needs a first-class local Gaia source override for unpushed pin witnesses
+- proposed: CMake queue witnesses reject the .NET-only nodeReuse flag
