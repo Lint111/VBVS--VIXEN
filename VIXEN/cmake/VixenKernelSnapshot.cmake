@@ -27,6 +27,10 @@ set(VIXEN_KERNEL_CACHE_RETENTION_DAYS 7 CACHE STRING
 
 set(_vixen_kernel_codegen_paths
     Directory.Build.props
+    # Release source-generator builds invoke this project to validate/cache the
+    # keyed analyzer. Keep it in immutable consumer snapshots with the stamp
+    # script that the analyzer deployment contract already archives.
+    tools/AnalyzerStamp
     tools/unity-analyzer-stamp.py
     Packages/com.yeroket.utility.kernel-framework/Directory.Build.props
     Packages/com.yeroket.utility.kernel-framework/RoslynVersions.g.props
