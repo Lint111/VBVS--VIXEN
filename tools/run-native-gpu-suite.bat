@@ -35,15 +35,17 @@ set "CASE_TIMEOUT=%VIXEN_GPU_CASE_TIMEOUT%"
 if not defined CASE_TIMEOUT set "CASE_TIMEOUT=600"
 set "STOP_ARG=--stop-on-failure"
 if "%VIXEN_GPU_STOP_ON_FAILURE%"=="0" set "STOP_ARG="
+if /i "%~1"=="lookdev-hud" goto :lookdev_hud
 set "SELECT_ARGS=!VIXEN_NATIVE_ARGS!"
-if /i "%~1"=="lookdev-hud" set "SELECT_ARGS=--tests-from-file %ROOT%\tools\native-lookdev-hud.tests"
-if /i "%~1"=="lookdev-hud" (
-    set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L gpu --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure --tests-from-file %ROOT%\tools\native-lookdev-hud.tests"
-) else if defined VIXEN_NATIVE_ARGS (
-    set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !SELECT_ARGS!"
-) else (
-    set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !SELECT_ARGS!"
-)
+if defined VIXEN_NATIVE_ARGS goto :phase_custom
+set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !SELECT_ARGS!"
+goto :run_phase
+:phase_custom
+set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !SELECT_ARGS!"
+goto :run_phase
+:lookdev_hud
+set "VIXEN_PHASE_ARGS=--test-dir %BUILD_DIR% -L gpu --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure --tests-from-file %ROOT%\tools\native-lookdev-hud.tests"
+:run_phase
 REM The phase wrapper prints "[phase:native-gpu-suite] alive ..." while the ctest tree uses CPU, so the
 REM WSL queue watchdog does not mistake a long silent device test for a dead payload (and still
 REM sees a hung one: no CPU growth stops the heartbeat). Arguments travel in an env var, not quoting.
