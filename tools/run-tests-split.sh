@@ -188,7 +188,6 @@ if ((${#build_targets[@]})); then
   build_log="$out_dir/build-selected-tests.log"
   queue build build-selected-tests 0 \
     cmake --build "$build_dir" --target "${build_targets[@]}" \
-      --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" \
     >"$build_log" 2>&1
   build_status=$?
   if (( build_status != 0 )); then
@@ -321,14 +320,14 @@ run_gpu_shards() {
         bash "$queue_wrapper" --agent "${agent}-gpu${index}" --resource gpu \
           --label "$agent:split-gpu-$index" "${token_args[@]}" -- \
           env "${witness_env[@]}" "${shard_env[@]}" \
-          "${gpu_guard[@]}" ctest --test-dir "$build_dir" --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
             --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
           >"$shard_dir/shard-$index.log" 2>&1
       else
         env "${witness_env[@]}" "${shard_env[@]}" \
-          "${gpu_guard[@]}" ctest --test-dir "$build_dir" --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
             --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
@@ -383,8 +382,7 @@ run_part() {
   fi
   queue "$resource" "split-$part" "$cpu_tokens" \
     env "${witness_env[@]}" "$@" \
-    ${part_guard[@]+"${part_guard[@]}"} ctest --test-dir "$build_dir" \
-          --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" -L "^${part}\$" "${select_args[@]}" \
+    ${part_guard[@]+"${part_guard[@]}"} ctest --test-dir "$build_dir" -L "^${part}\$" "${select_args[@]}" \
           ${part_timeout[@]+"${part_timeout[@]}"} --no-tests=error --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
     >"$out_dir/$part.log" 2>&1
   local status=$?
