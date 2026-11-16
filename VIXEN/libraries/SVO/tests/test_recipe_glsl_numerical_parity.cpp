@@ -170,7 +170,7 @@ bool NearlyEqual(float gpu, float cpu, float tol = 1e-4f) {
 }
 
 // The flat corpus harness intentionally has no host document, wire, set, field-port, glyph,
-// or path-instance inputs. Derive that exclusion from the generated kernel opcode metadata so
+// element-attribute, or path-instance inputs. Derive that exclusion from the generated kernel opcode metadata so
 // newly-added document/port opcodes (including future GB1 additions) do not need a numeric list
 // in this test. Stack-only metadata operations remain required corpus coverage.
 bool RequiresStandaloneHostInput(const Vixen::SVO::Recipe::SdfOpInfo& info) {
@@ -184,6 +184,7 @@ bool RequiresStandaloneHostInput(const Vixen::SVO::Recipe::SdfOpInfo& info) {
         case Vixen::SVO::Recipe::SdfArgumentSource::SetPort:
         case Vixen::SVO::Recipe::SdfArgumentSource::GlyphInstance:
         case Vixen::SVO::Recipe::SdfArgumentSource::FixedBucketInstance:
+        case Vixen::SVO::Recipe::SdfArgumentSource::ElementAttribute:
             return true;
         case Vixen::SVO::Recipe::SdfArgumentSource::InstructionData:
             if (std::string_view(argument.type) == "wire") return true;
