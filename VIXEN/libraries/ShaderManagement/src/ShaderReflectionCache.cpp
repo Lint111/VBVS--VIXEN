@@ -190,8 +190,8 @@ std::vector<uint32_t> ShaderReflectionCache::Serialize(const SpirvReflectionData
     w.Pod<uint32_t>(static_cast<uint32_t>(d.stages.size()));
     for (auto s : d.stages) w.Enum(s);
 
-    // Descriptor sets are written in the live map's iteration order: the SDI generator iterates
-    // it, so Deserialize must rebuild that exact order (and verifies it did).
+    // Descriptor sets are ordered by set index, which makes the payload and generated SDI
+    // independent of the standard library used by the producer.
     w.Pod<uint32_t>(static_cast<uint32_t>(d.descriptorSets.size()));
     for (const auto& [setIndex, bindings] : d.descriptorSets) {
         w.Pod(setIndex);
@@ -351,18 +351,10 @@ std::optional<CachedReflection> ShaderReflectionCache::Deserialize(const std::ve
     }
     if (!r.Ok() || !r.AtEnd()) return std::nullopt;
 
-    // Rebuild the descriptor-set map so its iteration order equals the recorded order. Inserting
-    // in reverse recorded order reproduces it for libstdc++/MSVC singly/doubly linked node lists
-    // in the common distinct-bucket case; anything else is verified below and rejected (the
-    // caller then reflects from scratch).
-    for (auto it = setRecords.rbegin(); it != setRecords.rend(); ++it) {
-        d->descriptorSets[it->index] = std::move(it->bindings);
+    for (auto& record : setRecords) {
+        d->descriptorSets[record.index] = std::move(record.bindings);
     }
     if (d->descriptorSets.size() != setRecords.size()) return std::nullopt;
-    size_t pos = 0;
-    for (const auto& kv : d->descriptorSets) {
-        if (kv.first != setRecords[pos++].index) return std::nullopt;
-    }
     return CachedReflection{std::move(d), std::move(layout)};
 }
 
