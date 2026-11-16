@@ -711,24 +711,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle exposureReduceNode{};
     NodeHandle exposureMeterBuffer{};
     generatedSystems_ = {};
+    // GB1's tile-list passes are part of the primary march contract, not of HDR exposure. They
+    // must remain instantiated when capture/test graphs disable exposure (and when the hand-
+    // authored exposure reference is selected). The other manifest systems stay scoped to the
+    // normal generated exposure path.
+    const std::vector<std::filesystem::path> generatedManifestPaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+        ShaderSourceDir() + "/Generated/GpuSystems.manifest.json",
+#endif
+        "shaders/Generated/GpuSystems.manifest.json",
+        "../shaders/Generated/GpuSystems.manifest.json",
+    };
+    generatedSystems_.Instantiate(renderGraph, GpuSystemManifest::Load(generatedManifestPaths),
+        [this, hdrExposureEnabled, exposureReference](const GpuSystemEntry& entry) {
+            const bool tileBinSystem = entry.className == "TileBinScatterSystem" ||
+                                       entry.className == "TileBinSortSystem";
+            return tileBinSystem || (hdrExposureEnabled && !exposureReference &&
+                                     AntiAliasingSystemEnabled(entry.className, selectedAntiAliasingProviderId_));
+        });
     if (hdrExposureEnabled) {
         // The vixen: frame-targets composition's generated systems (today the tone map) come from
         // its manifest; only the capture-test hand reference still builds its own stage.
         if (exposureReference) {
             exposureShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_tonemap_shader_lib");
             exposureNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_tonemap");
-        } else {
-            std::vector<std::filesystem::path> manifestPaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-                ShaderSourceDir() + "/Generated/GpuSystems.manifest.json",
-#endif
-                "shaders/Generated/GpuSystems.manifest.json",
-                "../shaders/Generated/GpuSystems.manifest.json",
-            };
-            generatedSystems_.Instantiate(renderGraph, GpuSystemManifest::Load(manifestPaths),
-                [this](const GpuSystemEntry& entry) {
-                    return AntiAliasingSystemEnabled(entry.className, selectedAntiAliasingProviderId_);
-                });
         }
         exposureReduceShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_reduce_shader_lib");
         exposureReduceNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_reduce");
@@ -5161,6 +5167,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
             ReconstructionDepthPorts::NORMALIZED_DEPTH_VIEW.index, SlotRole::Execute);
     }
 
+    const auto provideTileBinResources = [&](SchemaResourceRegistry& resources) {
+        // GB1: generated tile-list resources. The frame-target history image is allocated from
+        // the manifest; all SSBOs are owned by the typed graph nodes above and registered under
+        // their schema identities here. This registration is intentionally independent of HDR
+        // exposure so the primary march never reads an unwritten tile list.
+        resources.Provide({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode,
+                          BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER, kSceneRoles);
+        resources.Provide({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode,
+                          TileBinViewNodeConfig::VIEW_BUFFER, kSceneRoles);
+        resources.Provide({"Vixen.Codegen.Gpu.TileBinCounter", "*"}, tileBinCountersBuffer,
+                          StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        resources.Provide({"Vixen.Codegen.Gpu.TileCandidate", "*"}, tileBinCandidatesBuffer,
+                          StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        resources.Provide({"Vixen.Codegen.Gpu.TileBinStats", "*"}, tileBinStatsBuffer,
+                          StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        resources.Provide({"Vixen.Codegen.Gpu.TileHeader", "*"}, tileBinHeadersBuffer,
+                          StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        resources.Provide({"Vixen.Codegen.Gpu.TileSortedCandidate", "*"}, tileBinSortedCandidatesBuffer,
+                          StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        resources.ProvideProducer({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode);
+        resources.ProvideProducer({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode);
+        resources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                                renderExtent.width);
+        resources.ProvideExtent("presentation", 1, renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                                renderExtent.height);
+        resources.ProvideExtentTarget("presentation", renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET);
+    };
+
     if (hdrExposureEnabled) {
     // Hand passes register the resources the generated systems read under their schema
     // identity (R680.4); the runner allocates the rest from the manifest's allocations, then
@@ -5173,6 +5207,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // The exposure meter reads the resolved radiance: the scene radiance itself with `none`, the
     // TAA's current resolve with `taa` (R676.1: the TAA resolves before the exposure meter).
     SdiProviderRegistry meterProviders = sceneProviders;
+    provideTileBinResources(frameResources);
     if (!exposureReference) {
         frameResources.Provide(sceneRadiance, sceneRadianceNode,
                                SceneRadianceNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
@@ -5208,35 +5243,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         frameResources.ProvideProducer(exposureMeter, exposureReduceNode, taaSelected);
         frameResources.Provide({"Vixen.Gpu.LightingConfig", "*"}, lightingConfigNode,
                                LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
-        // GB1: generated tile-list resources. The frame-target history image is
-        // allocated from the manifest; all SSBOs are owned by the typed graph
-        // nodes above and registered under their schema identities here.
-        frameResources.Provide({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode,
-                               BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER, kSceneRoles);
-        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode,
-                               TileBinViewNodeConfig::VIEW_BUFFER, kSceneRoles);
-        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinCounter", "*"}, tileBinCountersBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-        frameResources.Provide({"Vixen.Codegen.Gpu.TileCandidate", "*"}, tileBinCandidatesBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinStats", "*"}, tileBinStatsBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-        frameResources.Provide({"Vixen.Codegen.Gpu.TileHeader", "*"}, tileBinHeadersBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-        frameResources.Provide({"Vixen.Codegen.Gpu.TileSortedCandidate", "*"}, tileBinSortedCandidatesBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-        frameResources.ProvideProducer({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode);
-        frameResources.ProvideProducer({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode);
-        frameResources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
-                                     renderExtent.width);
-        frameResources.ProvideExtent("presentation", 1, renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
-                                     renderExtent.height);
-        frameResources.ProvideExtentTarget("presentation", renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET);
-        generatedSystems_.Allocate(renderGraph, batch, lightingCommon, frameResources);
-        if (taaSelected) {
-            meterProviders.Provide("sceneRadianceHistoryOutput", *generatedSystems_.Allocation(resolvedRadiance),
-                                   AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
-        }
+    }
+    generatedSystems_.Allocate(renderGraph, batch, lightingCommon, frameResources);
+    if (!exposureReference && taaSelected) {
+        meterProviders.Provide("sceneRadianceHistoryOutput", *generatedSystems_.Allocation(resolvedRadiance),
+                               AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, SlotRole::Execute);
     }
     if (!hdrExposureFixed) {
         const auto meterSynth = SynthesizeComputeStage<ShaderInterface::ExposureMeter::Metadata,
@@ -5273,6 +5284,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (renderExtent.width + 7u) / 8u);
         exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (renderExtent.height + 7u) / 8u);
         exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+        generatedSystems_.Wire(renderGraph, batch, lightingCommon, frameResources);
     } else {
         generatedSystems_.Wire(renderGraph, batch, lightingCommon, frameResources);
         // Hand consumers of the display image order after its last generated writer.
@@ -5280,6 +5292,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // The exposure chain reads the resolve: with `taa` it starts after the TAA stage.
         if (taaSelected) exposureInputProducer = *generatedSystems_.LastWriter(resolvedRadiance);
     }
+    }
+
+    if (!hdrExposureEnabled) {
+        // The HDR block above is skipped in this mode, but the tile systems still need their
+        // descriptor/pipeline wiring and declared scatter-to-sort ordering.
+        SchemaResourceRegistry tileResources;
+        provideTileBinResources(tileResources);
+        generatedSystems_.Allocate(renderGraph, batch, lightingCommon, tileResources);
+        generatedSystems_.Wire(renderGraph, batch, lightingCommon, tileResources);
     }
 
 
