@@ -12,7 +12,7 @@ preset requires an MSVC/Windows environment.
 |---|---|
 | Base | `57a94e7a5e7a6639478a4b55dfff91c62e1f3cd2` |
 | Required VIXEN merge base | `origin/wave/authoring-convergence` = `7daa62d892b7631e019c6970cb68aaa036c65cb9`; already up to date |
-| Lane commit | `b4b1ef515` |
+| Lane implementation commit | `577cdc381` |
 
 ## CHANGE
 
