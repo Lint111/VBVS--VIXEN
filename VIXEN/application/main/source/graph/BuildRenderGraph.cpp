@@ -146,6 +146,7 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "LightTree.h"  // Sampled Lighting Inc3 M4: BuildLightTreeCut/BruteForceTotalEmissivePower for the ReSTIR gate demo
 #include "Nodes/BlitNode.h"  // Sampled Lighting Inc3 M1: presentation-only blit (post-DirectLighting)
 #include "Nodes/BodyOctreeSceneNode.h"  // M-wire: sparse shell octree + instance SSBO
+#include "Nodes/TileBinViewNode.h"      // GB1: generated tile-list view producer
 #include "Nodes/CameraNode.h"
 #include "Nodes/CommandPoolNode.h"
 #include "Nodes/ComputeDispatchNode.h"
@@ -196,6 +197,13 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/SkyProjectionNode.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Nodes/StorageBufferNode.h"  // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17), extent-driven
+#include "Generated/InstanceBound.g.h"
+#include "Generated/TileBinView.g.h"
+#include "Generated/TileBinCounter.g.h"
+#include "Generated/TileCandidate.g.h"
+#include "Generated/TileBinStats.g.h"
+#include "Generated/TileHeader.g.h"
+#include "Generated/TileSortedCandidate.g.h"
 #include "Nodes/MultiDispatchNode.h"  // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
@@ -615,6 +623,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle bodyOctreeSceneNode = renderGraph->AddNode<BodyOctreeSceneNodeType>("body_octree_scene");
     static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))->SetMotionGuidesEnabled(reconstructionInputsEnabled);
     bodyOctreeSceneNode_ = bodyOctreeSceneNode;      // store so SetBodyInstances() can forward to it
+    NodeHandle tileBinViewNode = renderGraph->AddNode<TileBinViewNodeType>("tile_bin_view");
+    // GB1: the hand-authored march reads the two generated sort outputs through
+    // the same declared buffer-hazard path as the generated writer stages.
+    NodeHandle tileBinReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("tile_bin_read_gatherer");
 
     // Sampled Lighting Inc0 M3: LightingConfig data (binding 16). Static default content
     // this increment (a single directional light matching Lighting.glsl's old hardcoded
@@ -658,6 +670,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // imgSize (imageSize(outputImage) in the shader) even under render-scale (<1.0) — the same
     // extent-follow cascade RenderTargetNode itself rides.
     NodeHandle hitRecordBufferNode = renderGraph->AddNode<StorageBufferNodeType>("hit_record_buffer");
+    NodeHandle tileBinCountersBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_counters_buffer");
+    NodeHandle tileBinCandidatesBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_candidates_buffer");
+    NodeHandle tileBinStatsBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_stats_buffer");
+    NodeHandle tileBinHeadersBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_headers_buffer");
+    NodeHandle tileBinSortedCandidatesBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_sorted_candidates_buffer");
 
     // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode — the shading pass split out of
     // BodyInstanceRayMarch.comp (which is now traversal-only: writes HitRecord + the pick-ID
@@ -1631,6 +1648,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* hitRecordBuffer = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitRecordBufferNode));
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
 
+    // GB1: the generated tile passes use one header/counter per 8x8 tile and a
+    // fixed 512-entry candidate slab per tile. The list capacity is independent
+    // of the scene's instance count, so the old 192-instance storage shape is
+    // not part of this allocation contract.
+    constexpr uint32_t kTileSize = 8u;
+    constexpr uint32_t kTileListCapacityLog2 = 9u;
+    const uint32_t tileCount = ((renderExtent.width + kTileSize - 1u) / kTileSize) *
+                                ((renderExtent.height + kTileSize - 1u) / kTileSize);
+    const uint32_t tileListCapacity = 1u << kTileListCapacityLog2;
+    const auto setTileBufferBytes = [&](NodeHandle node, uint64_t bytes) {
+        static_cast<StorageBufferNode*>(renderGraph->GetInstance(node))->SetParameter(
+            StorageBufferNodeConfig::PARAM_SIZE_BYTES, static_cast<uint32_t>(bytes));
+    };
+    setTileBufferBytes(tileBinCountersBuffer,
+                       static_cast<uint64_t>(tileCount) * sizeof(Vixen::Codegen::Gpu::TileBinCounter));
+    setTileBufferBytes(tileBinCandidatesBuffer,
+                       static_cast<uint64_t>(tileCount) * tileListCapacity * sizeof(Vixen::Codegen::Gpu::TileCandidate));
+    setTileBufferBytes(tileBinStatsBuffer, sizeof(Vixen::Codegen::Gpu::TileBinStats));
+    setTileBufferBytes(tileBinHeadersBuffer,
+                       static_cast<uint64_t>(tileCount) * sizeof(Vixen::Codegen::Gpu::TileHeader));
+    setTileBufferBytes(tileBinSortedCandidatesBuffer,
+                       static_cast<uint64_t>(tileCount) * tileListCapacity * sizeof(Vixen::Codegen::Gpu::TileSortedCandidate));
+
     if (hdrExposureEnabled) {
         // ExposureHistogram.glsl: 16-byte ExposureMeterState, then 128 uint histogram bins.
         constexpr uint64_t exposureMeterBytes = 16ull + 4ull * 128ull;
@@ -2075,6 +2115,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
                 bodyScene->SetRecipeTape(std::move(recipeTapeBlob));
                 bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
+                // GB1: the tile scatter bins each body by the bound sphere this splice bakes.
+                bodyScene->SetRecipeBoundSpheres(
+                    Vixen::RenderGraph::CollectRecipeBoundSpheres(proceduralRecipes_));
             }
 
             // Round 11 (far-field dispatch attribution): tag this shader as the
@@ -3196,6 +3239,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (reservoirBufferA + reservoirBufferB — both physical buffers, see this block's own
     // declaration comment for why BOTH are declared regardless of which is "current").
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
+    // GB1: BodyInstanceRayMarch reads {headers, sortedCandidates}; the generated
+    // TileBinSortSystem registers the matching writes in GeneratedSystemStage.
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(tileBinReadGatherer))->PreRegisterBufferSlots(2);
     // SpatialReuseShade reads HitRecordBuffer plus, in the optional cell-resolve path,
     // {cellRadiance, hitAccumTable}. One gatherer feeds the stage's single BUFFER_READ_ARRAY.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReadGatherer))
@@ -4069,6 +4115,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
 
+    // GB1 tile-view producer: the generated scatter pass consumes the camera
+    // basis and the live body count through this per-frame typed buffer.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  tileBinViewNode, TileBinViewNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  tileBinViewNode, TileBinViewNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                  tileBinViewNode, TileBinViewNodeConfig::CAMERA_DATA)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                  tileBinViewNode, TileBinViewNodeConfig::WIDTH)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                  tileBinViewNode, TileBinViewNodeConfig::HEIGHT)
+         .Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                  tileBinViewNode, TileBinViewNodeConfig::INSTANCE_COUNT);
+
+    const NodeHandle tileBinStorageNodes[] = {
+        tileBinCountersBuffer, tileBinCandidatesBuffer, tileBinStatsBuffer,
+        tileBinHeadersBuffer, tileBinSortedCandidatesBuffer,
+    };
+    for (NodeHandle storage : tileBinStorageNodes) {
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      storage, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+    }
+
     // Sampled Lighting Inc0 M3: lighting config node connections (same ring pattern as
     // bodyOctreeSceneNode above — device + per-frame index so ExecuteImpl picks which
     // ring slot to upload LightingConfig into).
@@ -4479,6 +4549,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, kSceneRoles);
     sceneProviders.Provide("BodyInstanceTransformBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER, kSceneRoles);
+    // GB1 primary camera-ray candidate lists. The two bindings are declared only
+    // in the primary march variant, so these providers are inert for other shader
+    // families and keep the generated lists on the same frame-resource path.
+    sceneProviders.Provide("TileHeaderBuffer", tileBinHeadersBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("TileSortedCandidateBuffer", tileBinSortedCandidatesBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     sceneProviders.Provide("ChannelPoolBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, kSceneRoles);
     sceneProviders.Provide("BrickLookupBuffer", bodyOctreeSceneNode,
@@ -5148,6 +5225,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             frameResources.ProvideSubGraph({"frame_targets", "ViewDepth"}, *reconstructionDepthModule,
                                            ReconstructionDepthPorts::VIEW_DEPTH_VIEW.index,
                                            ReconstructionDepthPorts::VIEW_DEPTH.index, SlotRole::Execute);
+            frameResources.ProvideSubGraph({"frame_targets", "ViewDepth"}, *reconstructionDepthModule,
+                                           ReconstructionDepthPorts::VIEW_DEPTH_PREVIOUS_VIEW.index,
+                                           ReconstructionDepthPorts::VIEW_DEPTH_PREVIOUS.index, SlotRole::Execute,
+                                           FrameSlot::Previous);
         }
         frameResources.Provide({"Vixen.Gpu.PrevCameraConfig", "*"}, prevCameraConfigNode,
                                PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER, kSceneRoles);
@@ -5159,6 +5240,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
         frameResources.ProvideProducer(exposureMeter, exposureReduceNode, taaSelected);
         frameResources.Provide({"Vixen.Gpu.LightingConfig", "*"}, lightingConfigNode,
                                LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
+        // GB1: generated tile-list resources. The frame-target history image is
+        // allocated from the manifest; all SSBOs are owned by the typed graph
+        // nodes above and registered under their schema identities here.
+        frameResources.Provide({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode,
+                               BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode,
+                               TileBinViewNodeConfig::VIEW_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinCounter", "*"}, tileBinCountersBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileCandidate", "*"}, tileBinCandidatesBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileBinStats", "*"}, tileBinStatsBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileHeader", "*"}, tileBinHeadersBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.Provide({"Vixen.Codegen.Gpu.TileSortedCandidate", "*"}, tileBinSortedCandidatesBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        frameResources.ProvideProducer({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode);
+        frameResources.ProvideProducer({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode);
         frameResources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
                                      renderExtent.width);
         frameResources.ProvideExtent("presentation", 1, renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
@@ -5618,6 +5718,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // before.
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                   computeDispatch, ComputeDispatchNodeConfig::BUFFER_WRITE, SlotRoleModifier(SlotRole::Execute));
+
+    // GB1: the generated tile-list sort writes the exact two buffers consumed by
+    // the march. Descriptor providers bind the handles, but only this gatherer
+    // connection declares the cross-submit read hazard to FrameSyncScheduler.
+    batch.Connect(tileBinHeadersBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  tileBinReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(tileBinSortedCandidatesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  tileBinReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(tileBinReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::BUFFER_READ_ARRAY,
+                  SlotRoleModifier(SlotRole::Execute));
+    if (const auto tileSortWriter = generatedSystems_.LastWriter({"Vixen.Codegen.Gpu.TileSortedCandidate", "*"})) {
+        // BUFFER_OUT is the first generated write buffer's handle and is used
+        // only to force the sort stage before the hand-authored march. The
+        // declared read/write resources above carry the actual memory barrier.
+        batch.Connect(*tileSortWriter, ComputeStageNodeConfig::BUFFER_OUT,
+                      computeDispatch, ComputeDispatchNodeConfig::ORDERING_WAIT_BUFFER);
+    }
     // execDep (Dependency|Execute), not Execute-only: VariadicConnectionRule only
     // populates a variadic slot's actual Resource* via a PostCompile hook when the
     // connection carries SlotRole::Dependency — see BuildFanInDemoGraph.cpp's own

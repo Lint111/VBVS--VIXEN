@@ -612,6 +612,9 @@ void VulkanGraphApplication::PostTick() {
         passes.push_back({"esvo_traverse_shade", dispatch->GetGPUPerformanceLogger()});
     }
     addNamedComputeStagePasses({"direct_lighting", "spatial_reuse"});
+    // GB0: the B1 occlusion passes (hi-Z reduce, then the per-instance cull that writes the skip
+    // mask the march reads). Default-on stages; absent when VIXEN_B1_OCCLUSION_CULL opts out.
+    addNamedComputeStagePasses({"b1_hiz_downsample", "b1_instance_occlusion_cull"});
     for (const auto& metric : upscalerPerfPasses_) {
         auto* node = static_cast<ComputeStageNode*>(renderGraph->GetInstance(metric.node));
         passes.push_back({metric.columnName, node ? node->GetGPUPerformanceLogger() : nullptr});
@@ -2853,6 +2856,18 @@ bool VulkanGraphApplication::UpdateBodyInstanceRows(std::span<const Vixen::SVO::
     return updated;
 }
 
+int32_t VulkanGraphApplication::RequestedBodyInstanceCount() const {
+    const auto* node = static_cast<const Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    return node ? node->RequestedInstanceCount() : 0;
+}
+
+int32_t VulkanGraphApplication::MarchedBodyInstanceCount() const {
+    const auto* node = static_cast<const Vixen::RenderGraph::BodyOctreeSceneNode*>(
+        renderGraph->GetInstance(bodyOctreeSceneNode_));
+    return node ? node->MarchedInstanceCount() : 0;
+}
+
 void VulkanGraphApplication::SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up,
                                               float verticalFov) {
     auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_));
@@ -3036,11 +3051,9 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
 
     const Vixen::RenderGraph::CameraData& cam = camera->GetCurrentCameraData();
 
-    // Change-detection only (not part of the trigger formula itself) — re-evaluating every
-    // frame is cheap, but SortInstancesFrontToBack is a real (if small) per-frame sort, so
-    // skip it on a genuinely static camera. Orientation matters independently of position
-    // (M4b: it moves bodies in/out of frustum on its own), so cameraDir is compared too —
-    // not just cameraPos/fov.
+    // Change-detection only (not part of the trigger formula itself). Orientation matters
+    // independently of position (M4b: it moves bodies in/out of frustum on its own), so
+    // cameraDir is compared too — not just cameraPos/fov.
     constexpr float kPosEpsilon = 1e-4f;
     constexpr float kDirEpsilon = 1e-5f;
     constexpr float kFovEpsilon = 1e-4f;
@@ -3159,12 +3172,6 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     bodyScene->RequestBrickResidency(anyInstanceWantsBricks);
     lastResidencyGranted_ = anyInstanceWantsBricks;  // Inc2 M3: next re-check's occlusion-gate input
 
-    // M4b: re-sort front-to-back so the shader's per-ray gridT.x>bestT occlusion reject
-    // (BodyInstanceRayMarch.comp) actually has closer instances visited first in the
-    // instance loop — this is the live call site the M4b Progress Log flagged as missing
-    // (SortInstancesFrontToBack existed and was tested in isolation, but had zero
-    // production call sites until this milestone).
-    bodyScene->SortInstancesFrontToBack(cam.cameraPos);
 }
 
 GLFWwindow* VulkanGraphApplication::GetWindowHandle() const {

@@ -710,6 +710,10 @@ public:
     // Diagnostic: the RT-query TLAS instance epoch (moves once per requested TLAS rebuild).
     uint64_t BodyInstanceEpoch() const;
     bool UpdateBodyInstanceRows(std::span<const Vixen::SVO::BodyInstanceRowDelta> rows);
+    // Instances the host last asked for / the march loop actually iterates (0 when the body node is
+    // absent). The loop count is the requested count after the paired stream-capacity clamp.
+    int32_t RequestedBodyInstanceCount() const;
+    int32_t MarchedBodyInstanceCount() const;
     // R802.1 external scene seam: drive the existing ray-march camera from a facade camera row.
     void SetSessionCamera(glm::vec3 eye, glm::vec3 target, glm::vec3 up, float verticalFov);
     // Spec B I3/Task 6 (= main's I4.1 passthrough — both lines converged on this API): push a

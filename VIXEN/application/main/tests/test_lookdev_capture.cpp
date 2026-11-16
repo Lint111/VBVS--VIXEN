@@ -8,6 +8,7 @@
 #include "Nodes/StorageBufferNode.h"
 #include "Nodes/ComputeStageNode.h"
 #include "Nodes/RenderTargetNode.h"
+#include "Data/Nodes/AccumulationHistoryNodeConfig.h"
 #include "Nodes/ReconstructionHistoryStateNode.h"
 #include "Data/ReconstructionJitter.h"
 #include "Nodes/SceneRadianceNode.h"
@@ -2187,7 +2188,14 @@ private:
             return resource ? resource->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>() : nullptr;
         };
         auto* source = targetByName("compute_render_target");
-        auto* view = targetByName("render_path/reconstruction_inputs/view_depth");
+        // GB1 keeps view depth as a two-image history (the scatter reads last frame's depth),
+        // so the module's view-depth node is an AccumulationHistoryNode; this frame's depth is
+        // its CURRENT_HISTORY_TARGET output.
+        auto* viewDepthNode = graph->GetInstanceByName("render_path/reconstruction_inputs/view_depth_history");
+        auto* viewDepthOutput = viewDepthNode
+            ? viewDepthNode->GetOutput(AccumulationHistoryNodeConfig::CURRENT_HISTORY_TARGET.index) : nullptr;
+        auto* view = viewDepthOutput
+            ? viewDepthOutput->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>() : nullptr;
         auto* normalized = targetByName("render_path/reconstruction_inputs/normalized_depth");
         if (!device || !source || !view || !normalized ||
             view->GetFormat() != VK_FORMAT_R32_SFLOAT || normalized->GetFormat() != VK_FORMAT_R32_SFLOAT ||

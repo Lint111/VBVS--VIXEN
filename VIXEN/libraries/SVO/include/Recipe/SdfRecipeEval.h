@@ -53,7 +53,7 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                          const void* elementRow = nullptr, uint32_t elementStride = 0u,
                          const uint32_t* planSlots = nullptr, uint32_t planSlotCount = 0u) {
     float stack[64]; int sp = 0;
-    // The pinned kernel dispatch carries MaterialId as a categorical sidecar even though this
+    // The generated kernel dispatch carries MaterialId as a categorical sidecar even though this
     // legacy scalar API returns distance only. Keep the sidecar state local so generated cases
     // can preserve it through combines without changing this evaluator's public ABI.
     float materialStack[64]{};

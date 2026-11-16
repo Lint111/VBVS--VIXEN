@@ -326,6 +326,24 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
+    struct Binding53 {
+        static constexpr const char* NAME = "TileHeaderBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 53;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct Binding54 {
+        static constexpr const char* NAME = "TileSortedCandidateBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 54;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
 } // namespace Set0
 
 namespace Bind {
@@ -362,6 +380,8 @@ using motionValidityImage = Set0::Binding49;
 using BodyInstanceMotionBuffer = Set0::Binding50;
 using GlyphOutlineBuffer = Set0::Binding51;
 using GlyphOutlineFlatBuffer = Set0::Binding52;
+using TileHeaderBuffer = Set0::Binding53;
+using TileSortedCandidateBuffer = Set0::Binding54;
 } // namespace Bind
 
 namespace Push {
@@ -548,6 +568,8 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"BodyInstanceMotionBuffer", false, 0, 50, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding50},
     {"GlyphOutlineBuffer", false, 0, 51, 0, Access::ReadOnly, 0, nullptr},
     {"GlyphOutlineFlatBuffer", false, 0, 52, 0, Access::ReadOnly, 0, nullptr},
+    {"TileHeaderBuffer", false, 0, 53, 0, Access::ReadOnly, 0, nullptr},
+    {"TileSortedCandidateBuffer", false, 0, 54, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -567,7 +589,7 @@ inline constexpr MemberInfo MEMBERS[] = {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "BodyInstanceRayMarch";
-    static constexpr uint32_t NUM_MEMBERS = 48;
+    static constexpr uint32_t NUM_MEMBERS = 50;
     static constexpr uint32_t NUM_FEATURES = 8;
 };
 

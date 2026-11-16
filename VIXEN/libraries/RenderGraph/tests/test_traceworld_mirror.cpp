@@ -33,7 +33,9 @@
 
 #include "Data/VoxelTraversal.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -49,6 +51,35 @@ using Vixen::SVO::Ray;
 // (one per voxel/brick in the scene) rather than the full ESVO descent.
 // ===========================================================================
 namespace TraceWorldShadowMirror {
+
+// This is the pre-GB3 secondary-ray contract in TraceWorld.glsl.  GB1's tile
+// candidate lists are camera-ray data; shadow rays keep this finite bound until
+// the secondary-ray candidate structure lands.  Keep this mirror beside the
+// any-hit mirror so a future removal cannot silently turn a large load scene
+// into an unbounded per-ray loop.
+constexpr int kPreGb3ShadowInstanceBound = 3 * 64;
+
+struct InstanceLoopResult {
+    int visited = 0;
+    int lastIndex = -1;
+    bool terminated = false;
+};
+
+InstanceLoopResult TraceBoundedInstanceLoop(int instanceCount) {
+    const int numInstances = std::clamp(instanceCount, 0, kPreGb3ShadowInstanceBound);
+    InstanceLoopResult result;
+    for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
+        // This is a CPU-only assertion guard: if the bound is removed or
+        // changed to a wrapped value, the mirror fails instead of spinning.
+        if (result.visited >= kPreGb3ShadowInstanceBound) {
+            return result;
+        }
+        ++result.visited;
+        result.lastIndex = instIdx;
+    }
+    result.terminated = true;
+    return result;
+}
 
 struct Occluder {
     AABB box;
@@ -331,6 +362,20 @@ TEST(TraceWorldShadowMirror, EmptySceneIsAlwaysLit) {
     bool mirrorResult = TraceWorldShadowMirror::Trace(occluders, glm::vec3(0), glm::vec3(0, 1, 0),
                                                         0.001f, 100.0f);
     EXPECT_FALSE(mirrorResult);
+}
+
+TEST(TraceWorldShadowMirror, OversizedLoadRayStopsAtPreGb3Bound) {
+    // The load scenario supplies 2,197 instances.  An unbounded shadow loop
+    // would walk the whole secondary-ray stream (and a wrapped count can fail
+    // to terminate); the pre-GB3 contract must visit exactly 192 and stop.
+    constexpr int kLoadScenarioInstances = 2197;
+    const auto result = TraceWorldShadowMirror::TraceBoundedInstanceLoop(
+        std::numeric_limits<int>::max());
+
+    EXPECT_TRUE(result.terminated);
+    EXPECT_EQ(result.visited, TraceWorldShadowMirror::kPreGb3ShadowInstanceBound);
+    EXPECT_EQ(result.lastIndex, TraceWorldShadowMirror::kPreGb3ShadowInstanceBound - 1);
+    EXPECT_LT(result.visited, kLoadScenarioInstances);
 }
 
 } // namespace

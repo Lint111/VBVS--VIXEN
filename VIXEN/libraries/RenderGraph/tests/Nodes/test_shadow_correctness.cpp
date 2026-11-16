@@ -50,6 +50,7 @@
 #include "Generated/LightingConfig.g.h"
 #include "Recipe/UberShaderSplice.h"
 #include <sstream>
+#include <string_view>
 #include "ShaderBundleBuilder.h"  // shading and visibility-wave shaders compiled at test runtime
 #include "SPIRVReflection.h"    // descriptor layouts come from the SPIR-V itself, not hand tables
 
@@ -579,6 +580,16 @@ protected:
         std::ifstream file(shaderDir / filename);
         std::ostringstream source;
         source << file.rdbuf();
+        std::string text = source.str();
+        // This fixture binds only the descriptors it builds itself; it has no GB1
+        // tile-list producer. Keep the march on the full-instance stream contract
+        // (the same opt-out test_baked_vs_virtual_parity and the precompiled
+        // fixtures in test_critical_nodes.cmake use); production stays tile-driven.
+        if (std::string_view(filename) == "BodyInstanceRayMarch.comp") {
+            const size_t versionEnd = text.find('\n');
+            if (versionEnd != std::string::npos)
+                text.insert(versionEnd + 1, "#define VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES 1\n");
+        }
         ShaderManagement::ShaderBundleBuilder builder;
         builder.SetProgramName(filename)
             .SetTargetVulkanVersion(12)
@@ -587,7 +598,7 @@ protected:
             .AddIncludePath(shaderDir)
             .AddSvoShaderIncludePaths(shaderDir)
             .AddStage(ShaderManagement::ShaderStage::Compute,
-                Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(source.str(), registry))
+                Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(text, registry))
             .EnableSdiGeneration(false);
         const auto result = builder.Build();
         if (!result.success || !result.bundle) {

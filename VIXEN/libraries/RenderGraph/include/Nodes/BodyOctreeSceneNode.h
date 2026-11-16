@@ -17,6 +17,8 @@
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "RecipeEmitterTable.h" // R502.2: Vixen::SVO::{EmitterTable, RecipeEmitterShapes}
+#include "Generated/InstanceBound.g.h"
+#include "Nodes/InstanceBoundDerivation.h"
 #include "WholesaleAvailability.h"
 #include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
 #include "Memory/IMemoryAllocator.h" // tracked RTAccelStructures allocations
@@ -130,6 +132,11 @@ public:
     uint64_t GetInstanceEpoch() const { return rtQueryInstanceEpoch_; }
     void SetMotionGuidesEnabled(bool enabled) { motionGuidesEnabled_ = enabled; RefreshInstanceStreams(); }
 
+    /// Instances the host asked for (the size of the last SetInstances list).
+    int32_t RequestedInstanceCount() const { return instanceCount_; }
+    /// Instances the march loop actually iterates after the paired stream capacity clamp.
+    int32_t MarchedInstanceCount() const;
+
     /**
      * @brief Reorder the current instance list front-to-back by distance from
      *        `cameraPos` (Sparse-Mip ESVO LOD Inc1 M4b).
@@ -234,6 +241,13 @@ public:
      * the GPU yet; S1 binds it.
      */
     void SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes shapes);
+
+    /**
+     * @brief GB1 (R857): the registry bound spheres the march's getRecipeBoundSphere bakes,
+     * keyed by recipe id. Called from the same shader-splice callback, so the tile scatter's
+     * InstanceBound stream always uses the bounds the current march shader tests.
+     */
+    void SetRecipeBoundSpheres(RecipeBoundSpheres spheres);
 
     /**
      * @brief R502.2 — recipe + sparse emitter CDFs and EmitterTotals for the CURRENT instance
@@ -379,6 +393,8 @@ private:
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                              VkDeviceSize transformCapacity,
                              VkDeviceSize materialCapacity);           // allocate/grow both instance rings
+    void EnsureBoundsAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
+                               VkDeviceSize capacity);
     void RefreshInstanceStreams();
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
@@ -543,6 +559,7 @@ private:
     // R502.2 emitter table (CPU only in S0). Rebuilt by GetEmitterTable() when dirty or when
     // the concatenated mip stream it read the sparse power lanes from has been replaced.
     Vixen::SVO::RecipeEmitterShapes emitterShapes_;
+    RecipeBoundSpheres              recipeBoundSpheres_;  // GB1 InstanceBound source
     Vixen::SVO::EmitterTable        emitterTable_;
     std::vector<float>              publishedEmitterRootPowers_;
     bool                            emitterTableDirty_ = true;
@@ -664,6 +681,7 @@ private:
     PerFrameResources transformPerFrame_;
     PerFrameResources materialPerFrame_;
     PerFrameResources motionPerFrame_;
+    PerFrameResources boundPerFrame_;
     std::vector<bool> materialDirty_;
     // Per ring slot: material rows [first, second) still to upload when the slot is not
     // wholly dirty. Empty when first >= second.
@@ -671,6 +689,7 @@ private:
     VkDeviceSize transformRingCapacity_ = 0;
     VkDeviceSize materialRingCapacity_ = 0;
     VkDeviceSize motionRingCapacity_ = 0;
+    VkDeviceSize boundRingCapacity_ = 0;
 
     // --- W-RTQUERY Slice A: per-brick-AABB TLAS (VIXEN_RTQUERY_TRAVERSAL) ---
     // One BLAS per octree (the compact ShellProxyAabb records in octree-local [0,1]^3
