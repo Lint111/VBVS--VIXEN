@@ -43,8 +43,8 @@ public:
     static std::string MakeKey(const CompiledProgram& program);
     static std::vector<uint32_t> Serialize(const SpirvReflectionData& reflection,
                                            const DescriptorLayoutSpec* descriptorLayout);
-    /// nullopt for any malformed payload or one whose descriptor-set iteration order differs
-    /// from the recorded one (SDI output order depends on it).
+    /// nullopt for any malformed payload. Descriptor-set order is canonicalized by the
+    /// ordered reflection map before the payload is written.
     static std::optional<CachedReflection> Deserialize(const std::vector<uint32_t>& payload);
 
     std::optional<CachedReflection> Lookup(const CompiledProgram& program);
