@@ -20,6 +20,29 @@ controller during the lane) are not started; section 5 hands them over.**
 - Timing so far is one shared run on a busy device (2 to 4.5 times slow by the load indicators):
   frame period 330 to 480 ms against 1,410 ms on a quiet device before. A quiet number is pending.
 
+## 0. Addendum after d11 landed (11-17, controller instruction)
+
+- **Kernel**: `lane-glyph1` merged forward with kernel main `70168ce79` -> **`8a170efba`**. The
+  old base `8cfb34b1f` is an ancestor of main, so a forward merge was enough (no rebase, no
+  conflict). The merge touches no recipe emitter and no SDF kernel
+  (`git diff aab87eb8b 8a170efba`: `CodecEmitter.cs`, `CodecLineageProjection.cs`,
+  `SchemaMigrationEmitter.cs`, reports).
+- **Full suites on `8a170efba`** (`k-suites-main.log`): **SG 1505/1505, CG 3840 passed, 0 failed,
+  2 skipped.** The 8 native-fixture base reds are gone, nothing is left to explain.
+- **VIXEN** `lane-glyph1-v` **`976e9e458`**: kernel pin -> `8a170efba` (still on the gpusubmit1
+  base). Native Release build on that pin: exit 0, every `*_check` target passed, configure line
+  `using tracked Yeroket kernel pin: 8a170efbaa046d756583b01b599951ebd2dc4e09` (`native-build-2.log`).
+  **`C:\vixen-native\glyph1` now holds this binary.** The capture witness in section 2 was taken
+  with the binary on pin `aab87eb8b`; it was not repeated on the new pin (the generated recipe
+  service has the same inputs). The controller's acceptance runs give the RTL hashes on the new
+  binary; look-dev 16 and HUD 3 on the new pin are not rerun.
+- **Exclusive acceptance runs**: the controller took ownership of the BENCH REQUEST. My second
+  4K submission also ended with a refusal (exit 79).
+- **B5 not started, STOP.** This session is at the end of its working context; B5 is a change across
+  two emitters plus a VIXEN default flip, a native build and a 16-capture review package, and I
+  will not start what I cannot witness. Section 5 has the design; two conditions I found after the
+  first checkpoint are added there (mixed carved/embossed recipes, and what may follow a row).
+
 ## 1. Bases (approved by the controller during the lane)
 
 | Repo | Base | Why not the brief's base |
@@ -171,7 +194,7 @@ report march, wave, steady period and worst steady frame with the three load ind
 
 ## LANDABLE NOW
 
-Not yet: B1 waits for (1) the quiet acceptance timing and the 4K hash, (2) the rebase onto kernel
+B1, after the controller's quiet acceptance timing and 4K hash confirm it: kernel `8a170efba` (merged with main `70168ce79`, SG+CG green), VIXEN `976e9e458`. Earlier state: B1 waited for (1) the quiet acceptance timing and the 4K hash, (2) the rebase onto kernel
 main after d11 lands with a full CG rerun (controller instruction). The commits are self-contained
 and green on their bases: kernel `aab87eb8b`, VIXEN `8bd4bcb35`.
 
@@ -197,7 +220,33 @@ and green on their bases: kernel `aab87eb8b`, VIXEN `8bd4bcb35`.
      so the existing coverage table, Lipschitz certificate and grid code apply unchanged, and no
      glyph row reaches the analysis.
   The plan B1 emits (`PlanLeafSkips`) is exactly the rewrite rule for (2); it should move into the
-  shared lowering so the analysis and the GPU walk read one plan.
+  shared lowering so the analysis and the GPU walk read one plan (today the plan and its
+  predicates live in the GPU service's private implementation file; the analysis service is
+  another translation unit and cannot see them).
+  Refinements for the implementer:
+  - **Two programs, chosen per row, so the bound holds for mixed recipes.** `under`: every carved
+    row removed, every embossed row with its leaf replaced by the partner. `over`: every carved
+    row with its leaf replaced, every embossed row removed. Each merge is non-decreasing in `acc`,
+    so by induction `under <= field <= over` at every point. One "all leaves replaced" program is
+    an upper bound for carved rows and a lower bound for embossed ones, so it is not a bound for a
+    recipe that has both.
+  - **Both rewrites are deletions, no new opcode.** Leaf replaced by its partner = delete the leaf
+    and its `Intersect`. Row removed = delete from the position op that the chain's `RestorePos`
+    closes (or from the leaf when the chain has none) through the merge; valid when `acc` is the
+    top of the value stack at that position op. Every remaining opcode is one the analysis already
+    certifies.
+  - **What follows a row must be non-decreasing in it**, or the bound flips: `Union`, `Intersect`,
+    `Subtract` as operand A, unit-slope offsets, positive `RestorePos`, material markers. A
+    glyph-carved shape used later as a cutter (operand B of `Subtract`) or under `Onion` must be
+    refused as today.
+  - **Occupancy value of a dense sample**: `under > 0 -> under`; `over < 0 -> -over`; else 0. The
+    existing margin stays valid because both programs are 1-Lipschitz certified.
+  - **Bound**: `DeriveBound(over)` for a carved-only recipe is the plaque; with embossed rows use
+    the program with embossed leaves replaced (the row boxes join the union extent).
+  - Tile, compacted and shell variants: keep returning the source with a reason for these recipes.
+  - Witness to add: on a dense grid, the CPU-run generated field (the B1 fixture harness has it)
+    must lie between `under` and `over` at every sample, for carved, embossed and mixed fixtures,
+    with a deliberate break (swap the two programs for one row).
 - Derived bounds default: `VulkanGraphApplicationRecipes.cpp:734` (`DerivedBoundsEnabled`,
   env `VIXEN_RECIPE_DERIVED_BOUNDS`) and `:747`. Removing the env switch changes all 13 look-dev
   recipes: that is the re-golden (owner reviews new captures; references stay until then).
