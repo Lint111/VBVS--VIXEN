@@ -27,6 +27,14 @@ layout(std430, binding = 52) readonly buffer GlyphOutlineFlatBuffer {
 // important here: a fixed SegmentCapacity loop is multiplied by every glyph call site in the
 // large ray-march shader and can make the driver's first pipeline compile superlinear in the
 // number of recipes/layouts.
+//
+// Row 106: the walk is also bounded per sample. Every 16-step polyline sample of a Bezier
+// segment lies in the hull of its control points, and every segment starts at a polyline vertex,
+// so the distance to the nearest segment start is an upper bound of the result. A segment whose
+// padded control-point box is farther than that bound cannot change the minimum and is not
+// sampled for distance; it is walked for winding only when its box spans p.y to the right of p.
+// Skipped work never contributed to the result, so the distance and sign are bit-identical to
+// sampling every segment.
 float SdfCore_GlyphOutlineBounded(vec3 p, uint glyphIndex) {
     precise float minimumDistance = uintBitsToFloat(1621981420u);
     uint crossings = 0u;
@@ -45,6 +53,14 @@ float SdfCore_GlyphOutlineBounded(vec3 p, uint glyphIndex) {
     bool checkWinding = p.x >= boundsMin.x && p.x <= boundsMax.x &&
         p.y >= boundsMin.y && p.y <= boundsMax.y;
     uint segmentDataBase = 1u + rowCount * kHeaderWords;
+    // Upper bound of the result: the walk measures every segment start exactly like this.
+    precise float distanceBound = minimumDistance;
+    [[dont_unroll]] for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+        uint segmentBase = segmentDataBase + (segmentOffset + uint(segmentIndex)) * kSegmentWords;
+        precise vec2 start = vec2(uintBitsToFloat(glyphOutlineWords[segmentBase + 0u]),
+                                  uintBitsToFloat(glyphOutlineWords[segmentBase + 1u]));
+        distanceBound = min(distanceBound, length(vec2(p.x - start.x, p.y - start.y)));
+    }
     [[dont_unroll]] for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
         uint segmentBase = segmentDataBase + (segmentOffset + uint(segmentIndex)) * kSegmentWords;
         precise vec2 p0 = vec2(uintBitsToFloat(glyphOutlineWords[segmentBase + 0u]),
@@ -56,11 +72,6 @@ float SdfCore_GlyphOutlineBounded(vec3 p, uint glyphIndex) {
         precise vec2 p3 = vec2(uintBitsToFloat(glyphOutlineWords[segmentBase + 9u]),
                                uintBitsToFloat(glyphOutlineWords[segmentBase + 10u]));
         uint segmentKind = glyphOutlineWords[segmentBase + 12u];
-        // Exact segment skip (row 106): every sampled point of a Bezier segment lies in the hull
-        // of its control points, so a segment whose padded control-point box is farther than the
-        // distance found so far cannot lower the minimum, and one whose box is above, below or
-        // left of p crosses no +x ray. Skipping it leaves the result bit-identical while the
-        // per-sample cost stops scaling with every segment of every merged row.
         vec2 hullMin = min(p0, p1);
         vec2 hullMax = max(p0, p1);
         if (segmentKind != 0u) {
@@ -71,14 +82,15 @@ float SdfCore_GlyphOutlineBounded(vec3 p, uint glyphIndex) {
             hullMin = min(hullMin, p3);
             hullMax = max(hullMax, p3);
         }
-        // The pad dwarfs the rounding of the 16-step polyline (relative ~1e-7 of the coordinates).
+        // The pad dwarfs the rounding of the polyline and of the distances (relative ~1e-7).
         float hullPad = max(max(abs(hullMin.x), abs(hullMin.y)), max(abs(hullMax.x), abs(hullMax.y))) *
             (1.0 / 4096.0) + (1.0 / 4096.0);
         hullMin -= vec2(hullPad);
         hullMax += vec2(hullPad);
         vec2 outside = max(max(hullMin - p.xy, p.xy - hullMax), vec2(0.0));
-        bool crossesNoRay = !checkWinding || p.y < hullMin.y || p.y > hullMax.y || p.x > hullMax.x;
-        if (crossesNoRay && length(outside) > minimumDistance) continue;
+        bool measureDistance = length(outside) <= distanceBound;
+        bool measureWinding = checkWinding && p.y >= hullMin.y && p.y <= hullMax.y && p.x <= hullMax.x;
+        if (!measureDistance && !measureWinding) continue;
         precise vec2 previous = p0;
         [[dont_unroll]] for (int sampleIndex = 1; sampleIndex <= 16; ++sampleIndex) {
             precise float t = float(sampleIndex) / uintBitsToFloat(1098907648u);
@@ -92,15 +104,17 @@ float SdfCore_GlyphOutlineBounded(vec3 p, uint glyphIndex) {
                 current = p0 * (u * u * u) + p1 * (uintBitsToFloat(1077936128u) * u * u * t) +
                     p2 * (uintBitsToFloat(1077936128u) * u * t * t) + p3 * (t * t * t);
             }
-            precise vec2 edge = current - previous;
-            precise float edgeLengthSquared = edge.x * edge.x + edge.y * edge.y;
-            precise float projection = edgeLengthSquared > uintBitsToFloat(0u)
-                ? ((p.x - previous.x) * edge.x + (p.y - previous.y) * edge.y) / edgeLengthSquared
-                : uintBitsToFloat(0u);
-            projection = clamp(projection, uintBitsToFloat(0u), uintBitsToFloat(1065353216u));
-            precise vec2 closest = previous + edge * projection;
-            precise float distance = length(vec2(p.x - closest.x, p.y - closest.y));
-            minimumDistance = min(minimumDistance, distance);
+            if (measureDistance) {
+                precise vec2 edge = current - previous;
+                precise float edgeLengthSquared = edge.x * edge.x + edge.y * edge.y;
+                precise float projection = edgeLengthSquared > uintBitsToFloat(0u)
+                    ? ((p.x - previous.x) * edge.x + (p.y - previous.y) * edge.y) / edgeLengthSquared
+                    : uintBitsToFloat(0u);
+                projection = clamp(projection, uintBitsToFloat(0u), uintBitsToFloat(1065353216u));
+                precise vec2 closest = previous + edge * projection;
+                precise float distance = length(vec2(p.x - closest.x, p.y - closest.y));
+                minimumDistance = min(minimumDistance, distance);
+            }
             if (checkWinding && ((previous.y <= p.y && current.y > p.y) ||
                                  (previous.y > p.y && current.y <= p.y))) {
                 precise float crossingX = previous.x + (p.y - previous.y) *
