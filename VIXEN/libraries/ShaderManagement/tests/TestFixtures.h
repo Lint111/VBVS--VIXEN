@@ -26,6 +26,7 @@
 #include <ShaderDataBundle.h>
 #include <SpirvReflectionData.h>
 #include <ShaderProgram.h>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -683,7 +684,7 @@ private:
 
     // Builder state
     std::vector<CompiledShaderStage> stages;
-    std::unordered_map<uint32_t, std::vector<SpirvDescriptorBinding>> descriptorSets;
+    std::map<uint32_t, std::vector<SpirvDescriptorBinding>> descriptorSets;
     std::vector<SpirvPushConstantRange> pushConstants;
     std::string programName;
     std::string uuid;
