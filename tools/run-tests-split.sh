@@ -141,10 +141,7 @@ select_args=("${exclude_args[@]}")
 queue() {
   local resource="$1" label="$2" cpu_tokens="$3"; shift 3
   if (( use_queue )); then
-    local token_args=()
-    (( cpu_tokens > 0 )) && token_args=(--cpu-tokens "$cpu_tokens")
-    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" \
-      ${token_args[@]+"${token_args[@]}"} -- "$@"
+    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" -- "$@"
   else
     "$@"
   fi
@@ -253,8 +250,8 @@ witness_env=()
 (( witness )) && witness_env=(VIXEN_GPU_WITNESS_DIR="$out_dir/witness")
 
 # CPU pair-tokens (two CPUs each) the largest PROCESSORS declaration among the part's selected tests needs;
-# 0 when none declares one. The queue reserves them via --cpu-tokens, so a suite that needs concurrent
-# CPUs is not admitted with fewer.
+# 0 when none declares one. Keep this as diagnostic metadata; queue admission owns CPU width and
+# PROCESSORS is enforced by CTest inside the admitted payload.
 declared_cpu_tokens() {
   local part="$1"
   ctest --test-dir "$build_dir" --show-only=json-v1 -L "^${part}\$" "${select_args[@]}" | python3 -c '
@@ -315,10 +312,8 @@ run_gpu_shards() {
     (
       shard_started=$SECONDS
       if (( use_queue )); then
-        local token_args=()
-        (( cpu_tokens > 0 )) && token_args=(--cpu-tokens "$cpu_tokens")
         bash "$queue_wrapper" --agent "${agent}-gpu${index}" --resource gpu \
-          --label "$agent:split-gpu-$index" "${token_args[@]}" -- \
+          --label "$agent:split-gpu-$index" -- \
           env "${witness_env[@]}" "${shard_env[@]}" \
           "${gpu_guard[@]}" ctest --test-dir "$build_dir" -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
