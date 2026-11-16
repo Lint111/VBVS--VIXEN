@@ -330,6 +330,21 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_COMPARE=unset:")
     list(APPEND _glyphsdf_capture_tests "${_glyphsdf_rtl_pair_test}")
 
+    # Row 106 guard: the same scene, run past the four-frame timestamp ring so every pass's GPU time
+    # is measured; the test fails when one submission exceeds a quarter of the native watchdog.
+    set(_glyphsdf_rtl_guard_test "Application.LookdevCapture.GlyphSdf.RtlProof.SubmitGuard")
+    set(_glyphsdf_rtl_guard_dir "${_glyphsdf_capture_dir}/rtl-proof-submit-guard")
+    _vixen_lookdev_add_exe_test("${_glyphsdf_rtl_guard_test}"
+                "--gtest_filter=LookdevCapture.RendersGlyphSdfLocalizedSign")
+    set_tests_properties("${_glyphsdf_rtl_guard_test}" PROPERTIES
+        LABELS "Application;GlyphSdfProofPair"
+        TIMEOUT 1800
+        ENVIRONMENT
+            "${_lookdev_test_environment};VIXEN_WINDOW_WIDTH=1920;VIXEN_WINDOW_HEIGHT=1080;VIXEN_GLYPHSDF_SCENE=1;VIXEN_GLYPHSDF_RTL_PROOF=1;VIXEN_GLYPHSDF_VARIANT=rtl-proof-pair;VIXEN_GPU_SUBMIT_GUARD=1;VIXEN_LOOKDEV_CAPTURE_FRAMES=6;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_glyphsdf_rtl_guard_dir};VIXEN_CACHE_DIR=${_glyphsdf_rtl_guard_dir}/cache-r768-canonicalabi;VIXEN_SHARED_CACHE_DIR=${_glyphsdf_rtl_guard_dir}/shared-cache-r768-canonicalabi"
+        ENVIRONMENT_MODIFICATION
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:;VIXEN_GLYPHSDF_COMPARE=unset:")
+    list(APPEND _glyphsdf_capture_tests "${_glyphsdf_rtl_guard_test}")
+
     foreach(_resolution IN ITEMS 128 256)
         set(_glyphsdf_compare_test "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel${_resolution}")
         if(_resolution EQUAL 256)
@@ -444,6 +459,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         "Application.LookdevCapture.Presentation.midday=434"
         "Application.LookdevCapture.RendersFourStatesAtFourAnglesDeterministically=522"
         "Application.LookdevCapture.GlyphSdf.RtlProof.Pair=220"
+        "Application.LookdevCapture.GlyphSdf.RtlProof.SubmitGuard=220"
         "Application.LookdevCapture.ExposureRoom.walk=181"
         "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel.Yaw30=171"
         "Application.LookdevCapture.GlyphSdf.AnalyticVsVoxel=158"

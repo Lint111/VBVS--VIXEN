@@ -23,6 +23,7 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "Nodes/ReservoirConfigNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "Core/RenderGraph.h"
 #include "Text/GlyphAtlas.h"
 #include "Text/GlyphOutline.h"
@@ -3145,6 +3146,21 @@ TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
         ASSERT_TRUE(ValidateGlyphTextInvariant(
             outputDir / scenarios.front().filename, std::getenv("VIXEN_GLYPHSDF_RTL_PROOF") != nullptr, error))
             << error;
+    }
+    if (std::getenv("VIXEN_GPU_SUBMIT_GUARD")) {
+        // Row 106: this scene lost the device (Windows TDR) when its per-pixel glyph walk ran every
+        // segment of every merged row. Every measured submission must stay under the guard, a quarter
+        // of the native watchdog, so a return of unbounded per-invocation work fails here first.
+        using Vixen::RenderGraph::GPUPerformanceLogger;
+        const GPUPerformanceLogger::MeasuredSubmission worst = GPUPerformanceLogger::WorstSubmission();
+        std::printf("[GPU_SUBMIT_GUARD] worst pass=%s gpu_ms=%.3f guard_ms=%.0f\n", worst.pass.c_str(),
+                    worst.gpuMs, GPUPerformanceLogger::kSubmitGuardMs);
+        std::fflush(stdout);
+        ASSERT_GT(worst.gpuMs, 0.0)
+            << "no GPU submission was measured; the guard needs frames past the timestamp ring "
+               "(set VIXEN_LOOKDEV_CAPTURE_FRAMES to at least 6)";
+        ASSERT_LT(worst.gpuMs, GPUPerformanceLogger::kSubmitGuardMs)
+            << "pass '" << worst.pass << "' measured " << worst.gpuMs << " ms in one submission";
     }
 }
 
