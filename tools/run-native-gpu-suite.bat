@@ -42,6 +42,7 @@ if defined VIXEN_NATIVE_ARGS (
     set VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native^|nightly)$" --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*
 )
 echo [native-gpu-suite] test jobs: %VIXEN_MAX_BUILD_JOBS% (source=queue grant)
+goto :run_phase
 :lookdev_hud
 set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L gpu --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure --tests-from-file "%ROOT%\tools\native-lookdev-hud.tests""
 :run_phase
