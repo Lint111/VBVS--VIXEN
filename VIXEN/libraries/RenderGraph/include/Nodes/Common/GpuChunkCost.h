@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace Vixen::RenderGraph {
 // Conservative affine envelope over the producer's measured command history.
@@ -114,6 +115,19 @@ public:
         const double slope = (large.meanNs - small.meanNs) / double(large.units - small.units);
         return std::max(0.0, small.meanNs + slope * (double(units) - double(small.units)));
     }
+    // R761: tiles are sized from the mean, but the slowest tile is what holds the queue. On a native
+    // device no tile may be projected (line through the two scales' slowest tiles) longer than a pass
+    // is allowed to run as one dispatch (the window plus the hysteresis margin), so an uneven pass does
+    // not trade its total for a submission near the guard.
+    [[nodiscard]] double WorstTileEdge(const WholePass& pass, uint32_t floor) const {
+        const Scale& small = Small();
+        const Scale& large = Large();
+        const double slope = (large.worstNs - small.worstNs) / double(large.units - small.units);
+        if (!(slope > 0.0)) return double(std::numeric_limits<uint32_t>::max());
+        const double limit = double(pass.windowNs) * (1.0 + kHysteresis) * 0.95;
+        const double units = (limit - LaunchLatencyNs()) / slope;
+        return std::max(double(floor), std::sqrt(std::max(0.0, units)));
+    }
     // The whole-pass window test, with hysteresis once the previous shape is known.
     [[nodiscard]] bool FitsWindow(const WholePass& pass) const {
         const double margin = pass.previous == WholePass::Shape::Whole   ? 1.0 + kHysteresis
@@ -206,8 +220,11 @@ public:
         const double measuredEdge = std::sqrt(double(anchorUnits_));
         // With the latency measured, the budget already accounts for it: grow toward the budget, at
         // most kGrowth times the edge of the largest tile measured so far, so a coarser tile is reached
-        // by measured steps. Otherwise a latency floor must not hide an over-budget full-tile observation.
-        const double edge = ScalesMeasured() ? std::min(throughputEdge, kGrowth * measuredEdge)
+        // by measured steps, and on a native device never past the tile whose slowest instance would run
+        // longer than one dispatch of a whole pass may (WorstTileEdge). Otherwise a latency floor must
+        // not hide an over-budget full-tile observation.
+        const double edge = ScalesMeasured()
+            ? std::min({throughputEdge, kGrowth * measuredEdge, native ? WorstTileEdge(*native, floor) : throughputEdge})
             : fixedNs_ < budgetNs * 0.95 ? throughputEdge
             : std::min(throughputEdge, measuredEdge);
         return std::max(floor, static_cast<uint32_t>(std::min(double(maximum), edge)));

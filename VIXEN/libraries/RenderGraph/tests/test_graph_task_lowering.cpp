@@ -1184,6 +1184,25 @@ TEST(GpuChunkCost, WindowHysteresisKeepsAPassNearTheWindowInOneShape) {
     EXPECT_FALSE(measuredWhole(245e6).FitsWindow({units, windowNs}));
 }
 
+TEST(GpuChunkCost, SlowestTileStaysWithinTheOneDispatchAllowance) {
+    // RTL at 4K, stock shaders, mean-sized tiles (opus-marchrule1 dev run): 45 tiles of 3,136
+    // workgroups had a 214 ms slowest tile; 15 tiles of about 9,600 had 350 to 460 ms, and the shadow
+    // wave's slowest crossed the 500 ms guard. On a native device the slowest tile is bounded by the
+    // window plus its margin (300 ms with the default budgets).
+    const GpuChunkCost::WholePass window{480ull * 270, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    GpuChunkCost cost;
+    for (int i = 0; i < 64; ++i) cost.Observe(9600, 9600, 116'000'000);
+    cost.ObserveScale(3136, 51'000'000, 214'000'000);
+    cost.ObserveScale(9600, 116'000'000, 350'000'000);
+    ASSERT_TRUE(cost.ScalesMeasured());
+    const uint32_t bounded = cost.Edge(2'000'000, 480, 7, &window);
+    const uint32_t unbounded = cost.Edge(2'000'000, 480, 7);
+    EXPECT_LT(bounded, unbounded);
+    const double slope = (350e6 - 214e6) / (9600.0 - 3136.0);
+    EXPECT_LE(cost.LaunchLatencyNs() + slope * double(bounded) * bounded, 300e6);
+    EXPECT_GT(bounded, 56u);  // still well above the 45-tile scale it measured at
+}
+
 TEST(GpuChunkCost, MeasuredTiledPlanHoldsItsEdgeWithinTheMargin) {
     EXPECT_EQ(TiledDispatch::HeldEdge(108, 113), 108u);  // 9% more area: held
     EXPECT_EQ(TiledDispatch::HeldEdge(108, 100), 108u);  // 14% less area: held
