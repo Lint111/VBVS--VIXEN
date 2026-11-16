@@ -17,6 +17,12 @@ file(MAKE_DIRECTORY "${_editor_capture_dir}")
 if(NOT DEFINED ENV{YEROKET_DOTNET} OR "$ENV{YEROKET_DOTNET}" STREQUAL "")
     set(ENV{YEROKET_DOTNET} "@VIXEN_DOTNET@")
 endif()
+if(NOT DEFINED ENV{YEROKET_CODEGEN_TOOL_DLL} OR "$ENV{YEROKET_CODEGEN_TOOL_DLL}" STREQUAL "")
+    set(_native_codegen_tool_dll "@CMAKE_BINARY_DIR@/codegen/tool/CodegenTool.dll")
+    if(EXISTS "${_native_codegen_tool_dll}")
+        set(ENV{YEROKET_CODEGEN_TOOL_DLL} "${_native_codegen_tool_dll}")
+    endif()
+endif()
 execute_process(
     COMMAND "@Python3_EXECUTABLE@" "${_editor_producer}" --editor "${_editor_exe}"
         --document "${_editor_document}" --capture-dir "${_editor_capture_dir}"
