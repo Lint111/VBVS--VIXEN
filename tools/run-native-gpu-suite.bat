@@ -34,10 +34,11 @@ if not defined CASE_TIMEOUT set "CASE_TIMEOUT=600"
 set "STOP_ARG=--stop-on-failure"
 if "%VIXEN_GPU_STOP_ON_FAILURE%"=="0" set "STOP_ARG="
 if defined VIXEN_NATIVE_ARGS (
-    set VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native^|nightly^)$" --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !VIXEN_NATIVE_ARGS!
+    set VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native^|nightly)$" --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !VIXEN_NATIVE_ARGS!
 ) else (
-    set VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native^|nightly^)$" --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*
+    set VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native^|nightly)$" --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*
 )
+echo [native-gpu-suite] test jobs: %VIXEN_MAX_BUILD_JOBS% (source=queue grant)
 REM The phase wrapper prints "[phase:native-gpu-suite] alive ..." while the ctest tree uses CPU, so the
 REM WSL queue watchdog does not mistake a long silent device test for a dead payload (and still
 REM sees a hung one: no CPU growth stops the heartbeat). Arguments travel in an env var, not quoting.
