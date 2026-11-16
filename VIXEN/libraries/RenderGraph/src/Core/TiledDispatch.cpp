@@ -38,14 +38,27 @@ uint64_t SubmissionBudgetNs(const TiledDispatch::Capacity& capacity) {
 
 }  // namespace
 
-// The cold split of an unmeasured pass. Native: each axis is cut by the ratio the whole-pass
-// window already uses (watchdog : window == frame budget : submission budget), never below the
-// launch floor. Translated: one dispatch.
-uint32_t TiledDispatch::ColdSplitEdge(uint32_t wholeEdge, Capacity capacity, bool native) {
-    if (!native) return std::max(1u, wholeEdge);
+// The cold split of an unmeasured pass. Native: the pass is cut into cuts^2 tiles, where cuts is
+// the ratio the whole-pass window already uses (watchdog : window == frame budget : submission
+// budget), never below the launch floor. Translated: one dispatch.
+uint32_t TiledDispatch::ColdSplitEdge(Extent groups, Capacity capacity, bool native) {
+    if (!native) return std::max(1u, std::max(groups.x, groups.y));
     const uint64_t submission = std::max(uint64_t{1}, capacity.submissionBudgetNs);
     const uint64_t cuts = std::max(uint64_t{1}, (capacity.frameBudgetNs + submission - 1) / submission);
-    return std::max(kLaunchFloor, static_cast<uint32_t>((uint64_t{wholeEdge} + cuts - 1) / cuts));
+    const uint64_t layer = uint64_t{groups.x} * groups.y;
+    return TileEdge(kLaunchFloor, groups, (layer + cuts * cuts - 1) / (cuts * cuts));
+}
+
+uint32_t TiledDispatch::TileEdge(uint32_t squareEdge, Extent groups, uint64_t minTileGroups) {
+    const uint64_t wholeEdge = std::max(1u, std::max(groups.x, groups.y));
+    const uint64_t shortSide = std::max(1u, std::min(groups.x, groups.y));
+    const uint64_t tileGroups = std::max(uint64_t{squareEdge} * squareEdge, minTileGroups);
+    if (tileGroups <= shortSide * shortSide) {
+        uint64_t edge = squareEdge;
+        while (edge * edge < tileGroups) ++edge;
+        return static_cast<uint32_t>(std::max(uint64_t{1}, edge));
+    }
+    return static_cast<uint32_t>(std::min(wholeEdge, (tileGroups + shortSide - 1) / shortSide));
 }
 
 TiledDispatch::TiledDispatch() = default;
@@ -66,7 +79,10 @@ void TiledDispatch::Configure(Vixen::Vulkan::Resources::VulkanDevice* device, Vk
 
 void TiledDispatch::SetPipeline(bool tileable, bool forgetEnvelope) {
     tileable_ = tileable;
-    if (forgetEnvelope) cost_ = {};
+    if (forgetEnvelope) {
+        cost_ = {};
+        measuredLayerGroups_ = 0;
+    }
     calibrationKey_.clear();  // re-enter through SeedEnvelope (persisted first, R503)
 }
 
@@ -120,6 +136,7 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
     auto& query = *state.query;
 
     timings_.Begin(flight);
+    measuredLayerGroups_ = state.nominalLayerGroups;
     // The full-tile mean feeds the yield rule (not a measurement hook), so it is never gated.
     double fullTileMs = 0;
     uint32_t fullTiles = 0;
@@ -242,7 +259,7 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
     const GpuChunkCost::WholePass whole{uint64_t(groups.x) * groups.y * groups.z,
         NativeWholePassWindowNs(capacity.submissionBudgetNs, capacity.frameBudgetNs)};
     const bool windowed = native_ == 1 || prior_ == Prior::Unknown;
-    const uint32_t launch = prior_ == Prior::Heaviest ? 0u : ColdSplitEdge(wholeEdge, capacity, native_ == 1);
+    const uint32_t launch = prior_ == Prior::Heaviest ? 0u : ColdSplitEdge(groups, capacity, native_ == 1);
     const long edgeOverride = EdgeOverride();
     // A tile of edge e holds e*e*z workgroups, so the per-layer budget sizes the edge.
     planEdge_ = !tileable_ || edgeOverride == 0
@@ -251,7 +268,16 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
             ? static_cast<uint32_t>(edgeOverride)
             : cost_.Edge(std::max(uint64_t{1}, budgetNs / groups.z), wholeEdge, kLaunchFloor,
                          windowed ? &whole : nullptr, launch);
+    if (prior_ == Prior::Unknown && tileable_ && edgeOverride < 0 && cost_.Calibrated()) {
+        // The rule sizes a square tile. Give a strip or a list the same workgroups per tile, and
+        // while the launch latency is not measured (two tile sizes are needed) refine by at most
+        // 4x a readback: an over-window pass must not be cut into hundreds of commands on a
+        // device, or beside another process, where each command costs milliseconds.
+        const uint64_t refineFloor = cost_.LaunchLatencyNs() > 0.0 ? 0 : measuredLayerGroups_ / 4;
+        planEdge_ = TileEdge(planEdge_, groups, refineFloor);
+    }
     const uint32_t edge = planEdge_;
+    state.nominalLayerGroups = uint64_t(std::min(edge, groups.x)) * std::min(edge, groups.y);
     state.nominalGroups = std::min(edge, groups.x) * std::min(edge, groups.y) * groups.z;
     const uint32_t count = std::max(1u, ((groups.x + edge - 1) / edge) * ((groups.y + edge - 1) / edge));
 
@@ -372,6 +398,7 @@ void TiledDispatch::Release(Vixen::Log::Logger* reporter) {
     }
     for (Flight& state : flights_) state = Flight{};
     cost_ = {};
+    measuredLayerGroups_ = 0;
     commands_.clear();
     if (reads_) {
         // One line per pass and compile: the worst submission the guard saw and the most

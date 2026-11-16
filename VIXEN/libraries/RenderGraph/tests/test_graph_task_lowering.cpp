@@ -1015,31 +1015,49 @@ TEST(GpuChunkCost, ColdFrameSeedFromAnotherExtentUntilesAtFirstFrame) {
 TEST(GpuChunkCost, UnmeasuredPassLaunchesAtItsColdSplitThenFollowsItsMeasuredCost) {
     // R861: a stage pass at 1080p (240x135 workgroups) with the default budgets.
     const TiledDispatch::Capacity capacity{16'666'666, 2'000'000};
-    const uint32_t launch = TiledDispatch::ColdSplitEdge(240, capacity, true);
-    EXPECT_EQ(launch, 27u);                                             // 9 cuts per axis
-    EXPECT_EQ(TiledDispatch::ColdSplitEdge(480, capacity, true), 54u);  // 4K: same tile count
-    EXPECT_EQ(TiledDispatch::ColdSplitEdge(20, capacity, true), TiledDispatch::kLaunchFloor);
-    EXPECT_EQ(TiledDispatch::ColdSplitEdge(240, capacity, false), 240u);  // translated: one dispatch
+    const uint32_t launch = TiledDispatch::ColdSplitEdge({240, 135, 1}, capacity, true);
+    EXPECT_EQ(launch, 20u);                                                        // 81 cuts by area: 12 x 7 tiles
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge({480, 270, 1}, capacity, true), 40u);   // 4K: the same tile count
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge({32400, 1, 1}, capacity, true), 400u);  // a list: 81 tiles too
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge({20, 20, 1}, capacity, true), TiledDispatch::kLaunchFloor);
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge({240, 135, 1}, capacity, false), 240u);  // translated: one dispatch
 
     const GpuChunkCost::WholePass window{135ull * 240, NativeWholePassWindowNs(2'000'000, 16'666'666)};
     GpuChunkCost cold;
-    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, launch), 27u);
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, launch), 20u);
     EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, 3), 7u);      // never below the floor
     EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, 999), 240u);  // never above the pass
     EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window), 7u);         // no launch: the floor, as before
 
-    // Measured cheap (20 us per cold tile, under 1 ms whole): one dispatch from the next plan on.
+    // Measured cheap (20 us per cold tile, under 2 ms whole): one dispatch from the next plan on.
     GpuChunkCost cheap;
-    cheap.Observe(27 * 27, 27 * 27, 20'000);
+    cheap.Observe(20 * 20, 20 * 20, 20'000);
     EXPECT_EQ(cheap.Edge(2'000'000, 240, 7, &window, launch), 240u);
 
     // Measured far over the window (row 106 before its fix: about 2.2 s whole): tiles shrink
     // below the launch, bounded by the floor.
     GpuChunkCost heavy;
-    heavy.Observe(27 * 27, 27 * 27, 49'500'000);
+    heavy.Observe(20 * 20, 20 * 20, 27'200'000);
     const uint32_t edge = heavy.Edge(2'000'000, 240, 7, &window, launch);
     EXPECT_LT(edge, launch);
     EXPECT_GE(edge, 7u);
+}
+
+TEST(GpuChunkCost, StripsAndListsGetTheSameWorkPerTileAndRefineGradually) {
+    // A 1080p screen pass: a square edge below the short side is used as it is.
+    EXPECT_EQ(TiledDispatch::TileEdge(14, {240, 135, 1}, 0), 14u);
+    // Above the short side the tile is a full-height strip holding the same workgroups.
+    EXPECT_EQ(TiledDispatch::TileEdge(180, {240, 135, 1}, 0), 240u);
+    EXPECT_EQ(TiledDispatch::TileEdge(150, {240, 135, 1}, 0), 167u);  // 22,500 groups in 135-high strips
+    // A list dispatched along one axis (the shadow wave: 32,400 x 1): edge 14 means 196 groups a
+    // tile, not 14 (which cut one 275 ms pass into 2,700 commands).
+    EXPECT_EQ(TiledDispatch::TileEdge(14, {32400, 1, 1}, 0), 196u);
+    EXPECT_EQ(TiledDispatch::TileEdge(7, {32400, 1, 1}, 0), 49u);   // the floor, in workgroups
+    EXPECT_EQ(TiledDispatch::TileEdge(240, {32400, 1, 1}, 0), 32400u);  // whole stays whole
+    // Launch latency not measured yet: at most 4x finer than the tiles just read back.
+    EXPECT_EQ(TiledDispatch::TileEdge(14, {32400, 1, 1}, 3600 / 4), 900u);
+    EXPECT_EQ(TiledDispatch::TileEdge(14, {240, 135, 1}, 27 * 27 / 4), 14u);  // 182 groups: 14x14 already holds more
+    EXPECT_EQ(TiledDispatch::TileEdge(7, {240, 135, 1}, 27 * 27 / 4), 14u);
 }
 
 TEST(GpuChunkCost, PersistedMeanLetsAKnownDeviceUntileFromFrameOne) {

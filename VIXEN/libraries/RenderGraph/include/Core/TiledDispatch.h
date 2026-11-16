@@ -31,8 +31,10 @@ class SimpleTaskProfile;
  * buffer each, `vkCmdDispatchBase`), sized from the pass's own measured cost so that no queue
  * submission runs longer than the device allows:
  *
- *   - measured: `GpuChunkCost::Edge` (one dispatch while the whole pass fits the native window,
- *     otherwise tiles sized to the submission budget, never below `kLaunchFloor`);
+ *   - measured: `GpuChunkCost::Edge` (one dispatch while the whole pass fits the whole-pass
+ *     window, otherwise tiles sized to the submission budget, never below `kLaunchFloor`). A
+ *     `Prior::Unknown` pass keeps that work per tile on any grid shape (`TileEdge`) and, while the
+ *     device's launch latency is not measured, is refined by at most 4x a readback;
  *   - unmeasured: the node's prior (`Prior`), because a pass that is too long on its first
  *     frame loses the device before any measurement exists.
  *
@@ -54,9 +56,10 @@ public:
         /// translated device is always tiled to the submission budget (its long dispatches lose
         /// that device).
         Heaviest,
-        /// Any other pass. Native: launches cut along each axis by the watchdog-to-window ratio
-        /// (frame budget over submission budget), so a pass far over the window still returns in
-        /// time to be measured. Translated: launches as one dispatch (there the hazard is the
+        /// Any other pass. Native: launches cut by the square of the watchdog-to-window ratio
+        /// (frame budget over submission budget; 81 tiles with the defaults, whatever the grid
+        /// shape), so a pass far over the window still returns in time to be measured.
+        /// Translated: launches as one dispatch (there the hazard is the
         /// command count). On every device a measured pass that fits the whole-pass window is one
         /// dispatch, as it was before the rule existed.
         Unknown,
@@ -70,9 +73,14 @@ public:
         uint64_t submissionBudgetNs = 0;
     };
 
-    /// Tile edge an unmeasured `Prior::Unknown` pass launches with, for a pass whose longer
-    /// side is `wholeEdge` workgroups.
-    [[nodiscard]] static uint32_t ColdSplitEdge(uint32_t wholeEdge, Capacity capacity, bool native);
+    /// Tile edge an unmeasured `Prior::Unknown` pass of `groups` workgroups launches with.
+    [[nodiscard]] static uint32_t ColdSplitEdge(Extent groups, Capacity capacity, bool native);
+
+    /// Edge of the tiles that hold what a square tile of `squareEdge` holds (squareEdge^2
+    /// workgroups a layer), but at least `minTileGroups`, on a `groups` grid. A grid whose short
+    /// side is below the square edge (a strip, a list dispatched along one axis) gets longer
+    /// tiles, not more of them.
+    [[nodiscard]] static uint32_t TileEdge(uint32_t squareEdge, Extent groups, uint64_t minTileGroups);
 
     TiledDispatch();
     ~TiledDispatch();
@@ -127,6 +135,7 @@ private:
         uint32_t tiles = 0;            ///< 0: an opaque flight, nothing to read back.
         uint64_t budgetNs = 0;
         uint32_t nominalGroups = 0;    ///< Workgroups of an unclipped tile.
+        uint64_t nominalLayerGroups = 0;  ///< The same for one layer (the unit TileEdge sizes).
         std::vector<uint32_t> tileGroups;
         std::vector<SubmitRecord::Batch> batches;
         std::string extentKey;
@@ -148,6 +157,7 @@ private:
     FrameCommandTimingLedger timings_;
     GpuChunkCost cost_;
     std::string calibrationKey_;       ///< "WxH" workgroup extent the envelope was learned for.
+    uint64_t measuredLayerGroups_ = 0; ///< Tile size (one layer) of the last flight read back.
 
     // The plan being recorded.
     std::vector<VkCommandBuffer> commands_;
