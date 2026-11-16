@@ -836,6 +836,23 @@ if(VIXEN_NO_NEW_MUTEX_GATE)
     endif()
 endif()
 
+# Keep the tracked Python tooling surface on the R878 shrink ratchet.  This is a source-only
+# check, so it remains useful on the WSL/CI side even when native C++ targets are unavailable.
+option(VIXEN_PYTHON_LINES_GATE "Reject growth of tracked Python tooling" ON)
+if(VIXEN_PYTHON_LINES_GATE)
+    find_program(VIXEN_GATE_BASH NAMES bash)
+    if(VIXEN_GATE_BASH AND EXISTS "${VIXEN_ROOT}/tools/check-python-lines.sh")
+        vixen_add_checked_target(python_lines_check ALL
+            COMMAND ${VIXEN_GATE_BASH} "${VIXEN_ROOT}/tools/check-python-lines.sh"
+                    --root "${CMAKE_CURRENT_SOURCE_DIR}/.."
+            DEPENDS "${VIXEN_ROOT}/tools/check-python-lines.sh"
+            COMMENT "tracked Python line ratchet (tools/check-python-lines.sh)"
+            VERBATIM)
+    else()
+        message(STATUS "Python line ratchet skipped: bash or tools/check-python-lines.sh not found")
+    endif()
+endif()
+
 # Windows SDK headers define short, un-namespaced macros such as near/far/min/max.  A declaration
 # using one of those spellings compiles on Linux and then fails only when MSVC sees the same header
 # graph.  Keep this source-only scan cheap and make it part of every normal build and pre-commit run.
