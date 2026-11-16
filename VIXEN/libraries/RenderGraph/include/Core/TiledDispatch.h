@@ -90,6 +90,10 @@ public:
     /// between 2x (two tile sizes that far apart are what measures the latency) and 4x (so the
     /// pass is not cut into hundreds of commands before their cost is known).
     [[nodiscard]] static uint64_t RefinedTileGroups(uint64_t wanted, uint64_t measured, bool latencyKnown);
+    /// R892.2: the edge a measured tiled plan keeps. The previous edge stays while the rule's edge is
+    /// within GpuChunkCost::kHysteresis of it by area, so noise in the measured cost does not change the
+    /// command count from frame to frame; a larger change takes the rule's edge.
+    [[nodiscard]] static uint32_t HeldEdge(uint32_t previous, uint32_t ruled);
 
     TiledDispatch();
     ~TiledDispatch();
@@ -110,7 +114,9 @@ public:
     [[nodiscard]] bool Tileable() const { return tileable_; }
 
     /// Read the timestamps of `flight`'s previous use (call once its completion was waited),
-    /// feed the cost envelope and report each measured submission to the submit guard.
+    /// feed the cost envelope and report each measured submission to the submit guard. Every later
+    /// flight whose commands have all retired is read too, oldest first (each flight once), so a
+    /// pass learns from the frame before last instead of waiting for its flight to come round.
     void Collect(uint32_t flight, Vixen::Log::Logger* reporter);
 
     /// Decide `flight`'s tiles for a dispatch of `groups` workgroups; `first` is the node's own
@@ -144,6 +150,8 @@ private:
         std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery> query;
         uint32_t queryCapacity = 0;
         uint32_t tiles = 0;            ///< 0: an opaque flight, nothing to read back.
+        uint64_t sequence = 0;         ///< Plan order, so flights are read back oldest first.
+        bool collected = true;         ///< Its timestamps were read (or there is nothing to read).
         uint64_t budgetNs = 0;
         uint32_t nominalGroups = 0;    ///< Workgroups of an unclipped tile.
         uint64_t nominalLayerGroups = 0;  ///< The same for one layer (the unit TileEdge sizes).
@@ -156,6 +164,8 @@ private:
     };
 
     void SeedEnvelope(Extent groups);
+    /// Read one flight once; `retiredOnly` reads it only when every one of its commands retired.
+    bool CollectFlight(uint32_t flight, Vixen::Log::Logger* reporter, bool retiredOnly);
     void Trace(const std::string& line) const;
 
     Vixen::Vulkan::Resources::VulkanDevice* device_ = nullptr;
@@ -175,6 +185,10 @@ private:
     GpuChunkCost cost_;
     std::string calibrationKey_;       ///< exact workgroup extent for the current cache lookup.
     uint64_t measuredLayerGroups_ = 0; ///< Tile size (one layer) of the last flight read back.
+    uint64_t planSequence_ = 0;
+    /// R892.2 hysteresis: the shape and tile edge of the previous measured plan (a cold launch has none).
+    GpuChunkCost::WholePass::Shape previousShape_ = GpuChunkCost::WholePass::Shape::None;
+    uint32_t previousEdge_ = 0;
 
     // The plan being recorded.
     std::vector<VkCommandBuffer> commands_;

@@ -2,6 +2,7 @@
 #include "Core/TiledDispatch.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -63,6 +64,14 @@ uint32_t TiledDispatch::TileEdge(Extent groups, uint64_t tileGroups) {
     return static_cast<uint32_t>(std::min(wholeEdge, (tileGroups + shortSide - 1) / shortSide));
 }
 
+uint32_t TiledDispatch::HeldEdge(uint32_t previous, uint32_t ruled) {
+    if (!previous || !ruled) return ruled;
+    const double area = double(ruled) * ruled;
+    const double kept = double(previous) * previous;
+    const double margin = 1.0 + GpuChunkCost::kHysteresis;
+    return area <= kept * margin && area * margin >= kept ? previous : ruled;
+}
+
 uint64_t TiledDispatch::RefinedTileGroups(uint64_t wanted, uint64_t measured, bool latencyKnown) {
     if (latencyKnown || !measured || wanted >= measured) return wanted;
     return std::clamp(wanted, std::max(uint64_t{1}, measured / 4), std::max(uint64_t{1}, measured / 2));
@@ -107,6 +116,8 @@ void TiledDispatch::SetPipeline(bool tileable, bool forgetEnvelope) {
     if (forgetEnvelope) {
         cost_ = {};
         measuredLayerGroups_ = 0;
+        previousShape_ = GpuChunkCost::WholePass::Shape::None;
+        previousEdge_ = 0;
     }
     calibrationKey_.clear();  // re-enter through SeedEnvelope (persisted first, R503)
 }
@@ -124,6 +135,8 @@ void TiledDispatch::SeedEnvelope(Extent groups) {
     calibrationKey_ = std::to_string(groups.x) + "x" + std::to_string(groups.y) +
         "x" + std::to_string(groups.z);
     cost_ = {};
+    previousShape_ = GpuChunkCost::WholePass::Shape::None;
+    previousEdge_ = 0;
     std::string seed = "cold";
     if (costCacher_) {
         CashSystem::GpuChunkCostCacheCreateInfo ci;
@@ -137,6 +150,8 @@ void TiledDispatch::SeedEnvelope(Extent groups) {
         if (const auto restored = costCacher_->Lookup(ci)) {
             cost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs,
                          restored->meanUnitNs, restored->meanFixedNs);
+            cost_.ImportScales({restored->currentUnits, restored->currentMeanNs, restored->currentWorstNs},
+                               {restored->referenceUnits, restored->referenceMeanNs, restored->referenceWorstNs});
             seed = "cash";
         }
     }
@@ -153,14 +168,33 @@ void TiledDispatch::SeedEnvelope(Extent groups) {
 
 void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
     if (flight >= kFlights) return;
+    CollectFlight(flight, reporter, false);  // its completion was waited
+    // R892.2: a cold pass must not wait for its flight to come round (four frames at the floor). Read
+    // the later flights whose commands have all retired, oldest first, and stop at the first one still
+    // running so the envelope sees the frames in order.
+    std::array<uint32_t, kFlights> order{};
+    uint32_t pending = 0;
+    for (uint32_t other = 0; other < kFlights; ++other)
+        if (other != flight && !flights_[other].collected) order[pending++] = other;
+    std::sort(order.begin(), order.begin() + pending,
+              [&](uint32_t a, uint32_t b) { return flights_[a].sequence < flights_[b].sequence; });
+    for (uint32_t i = 0; i < pending; ++i)
+        if (!CollectFlight(order[i], reporter, true)) break;
+}
+
+bool TiledDispatch::CollectFlight(uint32_t flight, Vixen::Log::Logger* reporter, bool retiredOnly) {
     Flight& state = flights_[flight];
-    if (!state.tiles || !state.query || !state.query->ReadResults(0)) return;
+    if (state.collected) return true;
+    if (!state.tiles || !state.query || !state.query->ReadResults(0)) return false;
     auto& query = *state.query;
+    if (retiredOnly && !query.AllAvailable(0, 0, state.tiles * 4)) return false;
+    state.collected = true;
 
     timings_.Begin(flight);
     measuredLayerGroups_ = state.nominalLayerGroups;
     // The full-tile mean feeds the yield rule (not a measurement hook), so it is never gated.
     double fullTileMs = 0;
+    double slowestFullTileMs = 0;
     uint32_t fullTiles = 0;
     for (uint32_t i = 0; i < state.tiles; ++i) {
         const double ms = query.GetElapsedMs(0, i * 4, i * 4 + 3);
@@ -181,12 +215,13 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
         timings_.Record(flight, i, groups, query.GetElapsedNs(0, i * 4, i * 4 + 3));
         if (groups == state.nominalGroups) {
             fullTileMs += ms;
+            slowestFullTileMs = std::max(slowestFullTileMs, ms);
             ++fullTiles;
         }
         cost_.Observe(groups, state.nominalGroups, ms * 1.0e6);
     }
     if (fullTiles)
-        cost_.ObserveScale(state.nominalGroups, fullTileMs * 1.0e6 / fullTiles, prior_ == Prior::Unknown);
+        cost_.ObserveScale(state.nominalGroups, fullTileMs * 1.0e6 / fullTiles, slowestFullTileMs * 1.0e6);
     if (costCacher_ && cost_.Calibrated() && state.extentKey == calibrationKey_) {
         CashSystem::GpuChunkCostCacheCreateInfo ci;
         ci.sceneIdentity = sceneIdentity_;
@@ -196,8 +231,12 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
         ci.extentZ = state.extentZ;
         ci.qualityProfile = qualityProfile_;
         ci.deviceIdentity = deviceIdentity_;
+        const auto& current = cost_.CurrentScale();
+        const auto& reference = cost_.ReferenceScale();
         costCacher_->Store(ci, {cost_.AnchorUnits(), cost_.UnitNs(), cost_.FixedNs(),
-                                cost_.MeanUnitNs(), cost_.MeanFixedNs()});
+                                cost_.MeanUnitNs(), cost_.MeanFixedNs(),
+                                current.units, current.meanNs, current.worstNs,
+                                reference.units, reference.meanNs, reference.worstNs});
     }
 
     double worstMs = 0;
@@ -247,6 +286,7 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
         " launch_latency_ms=" + std::to_string(cost_.LaunchLatencyNs() / 1.0e6) +
         " device_class=" + GpuDeviceClassName(*device_));
 #endif
+    return true;
 }
 
 void TiledDispatch::PlanOpaque(uint32_t flight, VkCommandBuffer only, Capacity capacity) {
@@ -257,6 +297,7 @@ void TiledDispatch::PlanOpaque(uint32_t flight, VkCommandBuffer only, Capacity c
     // The node's own whole-pass interval measures an opaque command; an earlier tiled recording
     // on this flight must not be read back again.
     state.tiles = 0;
+    state.collected = true;
     state.tileGroups.clear();
     state.batches.clear();
     state.budgetNs = SubmissionBudgetNs(capacity);
@@ -289,8 +330,9 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
     // On a translated device only the primary pass keeps the submission-budget tiling: every
     // command there pays a launch latency above that budget, so cutting an ordinary pass to
     // it only multiplies the latency.
-    const GpuChunkCost::WholePass whole{uint64_t(groups.x) * groups.y * groups.z,
+    GpuChunkCost::WholePass whole{uint64_t(groups.x) * groups.y * groups.z,
         NativeWholePassWindowNs(capacity.submissionBudgetNs, capacity.frameBudgetNs)};
+    whole.previous = previousShape_;
     const bool windowed = native_ == 1 || prior_ == Prior::Unknown;
     const uint32_t launch = prior_ == Prior::Heaviest ? 0u : ColdSplitEdge(groups, capacity, native_ == 1);
     const long edgeOverride = EdgeOverride();
@@ -309,6 +351,10 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
         planEdge_ = TileEdge(groups, RefinedTileGroups(uint64_t{planEdge_} * planEdge_, measuredLayerGroups_,
                                                        cost_.LaunchLatencyNs() > 0.0));
     }
+    const bool ruled = tileable_ && edgeOverride < 0 && cost_.Calibrated();
+    if (ruled && cost_.ScalesMeasured() && previousShape_ == GpuChunkCost::WholePass::Shape::Tiled &&
+        planEdge_ < wholeEdge)
+        planEdge_ = HeldEdge(previousEdge_, planEdge_);
     const uint32_t edge = planEdge_;
     state.nominalLayerGroups = uint64_t(std::min(edge, groups.x)) * std::min(edge, groups.y);
     state.nominalGroups = std::min(edge, groups.x) * std::min(edge, groups.y) * groups.z;
@@ -344,6 +390,11 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
             device_, 1, state.queryCapacity * 4);
     }
     state.tiles = count;
+    state.sequence = ++planSequence_;
+    state.collected = false;
+    previousShape_ = !ruled ? GpuChunkCost::WholePass::Shape::None
+        : count == 1 ? GpuChunkCost::WholePass::Shape::Whole : GpuChunkCost::WholePass::Shape::Tiled;
+    previousEdge_ = edge;
     state.budgetNs = cost_.SubmissionBudgetNs(budgetNs);
     state.tileGroups.clear();
     state.batches.clear();
@@ -432,6 +483,8 @@ void TiledDispatch::Release(Vixen::Log::Logger* reporter) {
     for (Flight& state : flights_) state = Flight{};
     cost_ = {};
     measuredLayerGroups_ = 0;
+    previousShape_ = GpuChunkCost::WholePass::Shape::None;
+    previousEdge_ = 0;
     commands_.clear();
     if (reads_) {
         // One line per pass and compile: the worst submission the guard saw and the most

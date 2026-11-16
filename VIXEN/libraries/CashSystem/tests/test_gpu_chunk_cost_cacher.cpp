@@ -64,6 +64,28 @@ TEST(GpuChunkCostCacherTest, SameConfigurationReusesAcrossSerializedRuns) {
     std::filesystem::remove(path, ec);
 }
 
+TEST(GpuChunkCostCacherTest, MeasuredLaunchScalesSurviveSerialization) {
+    // R892.2: the two scales that measured the latency come back, so a warm start sizes its tiles
+    // from frame one instead of probing again.
+    const auto path = UniqueCachePath();
+    const auto config = MakeInfo("rtl-proof");
+    {
+        CashSystem::GpuChunkCostCacher cold;
+        cold.Store(config, {196, 617.0, 5000.0, 33.0, 32.0, 3136, 60.0e6, 150.0e6, 196, 6.4e6, 110.0e6});
+        ASSERT_TRUE(cold.SerializeToFile(path));
+    }
+    CashSystem::GpuChunkCostCacher warm;
+    ASSERT_TRUE(warm.DeserializeFromFile(path, nullptr));
+    const auto restored = warm.Lookup(config);
+    ASSERT_NE(restored, nullptr);
+    EXPECT_EQ(restored->currentUnits, 3136u);
+    EXPECT_DOUBLE_EQ(restored->currentWorstNs, 150.0e6);
+    EXPECT_EQ(restored->referenceUnits, 196u);
+    EXPECT_DOUBLE_EQ(restored->referenceMeanNs, 6.4e6);
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+}
+
 TEST(GpuChunkCostCacherTest, DeliberateKeyBreakDoesNotReuseCalibration) {
     CashSystem::GpuChunkCostCacher cacher;
     const auto original = MakeInfo("scene-a");

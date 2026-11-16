@@ -24,6 +24,14 @@ struct GpuChunkCostCalibration {
     double fixedNs = 0.0;
     double meanUnitNs = 0.0;
     double meanFixedNs = 0.0;
+    // R892.2: the two launch scales that measured the per-command latency (mean and slowest full
+    // tile of each), so a warm start sizes its tiles from frame one. Zero: not measured.
+    std::uint64_t currentUnits = 0;
+    double currentMeanNs = 0.0;
+    double currentWorstNs = 0.0;
+    std::uint64_t referenceUnits = 0;
+    double referenceMeanNs = 0.0;
+    double referenceWorstNs = 0.0;
 };
 
 /**
@@ -90,6 +98,8 @@ public:
     }
 
 protected:
+    static constexpr std::uint32_t kVersion = 2;
+
     PtrT Create(const GpuChunkCostCacheCreateInfo& ci) override {
         return std::make_shared<GpuChunkCostCalibration>(ci.calibration);
     }
@@ -103,7 +113,6 @@ protected:
         if (!out) return false;
 
         CacheWriter writer(out);
-        constexpr std::uint32_t kVersion = 1;
         writer.WritePod(kVersion);
         const auto entries = Snapshot();
         writer.WritePod(static_cast<std::uint64_t>(entries.size()));
@@ -122,6 +131,12 @@ protected:
             writer.WritePod(calibration.fixedNs);
             writer.WritePod(calibration.meanUnitNs);
             writer.WritePod(calibration.meanFixedNs);
+            writer.WritePod(calibration.currentUnits);
+            writer.WritePod(calibration.currentMeanNs);
+            writer.WritePod(calibration.currentWorstNs);
+            writer.WritePod(calibration.referenceUnits);
+            writer.WritePod(calibration.referenceMeanNs);
+            writer.WritePod(calibration.referenceWorstNs);
         }
         return writer.Ok();
     }
@@ -133,10 +148,10 @@ protected:
         CacheReader reader(in);
         std::uint32_t version = 0;
         std::uint64_t count = 0;
-        constexpr std::uint32_t kVersion = 1;
         constexpr std::uint64_t kMaxEntries = 1u << 20;
         constexpr std::size_t kMaxIdentityLength = 4096;
-        if (!reader.ReadPod(version) || version != kVersion ||
+        // Version 1 records carry no launch scales; they load with the scales unmeasured.
+        if (!reader.ReadPod(version) || (version != kVersion && version != 1) ||
             !reader.ReadPod(count) || count > kMaxEntries) {
             return false;
         }
@@ -155,6 +170,12 @@ protected:
                 !reader.ReadPod(calibration.fixedNs) ||
                 !reader.ReadPod(calibration.meanUnitNs) ||
                 !reader.ReadPod(calibration.meanFixedNs)) {
+                return false;
+            }
+            if (version >= 2 &&
+                (!reader.ReadPod(calibration.currentUnits) || !reader.ReadPod(calibration.currentMeanNs) ||
+                 !reader.ReadPod(calibration.currentWorstNs) || !reader.ReadPod(calibration.referenceUnits) ||
+                 !reader.ReadPod(calibration.referenceMeanNs) || !reader.ReadPod(calibration.referenceWorstNs))) {
                 return false;
             }
             ci.calibration = calibration;
