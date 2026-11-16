@@ -2,8 +2,8 @@
 
 STATUS: COMPLETE
 
-Base SHA: `c012413c3a9bbfae26d715e79ccda6e410d29487`  
-Final VIXEN SHA: `5829605f903027e93e0d79a035f0c1aa0eb78b38`  
+Base SHA: `c012413c3a9bbfae26d715e79ccda6e410d29487`
+Semantic fix SHA: `5829605f903027e93e0d79a035f0c1aa0eb78b38`
 Fix commit: `5829605f9` (`Fix reflection cache map ordering across platforms`)
 
 ## ROOT CAUSE
