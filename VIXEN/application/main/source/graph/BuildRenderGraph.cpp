@@ -2058,7 +2058,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
             try {
                 splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
                     rawSource, proceduralRecipes_, &occupancyGridBlob, &glyphOutlineBlob, &recipeTapeBlob,
-                    ForceProceduralMaterialVariant());
+                    ForceProceduralMaterialVariant() ||
+                        Vixen::SVO::Recipe::RegistryRequiresMaterialVariant(proceduralRecipes_));
             } catch (const std::exception& e) {
                 if (mainLogger && mainLogger->IsEnabled()) {
                     mainLogger->Error(std::string("[BuildRenderGraph] procedural recipe splice failed: ") + e.what());
@@ -4681,9 +4682,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // The material-capable recipe tape is injected after static SDI generation, so binding 53
     // is not present in MarchSdi::MEMBERS. Keep the provider declarative through the gatherer's
-    // variadic binding seam; the editor's forced material variant makes this binding present from
-    // the initial graph build onward.
-    if (ForceProceduralMaterialVariant()) {
+    // variadic binding seam; either the editor override or a registered MaterialId output makes
+    // this binding present from the initial graph build onward.
+    if (ForceProceduralMaterialVariant() ||
+        Vixen::SVO::Recipe::RegistryRequiresMaterialVariant(proceduralRecipes_)) {
         constexpr uint32_t kRecipeTapeBinding = 53u;
         batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::RECIPE_TAPE_BUFFER,
                       descriptorGatherer, kRecipeTapeBinding,

@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -8,6 +9,35 @@
 #include "Recipe/RecipeServices.h"
 
 namespace Vixen::SVO::Recipe {
+
+// Ordinary Output instructions use generated output slots. The material-capable variant is
+// selected by MaterialRef/Attach/default state or by the generated semantic-7 sidecar channel;
+// a compact slot such as MaterialId's 8 is not itself a material-carry request.
+inline bool RecipeRequiresMaterialVariant(const RecipeRegistry::RecipeEntry* entry) noexcept {
+    if (!entry) return false;
+    if (entry->defaultMaterialId != 0u) return true;
+    const auto materialSidecarChannel = static_cast<float>(
+        RecipeMaterialSidecarChannelFor(SEM_MATERIAL_ID));
+    for (const auto& instruction : entry->bytecode) {
+        const auto op = static_cast<SdfOpCode>(instruction.opCode);
+        if (op == SdfOpCode::MaterialRef || op == SdfOpCode::Attach) return true;
+        if (op == SdfOpCode::Output && std::isfinite(instruction.data[0]) &&
+            instruction.data[0] == materialSidecarChannel)
+            return true;
+    }
+    return false;
+}
+
+inline bool RegistryRequiresMaterialVariant(const RecipeRegistry& registry) noexcept {
+    for (const std::uint32_t id : registry.Ids())
+        if (RecipeRequiresMaterialVariant(registry.Get(id))) return true;
+    return false;
+}
+
+static_assert(RecipeMaterialSidecarChannelFor(SEM_MATERIAL_ID) < SEM_COUNT,
+              "generated channel vocabulary must expose MaterialId as a semantic sidecar ordinal");
+static_assert(RecipeOutputSlotFor(SEM_MATERIAL_ID) != 0u,
+              "generated channel vocabulary must expose a non-distance MaterialId output slot");
 
 // SpliceProceduralRecipesIntoSource — Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11.
 //
@@ -78,17 +108,8 @@ inline std::string SpliceProceduralRecipesIntoSource(
     // Bounds and grid metadata obey the same binary32 transport contract as operands.
     const auto f = RecipeGlslFloatLiteral;
 
-    const auto hasMaterialOutput = [](const RecipeRegistry::RecipeEntry* entry) {
-        if (!entry) return false;
-        if (entry->defaultMaterialId != 0u) return true;
-        for (const auto& instruction : entry->bytecode) {
-            const auto op = static_cast<SdfOpCode>(instruction.opCode);
-            if (op == SdfOpCode::MaterialRef || op == SdfOpCode::Attach) return true;
-        }
-        return false;
-    };
     const bool materialVariant = forceMaterialVariant || std::any_of(ids.begin(), ids.end(), [&](uint32_t id) {
-        return hasMaterialOutput(registry.Get(id));
+        return RecipeRequiresMaterialVariant(registry.Get(id));
     });
     std::vector<uint32_t> tapeBases;
     tapeBases.reserve(ids.size());

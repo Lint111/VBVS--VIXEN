@@ -41,6 +41,20 @@ inline bool HasNonDistanceRecipeOutput(const RecipeRegistry::RecipeEntry& entry)
     return false;
 }
 
+// A recipe that already emits a typed output slot (for example the look-dev hull's
+// MaterialId slot) owns that value in its ordinary output stack. Request the optional material
+// sidecar only for the MaterialRef/Attach/default-material contract; asking the generated
+// evaluator to carry a second sidecar for an ordinary output slot leaves the stored bake with a
+// neutral material row and can make its output stack non-contiguous.
+inline bool RequiresMaterialCarry(const RecipeRegistry::RecipeEntry& entry) {
+    if (entry.defaultMaterialId != 0u) return true;
+    for (const Recipe::SdfInstruction& instruction : entry.bytecode) {
+        const auto op = static_cast<Recipe::SdfOpCode>(instruction.opCode);
+        if (op == Recipe::SdfOpCode::MaterialRef || op == Recipe::SdfOpCode::Attach) return true;
+    }
+    return false;
+}
+
 }  // namespace detail
 
 // ---------------------------------------------------------------------------
@@ -127,7 +141,7 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
                 ? entry->defaultMaterialId : cfg.defaultMaterialId;
             if (!outputProgram.Lower(entry->bytecode.data(),
                     static_cast<std::uint32_t>(entry->bytecode.size()), parameters,
-                    true, defaultMaterialId, lowerError)) {
+                    detail::RequiresMaterialCarry(*entry), defaultMaterialId, lowerError)) {
                 res.ok = false;
                 res.err = "recipe output-set lowering failed for recipe " +
                           std::to_string(id) + ": " + lowerError;

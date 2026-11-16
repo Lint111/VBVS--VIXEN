@@ -106,6 +106,14 @@ SdfInstruction attach() {
     return in;
 }
 
+SdfInstruction output(std::uint32_t channel) {
+    SdfInstruction in{};
+    in.opCode = static_cast<std::uint8_t>(SdfOpCode::Output);
+    in.data[0] = static_cast<float>(channel);
+    in.data[1] = 1.0f;
+    return in;
+}
+
 // Builds a compiled ShaderBundleBuilder::BuildResult for the given source, mirroring
 // BuildRenderGraph.cpp's own builder configuration (include paths, program name, pipeline
 // type) so this test exercises the SAME preprocessing/compile path production does.
@@ -223,6 +231,33 @@ TEST(UberShaderSplice, MaterialRecipeCarriesTapeAndCompiles) {
 
     const auto result = CompileSource(spliced);
     EXPECT_TRUE(result.success) << result.errorMessage;
+}
+
+TEST(UberShaderSplice, MaterialOutputSemanticSelectsMaterialVariant) {
+    RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode = {sphere({0.f, 0.f, 0.f}, 1.0f),
+                      output(RecipeMaterialSidecarChannelFor(SEM_MATERIAL_ID))};
+    EXPECT_TRUE(RecipeRequiresMaterialVariant(&entry))
+        << "an Output(MaterialId) instruction must select the carry-capable field/tape variant";
+}
+
+TEST(UberShaderSplice, OutputSlotMapsToMaterialStorageSpec) {
+    EXPECT_EQ(RecipeOutputInstructionChannelFor(SEM_MATERIAL_ID),
+              RecipeOutputSlotFor(SEM_MATERIAL_ID));
+    const auto* material = FindRecipeOutputChannelForDescriptor(
+        RecipeOutputInstructionChannelFor(SEM_MATERIAL_ID));
+    ASSERT_NE(material, nullptr);
+    EXPECT_EQ(material->semantic, SEM_MATERIAL_ID);
+    const auto* sidecar = FindRecipeOutputChannelForDescriptor(
+        RecipeMaterialSidecarChannelFor(SEM_MATERIAL_ID));
+    ASSERT_NE(sidecar, nullptr);
+    EXPECT_EQ(sidecar->semantic, SEM_MATERIAL_ID);
+
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode = {sphere({0.f, 0.f, 0.f}, 1.0f), output(RecipeOutputSlotFor(SEM_MATERIAL_ID))};
+    ASSERT_EQ(registry.Register(2u, entry), RecipeRegistry::RegisterResult::Ok);
+    EXPECT_FALSE(RecipeRequiresMaterialVariant(registry.Get(2u)));
 }
 
 // T-2895: the shared SdfTraceProbe.glsl contract must compile into the real march shader when

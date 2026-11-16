@@ -390,7 +390,7 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes(
             SdfInstruction materialOutput{};
             materialOutput.opCode = static_cast<uint8_t>(SdfOpCode::Output);
             materialOutput.data[0] = static_cast<float>(
-                Vixen::SVO::RecipeOutputSlotFor(Vixen::SVO::SEM_MATERIAL_ID));
+                Vixen::SVO::RecipeOutputInstructionChannelFor(Vixen::SVO::SEM_MATERIAL_ID));
             materialOutput.data[1] = 1.0f;
             entry.bytecode.push_back(materialOutput);
 
@@ -398,7 +398,7 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes(
             SdfInstruction smoothnessOutput{};
             smoothnessOutput.opCode = static_cast<uint8_t>(SdfOpCode::Output);
             smoothnessOutput.data[0] = static_cast<float>(
-                Vixen::SVO::RecipeOutputSlotFor(Vixen::SVO::SEM_EDGE_SMOOTHNESS));
+                Vixen::SVO::RecipeOutputInstructionChannelFor(Vixen::SVO::SEM_EDGE_SMOOTHNESS));
             smoothnessOutput.data[1] = 1.0f;
             entry.bytecode.push_back(smoothnessOutput);
         }

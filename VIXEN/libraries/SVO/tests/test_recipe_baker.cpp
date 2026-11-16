@@ -35,6 +35,21 @@ static SdfInstruction attachInstr() {
     return in;
 }
 
+static SdfInstruction outputInstr(std::uint32_t channel = 0u) {
+    SdfInstruction in{};
+    in.opCode = static_cast<std::uint8_t>(SdfOpCode::Output);
+    in.data[0] = static_cast<float>(channel);
+    in.data[1] = 1.0f;
+    return in;
+}
+
+static SdfInstruction pushParamInstr(float value) {
+    SdfInstruction in{};
+    in.opCode = static_cast<std::uint8_t>(SdfOpCode::PushParam);
+    in.data[0] = value;
+    return in;
+}
+
 static std::optional<float> SampleDensity(const SdfBodyOctree& body, const glm::vec3& gridPos) {
     const auto entity = body.world->getEntityByWorldSpace(gridPos);
     if (!body.world->exists(entity)) return std::nullopt;
@@ -242,6 +257,36 @@ TEST(RecipeBaker, DefaultMaterialStoresCategoricalSurfaceSamplesWithoutLayerSuff
     }
     EXPECT_GT(surfaceSamples, 0u);
     EXPECT_EQ(materialEight, surfaceSamples);
+}
+
+TEST(RecipeBaker, ExplicitMaterialOutputSlotStaysInOrdinaryOutputStack) {
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry entry{};
+    entry.bytecode = {
+        sphereInstr(glm::vec3(0.0f), 4.0f),
+        outputInstr(),
+        pushParamInstr(5.0f),
+        outputInstr(RecipeOutputInstructionChannelFor(SEM_MATERIAL_ID)),
+    };
+    ASSERT_EQ(reg.Register(1u, entry), RecipeRegistry::RegisterResult::Ok);
+
+    RecipeBakeConfig cfg{};
+    cfg.center = glm::vec3(8.0f);
+    cfg.defaultResolution = 16u;
+    const RecipeBakeResult result = BakeRegistryToPool(reg, cfg);
+    ASSERT_TRUE(result.ok) << result.err;
+    ASSERT_EQ(result.owned.size(), 1u);
+
+    const auto& output = result.owned.front().recipeOutputSet;
+    const Recipe::RecipeOutputDescriptor* material = nullptr;
+    for (const auto& descriptor : output.outputs)
+        if (descriptor.channel == RecipeOutputInstructionChannelFor(SEM_MATERIAL_ID)) material = &descriptor;
+    ASSERT_NE(material, nullptr) << "explicit MaterialId output slot must survive stored baking";
+    EXPECT_FALSE(material->materialSidecar);
+    EXPECT_EQ(FindRecipeOutputChannelForDescriptor(material->channel)->semantic, SEM_MATERIAL_ID);
+    for (const auto& descriptor : output.outputs)
+        EXPECT_NE(descriptor.channel, RecipeMaterialSidecarChannelFor(SEM_MATERIAL_ID))
+            << "ordinary output slot must not synthesize a material sidecar";
 }
 
 TEST(RecipeRegistry, ReplaceValidatesAndPublishesProgramAtomically) {

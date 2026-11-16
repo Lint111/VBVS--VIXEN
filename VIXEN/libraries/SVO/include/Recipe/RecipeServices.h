@@ -362,9 +362,9 @@ struct RecipeSceneAnalysis {
                     (readInstructionOperands ? YK_RECIPE_GPU_FIELD_TAPE_OPERANDS : 0u);
     request.alias = recipeId;
     request.glyphIndexBase = glyphIndexBase;
-    // MaterialId is a generated semantic channel. Keep the GPU request keyed to the generated
-    // vocabulary rather than duplicating its current ordinal in this consumer.
-    request.outputChannelMask = carryMaterialId ? (1u << static_cast<std::uint32_t>(SEM_MATERIAL_ID)) : 0u;
+    // GPU request masks use the same generated semantic ordinal as recipe Output descriptors;
+    // outputSlot is a separate compact storage bit and must not be used here.
+    request.outputChannelMask = carryMaterialId ? RecipeOutputRequestMaskFor(SEM_MATERIAL_ID) : 0u;
     request.materialDefault = materialDefault;
     YkRecipeGpuModule* module = nullptr;
     YkRecipeGpuDiagnostic diagnostic{};

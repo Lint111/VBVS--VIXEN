@@ -17,15 +17,40 @@ constexpr uint32_t kVoxelsPerBrick = 512u;          // 8^3, no apron (Inc2 as-bu
 constexpr uint32_t kMaxChannels    = 8u;            // fits the OctreeConfig tail (<= ~12)
 using Vixen::Gpu::ChannelDesc;   // was a hand-written struct; now the generated single-source type (Phase C)
 
-// Recipe output descriptors carry the shipped semantic channel ordinal (MaterialId = 7),
-// while the generated vocabulary's outputSlot is the compact output-mask bit. Resolve through
-// the generated semantic/slot helpers so categorical sidecars reach the matching storage spec.
+static_assert(kChannelVocabulary.size() == static_cast<std::size_t>(SEM_COUNT),
+              "generated channel vocabulary must cover every semantic ordinal");
+static_assert(SEM_COUNT <= 32u,
+              "recipe output request masks use one uint32 bit per semantic ordinal");
+
+// Authored Output instructions carry the generated compact output slot. GPU request masks use
+// the semantic ordinal bit, and the generated material sidecar is the one descriptor that uses
+// the semantic ordinal directly. Keep these ABI conversions named so a channel-table expansion
+// cannot silently make slot 8 mean AO instead of MaterialId.
+constexpr std::uint32_t RecipeOutputInstructionChannelFor(SemanticId semantic) noexcept {
+    return RecipeOutputSlotFor(semantic);
+}
+
+constexpr std::uint32_t RecipeMaterialSidecarChannelFor(SemanticId semantic) noexcept {
+    return static_cast<std::uint32_t>(semantic);
+}
+
+constexpr std::uint32_t RecipeOutputRequestMaskFor(SemanticId semantic) noexcept {
+    return 1u << RecipeMaterialSidecarChannelFor(semantic);
+}
+
+// Resolve ordinary output descriptors by generated slot. RecipePipelineCppEmitter also appends
+// a material sidecar descriptor with channel SEM_MATERIAL_ID; recognize that one explicit
+// generated descriptor in addition to the ordinary slot encoding.
 constexpr const RecipeOutputChannelSpec* FindRecipeOutputChannelForDescriptor(
     std::uint32_t channel) noexcept {
-    const auto semantic = static_cast<SemanticId>(channel);
-    const auto slot = RecipeOutputSlotFor(semantic);
-    if (const auto* spec = FindRecipeOutputChannel(slot); spec != nullptr && spec->semantic == semantic)
-        return spec;
-    return FindRecipeOutputChannel(channel);
+    if (const auto* spec = FindRecipeOutputChannel(channel); spec != nullptr) return spec;
+    if (channel != RecipeMaterialSidecarChannelFor(SEM_MATERIAL_ID)) return nullptr;
+    for (const auto& spec : kOutputtableChannelSpecs)
+        if (spec.semantic == SEM_MATERIAL_ID) return &spec;
+    return nullptr;
 }
+
+static_assert(RecipeOutputInstructionChannelFor(SEM_MATERIAL_ID) !=
+                  RecipeMaterialSidecarChannelFor(SEM_MATERIAL_ID),
+              "generated MaterialId slot and material-sidecar channel must remain distinct");
 }  // namespace Vixen::SVO
