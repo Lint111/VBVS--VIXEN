@@ -102,6 +102,11 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
 
     // Calculate timing from query manager
     lastDispatchMs_ = queryManager_->GetElapsedMs(frameIndex, querySlot_);
+    if (reportedReads_ < kReportedReads) {
+        ++reportedReads_;
+        Info("[GPU_SUBMIT_TIME] read=" + std::to_string(reportedReads_) +
+             " gpu_ms=" + std::to_string(lastDispatchMs_));
+    }
 
 #if UNDERSET_NATIVE_BENCHMARK
     // Task 0.1: raw absolute ticks for cross-pass whole-frame GPU span computation.

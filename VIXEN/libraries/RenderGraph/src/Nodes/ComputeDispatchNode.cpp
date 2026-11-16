@@ -459,9 +459,11 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
 #if UNDERSET_NATIVE_BENCHMARK
         totalMs = 0;
 #endif
+        double worstSubmissionMs = 0;
         for (const auto& batch : submissionBatches_[frameIndex]) {
             const double elapsed = query->GetElapsedMs(0, batch.first * 4,
                 (batch.first + batch.count) * 4 - 1);
+            worstSubmissionMs = std::max(worstSubmissionMs, elapsed);
 #if UNDERSET_NATIVE_BENCHMARK
             maximumMs = std::max(maximumMs, elapsed);
             totalMs += elapsed;
@@ -478,6 +480,13 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
                     " elapsed_gpu_ms=" + std::to_string(elapsed));
             }
 #endif
+        }
+        if (reportedTileReads_ < kReportedTileReads) {
+            ++reportedTileReads_;
+            NODE_LOG_INFO("[GPU_SUBMIT_TIME] node=" + GetInstanceName() +
+                " submissions=" + std::to_string(submissionBatches_[frameIndex].size()) +
+                " chunks=" + std::to_string(tileCounts_[frameIndex]) +
+                " max_submission_gpu_ms=" + std::to_string(worstSubmissionMs));
         }
 #if UNDERSET_NATIVE_BENCHMARK
         NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() +

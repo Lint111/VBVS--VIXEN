@@ -186,6 +186,10 @@ private:
     uint32_t logFrequency_ = 60;
     uint32_t frameCounter_ = 0;
     bool printToTerminal_ = true;
+    // The first reads of every timed pass are reported so a capture log carries the
+    // measured per-pass GPU time without a benchmark build.
+    static constexpr uint32_t kReportedReads = 16;
+    uint32_t reportedReads_ = 0;
 
     // Memory tracking
     std::unordered_map<std::string, VkDeviceSize> bufferAllocations_;
