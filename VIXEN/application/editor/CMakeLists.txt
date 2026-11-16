@@ -226,10 +226,6 @@ if(BUILD_TESTS AND TARGET VIXEN)
             "VIXEN_HUD_CAPTURE_FRAMES=${VIXEN_HUD_CAPTURE_FRAMES_ENV}"
             "VIXEN_HUD_CAPTURE_DIR=${VIXEN_HUD_CAPTURE_DIR}"
             "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
-            # Keep the CTest producer byte-identical to main_hud_capture.bat and the editor
-            # capture producer; the legacy HUD reference is rendered with the bi-modal cel
-            # override disabled.
-            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=0"
             "VIXEN_EXIT_AFTER_FRAMES=${VIXEN_HUD_EXIT_AFTER_FRAMES}")
     set_property(TEST vixen_hud_capture_producer APPEND PROPERTY LABELS VIXEN_HUD_CAPTURE)
 
