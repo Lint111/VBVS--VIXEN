@@ -439,8 +439,11 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
         tileBudgets_[frameIndex] = std::max(uint64_t{1},
             std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
-        tileCounts_[frameIndex] = 1;
-        tileWorkGroupCounts_[frameIndex] = {1};
+        // The external recorder is opaque: its central GPUPerformanceLogger owns the one
+        // whole-pass interval, so do not let a tile query from an earlier standard recording
+        // be collected again on this frame slot.
+        tileCounts_[frameIndex] = 0;
+        tileWorkGroupCounts_[frameIndex].clear();
         std::string failure;
         auto* outputTarget = ctx.In(ComputeStageNodeConfig::IMAGE_WRITE);
         if (!outputTarget) {
@@ -485,8 +488,8 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
         tileBudgets_[frameIndex] = std::max(uint64_t{1},
             std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
-        tileCounts_[frameIndex] = 1;
-        tileWorkGroupCounts_[frameIndex] = {1};
+        tileCounts_[frameIndex] = 0;
+        tileWorkGroupCounts_[frameIndex].clear();
         recordedBuffers.push_back(cmd);
         if (gpuPerfLogger_) {
             gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
@@ -615,9 +618,7 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocation.commandBufferCount = needed;
         if (vkAllocateCommandBuffers(GetDevice()->device, &allocation, allocated.data()) != VK_SUCCESS) {
-            GetOwningGraph()->ReportGpuFault(
-                "ComputeStageNode::RecordComputeCommands tile command allocation", VK_ERROR_OUT_OF_HOST_MEMORY);
-            return false;
+            return abortRecording("tile command allocation");
         }
         extraBuffers.insert(extraBuffers.end(), allocated.begin(), allocated.end());
     }
