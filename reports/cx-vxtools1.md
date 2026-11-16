@@ -7,7 +7,7 @@ COMPLETE WITH FINDINGS. The tooling-only fast-forward is ready for the controlle
 ## SHAs
 
 - Base and merged wave: `c012413c3a9bbfae26d715e79ccda6e410d29487` (`origin/wave/authoring-convergence`), re-checked immediately before final validation.
-- Final lane tip: filled after the report/proposal commit; the controller should fast-forward the wave to that tip.
+- Report/proposal checkpoint commit: `5b473568c2c4b42ea2da7fbd67b7ad93b4ac6c09`; the final lane tip is stated in the controller handoff after this metadata correction.
 - Imported source commits:
   - `98a384ef3` from `lane-vxwidth1` -> local `cb315bee8`: queue-grant-driven native width and tests.
   - `0e2a5fc90` from `lane-nodialog1` -> local `191dadee9`: preserve CTest arguments through the native batch boundary.
@@ -56,4 +56,3 @@ No pre-existing SPT task IDs were worked or closed.
 
 - proposed: Native CTest batches should inherit the selected build tree (`f9992815c946`)
 - proposed: Native CTest phases should register their Windows process root (`281447ae0c16`)
-
