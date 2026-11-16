@@ -1654,9 +1654,10 @@ public:
         const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(
             scenarios_.front().lighting, &materialTable);
         Vixen::SVO::RecipeBakeResult storedHullBake;
+        const bool useStoredHull = materialTable.Loaded();
         bool haveStoredHull = false;
         for (const auto& recipe : recipes) {
-            if (recipe.material == Vixen::App::Lookdev::Material::Hull) {
+            if (useStoredHull && recipe.material == Vixen::App::Lookdev::Material::Hull) {
                 storedHullBake = Vixen::App::Lookdev::BakeStoredHull(recipe);
                 if (!storedHullBake.ok) {
                     captureError_ = "could not bake look-dev hull: " + storedHullBake.err;

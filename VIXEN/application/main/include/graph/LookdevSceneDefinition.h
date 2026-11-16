@@ -225,6 +225,28 @@ inline std::uint32_t MaterialReference(const Vixen::SVO::RuntimeMaterialTable* t
                             : table->RefAt(MaterialDeclarationIndex(material));
 }
 
+inline glm::vec3 LegacyMaterialColor(Material material) {
+    switch (material) {
+        case Material::Hull:       return Srgb8ToLinear(0xe8e1da); // bible §3: hull off-white
+        case Material::HullAccent: return Srgb8ToLinear(0xfa9f4e); // bible §3: accent orange
+        case Material::Structure:  return Srgb8ToLinear(0x707276); // bible §3: structure grey
+        case Material::DarkMetal:  return Srgb8ToLinear(0x3c4045); // bible §3: machinery dark
+        case Material::Glass:      return Srgb8ToLinear(0x5e768c); // bible §3: glass
+        case Material::Rock:       return Srgb8ToLinear(0xeac794); // C26: sunlit stone
+        case Material::Bark:       return Srgb8ToLinear(0x6c4a37); // C26: bark
+        case Material::Soil:       return Srgb8ToLinear(0x6c4a37); // C26: bark/earth brown
+        case Material::Leaf:       return Srgb8ToLinear(0x7f945b); // C22: leaf green
+        case Material::DeepLeaf:   return Srgb8ToLinear(0x2e5234); // G2: deep foliage
+        case Material::Water:      return Srgb8ToLinear(0x62ade0); // C26: river blue
+        case Material::Figure:     return Srgb8ToLinear(0xfcca5b); // safety yellow scale cue
+        case Material::Lamp:       return Srgb8ToLinear(0xf9b55c); // lighting track: sodium pool
+        case Material::Window:     return Srgb8ToLinear(0xe9bf6b); // bible: warm service windows
+        case Material::Worklight:  return Srgb8ToLinear(0xf9b55c); // lighting track: sodium pool
+        case Material::Count:      break;
+    }
+    return Srgb8ToLinear(0x808080);
+}
+
 inline glm::vec3 MaterialColor(Material material,
                                const Vixen::SVO::RuntimeMaterialTable* table = nullptr) {
     if (table != nullptr) {
@@ -234,7 +256,9 @@ inline glm::vec3 MaterialColor(Material material,
             return {row.linearAlbedo[0], row.linearAlbedo[1], row.linearAlbedo[2]};
         }
     }
-    return glm::vec3(0.5f);
+    // A missing pack is a supported look-dev mode, not a request for a new neutral
+    // palette. Preserve the original review fixture until a pack-owned row is available.
+    return LegacyMaterialColor(material);
 }
 
 inline glm::vec3 GridToWorld(const glm::vec3& p) {
@@ -315,7 +339,8 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes(
     std::array<std::vector<Primitive>, static_cast<size_t>(Material::Count)> primitivesByMaterial;
     auto gather = [&](const Primitive& sourcePrimitive) {
         const Primitive primitive = PrimitiveForLighting(sourcePrimitive, preset);
-        const Material recipeMaterial = primitive.material == Material::HullAccent
+        const bool hasMaterialPack = materialTable != nullptr && materialTable->Loaded();
+        const Material recipeMaterial = hasMaterialPack && primitive.material == Material::HullAccent
             ? Material::Hull : primitive.material;
         primitivesByMaterial[static_cast<size_t>(recipeMaterial)].push_back(primitive);
     };
@@ -333,7 +358,8 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes(
             ? EmitterOrigin(material, serviceLightsEnabled) : glm::vec3(0.0f);
 
         Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
-        const bool hullRecipe = material == Material::Hull;
+        const bool hullRecipe = materialTable != nullptr && materialTable->Loaded() &&
+                                material == Material::Hull;
         entry.boundCenter = hullRecipe ? glm::vec3(static_cast<float>(kResolution) * 0.5f)
                                        : glm::vec3(5.0f);
         entry.boundRadius = hullRecipe ? 26.0f : 9.0f;
@@ -487,9 +513,11 @@ inline std::vector<Vixen::SVO::BodyInstanceGpu> BodyInstances(
         // routing all placement through the R424 affine transform pair.
         const glm::mat4 translation = glm::translate(glm::mat4(1.0f), instanceOrigin);
         const glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), 0.0f, glm::vec3(0.0f, 1.0f, 0.0f));
-        const float storedWorldScale = kWorldSpan / static_cast<float>(kResolution);
+        // SerializeSdf's OctreeConfig already maps normalized bake space through
+        // scale(kWorldSpan). Applying kWorldSpan/kResolution here shrinks the
+        // stored body a second time (the c0d715c20 regression).
         const glm::mat4 scale = glm::scale(glm::mat4(1.0f),
-                                            glm::vec3(useStoredHull ? storedWorldScale : 1.0f));
+                                            glm::vec3(1.0f));
         Vixen::SVO::SetInstanceTransform(instance, translation * rotation * scale);
 
         Vixen::SVO::BodyInstanceMaterialGpu& materialData = instance.material;
