@@ -878,6 +878,20 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
                          (analysis.occupancyAvailable ? (std::to_string(entry.occupancyGridDim) + "^3") :
                           std::string("none (unavailable from the kernel analysis service)")));
     }
+    // A glyph or path leaf that the generated field cannot guard is walked at every field sample.
+    // That is a cost the author can remove (intersect the leaf with a box that bounds it), so it is
+    // reported with the recipe and the instruction, never silently paid.
+    const auto rowLeaves = Vixen::SVO::Recipe::RecipeGpuRowWalkingLeaves(entry.bytecode, entry.pathInstances);
+    if (rowLeaves.count != 0u && mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                         std::to_string(recipeId) + " rowWalkingLeaves=" + std::to_string(rowLeaves.count) +
+                         " exactSkip=" + std::to_string(rowLeaves.guarded));
+        for (const std::uint32_t instruction : rowLeaves.unguardedInstructions)
+            mainLogger->Warning("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                                std::to_string(recipeId) + " instruction " + std::to_string(instruction) +
+                                ": this glyph/path leaf is evaluated at every field sample; intersect it with a " +
+                                "bounding box and merge it with Subtract or Union so the field can skip it exactly");
+    }
     const auto result = proceduralRecipes_.Register(recipeId, entry);
     if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
         RegisterRecipeContent(recipeId, entry);

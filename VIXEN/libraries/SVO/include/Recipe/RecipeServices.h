@@ -14,6 +14,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <span>
 #include <string>
 #include <string_view>
@@ -386,6 +388,67 @@ struct RecipeSceneAnalysis {
     }
     services.gpu.release(module);
     return field;
+}
+
+// What the kernel GPU service reports about the row-walking leaves (glyph outlines, paths) of one
+// recipe: how many its field evaluates only where they can change the result (the exact skip), and
+// the instruction index of each leaf that is evaluated at every sample because it does not sit in
+// the guarded shape (leaf, Intersect with a bounding operand, monotone steps, Subtract or Union).
+struct RecipeRowWalkingLeaves {
+    std::uint32_t count = 0;
+    std::uint32_t guarded = 0;
+    std::vector<std::uint32_t> unguardedInstructions;
+};
+
+[[nodiscard]] inline RecipeRowWalkingLeaves RecipeGpuRowWalkingLeaves(
+    std::span<const SdfInstruction> instructions,
+    std::span<const Yeroket::Sdf::Kernels::PathInstance> pathRows = {}) {
+    RecipeRowWalkingLeaves leaves;
+    const auto& services = GetRecipeServiceApis();
+    if (!services.available || services.gpu.lower == nullptr || services.gpu.text == nullptr) return leaves;
+    YkRecipeGpuRequest request{};
+    request.structSize = sizeof(request);
+    request.backend = YK_RECIPE_GPU_BACKEND_GLSL_FIELD;
+    YkRecipeGpuModule* module = nullptr;
+    YkRecipeGpuDiagnostic diagnostic{};
+    const auto status = services.gpu.lower(
+        &request,
+        reinterpret_cast<const YkRecipeGpuInstruction*>(instructions.data()),
+        static_cast<std::uint32_t>(instructions.size()),
+        pathRows.empty() ? nullptr : pathRows.data(),
+        static_cast<std::uint32_t>(pathRows.size()),
+        sizeof(Yeroket::Sdf::Kernels::PathInstance), &module, &diagnostic);
+    if (status != YK_RECIPE_GPU_OK || module == nullptr) return leaves;
+    std::size_t length = 0;
+    std::string manifest;
+    if (services.gpu.text(module, YK_RECIPE_GPU_PART_MANIFEST, nullptr, 0u, &length) == YK_RECIPE_GPU_OK) {
+        std::vector<char> buffer(length + 1u, 0);
+        if (services.gpu.text(module, YK_RECIPE_GPU_PART_MANIFEST, buffer.data(), buffer.size(), &length) == YK_RECIPE_GPU_OK)
+            manifest.assign(buffer.data(), length);
+    }
+    services.gpu.release(module);
+    // The manifest carries this entry only for a recipe that has such leaves.
+    const std::size_t entry = manifest.find("\"rowWalkingLeaves\"");
+    if (entry == std::string::npos) return leaves;
+    const auto number = [&](const char* key) -> std::uint32_t {
+        const std::size_t at = manifest.find(key, entry);
+        return at == std::string::npos ? 0u
+            : static_cast<std::uint32_t>(std::strtoul(manifest.c_str() + at + std::strlen(key), nullptr, 10));
+    };
+    leaves.count = number("\"count\": ");
+    leaves.guarded = number("\"guarded\": ");
+    std::size_t at = manifest.find("\"unguardedInstructions\": [", entry);
+    if (at == std::string::npos) return leaves;
+    at = manifest.find('[', at) + 1u;
+    while (at < manifest.size() && manifest[at] != ']') {
+        char* end = nullptr;
+        const unsigned long value = std::strtoul(manifest.c_str() + at, &end, 10);
+        if (end == manifest.c_str() + at) break;
+        leaves.unguardedInstructions.push_back(static_cast<std::uint32_t>(value));
+        at = static_cast<std::size_t>(end - manifest.c_str());
+        while (at < manifest.size() && (manifest[at] == ',' || manifest[at] == ' ')) ++at;
+    }
+    return leaves;
 }
 
 [[nodiscard]] inline RecipeGpuTapeResult RecipeGpuTape(
