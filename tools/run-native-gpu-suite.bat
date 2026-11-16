@@ -37,7 +37,9 @@ set "STOP_ARG=--stop-on-failure"
 if "%VIXEN_GPU_STOP_ON_FAILURE%"=="0" set "STOP_ARG="
 set "SELECT_ARGS=!VIXEN_NATIVE_ARGS!"
 if /i "%~1"=="lookdev-hud" set "SELECT_ARGS=--tests-from-file %ROOT%\tools\native-lookdev-hud.tests"
-if defined VIXEN_NATIVE_ARGS (
+if /i "%~1"=="lookdev-hud" (
+    set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L gpu --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure --tests-from-file %ROOT%\tools\native-lookdev-hud.tests"
+) else if defined VIXEN_NATIVE_ARGS (
     set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !SELECT_ARGS!"
 ) else (
     set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !SELECT_ARGS!"
