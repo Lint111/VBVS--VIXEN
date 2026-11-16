@@ -12,6 +12,7 @@ $DownloadRoot = Join-Path $ToolRoot 'downloads'
 $LogRoot = Join-Path $ToolRoot 'logs'
 $NinjaVersion = '1.13.1'
 $CMakeVersion = '4.2.3'
+$DotnetVersion = '8.0.428'
 $VisualStudioPackageVersion = '17.14.41'
 $WindowsSdkVersion = '10.0.26100.0'
 $GitVersion = '2.55.0.5'
@@ -130,6 +131,19 @@ function Get-NinjaCommand {
     return Get-ToolCommand 'ninja.exe'
 }
 
+function Get-DotnetCommand {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'dotnet\dotnet.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe'),
+        (Get-ToolCommand 'dotnet.exe')
+    ) | Where-Object { $_ -and $_ -notmatch '\\Microsoft\\WindowsApps\\' } | Select-Object -Unique
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+    return $null
+}
+
 function Get-PythonCommand {
     $local = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python313\python.exe'
     $candidate = Get-ToolCommand 'python.exe'
@@ -216,6 +230,7 @@ function Get-Inventory {
     $python = Get-PythonCommand
     $ninja = Get-NinjaCommand
     $cmake = Get-CMakeCommand
+    $dotnet = Get-DotnetCommand
     $vsPath = Get-VisualStudioStatus
     $vulkanRoot = Get-VulkanSdkRoot
 
@@ -226,6 +241,7 @@ function Get-Inventory {
         $line = & $cmake --version 2>$null | Select-Object -First 1
         if ($line -match '^cmake version (.+)$') { $Matches[1] } else { '' }
     } else { '' }
+    $dotnetActual = if ($dotnet) { ((& $dotnet --version 2>&1) | Out-String).Trim() } else { '' }
     $vulkanActual = if ($vulkanRoot) { Get-VulkanSdkVersion $vulkanRoot } else { '' }
     $vulkanPresent = $vulkanRoot -and (Test-VulkanSdkReleaseCompatible $vulkanActual $VulkanVersion)
     $vulkanStatus = if ($vulkanPresent) { 'present' } else { 'missing' }
@@ -245,6 +261,7 @@ function Get-Inventory {
         [pscustomobject]@{ Tool='Python'; Version=$PythonVersion; Method='winget Python.Python.3.13'; Status=$(if (Test-Version $pythonActual $PythonVersion) {'present'} else {'missing'}); Actual=$pythonActual; Path=$python },
         [pscustomobject]@{ Tool='Ninja'; Version=$NinjaVersion; Method='winget Ninja-build.Ninja'; Status=$(if (Test-Version $ninjaActual $NinjaVersion) {'present'} else {'missing'}); Actual=$ninjaActual; Path=$ninja },
         [pscustomobject]@{ Tool='CMake'; Version=$CMakeVersion; Method='winget Kitware.CMake'; Status=$(if (Test-Version $cmakeActual $CMakeVersion) {'present'} else {'missing'}); Actual=$cmakeActual; Path=$cmake },
+        [pscustomobject]@{ Tool='.NET SDK 8'; Version=$DotnetVersion; Method='winget Microsoft.DotNet.SDK.8'; Status=$(if (Test-Version $dotnetActual $DotnetVersion) {'present'} else {'missing'}); Actual=$dotnetActual; Path=$dotnet },
         [pscustomobject]@{ Tool='Visual Studio 2022 Build Tools + Windows SDK'; Version="$VisualStudioPackageVersion / $WindowsSdkVersion"; Method='winget Microsoft.VisualStudio.2022.BuildTools'; Status=$(if ($vsPath) {'present'} else {'missing'}); Actual=$(if ($vsPath) {$vsPath} else {''}); Path=$vsPath },
         [pscustomobject]@{ Tool='Vulkan SDK'; Version=$VulkanVersion; Method='LunarG official installer'; Status=$vulkanStatus; Actual=$(if ($vulkanRoot) {$vulkanActualDetail} else {''}); Path=$vulkanRoot }
     )
@@ -311,6 +328,15 @@ function Install-Ninja($Inventory) {
     }
     Set-Content -Path (Join-Path $ToolRoot 'ninja-bin.txt') -Value $NinjaInstall -Encoding ascii
     Write-Step "Installed Ninja $NinjaVersion into the project-local tool cache."
+}
+
+function Install-Dotnet($Inventory) {
+    $dotnetRow = $Inventory | Where-Object Tool -eq '.NET SDK 8'
+    if ($dotnetRow.Status -eq 'present') { Write-Step ".NET SDK $DotnetVersion is present; skipping."; return $true }
+    if (-not (Require-Administrator ".NET SDK $DotnetVersion")) { return $false }
+    $installer = Get-WingetInstaller 'Microsoft.DotNet.SDK.8' $DotnetVersion '.exe'
+    Invoke-Native $installer @('/install', '/quiet', '/norestart')
+    return $true
 }
 
 function Install-Git($Inventory) {
@@ -425,7 +451,7 @@ try {
     Write-Step "Starting Windows-native provisioning from $VixenRoot"
     Write-Step "Declared Vulkan setting: VIXEN_VULKAN_SDK_VERSION=$VulkanVersion (Windows default $VulkanDefaultVersion; source $VulkanSettings)."
     Write-Step "Capability floors: Vulkan API $MinimumVulkanApiVersion (synchronization2 is core from $Synchronization2CoreVersion or uses VK_KHR_synchronization2 below it); SPIR-V target $MinimumSpirvTargetVersion (ray-query has a capability-independent twin)."
-    Write-Step "Pinned tools: VS $VisualStudioPackageVersion with SDK $WindowsSdkVersion; CMake $CMakeVersion; Ninja $NinjaVersion; Git $GitVersion; Python $PythonVersion."
+    Write-Step "Pinned tools: VS $VisualStudioPackageVersion with SDK $WindowsSdkVersion; CMake $CMakeVersion; Ninja $NinjaVersion; .NET SDK $DotnetVersion; Git $GitVersion; Python $PythonVersion."
     $inventory = Get-Inventory
     Write-Inventory $inventory
 
@@ -434,6 +460,8 @@ try {
     Install-Python $inventory
     $inventory = Get-Inventory
     Install-Ninja $inventory
+    $inventory = Get-Inventory
+    if (-not (Install-Dotnet $inventory)) { $exitCode = 20; throw 'Provisioning paused for elevation; rerun the same entry point as administrator.' }
     $inventory = Get-Inventory
     if (-not (Install-CMake $inventory)) { $exitCode = 20; throw 'Provisioning paused for elevation; rerun the same entry point as administrator.' }
     $inventory = Get-Inventory
@@ -457,6 +485,10 @@ try {
             $pathFile = Join-Path $ToolRoot ("{0}-bin.txt" -f ($toolName -replace ' for Windows', '').ToLowerInvariant())
             Set-Content -Path $pathFile -Value (Split-Path -Parent $toolRow.Path) -Encoding ascii
         }
+    }
+    $dotnetRow = $inventory | Where-Object Tool -eq '.NET SDK 8'
+    if ($dotnetRow.Path) {
+        Set-Content -Path (Join-Path $ToolRoot 'dotnet-bin.txt') -Value (Split-Path -Parent $dotnetRow.Path) -Encoding ascii
     }
     $cmakeRow = $inventory | Where-Object Tool -eq 'CMake'
     if ($cmakeRow.Path) {

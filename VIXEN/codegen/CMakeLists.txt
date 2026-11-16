@@ -23,13 +23,21 @@ endif()
 
 # Prefer the PATH-selected launcher first. Environment-managed launchers can supply runtime
 # libraries or other host configuration that a raw binary under ~/.dotnet does not provide.
-# Keep home/system locations as fallback for standalone installs that are not on PATH.
+# On Windows, prefer the native dotnet.exe discovered by the native toolchain setup over a
+# WSL dotnet inherited through WSL interop. Keep home/system locations as fallback for
+# standalone installs that are not on PATH.
 set(_dotnet_hints "")
 foreach(_h IN LISTS _home_candidates)
     if(_h)
         list(APPEND _dotnet_hints "${_h}/.dotnet")
     endif()
 endforeach()
+set(_vixen_windows_dotnet "")
+if(WIN32)
+    find_program(_vixen_windows_dotnet NAMES dotnet.exe
+        HINTS "$ENV{DOTNET_ROOT}"
+        PATHS "$ENV{ProgramFiles}/dotnet")
+endif()
 find_program(_vixen_dotnet_on_path NAMES dotnet)
 set(_vixen_dotnet_is_home_fallback FALSE)
 foreach(_h IN LISTS _dotnet_hints)
@@ -37,7 +45,17 @@ foreach(_h IN LISTS _dotnet_hints)
         set(_vixen_dotnet_is_home_fallback TRUE)
     endif()
 endforeach()
-if(_vixen_dotnet_on_path AND (NOT VIXEN_DOTNET OR _vixen_dotnet_is_home_fallback))
+set(_vixen_dotnet_is_wsl_path FALSE)
+if(VIXEN_DOTNET MATCHES "wsl" OR VIXEN_DOTNET MATCHES "^/")
+    set(_vixen_dotnet_is_wsl_path TRUE)
+endif()
+if(WIN32 AND _vixen_windows_dotnet AND (NOT VIXEN_DOTNET OR _vixen_dotnet_is_wsl_path))
+    # A native configure may inherit the WSL dotnet from the caller's PATH or from a
+    # previous build-tree cache. Replace only those auto-discovered WSL values; an
+    # explicit native -DVIXEN_DOTNET remains caller-controlled.
+    set(VIXEN_DOTNET "${_vixen_windows_dotnet}" CACHE FILEPATH
+        "Dotnet executable used by VIXEN codegen" FORCE)
+elseif(_vixen_dotnet_on_path AND (NOT VIXEN_DOTNET OR _vixen_dotnet_is_home_fallback))
     # Refresh an old auto-discovered ~/.dotnet cache entry as well as preferring PATH
     # on a new configure. Explicit custom VIXEN_DOTNET paths remain caller-controlled.
     set(VIXEN_DOTNET "${_vixen_dotnet_on_path}" CACHE FILEPATH "Dotnet executable used by VIXEN codegen" FORCE)
@@ -205,7 +223,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "8cfb34b1f275b38659d423a6b6f0c1bc6ab09c7c")
+set(_vixen_tracked_yeroket_kernel_sha "6e9139904bf8c2695f0210918f2f0f9f2106c788")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -308,13 +326,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # processes race while MSBuild copies the shared output DLLs, so serialize
     # check targets without constraining the native compile/link pool.
     set_property(GLOBAL APPEND PROPERTY JOB_POOLS vixen_codegen=1)
-    # KI-015 (execution half): the tool + dotnet resolved above can be a WSL-only clone
-    # reached via a \\wsl$ mount — that lets CMake *see* the path on a Windows configure,
-    # but ninja's cmd.exe cannot *execute* a Linux ELF at a UNC path. Bridge through
-    # wsl.exe in that case: it can invoke the WSL-side dotnet from a Windows process.
-    # Native configures (WSL-side, or a future native-Windows tool) are untouched.
+    # KI-015 (execution half): a Windows configure may explicitly select a WSL-only dotnet
+    # reached via a \\wsl$ mount — that lets CMake *see* the path, but ninja's cmd.exe cannot
+    # execute a Linux ELF at a UNC path. Bridge through wsl.exe only for that explicit WSL
+    # launcher. A provisioned native Windows dotnet runs directly on C:/ paths, even when the
+    # pinned source repository itself is visible through a WSL UNC share.
     set(_codegen_need_wsl_bridge FALSE)
-    if(WIN32 AND (VIXEN_DOTNET MATCHES "wsl" OR YEROKET_ROOT MATCHES "wsl"))
+    if(WIN32 AND (VIXEN_DOTNET MATCHES "wsl" OR VIXEN_DOTNET MATCHES "^/"))
         set(_codegen_need_wsl_bridge TRUE)
     endif()
     set(_frame_targets_campaign_lineage_run "${_frame_targets_campaign_lineage}")
@@ -779,6 +797,12 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         set(_tool_cached_bin_run "${_tool_cached_bin}")
         set(_tool_artifacts_run "${_tool_cache}/artifacts")
         set(_tool_build_command "${VIXEN_DOTNET}" build "${_yk_tool}/CodegenTool.csproj")
+        # The Windows kernel snapshot is an immutable source materialization. Its
+        # ignored Roslyn analyzer cache/stamp is not part of the snapshot, and the
+        # native consumer build must not try to deploy that analyzer back into it.
+        # Analyzer deployment is build plumbing only; CodegenTool's compiled
+        # assembly and generated output remain the same as the WSL build.
+        list(APPEND _tool_build_command -p:DisableUnityAnalyzerAutoDeploy=true)
     endif()
     # NETSDK1188 is the SDK complaining that Microsoft.CodeAnalysis 4.8.0 ships
     # resource folders with locales .NET does not recognise (26 warnings per pin
