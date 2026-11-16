@@ -1928,6 +1928,8 @@ TEST(EditorDocumentModelLayerPorts, RemovingAReadPortNodeRemovesItsWire) {
     ASSERT_TRUE(model.FlattenToRecipeEntry(flattened, diagnostic)) << diagnostic.message;
 }
 
+#if defined(VIXEN_LINUX_EVIDENCE_FIXTURE)
+// This witness consumes a lane evidence pack under codeman-cases, not a shipped fixture.
 TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeSlotGuard) {
     constexpr const char* kHullPath =
         "/home/liory/codeman-cases/undertow/reports/cx-edmat5-evidence/"
@@ -2320,5 +2322,6 @@ TEST(EditorDocumentModelMaterialDiagnosis, HullMaterialDistanceAndDisplayedBakeS
     }
     std::cout << "\n";
 }
+#endif
 
 }  // namespace
