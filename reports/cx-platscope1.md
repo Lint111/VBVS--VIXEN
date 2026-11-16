@@ -1,6 +1,6 @@
 # cx-platscope1
 
-STATUS: STOPPED — implementation and scoped WSL verification are green; the required native Windows CPU CTest witness could not be obtained because both queued direct-Windows configure attempts stalled without CMake progress. The completed change is committed below; native rerun remains required before this row can be closed.
+STATUS: DONE — Round 2 completed the required standard native Windows CPU witness and preserved the green WSL scope.
 
 ## SHAs
 
@@ -41,9 +41,17 @@ The native red is therefore unclassified environmental/tooling stall, not a sema
 - Reused the existing proposal `cx-kernelpinskew2.jsonl`: “VIXEN standalone codegen probe should expose Vulkan cache provisioning.” The first queued configure failed because `VULKAN_SDK` was not set while auto-provisioning was disabled; rerunning with the documented cache path recovered the configure. No duplicate proposal was created.
 - Proposed SPT `19413ed3e315`: “Native direct Windows witness stalls during WSL-path CMake configure.”
 
-## STOPs
+## STOPs (Round 1)
 
 - STOP: native Windows CPU CTest could not be run after two queued recovery attempts stalled in Windows CMake configure. Required owner action: rerun the native witness using a healthy Windows-native source/build materialization, or repair the documented direct route so configure progress and diagnostics are observable.
+
+## ROUND 2
+
+- Standard queued native build: detached `cx-platscope1:round2-native-build` ran `tools/vixen-native.sh --lane platscope1 build all vixen-ninja test_editor_document_model_preview` through the live queue. It cloned/synced `/mnt/c/vixen-native/platscope1`, configured successfully in 188.2 seconds, generated successfully in 6.3 seconds, built 121/122 scoped objects, linked the test executable, and exited 0. Evidence: `cx-platscope1-round2-evidence/native-build.log`.
+- Native Windows CTest discovery: detached `cx-platscope1:round2-native-discovery` found exactly two affected tests: `EditorDocumentModelGraph.RealUndertowLayersRoundTripArgumentsAndGeneratedRewrites` and `Native.VixenTestClassApplyLoadContext`. The three Unix-only provisioning contracts and Linux-only hull evidence test were absent by the platform declarations. Evidence: `cx-platscope1-round2-evidence/native-discovery.log`.
+- Native Windows CPU CTest: detached `cx-platscope1:round2-native-tests` passed 2/2 (100%) with no row-111 failures. The real Undertow path witness passed, and the Windows class-load-context witness passed. Evidence: `cx-platscope1-round2-evidence/native-tests.log`.
+- WSL unchanged witness: detached `cx-platscope1:round2-wsl-tests` passed the same affected 6/6 scope as Round 1: the three Unix provisioning contracts, the class harness, the portable real-Undertow witness, and the Linux-only hull evidence witness. Evidence: `cx-platscope1-round2-evidence/wsl-tests.log`.
+- Queue status during the native route showed fresh `windows-native` samples and active Windows host CPU; the build made normal checkout, configure, and compile progress, so the Round 1 stall classification did not recur.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
