@@ -187,7 +187,8 @@ if ((${#build_targets[@]})); then
   echo "[run-tests-split] building selected test targets: ${build_targets[*]}"
   build_log="$out_dir/build-selected-tests.log"
   queue build build-selected-tests 0 \
-    cmake --build "$build_dir" --target "${build_targets[@]}" --parallel "$cpu_jobs" \
+    cmake --build "$build_dir" --target "${build_targets[@]}" \
+      --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" \
     >"$build_log" 2>&1
   build_status=$?
   if (( build_status != 0 )); then
@@ -382,7 +383,8 @@ run_part() {
   fi
   queue "$resource" "split-$part" "$cpu_tokens" \
     env "${witness_env[@]}" "$@" \
-    ${part_guard[@]+"${part_guard[@]}"} ctest --test-dir "$build_dir" -j "$jobs" -L "^${part}\$" "${select_args[@]}" \
+    ${part_guard[@]+"${part_guard[@]}"} ctest --test-dir "$build_dir" \
+          --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" -L "^${part}\$" "${select_args[@]}" \
           ${part_timeout[@]+"${part_timeout[@]}"} --no-tests=error --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
     >"$out_dir/$part.log" 2>&1
   local status=$?
