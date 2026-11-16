@@ -6,9 +6,9 @@ VIXEN worktree `~/projects/VBVS--VIXEN/.claude-worktrees/glyph1` (`lane-glyph1-v
 
 ## STATUS
 
-**CHECKPOINT. Step 1 (B1, exact skip of row-walking leaves) is implemented, tested and
-byte-identical everywhere it was witnessed. Its acceptance timing in an exclusive window is still
-queued (two refusals, see BENCH REQUEST). Steps 2 (B5), 3 (B4) and 4 (relaxed march, added by the
+**STOPPED after step 1. B1 (exact skip of row-walking leaves) is implemented, tested,
+byte-identical everywhere it was witnessed, and measured at 1080p in an exclusive window:
+frame 1,410 -> 82 to 86 ms (section 0). The 4K acceptance run is with the controller. Steps 2 (B5), 3 (B4) and 4 (relaxed march, added by the
 controller during the lane) are not started; section 5 hands them over.**
 
 - B1 is a kernel generator change only. No shader file in VIXEN changed.
@@ -42,6 +42,36 @@ controller during the lane) are not started; section 5 hands them over.**
   two emitters plus a VIXEN default flip, a native build and a 16-capture review package, and I
   will not start what I cannot witness. Section 5 has the design; two conditions I found after the
   first checkpoint are added there (mixed carved/embossed recipes, and what may follow a row).
+
+### Acceptance timing, RTL 1080p, exclusive window (11-17 00:10, `b1-rtl-1080.log`)
+
+My second exclusive submission got a window before the session ended. Binary: pin `8a170efba`.
+Shipping tile rule, 12 frames. Device quiet by all three indicators.
+
+| RTL 1080p | Before (quiet, fable-gpusubmit1 `final-rtl-1080`) | **After B1 (quiet, exclusive)** | Probe P2 expectation |
+|---|--:|--:|--:|
+| `test_dispatch` (march), steady | 1,150 ms in 180 submissions | **37.5 to 39.5 ms in 1 submission** | 36.6 |
+| `shadow_visibility_wave`, steady | 228 ms in 17 | **36.0 to 36.6 ms in 1** | 32.3 |
+| `spatial_reuse` | 1.36 | 1.28 to 1.34 | |
+| sum of passes | about 1,380 | about 78 | 70.7 |
+| **frame period, all 9 measured intervals** | 1,408 to 1,420 ms | **82.3 to 86.0 ms** | 74.5 to 80.9 |
+| **worst frame** | first frames (launch) | **86.0 ms** (cold launch frames 0 to 3 included: 82 to 85 ms as 700 march tiles) | |
+| load indicators: Hi-Z / exposure meter / shading | 0.23 / 0.088 / 1.36 | 0.24 to 0.30 / 0.087 to 0.088 / 1.28 to 1.34 | |
+| capture SHA-256 (12 frames) | `8ef40389...436aa` | **identical** (on the pin `8a170efba` binary) | |
+
+- 1080p is **16.5 to 17 times faster** (1,410 -> 82 to 86 ms). The march meets the brief's line
+  (at most 40 ms). **The wave is 36.0 to 36.6 ms against the brief's "at most 35"**: 1 to 1.6 ms
+  over. The brief's line was the probe's number (32.3 ms) with a margin; the exact rule tests
+  against the plaque distance too, which costs a little where the probe's box-only test did not.
+- The march no longer goes over the whole-pass window, so the steady frames are one dispatch and
+  the tiling cost is gone at 1080p; the four cold launch frames cost no more than steady ones.
+- The last interval of the run (484 ms) is the capture read-back, not a frame.
+- **To 16.7 ms at 1080p there are about 66 ms left**: march 38 (budget 4.5), wave 36 (budget 1.5),
+  outside the passes about 5 to 8 ms. That is B4 (the walk still runs near the text surface),
+  B5 (bounds and grid), and the common floor (GB arc).
+- **4K is not measured** (the 4K submission was refused twice). Controller owns that run.
+
+GPU runs used after this: **3 of 14, 1 of 6 exclusive.**
 
 ## 1. Bases (approved by the controller during the lane)
 
