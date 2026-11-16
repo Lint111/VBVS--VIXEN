@@ -337,7 +337,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
         COMMAND bash -c
             "set -eu
             capture_root=\"\${VIXEN_CAPTURE_ROOT:-\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}}\"
-            capture_dir=\"\${capture_root}/editor\"
+            capture_dir=\"\${capture_root}/editor-appflow-channel\"
             document=\"\${capture_dir}/sample_tri_layer.vxd\"
             transcript=\"\${capture_dir}/appflow-channel-transcript.json\"
             mkdir -p \"\${capture_dir}\"

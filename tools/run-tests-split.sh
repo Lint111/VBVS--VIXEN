@@ -20,7 +20,7 @@
 #   --regex RE        ctest -R selection (default: everything)
 #   --agent ID        queue fairness identity (default: worktree name)
 #   --cpu-jobs N      ctest -j for the cpu part (default: node width capped by available memory, R847.4)
-#   --gpu-jobs N      concurrent queued GPU shards (default 6; capped at the shared GPU limit)
+#   --gpu-jobs N      concurrent queued GPU shards (default 6; queue admission applies measured headroom)
 #   --out DIR         logs and junit land here (default <build-dir>/split-run)
 #   --witness         record GPU actions during the run (VIXEN_GPU_WITNESS_DIR=<out>/witness) so
 #                     tools/classify-tests-gpu.py can narrow or relabel from the same run
@@ -320,14 +320,14 @@ run_gpu_shards() {
         bash "$queue_wrapper" --agent "${agent}-gpu${index}" --resource gpu \
           --label "$agent:split-gpu-$index" "${token_args[@]}" -- \
           env "${witness_env[@]}" "${shard_env[@]}" \
-          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" --parallel -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
             --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
           >"$shard_dir/shard-$index.log" 2>&1
       else
         env "${witness_env[@]}" "${shard_env[@]}" \
-          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -j 1 -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" --parallel -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
             --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
