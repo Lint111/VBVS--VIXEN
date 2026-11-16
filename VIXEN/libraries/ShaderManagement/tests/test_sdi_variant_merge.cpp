@@ -67,9 +67,11 @@ SpirvReflectionData MakeData(const std::vector<SpirvDescriptorBinding>& bindings
 }
 
 SdiVariant MakeVariant(std::vector<std::string> features,
-                       SpirvReflectionData data) {
+                       SpirvReflectionData data,
+                       std::string sourcePath = {}) {
     SdiVariant v;
     v.features = std::move(features);
+    v.sourcePath = std::move(sourcePath);
     v.data = std::move(data);
     return v;
 }
@@ -175,13 +177,16 @@ TEST(SdiVariantMerge, ConflictingBindingDeclarationsFail) {
     auto b = MakeData({MakeBinding(0, 3, "lightTree", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)});
 
     auto result = MergeSdiVariants("BadProgram",
-                                   {MakeVariant({}, a),
-                                    MakeVariant({"SOME_FLAG"}, b)});
+                                   {MakeVariant({}, a, "shaders/Body.comp"),
+                                    MakeVariant({"SOME_FLAG"}, b, "shaders/Body.comp")});
 
     EXPECT_FALSE(result.success);
     EXPECT_NE(result.errorMessage.find("BadProgram"), std::string::npos);
     EXPECT_NE(result.errorMessage.find("materials"), std::string::npos);
     EXPECT_NE(result.errorMessage.find("lightTree"), std::string::npos);
+    EXPECT_NE(result.errorMessage.find("variant 0 [baseline]"), std::string::npos);
+    EXPECT_NE(result.errorMessage.find("variant 1 [SOME_FLAG]"), std::string::npos);
+    EXPECT_NE(result.errorMessage.find("shaders/Body.comp"), std::string::npos);
 }
 
 TEST(SdiVariantMerge, NonConjunctivePresenceFails) {
