@@ -197,7 +197,8 @@ private:
     uint32_t planEdge_ = 1;
 
     // Witness: the longest submission and the most submissions of one frame, printed at release.
-    static constexpr uint32_t kReportedReads = 16;
+    // Per-read lines: enough for a cold start (floor, probe, growth) plus 20 steady frames (R761 witness).
+    static constexpr uint32_t kReportedReads = 48;
     uint32_t reportedReads_ = 0;
     uint64_t reads_ = 0;
     double worstSubmissionMs_ = 0.0;
