@@ -21,8 +21,12 @@ namespace Vixen::Log {
 class Logger;
 }
 
+namespace CashSystem {
+class MainCacher;
+class GpuChunkCostCacher;
+}
+
 namespace Vixen::RenderGraph {
-class SimpleTaskProfile;
 
 /**
  * @brief R861: the one submit-sizing rule of every compute dispatch node.
@@ -92,10 +96,12 @@ public:
     TiledDispatch(const TiledDispatch&) = delete;
     TiledDispatch& operator=(const TiledDispatch&) = delete;
 
-    /// Compile-time wiring. `persisted` (may be null) keeps the learned envelope across runs
-    /// (R503); `trace` (may be null) receives the native-benchmark `[GPUYIELD*]` lines.
+    /// Compile-time wiring. The device-scoped CashSystem cacher (when supplied) keeps the learned
+    /// envelope for the complete scene configuration; `trace` receives native-benchmark lines.
     void Configure(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool pool, std::string pass,
-                   Prior prior, SimpleTaskProfile* persisted, Vixen::Log::Logger* trace);
+                   Prior prior, CashSystem::MainCacher* mainCacher,
+                   std::string sceneIdentity, std::string qualityProfile,
+                   Vixen::Log::Logger* trace);
 
     /// The node's pipeline inputs changed: `tileable` says whether the SPIR-V survives a based
     /// dispatch (no NumWorkgroups dependency). `forgetEnvelope` drops the cost learned so far
@@ -144,16 +150,22 @@ private:
         std::vector<uint32_t> tileGroups;
         std::vector<SubmitRecord::Batch> batches;
         std::string extentKey;
+        uint32_t extentX = 0;
+        uint32_t extentY = 0;
+        uint32_t extentZ = 0;
     };
 
-    void SeedEnvelope(const std::string& extentKey);
+    void SeedEnvelope(Extent groups);
     void Trace(const std::string& line) const;
 
     Vixen::Vulkan::Resources::VulkanDevice* device_ = nullptr;
     VkCommandPool pool_ = VK_NULL_HANDLE;
     std::string pass_;
     Prior prior_ = Prior::Unknown;
-    SimpleTaskProfile* persisted_ = nullptr;
+    CashSystem::GpuChunkCostCacher* costCacher_ = nullptr;
+    std::string sceneIdentity_ = "default";
+    std::string qualityProfile_ = "default";
+    std::uint64_t deviceIdentity_ = 0;
     Vixen::Log::Logger* trace_ = nullptr;
     bool tileable_ = false;
     int native_ = -1;                  ///< Device class, resolved at the first plan.
@@ -161,7 +173,7 @@ private:
     std::array<Flight, kFlights> flights_;
     FrameCommandTimingLedger timings_;
     GpuChunkCost cost_;
-    std::string calibrationKey_;       ///< "WxH" workgroup extent the envelope was learned for.
+    std::string calibrationKey_;       ///< exact workgroup extent for the current cache lookup.
     uint64_t measuredLayerGroups_ = 0; ///< Tile size (one layer) of the last flight read back.
 
     // The plan being recorded.

@@ -7,11 +7,13 @@
 #include <cstdlib>
 
 #include "Core/GPUPerformanceLogger.h"
-#include "Core/TaskProfiles/SimpleTaskProfile.h"
 #include "FrameTrace.h"
 #include "GPUTimestampQuery.h"
 #include "Logger.h"
 #include "Nodes/Common/GpuDeviceClass.h"
+#include "GpuChunkCostCacher.h"
+#include "DeviceIdentifier.h"
+#include "MainCacher.h"
 #include "VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
@@ -70,13 +72,31 @@ TiledDispatch::TiledDispatch() = default;
 TiledDispatch::~TiledDispatch() = default;
 
 void TiledDispatch::Configure(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool pool,
-                              std::string pass, Prior prior, SimpleTaskProfile* persisted,
+                              std::string pass, Prior prior, CashSystem::MainCacher* mainCacher,
+                              std::string sceneIdentity, std::string qualityProfile,
                               Vixen::Log::Logger* trace) {
     device_ = device;
     pool_ = pool;
     pass_ = std::move(pass);
     prior_ = prior;
-    persisted_ = persisted;
+    sceneIdentity_ = std::move(sceneIdentity);
+    qualityProfile_ = std::move(qualityProfile);
+    costCacher_ = nullptr;
+    deviceIdentity_ = 0;
+    if (device) {
+        deviceIdentity_ = CashSystem::DeviceIdentifier(device).GetHash();
+        if (mainCacher) {
+            mainCacher->RegisterCacher<CashSystem::GpuChunkCostCacher,
+                                       CashSystem::GpuChunkCostCalibration,
+                                       CashSystem::GpuChunkCostCacheCreateInfo>(
+                typeid(CashSystem::GpuChunkCostCalibration), "GpuChunkCostCacher", true);
+            costCacher_ = mainCacher->GetDeviceDependentCacher<
+                CashSystem::GpuChunkCostCacher,
+                CashSystem::GpuChunkCostCalibration,
+                CashSystem::GpuChunkCostCacheCreateInfo>(
+                    typeid(CashSystem::GpuChunkCostCalibration), device);
+        }
+    }
     trace_ = trace;
     native_ = -1;
     calibrationKey_.clear();
@@ -97,35 +117,32 @@ void TiledDispatch::Trace(const std::string& line) const {
         trace_->Info(line);
 }
 
-// Seed order: this extent's persisted envelope, then this process's envelope from the previous
-// extent, then the nearest persisted extent. Per-workgroup cost belongs to the device, so a
-// known device never restarts from the cold launch (frames before the first ring readback).
-void TiledDispatch::SeedEnvelope(const std::string& extentKey) {
-    calibrationKey_ = extentKey;
-    const GpuChunkCost previous = cost_;
+// Only an exact scene-configuration match is warm. A miss intentionally keeps the cold floor until
+// this pass has produced its own readback; importing another extent or scene reintroduced the
+// order-dependent launch that this cache is meant to remove.
+void TiledDispatch::SeedEnvelope(Extent groups) {
+    calibrationKey_ = std::to_string(groups.x) + "x" + std::to_string(groups.y) +
+        "x" + std::to_string(groups.z);
     cost_ = {};
     std::string seed = "cold";
-    if (persisted_) {
-        if (const auto restored = persisted_->GetChunkCalibration(extentKey)) {
+    if (costCacher_) {
+        CashSystem::GpuChunkCostCacheCreateInfo ci;
+        ci.sceneIdentity = sceneIdentity_;
+        ci.passIdentity = pass_;
+        ci.extentX = groups.x;
+        ci.extentY = groups.y;
+        ci.extentZ = groups.z;
+        ci.qualityProfile = qualityProfile_;
+        ci.deviceIdentity = deviceIdentity_;
+        if (const auto restored = costCacher_->Lookup(ci)) {
             cost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs,
                          restored->meanUnitNs, restored->meanFixedNs);
-            seed = "persisted";
-        }
-    }
-    if (!cost_.Calibrated() && previous.Calibrated()) {
-        cost_.Import(previous.AnchorUnits(), previous.UnitNs(), previous.FixedNs(),
-                     previous.MeanUnitNs(), previous.MeanFixedNs());
-        seed = "previous-extent";
-    }
-    if (!cost_.Calibrated() && persisted_) {
-        if (const auto neighbour = persisted_->NearestChunkCalibration(extentKey)) {
-            cost_.Import(neighbour->anchorUnits, neighbour->unitNs, neighbour->fixedNs,
-                         neighbour->meanUnitNs, neighbour->meanFixedNs);
-            seed = "nearest-persisted";
+            seed = "cash";
         }
     }
 #if UNDERSET_NATIVE_BENCHMARK
-    Trace("[GPUYIELD_CALIBRATION] node=" + pass_ + " extent=" + extentKey +
+    Trace("[GPUYIELD_CALIBRATION] node=" + pass_ + " scene=" + sceneIdentity_ +
+          " profile=" + qualityProfile_ + " extent=" + calibrationKey_ +
           (cost_.Calibrated() ? " start=warm seed=" + seed + " anchor_units=" + std::to_string(cost_.AnchorUnits()) +
               " unit_ns=" + std::to_string(cost_.UnitNs()) + " fixed_ns=" + std::to_string(cost_.FixedNs())
               : std::string(" start=cold")));
@@ -170,11 +187,18 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
     }
     if (fullTiles)
         cost_.ObserveScale(state.nominalGroups, fullTileMs * 1.0e6 / fullTiles, prior_ == Prior::Unknown);
-    // R503: publish the learned envelope to the task profile; CalibrationStore persists it per
-    // device at shutdown, keyed by this flight's extent.
-    if (persisted_ && cost_.Calibrated() && state.extentKey == calibrationKey_)
-        persisted_->SetChunkCalibration(state.extentKey,
-            {cost_.AnchorUnits(), cost_.UnitNs(), cost_.FixedNs(), cost_.MeanUnitNs(), cost_.MeanFixedNs()});
+    if (costCacher_ && cost_.Calibrated() && state.extentKey == calibrationKey_) {
+        CashSystem::GpuChunkCostCacheCreateInfo ci;
+        ci.sceneIdentity = sceneIdentity_;
+        ci.passIdentity = pass_;
+        ci.extentX = state.extentX;
+        ci.extentY = state.extentY;
+        ci.extentZ = state.extentZ;
+        ci.qualityProfile = qualityProfile_;
+        ci.deviceIdentity = deviceIdentity_;
+        costCacher_->Store(ci, {cost_.AnchorUnits(), cost_.UnitNs(), cost_.FixedNs(),
+                                cost_.MeanUnitNs(), cost_.MeanFixedNs()});
+    }
 
     double worstMs = 0;
     double totalMs = 0;
@@ -251,10 +275,13 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
 
     // Keep the frame budget separate: smaller chunks do not make an expensive pass cheap.
     const uint64_t budgetNs = SubmissionBudgetNs(capacity);
-    // R503: the envelope is learned per extent, so a known resolution starts warm.
-    const std::string extentKey = std::to_string(groups.x) + "x" + std::to_string(groups.y);
-    if (extentKey != calibrationKey_) SeedEnvelope(extentKey);
+    const std::string extentKey = std::to_string(groups.x) + "x" + std::to_string(groups.y) +
+        "x" + std::to_string(groups.z);
+    if (extentKey != calibrationKey_) SeedEnvelope(groups);
     state.extentKey = extentKey;
+    state.extentX = groups.x;
+    state.extentY = groups.y;
+    state.extentZ = groups.z;
 
     if (native_ < 0) native_ = GpuDeviceClassIsNative(GpuDeviceClassName(*device_)) ? 1 : 0;
     const uint32_t wholeEdge = std::max(1u, std::max(groups.x, groups.y));

@@ -147,10 +147,10 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
         }
     }
 
-    // A stage is an unknown pass to the rule and keeps no envelope across runs: its cost follows
-    // the scene, so another run's envelope says nothing about this run's first frame.
+    const auto& sceneCost = GetOwningGraph()->GetSceneCostConfiguration();
     tiles_.Configure(GetDevice(), commandPool_, GetInstanceName(), TiledDispatch::Prior::Unknown,
-                     nullptr, nullptr);
+                     &GetOwningGraph()->GetMainCacher(), sceneCost.sceneIdentity,
+                     sceneCost.qualityProfile, nullptr);
 }
 
 // ============================================================================

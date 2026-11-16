@@ -3,6 +3,7 @@
 #include <chrono>
 #include <functional>
 #include <thread>
+#include <utility>
 
 #include "Headers.h"
 
@@ -112,6 +113,15 @@ using ResourceManagement::DeviceBudgetManager;
  */
 class RenderGraph {
 public:
+    /**
+     * Inputs that affect the measured GPU cost of a dispatch pass. Hosts set these before graph
+     * compilation; TiledDispatch combines them with pass identity, extent, and device identity.
+     */
+    struct SceneCostConfiguration {
+        std::string sceneIdentity = "default";
+        std::string qualityProfile = "default";
+    };
+
     /**
      * @brief Construct a new Render Graph
      * @param registry The node type registry
@@ -613,6 +623,14 @@ public:
         return *mainCacher;
     }
 
+    void SetSceneCostConfiguration(SceneCostConfiguration configuration) {
+        sceneCostConfiguration_ = std::move(configuration);
+    }
+
+    [[nodiscard]] const SceneCostConfiguration& GetSceneCostConfiguration() const {
+        return sceneCostConfiguration_;
+    }
+
     /**
      * @brief Get the deferred destruction queue
      *
@@ -959,6 +977,7 @@ private:
     NodeTypeRegistry* typeRegistry;
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
     CashSystem::MainCacher* mainCacher = nullptr;  // Non-owning pointer
+    SceneCostConfiguration sceneCostConfiguration_;
     std::unique_ptr<KernelDispatch::FramePipeline> framePipeline_;
     EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly

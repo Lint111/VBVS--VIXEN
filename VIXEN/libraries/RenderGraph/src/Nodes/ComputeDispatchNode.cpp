@@ -161,9 +161,10 @@ void ComputeDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Sprint 6.5: Register GPU task profile for cost estimation and learning
     std::string profileId = GetInstanceName() + "_gpu_dispatch";
     gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "compute");
-    // The primary pass launches cold at the floor and keeps its envelope across runs (R503).
+    const auto& sceneCost = GetOwningGraph()->GetSceneCostConfiguration();
     tiles_.Configure(vulkanDevice, commandPool, GetInstanceName(), TiledDispatch::Prior::Heaviest,
-                     dynamic_cast<SimpleTaskProfile*>(gpuProfile_), GetLogger());
+                     &GetOwningGraph()->GetMainCacher(), sceneCost.sceneIdentity,
+                     sceneCost.qualityProfile, GetLogger());
     if (gpuProfile_) {
         RegisterPhaseProfile(TaskProfilePhase::Execute, gpuProfile_);
         NODE_LOG_INFO("[ComputeDispatchNode] Registered GPU profile: " + profileId);
