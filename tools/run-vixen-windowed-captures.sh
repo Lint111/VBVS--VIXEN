@@ -167,9 +167,17 @@ run_capture() {
     local capture_pid heartbeat_pid rc=0 started=$SECONDS
     (cd -- "$working_dir" && exec setsid timeout -k 10s 300s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "${env_args[@]}" "${command[@]}") >"$log_path" 2>&1 &
     capture_pid=$!
-    (while sleep 30; do
-        echo "[heartbeat] $name capture running $((SECONDS - started))s, log $(stat -c %s -- "$log_path" 2>/dev/null || echo 0) bytes"
-    done) &
+    heartbeat_loop() {
+        local sleep_pid=""
+        trap 'if [[ "$sleep_pid" =~ ^[1-9][0-9]*$ ]]; then kill "$sleep_pid" 2>/dev/null || true; fi; exit 0' TERM INT HUP
+        while :; do
+            sleep 30 & sleep_pid=$!
+            wait "$sleep_pid" || exit 0
+            sleep_pid=""
+            echo "[heartbeat] $name capture running $((SECONDS - started))s, log $(stat -c %s -- "$log_path" 2>/dev/null || echo 0) bytes"
+        done
+    }
+    heartbeat_loop &
     heartbeat_pid=$!
     trap 'kill -TERM -- "-$capture_pid" 2>/dev/null || true; kill "$heartbeat_pid" 2>/dev/null || true' TERM INT
     wait "$capture_pid" || rc=$?

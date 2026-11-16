@@ -105,6 +105,21 @@ if ($MaxParallelJobs -le 0) {
     }
 }
 
+# R847.7: a queued Windows-native build receives the live CPU grant as a named semaphore. Ninja 1.13+
+# takes one token per running edge, so its width follows queue top-ups and shrink-withhold decisions
+# during a long build. An explicit -j makes ninja ignore the jobserver; older ninja keeps the fallback.
+$JobServerAuth = ''
+if ($env:VIXEN_JOBSERVER_AUTH) {
+    $ninjaVersion = ''
+    try { $ninjaVersion = ((& ninja --version 2>$null) | Out-String).Trim() } catch { $ninjaVersion = '' }
+    if ($ninjaVersion -match '^(\d+)\.(\d+)' -and ([int]$Matches[1] -gt 1 -or [int]$Matches[2] -ge 13)) {
+        $JobServerAuth = $env:VIXEN_JOBSERVER_AUTH
+        $env:MAKEFLAGS = "--jobserver-auth=$JobServerAuth"
+    } else {
+        Write-Host "[build] jobserver $($env:VIXEN_JOBSERVER_AUTH) ignored: ninja '$ninjaVersion' is older than 1.13, using -j $MaxParallelJobs"
+    }
+}
+
 $ErrorActionPreference = 'Continue'
 $buildLog = Join-Path $LogDir "vixen_build_$BuildId.log"
 $startTime = Get-Date
@@ -165,7 +180,11 @@ if (-not $SkipLock) {
 
 try {
 
-Write-Host "[build] Max parallel jobs: $MaxParallelJobs (of $([Environment]::ProcessorCount) logical cores; override with -MaxParallelJobs or VIXEN_MAX_BUILD_JOBS)"
+if ($JobServerAuth) {
+    Write-Host "[build] Max parallel jobs: follows the queue grant through jobserver $JobServerAuth (no -j)"
+} else {
+    Write-Host "[build] Max parallel jobs: $MaxParallelJobs (of $([Environment]::ProcessorCount) logical cores; override with -MaxParallelJobs or VIXEN_MAX_BUILD_JOBS)"
+}
 Write-StatusFile "RUNNING" 0 "?" 0 0 "" @()
 
 # Launch the build, streaming stdout+stderr to both the console (so a foreground caller still
@@ -184,19 +203,20 @@ if ($Target) {
 
 $workDir = $PWD.Path
 $job = Start-Job -ScriptBlock {
-    param($cmakeExe, $preset, $logPath, $workDir, $buildDir, $maxJobs, $target)
+    param($cmakeExe, $preset, $logPath, $workDir, $buildDir, $maxJobs, $target, $jobserver)
+    $ninjaArgs = if ($jobserver) { @('-k', '0') } else { @('-k', '0', '-j', $maxJobs) }
     if ($buildDir) {
         if ($target) {
-            & $cmakeExe --build $buildDir --target $target -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+            & $cmakeExe --build $buildDir --target $target -- @ninjaArgs *>&1 | Out-File -FilePath $logPath -Encoding utf8
         } else {
-            & $cmakeExe --build $buildDir -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+            & $cmakeExe --build $buildDir -- @ninjaArgs *>&1 | Out-File -FilePath $logPath -Encoding utf8
         }
     } else {
         Set-Location $workDir
         if ($target) {
-            & $cmakeExe --build --preset $preset --target $target -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+            & $cmakeExe --build --preset $preset --target $target -- @ninjaArgs *>&1 | Out-File -FilePath $logPath -Encoding utf8
         } else {
-            & $cmakeExe --build --preset $preset -- -k 0 -j $maxJobs *>&1 | Out-File -FilePath $logPath -Encoding utf8
+            & $cmakeExe --build --preset $preset -- @ninjaArgs *>&1 | Out-File -FilePath $logPath -Encoding utf8
         }
     }
     # Capture the REAL exit code of the cmake/ninja invocation and return it as the job's
@@ -207,7 +227,7 @@ $job = Start-Job -ScriptBlock {
     # a real case: an invalid -Target name made ninja exit 1 immediately with zero targets
     # attempted, but the old logic reported "All targets built successfully" (exit 0).
     $LASTEXITCODE
-} -ArgumentList $CMakeExe, $Preset, $buildLog, $workDir, $BuildDir, $MaxParallelJobs, $Target
+} -ArgumentList $CMakeExe, $Preset, $buildLog, $workDir, $BuildDir, $MaxParallelJobs, $Target, $JobServerAuth
 
 $progressPattern = '^\[(\d+)/(\d+)\]\s+(.+)$'
 $failedPattern = '^FAILED:\s+(?:\[code=\d+\]\s+)?(\S+)'
