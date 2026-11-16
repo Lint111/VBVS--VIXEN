@@ -515,58 +515,10 @@ void EditorApplication::RefreshLayersView() {
                 }
             }
         } else {
-            // The authored suffix is not enough to explain an unmaterialed layer: the product
-            // bake's measured MaterialId output is the authority. If that output contains a
-            // neighbouring authored material, expose the carry source; otherwise expose the
-            // document default only when its measured slot is present.
+            // This row is deliberately not inferred from authored neighbours or aggregate
+            // material counts. The product must publish per-layer MaterialId attribution before
+            // the producer-facing "from <layer>" / "default (<name>)" wording can be truthful.
             row.materialName = "none";
-            const auto measured = std::atomic_load_explicit(&materialCoverage_, std::memory_order_acquire);
-            const auto slotFor = [this](const std::string& name) -> std::optional<uint32_t> {
-                for (const auto& candidate : materialRows_)
-                    if (candidate.name == name) return candidate.slot;
-                return std::nullopt;
-            };
-            const auto measuredSlot = [measured](std::optional<uint32_t> slot) {
-                return measured != nullptr && slot.has_value() && measured->totalSurfaceSamples != 0u &&
-                       measured->counts.find(*slot) != measured->counts.end() && measured->counts.at(*slot) != 0u;
-            };
-            if (measured != nullptr && measured->totalSurfaceSamples != 0u) {
-                for (uint32_t distance = 1u; distance < doc_.LayerCount(); ++distance) {
-                    const uint32_t candidates[2] = {i >= distance ? i - distance : doc_.LayerCount(), i + distance < doc_.LayerCount() ? i + distance : doc_.LayerCount()};
-                    bool found = false;
-                    for (const uint32_t candidateIndex : candidates) {
-                        if (candidateIndex >= doc_.LayerCount()) continue;
-                        std::string candidateMaterial;
-                        Vixen::Editor::DocumentDiagnostic candidateDiagnostic;
-                        if (!doc_.GetLayerMaterial(doc_.LayerId(candidateIndex), candidateMaterial, candidateDiagnostic) ||
-                            candidateMaterial.empty() || !measuredSlot(slotFor(candidateMaterial))) continue;
-                        row.materialName = "from " + doc_.LayerName(candidateIndex);
-                        for (const auto& materialRow : materialRows_) {
-                            if (materialRow.name == candidateMaterial) {
-                                row.materialColor = MaterialColorHex(materialRow.srgbColor);
-                                row.materialTextColor = Vixen::RenderGraph::UiKit::ContrastingTextHex(materialRow.srgbColor);
-                                break;
-                            }
-                        }
-                        found = true;
-                        break;
-                    }
-                    if (found) break;
-                }
-                if (row.materialName == "none" && !doc_.DocumentDefaultMaterial().empty() &&
-                    measuredSlot(slotFor(doc_.DocumentDefaultMaterial()))) {
-                    row.materialName = "default (" + doc_.DocumentDefaultMaterial() + ")";
-                    if (const auto slot = slotFor(doc_.DocumentDefaultMaterial())) {
-                        for (const auto& materialRow : materialRows_) {
-                            if (materialRow.slot == *slot) {
-                                row.materialColor = MaterialColorHex(materialRow.srgbColor);
-                                row.materialTextColor = Vixen::RenderGraph::UiKit::ContrastingTextHex(materialRow.srgbColor);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
             row.materialClearId.clear();
             row.materialPickerId = "panel-picker-open";
         }
