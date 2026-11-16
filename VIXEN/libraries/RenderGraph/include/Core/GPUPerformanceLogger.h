@@ -10,6 +10,7 @@
 #include <numeric>
 #include <unordered_map>
 #include <memory>
+#include <string>
 
 namespace Vixen::RenderGraph {
 
@@ -160,6 +161,27 @@ public:
     /// False when no slot was allocated: GetLastDispatchMs() is then always 0 because nothing is measured.
     bool HasQuerySlot() const { return querySlot_ != GPUQueryManager::INVALID_SLOT; }
 
+    // ========================================================================
+    // SUBMIT WATCHDOG GUARD (row 106)
+    // ========================================================================
+    // A native device is reset by the OS when one submission runs past the watchdog (Windows TDR,
+    // ~2 s). Every measured submission is checked against a quarter of that window: a pass above it
+    // is one scene away from a device loss, so it is logged as an error and recorded process-wide
+    // for tests to assert on. Passes whose logger spans several submissions (the tiled march) mark
+    // themselves and report each submission through RecordSubmission instead.
+    static constexpr double kNativeWatchdogMs = 2000.0;
+    static constexpr double kSubmitGuardMs = kNativeWatchdogMs / 4.0;
+    struct MeasuredSubmission {
+        double gpuMs = 0.0;
+        std::string pass;
+    };
+    /// Records one measured submission (printed as `[GPU_SUBMIT_TIME]` when `report`); logs
+    /// `[GPU_SUBMIT_GUARD]` as an error above kSubmitGuardMs.
+    static void RecordSubmission(Logger& reporter, const std::string& pass, double gpuMs, bool report = false);
+    /// Longest submission measured in this process (gpuMs 0 when nothing was measured yet).
+    static MeasuredSubmission WorstSubmission();
+    void SetSpansSeveralSubmissions(bool spans) { spansSeveralSubmissions_ = spans; }
+
 private:
     std::shared_ptr<GPUQueryManager> queryManager_;
     GPUQueryManager::QuerySlotHandle querySlot_ = GPUQueryManager::INVALID_SLOT;
@@ -186,6 +208,12 @@ private:
     uint32_t logFrequency_ = 60;
     uint32_t frameCounter_ = 0;
     bool printToTerminal_ = true;
+    // The first reads of every timed pass are printed so a capture log carries the
+    // measured per-pass GPU time without a benchmark build.
+    static constexpr uint32_t kReportedReads = 16;
+    uint32_t reportedReads_ = 0;
+    bool spansSeveralSubmissions_ = false;
+    std::string passName_;
 
     // Memory tracking
     std::unordered_map<std::string, VkDeviceSize> bufferAllocations_;

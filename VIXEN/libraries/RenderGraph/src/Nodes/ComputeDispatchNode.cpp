@@ -16,6 +16,7 @@
 #include "Core/NodeLogging.h"
 #include <stdexcept>
 #include <chrono>
+#include <cstdio>
 #include <set>
 #include <cmath>
 #include <algorithm>
@@ -142,6 +143,7 @@ void ComputeDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
         gpuPerfLogger_->SetEnabled(true);  // Enabled for benchmark data collection
         gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
         gpuPerfLogger_->SetPrintToTerminal(false);  // Disabled for clean terminal output
+        gpuPerfLogger_->SetSpansSeveralSubmissions(true);  // tiles report per submission (row 106)
 
         if (nodeLogger) {
             nodeLogger->AddChild(gpuPerfLogger_);
@@ -459,9 +461,13 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
 #if UNDERSET_NATIVE_BENCHMARK
         totalMs = 0;
 #endif
+        double worstSubmissionMs = 0;
         for (const auto& batch : submissionBatches_[frameIndex]) {
             const double elapsed = query->GetElapsedMs(0, batch.first * 4,
                 (batch.first + batch.count) * 4 - 1);
+            worstSubmissionMs = std::max(worstSubmissionMs, elapsed);
+            if (gpuPerfLogger_)
+                GPUPerformanceLogger::RecordSubmission(*gpuPerfLogger_, GetInstanceName(), elapsed);
 #if UNDERSET_NATIVE_BENCHMARK
             maximumMs = std::max(maximumMs, elapsed);
             totalMs += elapsed;
@@ -478,6 +484,13 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
                     " elapsed_gpu_ms=" + std::to_string(elapsed));
             }
 #endif
+        }
+        if (reportedTileReads_ < kReportedTileReads) {
+            ++reportedTileReads_;
+            std::printf("[GPU_SUBMIT_TIME] pass=%s submissions=%zu chunks=%u gpu_ms=%.3f\n",
+                GetInstanceName().c_str(), submissionBatches_[frameIndex].size(), tileCounts_[frameIndex],
+                worstSubmissionMs);
+            std::fflush(stdout);
         }
 #if UNDERSET_NATIVE_BENCHMARK
         NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() +

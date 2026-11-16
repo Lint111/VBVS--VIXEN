@@ -123,6 +123,8 @@ private:
     std::array<std::vector<VkCommandBuffer>, 4> tileCommandBuffers_;
     std::array<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>, 4> tileQueries_;
     std::array<uint32_t, 4> tileCounts_{};
+    static constexpr uint32_t kReportedTileReads = 16;  // first reads of the march submissions are logged
+    uint32_t reportedTileReads_ = 0;
     std::array<uint64_t, 4> tileBudgets_{};
     std::array<std::vector<uint32_t>, 4> tileWorkGroupCounts_;
     std::array<std::vector<SubmitRecord::Batch>, 4> submissionBatches_;
