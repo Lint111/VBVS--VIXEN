@@ -19,8 +19,8 @@ file(WRITE "${_manifest}"
 # then the class hook writes the complete per-case label set in CTest's load context.
 set(_testfile "${VIXEN_TEST_APPLY_ROOT}/CTestTestfile.cmake")
 file(WRITE "${_testfile}"
-    "add_test(ApplyCpu \"/bin/true\")\n"
-    "add_test(ApplyGpu \"/bin/true\")\n"
+    "add_test(ApplyCpu \"${CMAKE_COMMAND}\" -E true)\n"
+    "add_test(ApplyGpu \"${CMAKE_COMMAND}\" -E true)\n"
     "set_tests_properties(ApplyCpu ApplyGpu PROPERTIES LABELS \"Suite;exe:apply_target\")\n"
     "set(VIXEN_CLASS_TARGET apply_target)\n"
     "set(VIXEN_CLASS_SUITE Suite)\n"
@@ -31,7 +31,7 @@ file(WRITE "${_testfile}"
     "include([==[${VIXEN_TEST_CLASS_APPLY}]==])\n")
 
 execute_process(
-    COMMAND ctest --test-dir "${VIXEN_TEST_APPLY_ROOT}" --show-only=json-v1
+    COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${VIXEN_TEST_APPLY_ROOT}" --show-only=json-v1
     RESULT_VARIABLE _ctest_status
     OUTPUT_VARIABLE _ctest_json
     ERROR_VARIABLE _ctest_error)
