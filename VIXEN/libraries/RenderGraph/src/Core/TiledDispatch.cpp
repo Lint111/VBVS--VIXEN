@@ -2,6 +2,7 @@
 #include "Core/TiledDispatch.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
@@ -26,6 +27,11 @@ long EdgeOverride() {
     return value;
 }
 
+double ProcessClockMs() {
+    static const auto start = std::chrono::steady_clock::now();
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+}
+
 uint64_t SubmissionBudgetNs(const TiledDispatch::Capacity& capacity) {
     return std::max(uint64_t{1}, std::min(capacity.frameBudgetNs, capacity.submissionBudgetNs));
 }
@@ -46,22 +52,22 @@ TiledDispatch::TiledDispatch() = default;
 TiledDispatch::~TiledDispatch() = default;
 
 void TiledDispatch::Configure(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool pool,
-                              std::string pass, ColdLaunch cold, SimpleTaskProfile* persisted,
+                              std::string pass, Prior prior, SimpleTaskProfile* persisted,
                               Vixen::Log::Logger* trace) {
     device_ = device;
     pool_ = pool;
     pass_ = std::move(pass);
-    cold_ = cold;
+    prior_ = prior;
     persisted_ = persisted;
     trace_ = trace;
     native_ = -1;
     calibrationKey_.clear();
 }
 
-void TiledDispatch::SetPipeline(bool tileable) {
+void TiledDispatch::SetPipeline(bool tileable, bool forgetEnvelope) {
     tileable_ = tileable;
-    cost_ = {};
-    calibrationKey_.clear();  // re-enter from the persisted envelope (R503)
+    if (forgetEnvelope) cost_ = {};
+    calibrationKey_.clear();  // re-enter through SeedEnvelope (persisted first, R503)
 }
 
 void TiledDispatch::Trace(const std::string& line) const {
@@ -148,9 +154,7 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
             {cost_.AnchorUnits(), cost_.UnitNs(), cost_.FixedNs(), cost_.MeanUnitNs(), cost_.MeanFixedNs()});
 
     double worstMs = 0;
-#if UNDERSET_NATIVE_BENCHMARK
     double totalMs = 0;
-#endif
     for (const auto& batch : state.batches) {
         if (!batch.count || batch.first + batch.count > state.tiles) continue;
         const double elapsed = query.GetElapsedMs(0, static_cast<uint32_t>(batch.first * 4),
@@ -161,8 +165,8 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
         for (std::size_t i = batch.first; i < batch.first + batch.count && i < state.tileGroups.size(); ++i)
             groups += state.tileGroups[i];
         if (groups) cost_.ObserveBatch(groups, batch.count, elapsed * 1.0e6);
-#if UNDERSET_NATIVE_BENCHMARK
         totalMs += elapsed;
+#if UNDERSET_NATIVE_BENCHMARK
         if (trace_ && std::getenv("VIXEN_GPUYIELD_TRACE")) {
             Trace("[GPUYIELD_SUBMISSION] node=" + pass_ +
                 " first_chunk=" + std::to_string(batch.first) +
@@ -180,8 +184,10 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
     // stdout, not the node logger: capture executables print only the application logger at INFO.
     if (reportedReads_ < kReportedReads) {
         ++reportedReads_;
-        std::printf("[GPU_SUBMIT_TIME] pass=%s submissions=%zu chunks=%u gpu_ms=%.3f\n",
-            pass_.c_str(), state.batches.size(), state.tiles, worstMs);
+        // gpu_ms is the longest submission, total_gpu_ms the pass; at_ms (process clock) spaces
+        // the reads of one pass by the frame period.
+        std::printf("[GPU_SUBMIT_TIME] pass=%s submissions=%zu chunks=%u gpu_ms=%.3f total_gpu_ms=%.3f at_ms=%.1f\n",
+            pass_.c_str(), state.batches.size(), state.tiles, worstMs, totalMs, ProcessClockMs());
         std::fflush(stdout);
     }
 #if UNDERSET_NATIVE_BENCHMARK
@@ -229,11 +235,14 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
 
     if (native_ < 0) native_ = GpuDeviceClassIsNative(GpuDeviceClassName(*device_)) ? 1 : 0;
     const uint32_t wholeEdge = std::max(1u, std::max(groups.x, groups.y));
-    // Native devices untile a pass whose projected whole time is far below the watchdog window;
-    // translated devices keep the submission-budget tiling. Same rule for every dispatch node.
+    // A pass whose projected whole time is far below the watchdog window runs as one dispatch.
+    // On a translated device only the primary pass keeps the submission-budget tiling: every
+    // command there pays a launch latency above that budget, so cutting an ordinary pass to
+    // it only multiplies the latency.
     const GpuChunkCost::WholePass whole{uint64_t(groups.x) * groups.y * groups.z,
         NativeWholePassWindowNs(capacity.submissionBudgetNs, capacity.frameBudgetNs)};
-    const uint32_t launch = cold_ == ColdLaunch::Floor ? 0u : ColdSplitEdge(wholeEdge, capacity, native_ == 1);
+    const bool windowed = native_ == 1 || prior_ == Prior::Unknown;
+    const uint32_t launch = prior_ == Prior::Heaviest ? 0u : ColdSplitEdge(wholeEdge, capacity, native_ == 1);
     const long edgeOverride = EdgeOverride();
     // A tile of edge e holds e*e*z workgroups, so the per-layer budget sizes the edge.
     planEdge_ = !tileable_ || edgeOverride == 0
@@ -241,7 +250,7 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
         : edgeOverride > 0
             ? static_cast<uint32_t>(edgeOverride)
             : cost_.Edge(std::max(uint64_t{1}, budgetNs / groups.z), wholeEdge, kLaunchFloor,
-                         native_ ? &whole : nullptr, launch);
+                         windowed ? &whole : nullptr, launch);
     const uint32_t edge = planEdge_;
     state.nominalGroups = std::min(edge, groups.x) * std::min(edge, groups.y) * groups.z;
     const uint32_t count = std::max(1u, ((groups.x + edge - 1) / edge) * ((groups.y + edge - 1) / edge));

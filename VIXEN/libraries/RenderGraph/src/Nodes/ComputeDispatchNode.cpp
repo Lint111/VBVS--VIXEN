@@ -162,7 +162,7 @@ void ComputeDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
     std::string profileId = GetInstanceName() + "_gpu_dispatch";
     gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "compute");
     // The primary pass launches cold at the floor and keeps its envelope across runs (R503).
-    tiles_.Configure(vulkanDevice, commandPool, GetInstanceName(), TiledDispatch::ColdLaunch::Floor,
+    tiles_.Configure(vulkanDevice, commandPool, GetInstanceName(), TiledDispatch::Prior::Heaviest,
                      dynamic_cast<SimpleTaskProfile*>(gpuProfile_), GetLogger());
     if (gpuProfile_) {
         RegisterPhaseProfile(TaskProfilePhase::Execute, gpuProfile_);
@@ -254,7 +254,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         currentDescriptorSets != lastDescriptorSets) {
         const auto bundle = ctx.In(ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE);
         tiles_.SetPipeline(bundle && ShaderManagement::SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled(
-            bundle->GetSpirv(ShaderManagement::ShaderStage::Compute)));
+            bundle->GetSpirv(ShaderManagement::ShaderStage::Compute)), true);
         if (!tiles_.Tileable())
             NODE_LOG_WARNING("[GPUYIELD_UNBOUNDED] missing shader bundle or NumWorkgroups dependency: " + GetInstanceName());
 

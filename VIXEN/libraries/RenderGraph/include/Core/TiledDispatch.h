@@ -33,8 +33,8 @@ class SimpleTaskProfile;
  *
  *   - measured: `GpuChunkCost::Edge` (one dispatch while the whole pass fits the native window,
  *     otherwise tiles sized to the submission budget, never below `kLaunchFloor`);
- *   - unmeasured: the node's cold launch (`ColdLaunch`), because a pass that is too long on its
- *     first frame loses the device before any measurement exists.
+ *   - unmeasured: the node's prior (`Prior`), because a pass that is too long on its first
+ *     frame loses the device before any measurement exists.
  *
  * `SubmitRecord` then packs consecutive tiles into submissions by their estimated cost. Tiling
  * changes only where the invocations are launched from, never what they compute.
@@ -48,14 +48,18 @@ public:
     /// launch latency (a translated device lost the device at 3,969 commands, gpuyield-run4).
     static constexpr uint32_t kLaunchFloor = 7;
 
-    /// What an unmeasured pass launches with.
-    enum class ColdLaunch {
-        /// At the floor: the frame's primary pass, the heaviest by construction.
-        Floor,
-        /// Native: cut along each axis by the watchdog-to-window ratio (frame budget over
-        /// submission budget), so a pass far over the window still returns in time to be
-        /// measured. Translated: one dispatch (their hazard is the command count).
-        Split,
+    /// What the rule assumes about a pass it has not measured yet.
+    enum class Prior {
+        /// The frame's primary pass, the heaviest by construction: launches at the floor, and on a
+        /// translated device is always tiled to the submission budget (its long dispatches lose
+        /// that device).
+        Heaviest,
+        /// Any other pass. Native: launches cut along each axis by the watchdog-to-window ratio
+        /// (frame budget over submission budget), so a pass far over the window still returns in
+        /// time to be measured. Translated: launches as one dispatch (there the hazard is the
+        /// command count). On every device a measured pass that fits the whole-pass window is one
+        /// dispatch, as it was before the rule existed.
+        Unknown,
     };
 
     struct Extent {
@@ -66,8 +70,8 @@ public:
         uint64_t submissionBudgetNs = 0;
     };
 
-    /// Tile edge an unmeasured `Split` pass launches with, for a pass whose longer side is
-    /// `wholeEdge` workgroups.
+    /// Tile edge an unmeasured `Prior::Unknown` pass launches with, for a pass whose longer
+    /// side is `wholeEdge` workgroups.
     [[nodiscard]] static uint32_t ColdSplitEdge(uint32_t wholeEdge, Capacity capacity, bool native);
 
     TiledDispatch();
@@ -78,11 +82,12 @@ public:
     /// Compile-time wiring. `persisted` (may be null) keeps the learned envelope across runs
     /// (R503); `trace` (may be null) receives the native-benchmark `[GPUYIELD*]` lines.
     void Configure(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool pool, std::string pass,
-                   ColdLaunch cold, SimpleTaskProfile* persisted, Vixen::Log::Logger* trace);
+                   Prior prior, SimpleTaskProfile* persisted, Vixen::Log::Logger* trace);
 
-    /// The pipeline changed: `tileable` says whether its SPIR-V survives a based dispatch
-    /// (no NumWorkgroups dependency). Forgets the envelope learned for the old pipeline.
-    void SetPipeline(bool tileable);
+    /// The node's pipeline inputs changed: `tileable` says whether the SPIR-V survives a based
+    /// dispatch (no NumWorkgroups dependency). `forgetEnvelope` drops the cost learned so far
+    /// (another shader); without it the envelope stays as the seed of the next plan.
+    void SetPipeline(bool tileable, bool forgetEnvelope);
     [[nodiscard]] bool Tileable() const { return tileable_; }
 
     /// Read the timestamps of `flight`'s previous use (call once its completion was waited),
@@ -133,7 +138,7 @@ private:
     Vixen::Vulkan::Resources::VulkanDevice* device_ = nullptr;
     VkCommandPool pool_ = VK_NULL_HANDLE;
     std::string pass_;
-    ColdLaunch cold_ = ColdLaunch::Split;
+    Prior prior_ = Prior::Unknown;
     SimpleTaskProfile* persisted_ = nullptr;
     Vixen::Log::Logger* trace_ = nullptr;
     bool tileable_ = false;

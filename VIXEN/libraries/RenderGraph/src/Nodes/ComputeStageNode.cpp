@@ -147,9 +147,9 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
         }
     }
 
-    // An unmeasured stage launches cold-split and keeps no envelope across runs: a stage's cost
-    // follows the scene, so another run's envelope says nothing about this run's first frame.
-    tiles_.Configure(GetDevice(), commandPool_, GetInstanceName(), TiledDispatch::ColdLaunch::Split,
+    // A stage is an unknown pass to the rule and keeps no envelope across runs: its cost follows
+    // the scene, so another run's envelope says nothing about this run's first frame.
+    tiles_.Configure(GetDevice(), commandPool_, GetInstanceName(), TiledDispatch::Prior::Unknown,
                      nullptr, nullptr);
 }
 
@@ -198,7 +198,8 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         currentSets != lastDescriptorSets_) {
         const auto bundle = ctx.In(ComputeStageNodeConfig::SHADER_DATA_BUNDLE);
         tiles_.SetPipeline(bundle && ShaderManagement::SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled(
-            bundle->GetSpirv(ShaderManagement::ShaderStage::Compute)));
+            bundle->GetSpirv(ShaderManagement::ShaderStage::Compute)),
+            /*forgetEnvelope: another shader, not a re-bound set*/ currentPipeline != lastPipeline_);
         if (!tiles_.Tileable() && !externalRecorder_) {
             NODE_LOG_WARNING("[GPUYIELD_UNBOUNDED] missing shader bundle or NumWorkgroups dependency: " +
                              GetInstanceName());
