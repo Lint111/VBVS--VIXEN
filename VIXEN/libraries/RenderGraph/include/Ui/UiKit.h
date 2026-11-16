@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Vixen::RenderGraph::UiKit {
@@ -35,6 +36,8 @@ std::string FormatRange(bool hasRange, float minimum, float maximum);
 /// Returns the kit's readable foreground for an sRGB background, choosing the higher-contrast
 /// light or dark label color. The editor's material chips use this one rule for every palette row.
 std::string ContrastingTextHex(std::uint32_t srgbColor);
+/// The compact, readable label used by layer rows; callers keep the catalogue name for the title.
+std::string LayerOpShortLabel(std::string_view catalogueName);
 
 // ---- The override contract --------------------------------------------------------------------------------------
 /// Element names the kit registers.

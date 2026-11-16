@@ -351,6 +351,47 @@ TEST_F(PanelDockDocumentsTest, FlyoutPanelOpensFloatingAndListsOneRowPerPublishe
     EXPECT_NE(doc->GetInnerRML().find("No primitive matches"), std::string::npos);
 }
 
+TEST_F(PanelDockDocumentsTest, InspectorMaterialRowIsThePickerControlAndNodeOrdinalsStayContinuous) {
+    Vixen::App::EditorGraphData graph;
+    graph.rawProgram = false;
+    Vixen::App::EditorNodeData first{};
+    first.nodeIndex = 2;
+    first.displayIndex = 0;
+    first.name = "Sphere";
+    first.category = "Primitive";
+    first.summary = "radius 1";
+    first.isExpanded = true;
+    Vixen::App::EditorNodeData second{};
+    second.nodeIndex = 4;
+    second.displayIndex = 1;
+    second.name = "Surface";
+    second.category = "Surface";
+    second.summary = "material core:hull_metal_major";
+    graph.nodes = {first, second};
+    Vixen::App::EditorLayerData layer{"body", "Union", true, 0.0f};
+    layer.materialName = "none";
+    layer.materialPickerId = "panel-picker-open";
+    Vixen::App::EditorPlacementData placement{};
+    placement.selectedName = "body";
+    layers_.PopulateFromDocument(0b01u, {layer}, {}, placement, {}, graph);
+    layers_.PopulateMaterials({{"1", "core:hull_metal_major", "", "", "#2A3234", "#F0F2FF"}});
+    Layout();
+
+    Rml::ElementDocument* inspector = panelDocs_.at("inspector");
+    Rml::Element* material = inspector->GetElementById("panel-picker-open");
+    ASSERT_NE(material, nullptr);
+    EXPECT_EQ(material->GetAttribute<Rml::String>("label", ""), "none")
+        << "the fixture has no authored layer material, so the row explains that state";
+    EXPECT_EQ(material->GetAttribute<Rml::String>("title", ""), "choose material for body");
+
+    Rml::Element* firstNode = inspector->GetElementById("layer-0-node-2-expand");
+    Rml::Element* secondNode = inspector->GetElementById("layer-0-node-4-expand");
+    ASSERT_NE(firstNode, nullptr);
+    ASSERT_NE(secondNode, nullptr);
+    EXPECT_NE(firstNode->GetAttribute<Rml::String>("label", "").find("0  Sphere"), std::string::npos);
+    EXPECT_NE(secondNode->GetAttribute<Rml::String>("label", "").find("1  Surface"), std::string::npos);
+}
+
 // R876: the inspector's node fields show the catalogue label (the label text the table carries, plus the
 // component for a vector), the declared range inline, and a reset button only while the value differs from
 // the declared default. Primitive fields have one home in the expanded node row.

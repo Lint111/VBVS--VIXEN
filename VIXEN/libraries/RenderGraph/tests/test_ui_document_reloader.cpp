@@ -239,7 +239,7 @@ TEST_F(UiDocumentReloaderTest, ABrokenStylesheetIsRejectedAndLocated) {
 TEST_F(UiDocumentReloaderTest, KitFragmentsAreDependenciesOfEveryDocumentAndABrokenOneIsLocated) {
     fs::create_directories(dir_ / "kit");
     const auto fragment = [&](const char* name) { return (dir_ / "kit" / name).string(); };
-    Write("kit/button.rml", "<span part=\"label\" class=\"ut-label\"></span><span part=\"reason\" class=\"ut-reason\"></span>\n");
+    Write("kit/button.rml", "<span part=\"icon\"></span><span part=\"label\" class=\"ut-label\"></span><span part=\"reason\" class=\"ut-reason\"></span>\n");
     UiKit::Registry kit([&](const std::string& asset) { return (dir_ / "kit" / fs::path(asset).filename()).string(); });
     kit.Register();
     reloader_->SetLoadPrelude([&] { kit.TouchFragments(); });
@@ -249,7 +249,7 @@ TEST_F(UiDocumentReloaderTest, KitFragmentsAreDependenciesOfEveryDocumentAndABro
     for (const auto& file : watch_.files) watchesFragment = watchesFragment || file.path == fragment("button.rml");
     EXPECT_TRUE(watchesFragment) << "the document uses no kit element, yet the fragment is its dependency";
     EXPECT_FALSE(UiDocumentReloader::Changed(watch_));
-    Write("kit/button.rml", "<span part=\"label\" class=\"ut-label\"></span><span part=\"reason\" class=\"ut-reason\"></span><!-- edited -->\n");
+    Write("kit/button.rml", "<span part=\"icon\"></span><span part=\"label\" class=\"ut-label\"></span><span part=\"reason\" class=\"ut-reason\"></span><!-- edited -->\n");
     EXPECT_TRUE(UiDocumentReloader::Changed(watch_)) << "a fragment edit is a change of the document";
 
     Rml::ElementDocument* before = doc_;
@@ -257,18 +257,18 @@ TEST_F(UiDocumentReloaderTest, KitFragmentsAreDependenciesOfEveryDocumentAndABro
     ASSERT_TRUE(Reload());
     ASSERT_NE(doc_->GetElementById("kit-button"), nullptr);
     EXPECT_EQ(doc_->GetElementById("kit-button")->GetInnerRML().find("PRE"), std::string::npos);
-    Write("kit/button.rml", "<span class=\"pre\">PRE</span><span part=\"label\" class=\"ut-label\"></span><span part=\"reason\" class=\"ut-reason\"></span>\n");
+    Write("kit/button.rml", "<span class=\"pre\">PRE</span><span part=\"icon\"></span><span part=\"label\" class=\"ut-label\"></span><span part=\"reason\" class=\"ut-reason\"></span>\n");
     ASSERT_TRUE(UiDocumentReloader::Changed(watch_));
     ASSERT_TRUE(Reload());
     EXPECT_NE(doc_->GetElementById("kit-button")->GetInnerRML().find("PRE"), std::string::npos) << "a fragment edit reaches the reloaded instance";
     before = doc_;
-    Write("kit/button.rml", "<span part=\"reason\" class=\"ut-reason\"></span><span part=\"label\" class=\"ut-label\">\n<b>\n");   // never closed
+    Write("kit/button.rml", "<span part=\"icon\"></span><span part=\"reason\" class=\"ut-reason\"></span><span part=\"label\" class=\"ut-label\">\n<b>\n");   // never closed
     EXPECT_FALSE(Reload());
     EXPECT_EQ(doc_, before) << "every panel keeps its old document";
     ASSERT_FALSE(results_.empty());
     EXPECT_NE(results_.front().file.find("button.rml"), std::string::npos) << results_.front().file << ": " << results_.front().message;
     EXPECT_GT(results_.front().line, 0);
-    Write("kit/button.rml", "<span part=\"label\" class=\"ut-label\"></span><span part=\"reason\" class=\"ut-reason\"></span>\n");
+    Write("kit/button.rml", "<span part=\"icon\"></span><span part=\"label\" class=\"ut-label\"></span><span part=\"reason\" class=\"ut-reason\"></span>\n");
     EXPECT_TRUE(Reload()) << "fixing the fragment recovers";
     // Elements release through their instancer: drop the document before the registry (and its instancers) goes.
     ctx_->UnloadDocument(doc_);

@@ -61,6 +61,15 @@ TEST(UiKitRule, MaterialChipTextContrastsAgainstMaterialTableAlbedos) {
         EXPECT_EQ(UiKit::ContrastingTextHex(row.srgb), row.expectedText) << row.id;
 }
 
+TEST(UiKitRule, LayerOperationLabelsStayCompactAndKeepTheCatalogueNameForTitles) {
+    EXPECT_EQ(UiKit::LayerOpShortLabel("SmoothUnion"), "Smooth");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("Subtract"), "Subtract");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("Intersect"), "Intersect");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("Union"), "Union");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("Provide"), "Provide");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("FutureCatalogueOp"), "FutureCatalogueOp");
+}
+
 TEST(UiKitContract, InstancesMayOnlyCarryTheOverrideContract) {
     EXPECT_TRUE(UiKit::AttributeAllowed("ut-number-field", "value-id"));
     EXPECT_TRUE(UiKit::AttributeAllowed("ut-number-field", "data-attr-value"));
@@ -206,6 +215,17 @@ TEST_F(UiKitTest, ButtonVariantRoundForcesTheEllipseHitMask) {
     EXPECT_EQ(b->GetAttribute<Rml::String>("hit-mask", ""), "ellipse");
     EXPECT_EQ(ParseHitMask(b->GetAttribute<Rml::String>("hit-mask", "")).shape, HitMaskShape::Ellipse);
     EXPECT_EQ(doc_->GetElementById("t")->GetAttribute<Rml::String>("hit-mask", ""), "none");
+}
+
+TEST_F(UiKitTest, IconButtonPublishesAVisibleSelfExplainingGlyph) {
+    ASSERT_NE(Load(R"(<rml><body><ut-button id="up" label="move up" icon="up"/></body></rml>)"), nullptr);
+    auto* button = doc_->GetElementById("up");
+    ASSERT_NE(button, nullptr);
+    EXPECT_TRUE(button->IsClassSet("icon-up"));
+    EXPECT_FALSE(button->IsClassSet("icon-remove"));
+    ASSERT_NE(Part(button, "icon"), nullptr);
+    EXPECT_EQ(Part(button, "icon")->GetNumChildren(), 5);
+    EXPECT_EQ(Part(button, "label")->GetInnerRML(), "move up");
 }
 
 TEST_F(UiKitTest, DisabledButtonIsVisibleButDoesNotTakePointerInput) {

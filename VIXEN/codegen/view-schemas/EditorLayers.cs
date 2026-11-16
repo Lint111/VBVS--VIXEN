@@ -11,6 +11,7 @@ namespace Vixen.ViewSchemas
     public struct EditorLayerRow {
         public string name;
         public string op;
+        public string opTitle;
         // Inc-Ovr (design §5a Projection proof): this attribute is consumed by the C++ view emitter
         // to generate ComputeEditorLayerRow_isChecked, which calls the transplanted
         // AppFlowCallables.bitAt. KEEP: removing it changes Generated/EditorLayers.g.h.
@@ -44,6 +45,8 @@ namespace Vixen.ViewSchemas
         // carried by the projection so the view never reconstructs action parameters.
         public string materialName;
         public string materialColor;
+        public string materialTextColor;
+        public string materialPickerId;
         public string materialClearId;
     }
 
@@ -126,6 +129,7 @@ namespace Vixen.ViewSchemas
     // the document model/application projection.
     public struct EditorNodeRow {
         public int nodeIndex;
+        public int displayIndex;
         public string name;
         public string category;
         public string addOp;
@@ -143,6 +147,7 @@ namespace Vixen.ViewSchemas
         public string warning;
         public string materialName;
         public string materialColor;
+        public string materialTextColor;
     }
 
     public struct EditorNodeArgumentRow {

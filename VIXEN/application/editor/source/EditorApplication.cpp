@@ -82,6 +82,26 @@ bool ForceEditorReadbackFenceTimeout() {
     return value && std::string_view(value) == "1";
 }
 
+// R872.5: producer-facing labels are declared once at the editor catalogue boundary. The
+// underlying opcode remains available to selectors and diagnostics, but never leaks into a
+// panel's node title as an implementation/category pair.
+struct EditorNodeLabel {
+    std::string_view opcode;
+    std::string_view label;
+    std::string_view category;
+};
+
+const EditorNodeLabel* ProducerNodeLabel(std::string_view opcode) {
+    static constexpr EditorNodeLabel kLabels[] = {
+        {"MaterialRef", "Material", "Material"},
+        {"Attach", "Surface", "Surface"},
+        {"ReadParam", "Input", "Input"},
+    };
+    for (const auto& label : kLabels)
+        if (label.opcode == opcode) return &label;
+    return nullptr;
+}
+
 // R463 capture instrumentation only; steady timestamps correlate with shared backend spans.
 void TraceEditorLatency(const char* phase, const char* edge, long tick, int action = -1) {
 #if UNDERSET_NATIVE_BENCHMARK
@@ -451,7 +471,8 @@ void EditorApplication::RefreshLayersView() {
         Vixen::App::EditorLayerData row;
         row.id = doc_.LayerId(i);
         row.name = doc_.LayerName(i);
-        row.op = Vixen::Editor::EditorDocumentModel::OpName(doc_.View().layers[i].header->op);
+        row.opTitle = Vixen::Editor::EditorDocumentModel::OpName(doc_.View().layers[i].header->op);
+        row.op = Vixen::RenderGraph::UiKit::LayerOpShortLabel(row.opTitle);
         row.enabled = ((doc_.EnabledMask() >> i) & 1u) != 0u;
         row.blendRadius = doc_.View().layers[i].header->blendRadius;
         row.provides = doc_.View().layers[i].header->op == 4u;
@@ -484,17 +505,70 @@ void EditorApplication::RefreshLayersView() {
         std::string material;
         if (doc_.GetLayerMaterial(row.id, material, materialDiagnostic) && !material.empty()) {
             row.materialName = material;
+            row.materialPickerId = "panel-picker-open";
             row.materialClearId = "layer-" + std::to_string(row.id) + "-material-clear";
             for (const auto& materialRow : materialRows_) {
                 if (materialRow.name == material) {
                     row.materialColor = MaterialColorHex(materialRow.srgbColor);
+                    row.materialTextColor = Vixen::RenderGraph::UiKit::ContrastingTextHex(materialRow.srgbColor);
                     break;
                 }
             }
         } else {
+            // The authored suffix is not enough to explain an unmaterialed layer: the product
+            // bake's measured MaterialId output is the authority. If that output contains a
+            // neighbouring authored material, expose the carry source; otherwise expose the
+            // document default only when its measured slot is present.
             row.materialName = "none";
-            row.materialColor.clear();
+            const auto measured = std::atomic_load_explicit(&materialCoverage_, std::memory_order_acquire);
+            const auto slotFor = [this](const std::string& name) -> std::optional<uint32_t> {
+                for (const auto& candidate : materialRows_)
+                    if (candidate.name == name) return candidate.slot;
+                return std::nullopt;
+            };
+            const auto measuredSlot = [measured](std::optional<uint32_t> slot) {
+                return measured != nullptr && slot.has_value() && measured->totalSurfaceSamples != 0u &&
+                       measured->counts.find(*slot) != measured->counts.end() && measured->counts.at(*slot) != 0u;
+            };
+            if (measured != nullptr && measured->totalSurfaceSamples != 0u) {
+                for (uint32_t distance = 1u; distance < doc_.LayerCount(); ++distance) {
+                    const uint32_t candidates[2] = {i >= distance ? i - distance : doc_.LayerCount(), i + distance < doc_.LayerCount() ? i + distance : doc_.LayerCount()};
+                    bool found = false;
+                    for (const uint32_t candidateIndex : candidates) {
+                        if (candidateIndex >= doc_.LayerCount()) continue;
+                        std::string candidateMaterial;
+                        Vixen::Editor::DocumentDiagnostic candidateDiagnostic;
+                        if (!doc_.GetLayerMaterial(doc_.LayerId(candidateIndex), candidateMaterial, candidateDiagnostic) ||
+                            candidateMaterial.empty() || !measuredSlot(slotFor(candidateMaterial))) continue;
+                        row.materialName = "from " + doc_.LayerName(candidateIndex);
+                        for (const auto& materialRow : materialRows_) {
+                            if (materialRow.name == candidateMaterial) {
+                                row.materialColor = MaterialColorHex(materialRow.srgbColor);
+                                row.materialTextColor = Vixen::RenderGraph::UiKit::ContrastingTextHex(materialRow.srgbColor);
+                                break;
+                            }
+                        }
+                        found = true;
+                        break;
+                    }
+                    if (found) break;
+                }
+                if (row.materialName == "none" && !doc_.DocumentDefaultMaterial().empty() &&
+                    measuredSlot(slotFor(doc_.DocumentDefaultMaterial()))) {
+                    row.materialName = "default (" + doc_.DocumentDefaultMaterial() + ")";
+                    if (const auto slot = slotFor(doc_.DocumentDefaultMaterial())) {
+                        for (const auto& materialRow : materialRows_) {
+                            if (materialRow.slot == *slot) {
+                                row.materialColor = MaterialColorHex(materialRow.srgbColor);
+                                row.materialTextColor = Vixen::RenderGraph::UiKit::ContrastingTextHex(materialRow.srgbColor);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             row.materialClearId.clear();
+            row.materialPickerId = "panel-picker-open";
         }
         layers.push_back(std::move(row));
     }
@@ -623,8 +697,19 @@ void EditorApplication::RefreshLayersView() {
                 } else if (expandedNode_ >= graph->view.nodeCount) {
                     expandedNode_ = graph->view.nodeCount - 1u;
                 }
+                std::string layerMaterial;
+                Vixen::Editor::DocumentDiagnostic layerMaterialDiagnostic;
+                const bool hasPlainMaterial = doc_.GetLayerMaterial(
+                    doc_.LayerId(selectedLayer_), layerMaterial, layerMaterialDiagnostic) &&
+                    !layerMaterial.empty() && program.size() >= 2u &&
+                    program[program.size() - 2u].opCode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::MaterialRef) &&
+                    program.back().opCode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Attach);
+                int displayIndex = 0;
                 for (uint32_t nodeIndex = 0; nodeIndex < graph->view.nodeCount; ++nodeIndex) {
                     const auto& node = graph->view.nodes[nodeIndex];
+                    if (hasPlainMaterial &&
+                        (node.instructionIndex == program.size() - 2u || node.instructionIndex == program.size() - 1u))
+                        continue;
                     std::vector<Vixen::SVO::Recipe::SdfInstruction> candidate(
                         program.size() > 0u ? program.size() - 1u : 0u);
                     uint32_t candidateCount = 0u;
@@ -657,9 +742,16 @@ void EditorApplication::RefreshLayersView() {
                         }
                         addReason = Vixen::Editor::EditorDocumentModel::GraphDiagnosticMessage(insertDiagnostic);
                     }
-                    std::string displayName = node.opcodeInfo->name;
+                    const EditorNodeLabel* producerLabel = ProducerNodeLabel(node.opcodeInfo->name);
+                    std::string displayName = producerLabel != nullptr
+                        ? std::string(producerLabel->label)
+                        : node.opcodeInfo->name;
+                    const std::string nodeCategory = producerLabel != nullptr
+                        ? std::string(producerLabel->category)
+                        : categoryName(node.opcodeInfo->category);
                     std::string materialName;
                     std::string materialColor;
+                    std::string materialTextColor;
                     std::string recipeId;
                     Vixen::Editor::DocumentDiagnostic recipeDiagnostic;
                     if (node.opcodeInfo->opcode == static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe) &&
@@ -735,6 +827,7 @@ void EditorApplication::RefreshLayersView() {
                             for (const auto& materialRow : materialRows_) {
                                 if (materialRow.name == materialName) {
                                     materialColor = MaterialColorHex(materialRow.srgbColor);
+                                    materialTextColor = Vixen::RenderGraph::UiKit::ContrastingTextHex(materialRow.srgbColor);
                                     break;
                                 }
                             }
@@ -797,14 +890,15 @@ void EditorApplication::RefreshLayersView() {
                             if (!summary.empty()) summary += " · ";
                             summary += part;
                         }
-                        if (summary.empty()) summary = categoryName(node.opcodeInfo->category);
+                        if (summary.empty()) summary = nodeCategory;
                     }
                     graphData.nodes.push_back({static_cast<int>(nodeIndex), std::move(displayName),
-                                               categoryName(node.opcodeInfo->category), std::move(addOp),
+                                               nodeCategory, std::move(addOp),
                                                std::move(summary), canRemove, nodeIndex == expandedNode_,
                                                std::move(addReason), std::move(removeReason), std::move(removeTitle),
                                                indentFor(node),
-                                               {}, std::move(materialName), std::move(materialColor)});
+                                               {}, std::move(materialName), std::move(materialColor), displayIndex++,
+                                               std::move(materialTextColor)});
                 }
                 for (uint32_t sourceIndex = 0u; sourceIndex < selectedLayer_; ++sourceIndex) {
                     if (doc_.View().layers[sourceIndex].header->op != 4u) continue;
@@ -932,6 +1026,14 @@ void EditorApplication::PublishPickerPrimitives() {
                              "document-material-default-" + material.name,
                              MaterialColorHex(material.srgbColor),
                              Vixen::RenderGraph::UiKit::ContrastingTextHex(material.srgbColor)});
+    }
+    const uint32_t selectedLayerId = doc_.LayerCount() == 0u ? 0u : doc_.LayerId(selectedLayer_);
+    if (publishedPickerFilter_.empty() ||
+        Vixen::Editor::EditorDocumentModel::FilterRank("none", publishedPickerFilter_) >= 0) {
+        materials.push_back({std::to_string(Vixen::SVO::kMaterialRefNone), "none",
+                             "layer-" + std::to_string(selectedLayerId) + "-material-clear", {},
+                             MaterialColorHex(0x808080u),
+                             Vixen::RenderGraph::UiKit::ContrastingTextHex(0x808080u)});
     }
     Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     Vixen::App::RefreshEditorNodeChoicesView(*layersView_, {}, false);

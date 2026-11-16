@@ -42,7 +42,10 @@ struct EditorLayerData {
     std::string diagnostic;
     std::string materialName;
     std::string materialColor;
+    std::string materialTextColor;
+    std::string materialPickerId;
     std::string materialClearId;
+    std::string opTitle;
 };
 
 // E3: the placement of the selected layer, in the order px py pz rx ry rz sx sy sz (rotation in
@@ -94,6 +97,8 @@ struct EditorNodeData {
     std::string warning;
     std::string materialName;
     std::string materialColor;
+    int displayIndex = 0;
+    std::string materialTextColor;
 };
 
 struct EditorNodeArgumentData {

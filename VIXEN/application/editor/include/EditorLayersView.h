@@ -87,6 +87,7 @@ public:
             Vixen::Views::EditorLayerRow row;
             row.name      = Rml::String(layerData[i].name);
             row.op        = Rml::String(layerData[i].op);
+            row.opTitle   = Rml::String(layerData[i].opTitle);
             row.isChecked = Vixen::Views::ComputeEditorLayerRow_isChecked(mask, i);
             row.elementId = "layer-" + std::to_string(i) + "-toggle";
             row.moveUpId = "layer-" + std::to_string(i) + "-up";
@@ -111,6 +112,8 @@ public:
             row.diagnostic = Rml::String(layerData[i].diagnostic);
             row.materialName = Rml::String(layerData[i].materialName);
             row.materialColor = Rml::String(layerData[i].materialColor);
+            row.materialTextColor = Rml::String(layerData[i].materialTextColor);
+            row.materialPickerId = Rml::String(layerData[i].materialPickerId);
             row.materialClearId = Rml::String(layerData[i].materialClearId);
             layers_.push_back(std::move(row));
         }
@@ -202,6 +205,7 @@ public:
             for (const auto& node : graph.nodes) {
                 Vixen::Views::EditorNodeRow row;
                 row.nodeIndex = node.nodeIndex;
+                row.displayIndex = node.displayIndex;
                 row.name = Rml::String(node.name);
                 row.category = Rml::String(node.category);
                 row.addOp = Rml::String(node.addOp);
@@ -220,6 +224,7 @@ public:
                 row.warning = Rml::String(node.warning);
                 row.materialName = Rml::String(node.materialName);
                 row.materialColor = Rml::String(node.materialColor);
+                row.materialTextColor = Rml::String(node.materialTextColor);
                 nodes_.push_back(std::move(row));
             }
             nodeArguments_.reserve(graph.arguments.size());
@@ -390,6 +395,7 @@ public:
             row.elementId = Rml::String(material.elementId);
             row.defaultId = Rml::String(material.defaultId);
             row.color = Rml::String(material.color);
+            row.textColor = Rml::String(material.textColor);
             row.coverage = Rml::String(material.coverage);
             row.coverageStale = material.coverageStale;
             if (!material.coverage.empty()) ++materialCoverageCount_;
