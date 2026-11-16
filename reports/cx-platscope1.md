@@ -33,7 +33,7 @@ All build/test commands below used the live box queue with agent `cx-platscope1`
 - Native attempt A (`cx-platscope1:native-direct-build`) ran the documented `tools/vixen-native.sh --direct build all vixen-ninja test_editor_document_model_preview` through the build queue for 2011 seconds. The Windows configure log stopped advancing after its initial CMake environment record; the lane stopped its own process, and the wrapper recorded exit 76 / payload 137. Evidence: `cx-platscope1-evidence/native-direct-build.log`.
 - Native recovery attempt B (`cx-platscope1:native-direct-retry`) repeated the same queued command with documented `VIXEN_SKIP_BUILD_LOCK=1`; after 600 seconds the same CMake log remained unchanged. The lane stopped it; wrapper exit 76 / payload 137. Evidence: `cx-platscope1-evidence/native-direct-retry.log`.
 
-The native red is therefore unclassified environmental/tooling stall, not a semantic test failure. No native Windows pass count is claimed. The required native CPU CTest witness must be rerun on a healthy Windows-native checkout or after the tooling gap is repaired. The WSL affected scope is green; a full WSL CPU pass-count comparison was not fabricated from the incomplete native baseline.
+The native red above is the historical Round 1 unclassified environmental/tooling stall, not a semantic test failure. Round 2 supplies the required targeted native Windows CPU witness below; the WSL affected scope remains green. This report does not fabricate a full-suite pass-count comparison from the earlier incomplete native baseline.
 
 ## SPT DISPOSITION
 
