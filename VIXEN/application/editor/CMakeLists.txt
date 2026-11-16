@@ -226,7 +226,6 @@ if(BUILD_TESTS AND TARGET VIXEN)
             "VIXEN_HUD_CAPTURE_FRAMES=${VIXEN_HUD_CAPTURE_FRAMES_ENV}"
             "VIXEN_HUD_CAPTURE_DIR=${VIXEN_HUD_CAPTURE_DIR}"
             "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
-            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
             "VIXEN_EXIT_AFTER_FRAMES=${VIXEN_HUD_EXIT_AFTER_FRAMES}")
     set_property(TEST vixen_hud_capture_producer APPEND PROPERTY LABELS VIXEN_HUD_CAPTURE)
 
@@ -337,7 +336,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
         COMMAND bash -c
             "set -eu
             capture_root=\"\${VIXEN_CAPTURE_ROOT:-\${UT_QUEUE_CAPTURE_ROOT:-${VIXEN_EDITOR_CAPTURE_ROOT}}}\"
-            capture_dir=\"\${capture_root}/editor\"
+            capture_dir=\"\${capture_root}/editor-appflow-channel\"
             document=\"\${capture_dir}/sample_tri_layer.vxd\"
             transcript=\"\${capture_dir}/appflow-channel-transcript.json\"
             mkdir -p \"\${capture_dir}\"

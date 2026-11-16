@@ -20,7 +20,7 @@
 #   --regex RE        ctest -R selection (default: everything)
 #   --agent ID        queue fairness identity (default: worktree name)
 #   --cpu-jobs N      ctest -j for the cpu part (default: node width capped by available memory, R847.4)
-#   --gpu-jobs N      concurrent queued GPU shards (default 6; capped at the shared GPU limit)
+#   --gpu-jobs N      concurrent queued GPU shards (default 6; queue admission applies measured headroom)
 #   --out DIR         logs and junit land here (default <build-dir>/split-run)
 #   --witness         record GPU actions during the run (VIXEN_GPU_WITNESS_DIR=<out>/witness) so
 #                     tools/classify-tests-gpu.py can narrow or relabel from the same run

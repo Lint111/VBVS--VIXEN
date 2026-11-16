@@ -3,6 +3,8 @@ setlocal EnableExtensions EnableDelayedExpansion
 REM Run the comparable correctness GPU list from a Windows-native checkout.
 REM Overrides: VIXEN_NATIVE_BUILD_DIR (configured tree), VIXEN_NATIVE_CTEST (full ctest.exe path).
 REM The build is intentionally separate: run build.bat all vixen-ninja-release first.
+REM Pass the literal selector "lookdev-hud" to run the four default look-dev states and the HUD
+REM producer together. Keeping the exact test list in a file avoids cmd.exe re-parsing regex args.
 
 set "ROOT=%~dp0.."
 if defined VIXEN_NATIVE_BUILD_DIR (
@@ -33,12 +35,16 @@ set "CASE_TIMEOUT=%VIXEN_GPU_CASE_TIMEOUT%"
 if not defined CASE_TIMEOUT set "CASE_TIMEOUT=600"
 set "STOP_ARG=--stop-on-failure"
 if "%VIXEN_GPU_STOP_ON_FAILURE%"=="0" set "STOP_ARG="
+if /i "%~1"=="lookdev-hud" goto :lookdev_hud
 if defined VIXEN_NATIVE_ARGS (
     set VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native^|nightly)$" --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !VIXEN_NATIVE_ARGS!
 ) else (
     set VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native^|nightly)$" --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure %*
 )
 echo [native-gpu-suite] test jobs: %VIXEN_MAX_BUILD_JOBS% (source=queue grant)
+:lookdev_hud
+set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L gpu --parallel !VIXEN_MAX_BUILD_JOBS! --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure --tests-from-file "%ROOT%\tools\native-lookdev-hud.tests""
+:run_phase
 REM The phase wrapper prints "[phase:native-gpu-suite] alive ..." while the ctest tree uses CPU, so the
 REM WSL queue watchdog does not mistake a long silent device test for a dead payload (and still
 REM sees a hung one: no CPU growth stops the heartbeat). Arguments travel in an env var, not quoting.
