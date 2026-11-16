@@ -27,13 +27,14 @@ bool ResolveReservoirEnabled();
 /**
  * @brief Node type for ReservoirConfigNode.
  */
-class ReservoirConfigNodeType : public TypedNodeType<ReservoirConfigNodeConfig> {
+class ReservoirConfigNode;
+
+class ReservoirConfigNodeType : public TypedNodeType<ReservoirConfigNodeConfig, ReservoirConfigNode> {
 public:
     ReservoirConfigNodeType(const std::string& typeName = "ReservoirConfig")
-        : TypedNodeType<ReservoirConfigNodeConfig>(typeName) {}
+        : TypedNodeType<ReservoirConfigNodeConfig, ReservoirConfigNode>(typeName) {}
     virtual ~ReservoirConfigNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

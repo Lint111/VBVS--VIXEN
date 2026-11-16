@@ -19,9 +19,6 @@ const uint32_t DynamicInstanceBufferNode::kRingSize = FrameSyncNodeConfig::MAX_F
 
 // ====== DynamicInstanceBufferNodeType ======
 
-std::unique_ptr<NodeInstance> DynamicInstanceBufferNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<DynamicInstanceBufferNode>(n, const_cast<DynamicInstanceBufferNodeType*>(this));
-}
 
 // ====== DynamicInstanceBufferNode ======
 

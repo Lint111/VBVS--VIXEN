@@ -21,11 +21,6 @@ namespace Vixen::RenderGraph {
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::SVO::PhotonCells;
 
-std::unique_ptr<NodeInstance> PhotonCellTableNodeType::CreateInstance(
-    const std::string& instanceName) const {
-    return std::make_unique<PhotonCellTableNode>(
-        instanceName, const_cast<PhotonCellTableNodeType*>(this));
-}
 
 PhotonCellTableNode::PhotonCellTableNode(const std::string& instanceName, NodeType* nodeType)
     : StorageBufferNode(instanceName, nodeType) {

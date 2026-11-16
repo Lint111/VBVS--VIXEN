@@ -57,12 +57,13 @@ private:
 /**
  * @brief Type definition for TextureLoaderNode
  */
-class TextureLoaderNodeType : public TypedNodeType<TextureLoaderNodeConfig> {
+class TextureLoaderNode;
+
+class TextureLoaderNodeType : public TypedNodeType<TextureLoaderNodeConfig, TextureLoaderNode> {
 public:
     TextureLoaderNodeType(const std::string& typeName = "TextureLoader")
-        : TypedNodeType<TextureLoaderNodeConfig>(typeName) {}
+        : TypedNodeType<TextureLoaderNodeConfig, TextureLoaderNode>(typeName) {}
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 } // namespace Vixen::RenderGraph

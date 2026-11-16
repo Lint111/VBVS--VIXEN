@@ -72,11 +72,6 @@ static_assert(sizeof(OctreeConfig) == 256, "OctreeConfig must be 256 bytes for s
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> VoxelGridNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::unique_ptr<NodeInstance>(new VoxelGridNode(instanceName, const_cast<VoxelGridNodeType*>(this)));
-}
 
 // ============================================================================
 // VOXEL GRID NODE IMPLEMENTATION

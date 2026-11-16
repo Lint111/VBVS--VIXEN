@@ -12,11 +12,6 @@ namespace Vixen::RenderGraph {
 
 // ====== FramebufferNodeType ======
 
-std::unique_ptr<NodeInstance> FramebufferNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<FramebufferNode>(instanceName, const_cast<FramebufferNodeType*>(this));
-}
 
 // ====== FramebufferNode ======
 

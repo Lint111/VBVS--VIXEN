@@ -11,13 +11,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for HitAccumParamsConfigNode.
  */
-class HitAccumParamsConfigNodeType : public TypedNodeType<HitAccumParamsConfigNodeConfig> {
+class HitAccumParamsConfigNode;
+
+class HitAccumParamsConfigNodeType : public TypedNodeType<HitAccumParamsConfigNodeConfig, HitAccumParamsConfigNode> {
 public:
     HitAccumParamsConfigNodeType(const std::string& typeName = "HitAccumParamsConfig")
-        : TypedNodeType<HitAccumParamsConfigNodeConfig>(typeName) {}
+        : TypedNodeType<HitAccumParamsConfigNodeConfig, HitAccumParamsConfigNode>(typeName) {}
     virtual ~HitAccumParamsConfigNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

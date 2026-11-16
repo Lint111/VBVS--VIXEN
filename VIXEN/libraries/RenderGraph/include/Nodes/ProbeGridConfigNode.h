@@ -40,13 +40,14 @@ bool ResolveProbeGridEnabled();
 /**
  * @brief Node type for ProbeGridConfigNode.
  */
-class ProbeGridConfigNodeType : public TypedNodeType<ProbeGridConfigNodeConfig> {
+class ProbeGridConfigNode;
+
+class ProbeGridConfigNodeType : public TypedNodeType<ProbeGridConfigNodeConfig, ProbeGridConfigNode> {
 public:
     ProbeGridConfigNodeType(const std::string& typeName = "ProbeGridConfig")
-        : TypedNodeType<ProbeGridConfigNodeConfig>(typeName) {}
+        : TypedNodeType<ProbeGridConfigNodeConfig, ProbeGridConfigNode>(typeName) {}
     virtual ~ProbeGridConfigNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

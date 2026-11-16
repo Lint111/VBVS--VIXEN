@@ -22,15 +22,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for debug buffer reading
  */
-class DebugBufferReaderNodeType : public TypedNodeType<DebugBufferReaderNodeConfig> {
+class DebugBufferReaderNode;
+
+class DebugBufferReaderNodeType : public TypedNodeType<DebugBufferReaderNodeConfig, DebugBufferReaderNode> {
 public:
     DebugBufferReaderNodeType(const std::string& typeName = "DebugBufferReader")
-        : TypedNodeType<DebugBufferReaderNodeConfig>(typeName) {}
+        : TypedNodeType<DebugBufferReaderNodeConfig, DebugBufferReaderNode>(typeName) {}
     virtual ~DebugBufferReaderNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 

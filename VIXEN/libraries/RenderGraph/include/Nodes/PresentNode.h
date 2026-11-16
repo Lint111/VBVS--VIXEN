@@ -15,15 +15,14 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 110
  */
-class PresentNodeType : public TypedNodeType<PresentNodeConfig> {
+class PresentNode;
+
+class PresentNodeType : public TypedNodeType<PresentNodeConfig, PresentNode> {
 public:
     PresentNodeType(const std::string& typeName = "Present")
-        : TypedNodeType<PresentNodeConfig>(typeName) {}
+        : TypedNodeType<PresentNodeConfig, PresentNode>(typeName) {}
     virtual ~PresentNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

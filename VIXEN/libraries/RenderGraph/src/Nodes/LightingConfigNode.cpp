@@ -79,9 +79,6 @@ bool IsCornellDemo() {
 
 // ====== LightingConfigNodeType ======
 
-std::unique_ptr<NodeInstance> LightingConfigNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<LightingConfigNode>(n, const_cast<LightingConfigNodeType*>(this));
-}
 
 // ====== LightingConfigNode ======
 

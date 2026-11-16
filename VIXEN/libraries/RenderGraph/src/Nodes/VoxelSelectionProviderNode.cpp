@@ -84,12 +84,6 @@ glm::uvec2 ToRenderTexel(const glm::vec2& windowPos, const glm::vec2& windowExte
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> VoxelSelectionProviderNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<VoxelSelectionProviderNode>(
-        instanceName, const_cast<VoxelSelectionProviderNodeType*>(this));
-}
 
 // ============================================================================
 // VOXEL SELECTION PROVIDER NODE IMPLEMENTATION

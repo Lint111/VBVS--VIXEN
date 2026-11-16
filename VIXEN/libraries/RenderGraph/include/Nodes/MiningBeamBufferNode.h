@@ -21,11 +21,12 @@ struct MiningBeamInput {
     glm::vec3 color{0.08f, 0.68f, 1.0f};
 };
 
-class MiningBeamBufferNodeType : public TypedNodeType<MiningBeamBufferNodeConfig> {
+class MiningBeamBufferNode;
+
+class MiningBeamBufferNodeType : public TypedNodeType<MiningBeamBufferNodeConfig, MiningBeamBufferNode> {
 public:
     explicit MiningBeamBufferNodeType(const std::string& typeName = "MiningBeamBuffer")
-        : TypedNodeType<MiningBeamBufferNodeConfig>(typeName) {}
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
+        : TypedNodeType<MiningBeamBufferNodeConfig, MiningBeamBufferNode>(typeName) {}
 };
 
 /**

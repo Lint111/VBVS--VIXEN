@@ -69,9 +69,6 @@ std::string ResolveUiAsset(const std::string& configured) {
 
 }  // namespace
 
-std::unique_ptr<NodeInstance> UIRenderNodeType::CreateInstance(const std::string& instanceName) const {
-    return std::make_unique<UIRenderNode>(instanceName, const_cast<UIRenderNodeType*>(this));
-}
 
 UIRenderNode::UIRenderNode(const std::string& instanceName, NodeType* nodeType)
     : TypedNode<UIRenderNodeConfig>(instanceName, nodeType),

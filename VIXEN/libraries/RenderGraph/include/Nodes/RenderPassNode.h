@@ -63,14 +63,13 @@ private:
 /**
  * @brief Type definition for RenderPassNode
  */
-class RenderPassNodeType : public TypedNodeType<RenderPassNodeConfig> {
+class RenderPassNode;
+
+class RenderPassNodeType : public TypedNodeType<RenderPassNodeConfig, RenderPassNode> {
 public:
     RenderPassNodeType(const std::string& typeName = "RenderPass")
-        : TypedNodeType<RenderPassNodeConfig>(typeName) {}
+        : TypedNodeType<RenderPassNodeConfig, RenderPassNode>(typeName) {}
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 } // namespace Vixen::RenderGraph

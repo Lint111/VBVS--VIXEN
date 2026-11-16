@@ -1,3 +1,6 @@
+#include "error/VulkanError.h"
+#include "Nodes/Common/SwapchainBarriers.h"
+
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Persistent temporal-accumulation history pair, allocated + transitioned for the
 // scene-linear HDR accumulation seam.
@@ -34,9 +37,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== AccumulationHistoryNodeType ======
 
-std::unique_ptr<NodeInstance> AccumulationHistoryNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<AccumulationHistoryNode>(n, const_cast<AccumulationHistoryNodeType*>(this));
-}
 
 // ====== AccumulationHistoryNode ======
 
@@ -184,9 +184,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (vkCreateImage(vkDevice, &imgInfo, nullptr, &image) != VK_SUCCESS) {
-        throw std::runtime_error("[AccumulationHistoryNode] vkCreateImage failed");
-    }
+    VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &image), "[AccumulationHistoryNode] vkCreateImage failed");
 
     // --- Allocate device-local memory via real memory-type selection ---
     VkMemoryRequirements req{};
@@ -218,9 +216,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     viewInfo.format           = format_;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &view) != VK_SUCCESS) {
-        throw std::runtime_error("[AccumulationHistoryNode] vkCreateImageView failed");
-    }
+    VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &view), "[AccumulationHistoryNode] vkCreateImageView failed");
 
     // One-time UNDEFINED -> GENERAL transition. Storage images stay GENERAL across dispatches, so
     // this single transition makes the descriptor (always GENERAL) correct for every frame.
@@ -234,62 +230,42 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
 void AccumulationHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkImage image) {
     VkDevice vkDevice = GetDevice()->device;
 
-    // One-shot command buffer for the layout transition.
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool        = commandPool;
-    allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
+    SwapchainBarriers::RecordAndSubmitOneShot(
+        vkDevice, commandPool,
+        [&](VkCommandBuffer cmd) {
+            VkImageMemoryBarrier barrier{};
+            barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.srcAccessMask       = 0;
+            barrier.dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+            barrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image               = image;
+            barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[AccumulationHistoryNode] vkAllocateCommandBuffers (transition) failed");
-    }
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                                 0, nullptr, 0, nullptr, 1, &barrier);
 
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[AccumulationHistoryNode] vkBeginCommandBuffer (transition) failed");
-    }
-
-    VkImageMemoryBarrier barrier{};
-    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask       = 0;
-    barrier.dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
-    barrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image               = image;
-    barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                         0, nullptr, 0, nullptr, 1, &barrier);
-
-    // A fresh image holds zero: a reader that counts valid history sees none.
-    const VkClearColorValue zero{};
-    vkCmdClearColorImage(cmd, image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &barrier.subresourceRange);
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-                         0, nullptr, 0, nullptr, 1, &barrier);
-
-    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[AccumulationHistoryNode] vkEndCommandBuffer (transition) failed");
-    }
-
-    // R715: the one-shot rides the graph's submission stream (queue order and its barrier
-    // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
-    // so there is no submit-then-wait-idle here.
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[AccumulationHistoryNode] queue-owner transition submit failed");
-    }
-
+            // A fresh image holds zero: a reader that counts valid history sees none.
+            const VkClearColorValue zero{};
+            vkCmdClearColorImage(cmd, image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &barrier.subresourceRange);
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+                                 0, nullptr, 0, nullptr, 1, &barrier);
+        },
+        [&](VkCommandBuffer cmd) {
+            // R715: the one-shot rides the graph's submission stream; queue order and its barrier
+            // order it before every later submit, with retirement handled by the graph owner.
+            return GetOwningGraph()->SubmitOneShot(this, commandPool, cmd);
+        },
+        "[AccumulationHistoryNode] vkAllocateCommandBuffers (transition) failed",
+        "[AccumulationHistoryNode] vkBeginCommandBuffer (transition) failed",
+        "[AccumulationHistoryNode] vkEndCommandBuffer (transition) failed",
+        "[AccumulationHistoryNode] queue-owner transition submit failed");
 }
 
 void AccumulationHistoryNode::DestroyImages() {

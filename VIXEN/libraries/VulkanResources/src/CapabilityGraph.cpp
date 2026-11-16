@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "CapabilityGraph.h"
 #include "VulkanCapabilityConfig.h"
 #ifndef VIXEN_CAPABILITY_CONFIGURE_PROBE
@@ -414,9 +416,7 @@ void CapabilityGraph::ObservePhysicalDevice(VkPhysicalDevice physicalDevice) {
                CapabilityVersionValue::FromVulkanApi(properties.apiVersion));
 
     uint32_t extensionCount = 0;
-    if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("CapabilityGraph could not enumerate device extension count");
-    }
+    VK_CHECK_THROW(vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr), "CapabilityGraph could not enumerate device extension count");
     std::vector<VkExtensionProperties> extensionProperties(extensionCount);
     if (extensionCount != 0 && vkEnumerateDeviceExtensionProperties(
             physicalDevice, nullptr, &extensionCount, extensionProperties.data()) != VK_SUCCESS) {

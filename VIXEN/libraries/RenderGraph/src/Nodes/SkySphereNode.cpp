@@ -1,3 +1,6 @@
+#include "error/VulkanError.h"
+#include "Nodes/Common/SwapchainBarriers.h"
+
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 
 #include "Nodes/SkySphereNode.h"
@@ -233,9 +236,6 @@ namespace Vixen::RenderGraph {
 
 using namespace Vixen::Vulkan::Resources;
 
-std::unique_ptr<NodeInstance> SkySphereNodeType::CreateInstance(const std::string& name) const {
-    return std::make_unique<SkySphereNode>(name, const_cast<SkySphereNodeType*>(this));
-}
 
 SkySphereNode::SkySphereNode(const std::string& name, NodeType* type)
     : TypedNode<SkySphereNodeConfig>(name, type) {
@@ -353,9 +353,7 @@ void SkySphereNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool)
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (vkCreateImage(device_->device, &imageInfo, nullptr, &buffer.image) != VK_SUCCESS) {
-        throw std::runtime_error("[SkySphereNode] vkCreateImage failed");
-    }
+    VK_CHECK_THROW(vkCreateImage(device_->device, &imageInfo, nullptr, &buffer.image), "[SkySphereNode] vkCreateImage failed");
 
     VkMemoryRequirements imageRequirements{};
     vkGetImageMemoryRequirements(device_->device, buffer.image, &imageRequirements);
@@ -365,12 +363,8 @@ void SkySphereNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool)
     imageAllocation.memoryTypeIndex = FindSuitableMemoryType(
         memoryProperties, imageRequirements.memoryTypeBits,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "sky image");
-    if (vkAllocateMemory(device_->device, &imageAllocation, nullptr, &buffer.memory) != VK_SUCCESS) {
-        throw std::runtime_error("[SkySphereNode] vkAllocateMemory for image failed");
-    }
-    if (vkBindImageMemory(device_->device, buffer.image, buffer.memory, 0) != VK_SUCCESS) {
-        throw std::runtime_error("[SkySphereNode] vkBindImageMemory failed");
-    }
+    VK_CHECK_THROW(vkAllocateMemory(device_->device, &imageAllocation, nullptr, &buffer.memory), "[SkySphereNode] vkAllocateMemory for image failed");
+    VK_CHECK_THROW(vkBindImageMemory(device_->device, buffer.image, buffer.memory, 0), "[SkySphereNode] vkBindImageMemory failed");
 
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -378,9 +372,7 @@ void SkySphereNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool)
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = format_;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    if (vkCreateImageView(device_->device, &viewInfo, nullptr, &buffer.view) != VK_SUCCESS) {
-        throw std::runtime_error("[SkySphereNode] vkCreateImageView failed");
-    }
+    VK_CHECK_THROW(vkCreateImageView(device_->device, &viewInfo, nullptr, &buffer.view), "[SkySphereNode] vkCreateImageView failed");
 
     TransitionToGeneral(commandPool_);
     NODE_LOG_INFO("[SkySphereNode] Created RGBA16F octahedral cache " +
@@ -389,45 +381,31 @@ void SkySphereNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool)
 
 void SkySphereNode::TransitionToGeneral(VkCommandPool commandPool) {
     VkDevice vkDevice = device_->device;
-    VkCommandBufferAllocateInfo allocation{};
-    allocation.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocation.commandPool = commandPool;
-    allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocation.commandBufferCount = 1;
-
-    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocation, &commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("[SkySphereNode] vkAllocateCommandBuffers failed");
-    }
-    VkCommandBufferBeginInfo begin{};
-    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(commandBuffer, &begin) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &commandBuffer);
-        throw std::runtime_error("[SkySphereNode] vkBeginCommandBuffer failed");
-    }
-
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = target_.buffers[0].image;
-    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0, 0, nullptr, 0, nullptr, 1, &barrier);
-
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &commandBuffer);
-        throw std::runtime_error("[SkySphereNode] vkEndCommandBuffer failed");
-    }
-    // R715: the transition rides the graph's submission stream; the command buffer is freed once
-    // the queue timeline reaches it (no submit-then-wait-idle).
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, commandBuffer) != VK_SUCCESS)
-        throw std::runtime_error("[SkySphereNode] image transition submit failed");
+    SwapchainBarriers::RecordAndSubmitOneShot(
+        vkDevice, commandPool,
+        [&](VkCommandBuffer commandBuffer) {
+            VkImageMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = target_.buffers[0].image;
+            barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        },
+        [&](VkCommandBuffer commandBuffer) {
+            // R715: the transition rides the graph's submission stream; the command buffer is
+            // freed once the queue timeline reaches it (no submit-then-wait-idle).
+            return GetOwningGraph()->SubmitOneShot(this, commandPool, commandBuffer);
+        },
+        "[SkySphereNode] vkAllocateCommandBuffers failed",
+        "[SkySphereNode] vkBeginCommandBuffer failed",
+        "[SkySphereNode] vkEndCommandBuffer failed",
+        "[SkySphereNode] image transition submit failed");
     target_.SetImageLayout(0, VK_IMAGE_LAYOUT_GENERAL);
 }
 
@@ -463,9 +441,7 @@ void SkySphereNode::UploadPixels(const std::vector<uint16_t>* rgba16, bool initi
         bufferInfo.size = byteCount;
         bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &staging.buffer) != VK_SUCCESS) {
-            throw std::runtime_error("[SkySphereNode] staging vkCreateBuffer failed");
-        }
+        VK_CHECK_THROW(vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &staging.buffer), "[SkySphereNode] staging vkCreateBuffer failed");
 
         VkMemoryRequirements requirements{};
         vkGetBufferMemoryRequirements(vkDevice, staging.buffer, &requirements);
@@ -491,17 +467,11 @@ void SkySphereNode::UploadPixels(const std::vector<uint16_t>* rgba16, bool initi
         memoryAllocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         memoryAllocation.allocationSize = requirements.size;
         memoryAllocation.memoryTypeIndex = memoryType;
-        if (vkAllocateMemory(vkDevice, &memoryAllocation, nullptr, &staging.memory) != VK_SUCCESS) {
-            throw std::runtime_error("[SkySphereNode] staging vkAllocateMemory failed");
-        }
-        if (vkBindBufferMemory(vkDevice, staging.buffer, staging.memory, 0) != VK_SUCCESS) {
-            throw std::runtime_error("[SkySphereNode] staging vkBindBufferMemory failed");
-        }
+        VK_CHECK_THROW(vkAllocateMemory(vkDevice, &memoryAllocation, nullptr, &staging.memory), "[SkySphereNode] staging vkAllocateMemory failed");
+        VK_CHECK_THROW(vkBindBufferMemory(vkDevice, staging.buffer, staging.memory, 0), "[SkySphereNode] staging vkBindBufferMemory failed");
 
         void* mapped = nullptr;
-        if (vkMapMemory(vkDevice, staging.memory, 0, byteCount, 0, &mapped) != VK_SUCCESS) {
-            throw std::runtime_error("[SkySphereNode] staging vkMapMemory failed");
-        }
+        VK_CHECK_THROW(vkMapMemory(vkDevice, staging.memory, 0, byteCount, 0, &mapped), "[SkySphereNode] staging vkMapMemory failed");
         std::memcpy(mapped, rgba16->data(), static_cast<size_t>(byteCount));
         if (!stagingHostCoherent) {
             VkMappedMemoryRange range{};
@@ -517,92 +487,78 @@ void SkySphereNode::UploadPixels(const std::vector<uint16_t>* rgba16, bool initi
         vkUnmapMemory(vkDevice, staging.memory);
     }
 
-    VkCommandBufferAllocateInfo allocation{};
-    allocation.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocation.commandPool = commandPool_;
-    allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocation.commandBufferCount = 1;
-    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocation, &commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("[SkySphereNode] upload vkAllocateCommandBuffers failed");
-    }
+    SwapchainBarriers::RecordAndSubmitOneShot(
+        vkDevice, commandPool_,
+        [&](VkCommandBuffer commandBuffer) {
+            VkImageMemoryBarrier toTransfer{};
+            toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            toTransfer.srcAccessMask = initialized ? VK_ACCESS_SHADER_READ_BIT : 0;
+            toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            toTransfer.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+            toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            toTransfer.image = target_.buffers[0].image;
+            toTransfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdPipelineBarrier(commandBuffer,
+                initialized ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
 
-    VkCommandBufferBeginInfo begin{};
-    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(commandBuffer, &begin) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool_, 1, &commandBuffer);
-        throw std::runtime_error("[SkySphereNode] upload vkBeginCommandBuffer failed");
-    }
+            if (rgba16) {
+                VkBufferMemoryBarrier hostWrite{};
+                hostWrite.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                hostWrite.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+                hostWrite.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                hostWrite.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                hostWrite.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                hostWrite.buffer = staging.buffer;
+                hostWrite.offset = 0;
+                hostWrite.size = byteCount;
+                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     0, 0, nullptr, 1, &hostWrite, 0, nullptr);
 
-    VkImageMemoryBarrier toTransfer{};
-    toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    toTransfer.srcAccessMask = initialized ? VK_ACCESS_SHADER_READ_BIT : 0;
-    toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    toTransfer.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toTransfer.image = target_.buffers[0].image;
-    toTransfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCmdPipelineBarrier(commandBuffer,
-        initialized ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
+                VkBufferImageCopy copy{};
+                copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                copy.imageExtent = {width_, height_, 1};
+                vkCmdCopyBufferToImage(commandBuffer, staging.buffer, target_.buffers[0].image,
+                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            } else {
+                VkClearColorValue transparentBlack{};
+                vkCmdClearColorImage(commandBuffer, target_.buffers[0].image,
+                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &transparentBlack,
+                                     1, &toTransfer.subresourceRange);
+            }
 
-    if (rgba16) {
-        VkBufferMemoryBarrier hostWrite{};
-        hostWrite.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-        hostWrite.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-        hostWrite.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        hostWrite.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        hostWrite.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        hostWrite.buffer = staging.buffer;
-        hostWrite.offset = 0;
-        hostWrite.size = byteCount;
-        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0, 0, nullptr, 1, &hostWrite, 0, nullptr);
-
-        VkBufferImageCopy copy{};
-        copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        copy.imageExtent = {width_, height_, 1};
-        vkCmdCopyBufferToImage(commandBuffer, staging.buffer, target_.buffers[0].image,
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-    } else {
-        VkClearColorValue transparentBlack{};
-        vkCmdClearColorImage(commandBuffer, target_.buffers[0].image,
-                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &transparentBlack,
-                             1, &toTransfer.subresourceRange);
-    }
-
-    VkImageMemoryBarrier toGeneral{};
-    toGeneral.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    toGeneral.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    toGeneral.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    toGeneral.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    toGeneral.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    toGeneral.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toGeneral.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toGeneral.image = target_.buffers[0].image;
-    toGeneral.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-                         0, nullptr, 0, nullptr, 1, &toGeneral);
-
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool_, 1, &commandBuffer);
-        throw std::runtime_error("[SkySphereNode] upload vkEndCommandBuffer failed");
-    }
-    // R715: the upload rides the graph's submission stream instead of submit plus wait idle on
-    // the frame path. The staging buffer moves into the release, which runs once the queue
-    // timeline reaches the upload (or at once if the submit fails).
-    const VkBuffer stagingBuffer = std::exchange(staging.buffer, VK_NULL_HANDLE);
-    const VkDeviceMemory stagingMemory = std::exchange(staging.memory, VK_NULL_HANDLE);
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool_, commandBuffer,
-            [vkDevice, stagingBuffer, stagingMemory] {
-                if (stagingBuffer != VK_NULL_HANDLE) vkDestroyBuffer(vkDevice, stagingBuffer, nullptr);
-                if (stagingMemory != VK_NULL_HANDLE) vkFreeMemory(vkDevice, stagingMemory, nullptr);
-            }) != VK_SUCCESS)
-        throw std::runtime_error("[SkySphereNode] upload queue submission failed");
+            VkImageMemoryBarrier toGeneral{};
+            toGeneral.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            toGeneral.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            toGeneral.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            toGeneral.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            toGeneral.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            toGeneral.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            toGeneral.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            toGeneral.image = target_.buffers[0].image;
+            toGeneral.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+                                 0, nullptr, 0, nullptr, 1, &toGeneral);
+        },
+        [&](VkCommandBuffer commandBuffer) {
+            // R715: the upload rides the graph's submission stream instead of submit plus wait idle
+            // on the frame path. The staging buffer moves into the release, which runs once the
+            // queue timeline reaches the upload (or at once if the submit fails).
+            const VkBuffer stagingBuffer = std::exchange(staging.buffer, VK_NULL_HANDLE);
+            const VkDeviceMemory stagingMemory = std::exchange(staging.memory, VK_NULL_HANDLE);
+            return GetOwningGraph()->SubmitOneShot(this, commandPool_, commandBuffer,
+                [vkDevice, stagingBuffer, stagingMemory] {
+                    if (stagingBuffer != VK_NULL_HANDLE) vkDestroyBuffer(vkDevice, stagingBuffer, nullptr);
+                    if (stagingMemory != VK_NULL_HANDLE) vkFreeMemory(vkDevice, stagingMemory, nullptr);
+                });
+        },
+        "[SkySphereNode] upload vkAllocateCommandBuffers failed",
+        "[SkySphereNode] upload vkBeginCommandBuffer failed",
+        "[SkySphereNode] upload vkEndCommandBuffer failed",
+        "[SkySphereNode] upload queue submission failed");
     target_.SetImageLayout(0, VK_IMAGE_LAYOUT_GENERAL);
 }
 

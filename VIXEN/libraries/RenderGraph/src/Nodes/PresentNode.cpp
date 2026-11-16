@@ -12,14 +12,6 @@ namespace Vixen::RenderGraph {
 
 // ====== PresentNodeType ======
 
-std::unique_ptr<NodeInstance> PresentNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<PresentNode>(
-        instanceName,
-        const_cast<PresentNodeType*>(this)
-    );
-}
 
 // ====== PresentNode ======
 

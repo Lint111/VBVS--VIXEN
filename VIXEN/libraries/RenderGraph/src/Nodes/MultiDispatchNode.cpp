@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/MultiDispatchNode.h"
 #include "Core/NodeRegistration.h"
@@ -19,14 +21,6 @@ namespace Vixen::RenderGraph {
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> MultiDispatchNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<MultiDispatchNode>(
-        instanceName,
-        const_cast<MultiDispatchNodeType*>(this)
-    );
-}
 
 // ============================================================================
 // CONSTRUCTOR
@@ -234,10 +228,8 @@ void MultiDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
     VkResult result = vkAllocateCommandBuffers(
         vulkanDevice_->device, &allocInfo, cmdBuffers.data());
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[MultiDispatchNode::CompileImpl] Failed to allocate "
+    VK_CHECK_THROW(result, "[MultiDispatchNode::CompileImpl] Failed to allocate "
             "command buffers: " + std::to_string(result));
-    }
 
     // Store command buffers in stateful container
     for (uint32_t i = 0; i < imageCount; ++i) {
@@ -553,8 +545,7 @@ std::vector<VkCommandBuffer> MultiDispatchNode::RecordDispatches(
         allocation.commandPool = commandPool_;
         allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocation.commandBufferCount = static_cast<uint32_t>(allocated.size());
-        if (vkAllocateCommandBuffers(vulkanDevice_->device, &allocation, allocated.data()) != VK_SUCCESS)
-            throw std::runtime_error("MultiDispatchNode: tile command allocation failed");
+        VK_CHECK_THROW(vkAllocateCommandBuffers(vulkanDevice_->device, &allocation, allocated.data()), "MultiDispatchNode: tile command allocation failed");
         extras.insert(extras.end(), allocated.begin(), allocated.end());
     }
     std::vector<VkCommandBuffer> commands{first};
@@ -574,8 +565,7 @@ std::vector<VkCommandBuffer> MultiDispatchNode::RecordDispatches(
     const auto begin = [&](VkCommandBuffer cmd) {
         VkCommandBufferBeginInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        if (vkBeginCommandBuffer(cmd, &info) != VK_SUCCESS)
-            throw std::runtime_error("MultiDispatchNode: begin tile command failed");
+        VK_CHECK_THROW(vkBeginCommandBuffer(cmd, &info), "MultiDispatchNode: begin tile command failed");
         if (query) {
             if (chunk == 0) query->ResetQueries(cmd, 0);
             query->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, static_cast<uint32_t>(chunk * 4));
@@ -592,8 +582,7 @@ std::vector<VkCommandBuffer> MultiDispatchNode::RecordDispatches(
                 querySlot_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
         if (query) query->WriteTimestamp(cmd, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             static_cast<uint32_t>(chunk * 4 + 3));
-        if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
-            throw std::runtime_error("MultiDispatchNode: end tile command failed");
+        VK_CHECK_THROW(vkEndCommandBuffer(cmd), "MultiDispatchNode: end tile command failed");
         ++chunk;
     };
     for (std::size_t passIndex = 0; passIndex < passes.size(); ++passIndex) {

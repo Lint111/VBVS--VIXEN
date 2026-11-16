@@ -49,13 +49,14 @@ struct BlitSubmissionPolicy {
 /**
  * @brief Node type for the presentation-only blit node.
  */
-class BlitNodeType : public TypedNodeType<BlitNodeConfig> {
+class BlitNode;
+
+class BlitNodeType : public TypedNodeType<BlitNodeConfig, BlitNode> {
 public:
     BlitNodeType(const std::string& typeName = "Blit")
-        : TypedNodeType<BlitNodeConfig>(typeName) {}
+        : TypedNodeType<BlitNodeConfig, BlitNode>(typeName) {}
     ~BlitNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

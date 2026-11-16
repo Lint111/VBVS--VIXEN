@@ -17,14 +17,14 @@ class PhotonCellParamsConfigNode;
  * entry layout are part of the photon node contract and therefore travel with
  * the reusable node into any graph.
  */
-class PhotonCellTableNodeType : public TypedNodeType<StorageBufferNodeConfig> {
+class PhotonCellTableNode;
+
+class PhotonCellTableNodeType : public TypedNodeType<StorageBufferNodeConfig, PhotonCellTableNode> {
 public:
     explicit PhotonCellTableNodeType(const std::string& typeName = "PhotonCellTable")
-        : TypedNodeType<StorageBufferNodeConfig>(typeName) {}
+        : TypedNodeType<StorageBufferNodeConfig, PhotonCellTableNode>(typeName) {}
     ~PhotonCellTableNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName) const override;
 };
 
 /**

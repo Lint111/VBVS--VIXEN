@@ -22,15 +22,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for acceleration structure building
  */
-class AccelerationStructureNodeType : public TypedNodeType<AccelerationStructureNodeConfig> {
+class AccelerationStructureNode;
+
+class AccelerationStructureNodeType : public TypedNodeType<AccelerationStructureNodeConfig, AccelerationStructureNode> {
 public:
     AccelerationStructureNodeType(const std::string& typeName = "AccelerationStructure")
-        : TypedNodeType<AccelerationStructureNodeConfig>(typeName) {}
+        : TypedNodeType<AccelerationStructureNodeConfig, AccelerationStructureNode>(typeName) {}
     virtual ~AccelerationStructureNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

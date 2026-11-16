@@ -47,13 +47,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for SkyProjectionNode.
  */
-class SkyProjectionNodeType : public TypedNodeType<SkyProjectionNodeConfig> {
+class SkyProjectionNode;
+
+class SkyProjectionNodeType : public TypedNodeType<SkyProjectionNodeConfig, SkyProjectionNode> {
 public:
     SkyProjectionNodeType(const std::string& typeName = "SkyProjection")
-        : TypedNodeType<SkyProjectionNodeConfig>(typeName) {}
+        : TypedNodeType<SkyProjectionNodeConfig, SkyProjectionNode>(typeName) {}
     ~SkyProjectionNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

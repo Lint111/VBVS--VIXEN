@@ -16,12 +16,6 @@ namespace Vixen::RenderGraph {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> SelectionCoordinatorNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<SelectionCoordinatorNode>(
-        instanceName, const_cast<SelectionCoordinatorNodeType*>(this));
-}
 
 // ============================================================================
 // SELECTION COORDINATOR NODE IMPLEMENTATION

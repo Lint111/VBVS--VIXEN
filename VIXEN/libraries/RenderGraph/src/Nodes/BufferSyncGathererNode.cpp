@@ -13,10 +13,6 @@ namespace Vixen::RenderGraph {
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> BufferSyncGathererNodeType::CreateInstance(
-    const std::string& instanceName) const {
-    return std::make_unique<BufferSyncGathererNode>(instanceName, const_cast<BufferSyncGathererNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR

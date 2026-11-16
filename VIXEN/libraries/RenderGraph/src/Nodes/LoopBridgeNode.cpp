@@ -11,11 +11,6 @@ namespace Vixen::RenderGraph {
 // Type ID: 110
 static constexpr NodeTypeId LOOP_BRIDGE_NODE_TYPE_ID = 110;
 
-std::unique_ptr<NodeInstance> LoopBridgeNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<LoopBridgeNode>(instanceName, const_cast<LoopBridgeNodeType*>(this));
-}
 
 LoopBridgeNode::LoopBridgeNode(
     const std::string& instanceName,

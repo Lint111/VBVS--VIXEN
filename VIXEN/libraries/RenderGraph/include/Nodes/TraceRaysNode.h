@@ -20,15 +20,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for ray tracing dispatch
  */
-class TraceRaysNodeType : public TypedNodeType<TraceRaysNodeConfig> {
+class TraceRaysNode;
+
+class TraceRaysNodeType : public TypedNodeType<TraceRaysNodeConfig, TraceRaysNode> {
 public:
     TraceRaysNodeType(const std::string& typeName = "TraceRays")
-        : TypedNodeType<TraceRaysNodeConfig>(typeName) {}
+        : TypedNodeType<TraceRaysNodeConfig, TraceRaysNode>(typeName) {}
     virtual ~TraceRaysNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

@@ -11,13 +11,14 @@ namespace Vixen::RenderGraph {
  * @brief Node type for the GPU picking ID target (RG32_UINT storage image ring)
  * Type ID: 126
  */
-class PickIdTargetNodeType : public TypedNodeType<PickIdTargetNodeConfig> {
+class PickIdTargetNode;
+
+class PickIdTargetNodeType : public TypedNodeType<PickIdTargetNodeConfig, PickIdTargetNode> {
 public:
     PickIdTargetNodeType(const std::string& typeName = "PickIdTarget")
-        : TypedNodeType<PickIdTargetNodeConfig>(typeName) {}
+        : TypedNodeType<PickIdTargetNodeConfig, PickIdTargetNode>(typeName) {}
     virtual ~PickIdTargetNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

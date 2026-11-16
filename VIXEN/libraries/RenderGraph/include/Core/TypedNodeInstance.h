@@ -8,6 +8,7 @@
 #include <vector>
 #include <algorithm>    // std::stable_sort (accumulation gather ordering)
 #include <type_traits>  // std::conditional_t (accumulation element-type derivation)
+#include <stdexcept>
 
 namespace Vixen::RenderGraph {
 
@@ -980,13 +981,13 @@ protected:
  *     }
  * };
  *
- * // NEW: Automatic schema population
- * class BoolOpNodeType : public TypedNodeType<BoolOpNodeConfig> {
- *     BoolOpNodeType() : TypedNodeType<BoolOpNodeConfig>("BoolOp") {}
+ * // NEW: Automatic schema population and instance creation
+ * class BoolOpNodeType : public TypedNodeType<BoolOpNodeConfig, BoolOpNode> {
+ *     BoolOpNodeType() : TypedNodeType<BoolOpNodeConfig, BoolOpNode>("BoolOp") {}
  * };
  * ```
  */
-template<typename ConfigType>
+template<typename ConfigType, typename NodeClass = void>
 class TypedNodeType : public NodeType {
 public:
     TypedNodeType(const std::string& typeName)
@@ -995,6 +996,18 @@ public:
         ConfigType config;
         inputSchema = config.GetInputVector();
         outputSchema = config.GetOutputVector();
+    }
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override {
+        if constexpr (std::is_void_v<NodeClass>) {
+            // Custom node types can keep the one-parameter form and provide
+            // their own factory when construction needs extra dependencies.
+            throw std::logic_error("TypedNodeType requires a custom CreateInstance implementation");
+        } else {
+            return std::make_unique<NodeClass>(
+                instanceName,
+                const_cast<NodeType*>(static_cast<const NodeType*>(this)));
+        }
     }
 };
 

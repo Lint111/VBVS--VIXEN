@@ -10,7 +10,7 @@ namespace Vixen::RenderGraph {
 // ====== CommandPoolNodeType ======
 
 CommandPoolNodeType::CommandPoolNodeType(const std::string& typeName)
-    : TypedNodeType<CommandPoolNodeConfig>(typeName)
+    : TypedNodeType<CommandPoolNodeConfig, CommandPoolNode>(typeName)
 {
     requiredCapabilities = DeviceCapability::None;
     supportsInstancing = true;
@@ -25,14 +25,6 @@ CommandPoolNodeType::CommandPoolNodeType(const std::string& typeName)
     // Schema population now handled by TypedNodeType base class
 }
 
-std::unique_ptr<NodeInstance> CommandPoolNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<CommandPoolNode>(
-        instanceName,
-        const_cast<NodeType*>(static_cast<const NodeType*>(this))
-    );
-}
 
 // ====== CommandPoolNode ======
 

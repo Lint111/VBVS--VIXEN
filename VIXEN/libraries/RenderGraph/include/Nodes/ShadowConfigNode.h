@@ -11,13 +11,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for ShadowConfigNode.
  */
-class ShadowConfigNodeType : public TypedNodeType<ShadowConfigNodeConfig> {
+class ShadowConfigNode;
+
+class ShadowConfigNodeType : public TypedNodeType<ShadowConfigNodeConfig, ShadowConfigNode> {
 public:
     ShadowConfigNodeType(const std::string& typeName = "ShadowConfig")
-        : TypedNodeType<ShadowConfigNodeConfig>(typeName) {}
+        : TypedNodeType<ShadowConfigNodeConfig, ShadowConfigNode>(typeName) {}
     virtual ~ShadowConfigNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "FrameTrace.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/ComputeDispatchNode.h"
@@ -35,11 +37,6 @@ static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> ComputeDispatchNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<ComputeDispatchNode>(instanceName, const_cast<ComputeDispatchNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR
@@ -119,9 +116,7 @@ void ComputeDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     std::vector<VkCommandBuffer> cmdBuffers(cmdBufferCount);
     VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, cmdBuffers.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to allocate command buffers: " + std::to_string(result));
-    }
+    VK_CHECK_THROW(result, "[ComputeDispatchNode::CompileImpl] Failed to allocate command buffers: " + std::to_string(result));
 
     // Store command buffers in stateful container
     for (uint32_t i = 0; i < cmdBufferCount; ++i) {
@@ -616,8 +611,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         allocation.commandPool = commandPool;
         allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocation.commandBufferCount = needed;
-        if (vkAllocateCommandBuffers(vulkanDevice->device, &allocation, allocated.data()) != VK_SUCCESS)
-            throw std::runtime_error("ComputeDispatchNode: failed to allocate tile commands");
+        VK_CHECK_THROW(vkAllocateCommandBuffers(vulkanDevice->device, &allocation, allocated.data()), "ComputeDispatchNode: failed to allocate tile commands");
         extraBuffers.insert(extraBuffers.end(), allocated.begin(), allocated.end());
     }
     std::vector<VkCommandBuffer> recordedBuffers{cmdBuffer};
@@ -626,11 +620,9 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     if (tileQueryCapacities_[frameIndex] < count) {
         if (tileQueries_[frameIndex]) {
             // Release recorded pool references before replacing their backing storage.
-            if (vkResetCommandBuffer(cmdBuffer, 0) != VK_SUCCESS)
-                throw std::runtime_error("ComputeDispatchNode: query-growth command reset failed");
+            VK_CHECK_THROW(vkResetCommandBuffer(cmdBuffer, 0), "ComputeDispatchNode: query-growth command reset failed");
             for (VkCommandBuffer buffer : extraBuffers)
-                if (vkResetCommandBuffer(buffer, 0) != VK_SUCCESS)
-                    throw std::runtime_error("ComputeDispatchNode: query-growth tile reset failed");
+                VK_CHECK_THROW(vkResetCommandBuffer(buffer, 0), "ComputeDispatchNode: query-growth tile reset failed");
         }
         tileQueryCapacities_[frameIndex] = std::max(count, tileQueryCapacities_[frameIndex] * 2u);
         tileQueries_[frameIndex] = std::make_unique<GPUTimestampQuery>(
@@ -647,9 +639,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
 
     VIXEN_FRAME_COUNT(CommandRecordings, 1);
     VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
-    }
+    VK_CHECK_THROW(result, "[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
 
     tileQuery.ResetQueryRange(cmdBuffer, 0, 0, 4);
     tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
@@ -739,12 +729,10 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
             if (++tileIndex != count) {
                 tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                          tileIndex * 4 - 1);
-                if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
-                    throw std::runtime_error("ComputeDispatchNode: failed to end tile commands");
+                VK_CHECK_THROW(vkEndCommandBuffer(cmdBuffer), "ComputeDispatchNode: failed to end tile commands");
                 cmdBuffer = recordedBuffers[tileIndex];
                 VIXEN_FRAME_COUNT(CommandRecordings, 1);
-                if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
-                    throw std::runtime_error("ComputeDispatchNode: failed to begin tile commands");
+                VK_CHECK_THROW(vkBeginCommandBuffer(cmdBuffer, &beginInfo), "ComputeDispatchNode: failed to begin tile commands");
                 // Each retired command owns four queries. Resetting the entire
                 // capacity in chunk zero makes instrumentation grow with tile count.
                 tileQuery.ResetQueryRange(cmdBuffer, 0, tileIndex * 4, 4);
@@ -785,9 +773,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
 
     // End command buffer
     result = vkEndCommandBuffer(cmdBuffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
-    }
+    VK_CHECK_THROW(result, "[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
 
     NODE_LOG_DEBUG("[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " + std::to_string(imageIndex));
     return recordedBuffers;

@@ -21,9 +21,6 @@ const uint32_t PrevCameraConfigNode::kRingSize = FrameSyncNodeConfig::MAX_FRAMES
 
 // ====== PrevCameraConfigNodeType ======
 
-std::unique_ptr<NodeInstance> PrevCameraConfigNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<PrevCameraConfigNode>(n, const_cast<PrevCameraConfigNodeType*>(this));
-}
 
 // ====== PrevCameraConfigNode ======
 

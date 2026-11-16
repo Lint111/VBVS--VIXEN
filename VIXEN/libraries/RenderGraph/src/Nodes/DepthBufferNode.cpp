@@ -6,6 +6,7 @@
 #include "Core/NodeLogging.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "error/VulkanError.h"
+#include "Nodes/Common/SwapchainBarriers.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 #include "NodeHelpers/VulkanStructHelpers.h"
 #include "NodeHelpers/ValidationHelpers.h"
@@ -19,14 +20,6 @@ namespace Vixen::RenderGraph {
 
 // ====== DepthBufferNodeType ======
 
-std::unique_ptr<NodeInstance> DepthBufferNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<DepthBufferNode>(
-        instanceName,
-        const_cast<NodeType*>(static_cast<const NodeType*>(this))
-    );
-}
 
 // ====== DepthBufferNode ======
 
@@ -208,36 +201,25 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
 void DepthBufferNode::TransitionDepthImageLayout(VkCommandPool cmdPool) {
     VkDevice device = vulkanDevice->device;
 
-    // Allocate command buffer
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = cmdPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(device, &allocInfo, &cmdBuffer);
-
-    // Begin command buffer
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-
-    // Transition layout
-    TransitionImageLayout(
-        cmdBuffer,
-        depthImage.image,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-    );
-
-    vkEndCommandBuffer(cmdBuffer);
-
-    // R715: the transition rides the graph's submission stream; the command buffer is freed once
-    // the queue timeline reaches it (no submit-then-wait-idle).
-    if (GetOwningGraph()->SubmitOneShot(this, cmdPool, cmdBuffer) != VK_SUCCESS)
-        throw std::runtime_error("[DepthBufferNode] depth layout transition submit failed");
+    SwapchainBarriers::RecordAndSubmitOneShot(
+        device, cmdPool,
+        [&](VkCommandBuffer cmdBuffer) {
+            TransitionImageLayout(
+                cmdBuffer,
+                depthImage.image,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+            );
+        },
+        [&](VkCommandBuffer cmdBuffer) {
+            // R715: the transition rides the graph's submission stream; the command buffer is
+            // freed once the queue timeline reaches it (no submit-then-wait-idle).
+            return GetOwningGraph()->SubmitOneShot(this, cmdPool, cmdBuffer);
+        },
+        "[DepthBufferNode] vkAllocateCommandBuffers (transition) failed",
+        "[DepthBufferNode] vkBeginCommandBuffer (transition) failed",
+        "[DepthBufferNode] vkEndCommandBuffer (transition) failed",
+        "[DepthBufferNode] depth layout transition submit failed");
 }
 
 void DepthBufferNode::TransitionImageLayout(

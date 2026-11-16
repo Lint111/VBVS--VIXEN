@@ -18,10 +18,12 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 102
  */
-class SwapChainNodeType : public TypedNodeType<SwapChainNodeConfig> {
+class SwapChainNode;
+
+class SwapChainNodeType : public TypedNodeType<SwapChainNodeConfig, SwapChainNode> {
 public:
     SwapChainNodeType(const std::string& typeName = "SwapChain")
-        : TypedNodeType<SwapChainNodeConfig>(typeName) {}
+        : TypedNodeType<SwapChainNodeConfig, SwapChainNode>(typeName) {}
     virtual ~SwapChainNodeType() = default;
 
     std::optional<PresentationTargetContract> GetPresentationTargetContract() const override {
@@ -32,9 +34,6 @@ public:
             SlotInfo::FromOutputSlot<SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot>("RENDER_COMPLETE_SEMAPHORES_ARRAY")};
     }
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

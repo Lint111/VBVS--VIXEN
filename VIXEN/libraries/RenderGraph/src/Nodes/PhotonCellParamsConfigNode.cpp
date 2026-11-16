@@ -25,11 +25,6 @@ const uint32_t PhotonCellParamsConfigNode::kRingSize =
     FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 static constexpr VkDeviceSize kPhotonCellParamsBufferSize = 48;
 
-std::unique_ptr<NodeInstance> PhotonCellParamsConfigNodeType::CreateInstance(
-    const std::string& name) const {
-    return std::make_unique<PhotonCellParamsConfigNode>(
-        name, const_cast<PhotonCellParamsConfigNodeType*>(this));
-}
 
 PhotonCellParamsConfigNode::PhotonCellParamsConfigNode(
     const std::string& name, NodeType* type)

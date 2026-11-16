@@ -1,5 +1,7 @@
 #pragma once
 
+#include "error/VulkanError.h"
+
 #include <stdexcept>
 #include <string>
 #include <typeinfo>
@@ -48,11 +50,7 @@ inline void ValidateVulkanResult(
     VkResult result,
     const std::string& operation
 ) {
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error(
-            operation + " failed with VkResult: " + std::to_string(result)
-        );
-    }
+    VK_CHECK_THROW(result, operation + " failed with VkResult: " + std::to_string(result));
 }
 
 } // namespace RenderGraph::NodeHelpers

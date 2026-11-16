@@ -9,14 +9,6 @@ namespace Vixen::RenderGraph {
 
 // ====== TextureLoaderNodeType ======
 
-std::unique_ptr<NodeInstance> TextureLoaderNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<TextureLoaderNode>(
-        instanceName,
-        const_cast<TextureLoaderNodeType*>(this)
-    );
-}
 
 // ====== TextureLoaderNode ======
 
