@@ -75,10 +75,6 @@ FetchContent_MakeAvailable(gaia)
 if(NOT TARGET gaia)
     message(FATAL_ERROR "VIXEN: FetchContent did not provide the declared Gaia target")
 endif()
-# Gaia's process-wide allocation arenas are shared by every World. VIXEN's CPU materialization
-# backend intentionally creates independent Worlds concurrently, so leave Gaia's supported arena
-# lock enabled instead of relying on the default single-mutating-World contract.
-target_compile_definitions(gaia INTERFACE GAIA_ALLOC_ARENA_LOCK=1)
 execute_process(
     COMMAND git -C "${gaia_SOURCE_DIR}" rev-parse HEAD
     RESULT_VARIABLE _vixen_gaia_revision_rc
