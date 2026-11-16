@@ -108,15 +108,18 @@ public:
     // One rule for every device. `native` (set only for devices that untile) lets a pass whose whole
     // projected time fits the window run as one dispatch. Otherwise, and on translated devices, the
     // tile is sized from the average full-tile cost against the latency-raised submission budget.
+    // `launch` is the edge of an unmeasured pass when the caller derives a coarser prior than the
+    // floor (R861 cold split); 0 launches at the floor. It never lowers the floor and never
+    // applies once a tile has been measured.
     uint32_t Edge(uint64_t requestedBudgetNs, uint32_t maximum, uint32_t cold,
-                  const WholePass* native = nullptr) const {
+                  const WholePass* native = nullptr, uint32_t launch = 0) const {
         const uint64_t budgetNs = SubmissionBudgetNs(requestedBudgetNs);
         // Never subdivide below the cold launch: every command carries a launch
         // floor, so below that scale more commands only add floors (Dozen collapsed
         // to 3,969 commands and lost the device). The submission gate still
         // reports any shortfall at the floor.
         const uint32_t floor = std::max(1u, std::min(maximum, cold));
-        if (!anchorUnits_) return floor;
+        if (!anchorUnits_) return launch ? std::max(floor, std::min(maximum, launch)) : floor;
         if (native && WholePassNs(native->units) <= double(native->windowNs))
             return std::max(1u, maximum);
         // A measured fixed-latency floor cannot be repaired by splitting work.

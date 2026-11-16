@@ -1,5 +1,6 @@
 #include "ScopedEnvironment.h"
 #include "Nodes/Common/GpuChunkCost.h"
+#include "Core/TiledDispatch.h"
 #include "Nodes/Common/GpuDeviceClass.h"
 #include <gtest/gtest.h>
 
@@ -1009,6 +1010,36 @@ TEST(GpuChunkCost, ColdFrameSeedFromAnotherExtentUntilesAtFirstFrame) {
     EXPECT_EQ(seeded.Edge(2'000'000, 240, 7, &window), 240u);
     GpuChunkCost cold;
     EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window), 7u);
+}
+
+TEST(GpuChunkCost, UnmeasuredPassLaunchesAtItsColdSplitThenFollowsItsMeasuredCost) {
+    // R861: a stage pass at 1080p (240x135 workgroups) with the default budgets.
+    const TiledDispatch::Capacity capacity{16'666'666, 2'000'000};
+    const uint32_t launch = TiledDispatch::ColdSplitEdge(240, capacity, true);
+    EXPECT_EQ(launch, 27u);                                             // 9 cuts per axis
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge(480, capacity, true), 54u);  // 4K: same tile count
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge(20, capacity, true), TiledDispatch::kLaunchFloor);
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge(240, capacity, false), 240u);  // translated: one dispatch
+
+    const GpuChunkCost::WholePass window{135ull * 240, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    GpuChunkCost cold;
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, launch), 27u);
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, 3), 7u);      // never below the floor
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, 999), 240u);  // never above the pass
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window), 7u);         // no launch: the floor, as before
+
+    // Measured cheap (20 us per cold tile, under 1 ms whole): one dispatch from the next plan on.
+    GpuChunkCost cheap;
+    cheap.Observe(27 * 27, 27 * 27, 20'000);
+    EXPECT_EQ(cheap.Edge(2'000'000, 240, 7, &window, launch), 240u);
+
+    // Measured far over the window (row 106 before its fix: about 2.2 s whole): tiles shrink
+    // below the launch, bounded by the floor.
+    GpuChunkCost heavy;
+    heavy.Observe(27 * 27, 27 * 27, 49'500'000);
+    const uint32_t edge = heavy.Edge(2'000'000, 240, 7, &window, launch);
+    EXPECT_LT(edge, launch);
+    EXPECT_GE(edge, 7u);
 }
 
 TEST(GpuChunkCost, PersistedMeanLetsAKnownDeviceUntileFromFrameOne) {
