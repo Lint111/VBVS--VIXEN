@@ -51,12 +51,17 @@ public:
     // Mean cost of the full tiles of one frame at one launch scale. Two scales at least 2x apart give
     // the device's per-command latency (the intercept of cost vs. workgroups): the part of every
     // command that does not shrink with its size (launch, tail under-occupancy, queue turnaround).
-    void ObserveScale(uint64_t units, double meanNs) {
+    // `keepLarger` is for a pass that refines downward from a coarse launch: the first, larger
+    // scale is kept as the second point when a smaller one arrives, so the latency is known after
+    // one refinement. Without it a smaller scale replaces the only point (the march, which grows
+    // from the floor, relies on that).
+    void ObserveScale(uint64_t units, double meanNs, bool keepLarger = false) {
         if (!units || meanNs <= 0) return;
         const auto blend = [&](Scale& point) {
             point.ns = point.units == units && point.ns > 0 ? 0.7 * point.ns + 0.3 * meanNs : meanNs;
             point.units = units;
         };
+        if (keepLarger && small_.units && units < small_.units && !large_.units) large_ = small_;
         if (!small_.units || units <= small_.units) blend(small_);
         else if (!large_.units || units >= large_.units) blend(large_);
     }

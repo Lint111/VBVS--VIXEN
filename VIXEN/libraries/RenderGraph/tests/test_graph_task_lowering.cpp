@@ -1043,21 +1043,44 @@ TEST(GpuChunkCost, UnmeasuredPassLaunchesAtItsColdSplitThenFollowsItsMeasuredCos
     EXPECT_GE(edge, 7u);
 }
 
-TEST(GpuChunkCost, StripsAndListsGetTheSameWorkPerTileAndRefineGradually) {
-    // A 1080p screen pass: a square edge below the short side is used as it is.
-    EXPECT_EQ(TiledDispatch::TileEdge(14, {240, 135, 1}, 0), 14u);
+TEST(GpuChunkCost, StripsAndListsGetTheSameWorkPerTile) {
+    // A 1080p screen pass: a square tile below the short side is a square.
+    EXPECT_EQ(TiledDispatch::TileEdge({240, 135, 1}, 14 * 14), 14u);
     // Above the short side the tile is a full-height strip holding the same workgroups.
-    EXPECT_EQ(TiledDispatch::TileEdge(180, {240, 135, 1}, 0), 240u);
-    EXPECT_EQ(TiledDispatch::TileEdge(150, {240, 135, 1}, 0), 167u);  // 22,500 groups in 135-high strips
-    // A list dispatched along one axis (the shadow wave: 32,400 x 1): edge 14 means 196 groups a
-    // tile, not 14 (which cut one 275 ms pass into 2,700 commands).
-    EXPECT_EQ(TiledDispatch::TileEdge(14, {32400, 1, 1}, 0), 196u);
-    EXPECT_EQ(TiledDispatch::TileEdge(7, {32400, 1, 1}, 0), 49u);   // the floor, in workgroups
-    EXPECT_EQ(TiledDispatch::TileEdge(240, {32400, 1, 1}, 0), 32400u);  // whole stays whole
-    // Launch latency not measured yet: at most 4x finer than the tiles just read back.
-    EXPECT_EQ(TiledDispatch::TileEdge(14, {32400, 1, 1}, 3600 / 4), 900u);
-    EXPECT_EQ(TiledDispatch::TileEdge(14, {240, 135, 1}, 27 * 27 / 4), 14u);  // 182 groups: 14x14 already holds more
-    EXPECT_EQ(TiledDispatch::TileEdge(7, {240, 135, 1}, 27 * 27 / 4), 14u);
+    EXPECT_EQ(TiledDispatch::TileEdge({240, 135, 1}, 180 * 180), 240u);
+    EXPECT_EQ(TiledDispatch::TileEdge({240, 135, 1}, 150 * 150), 167u);  // 22,500 groups in 135-high strips
+    // A list dispatched along one axis (the shadow wave: 32,400 x 1): the rule's edge 14 means
+    // 196 groups a tile, not 14 (which cut one 0.3 s pass into 2,700 commands).
+    EXPECT_EQ(TiledDispatch::TileEdge({32400, 1, 1}, 14 * 14), 196u);
+    EXPECT_EQ(TiledDispatch::TileEdge({32400, 1, 1}, 7 * 7), 49u);          // the floor, in workgroups
+    EXPECT_EQ(TiledDispatch::TileEdge({32400, 1, 1}, 240 * 240), 32400u);   // whole stays whole
+}
+
+TEST(GpuChunkCost, RefinementStepsUntilTheLaunchLatencyIsMeasured) {
+    // Latency unknown: a refinement is at most 4x and at least 2x the tiles just read back.
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(196, 3600, false), 900u);
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(196, 400, false), 196u);
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(300, 400, false), 200u);
+    // Coarsening, a first plan and a known latency are not constrained.
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(32400, 400, false), 32400u);
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(196, 0, false), 196u);
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(196, 3600, true), 196u);
+
+    // The shadow wave as measured on ws (RTL scene, 1080p): 81 launch tiles of 400 groups took
+    // 4.34 ms each, 166 tiles of 196 groups took 3.0 ms each. Keeping the larger point gives the
+    // per-command latency (about 1.7 ms) after one refinement, and the budget follows it.
+    GpuChunkCost descending;
+    descending.ObserveScale(400, 4'340'000, true);
+    EXPECT_EQ(descending.LaunchLatencyNs(), 0.0);
+    descending.ObserveScale(196, 3'000'000, true);
+    EXPECT_GT(descending.LaunchLatencyNs(), 1'500'000.0);
+    EXPECT_LT(descending.LaunchLatencyNs(), 1'900'000.0);
+    EXPECT_GT(descending.SubmissionBudgetNs(2'000'000), 20'000'000u);
+    // The march's form is unchanged: a smaller scale replaces the only point.
+    GpuChunkCost replacing;
+    replacing.ObserveScale(400, 4'340'000);
+    replacing.ObserveScale(196, 3'000'000);
+    EXPECT_EQ(replacing.LaunchLatencyNs(), 0.0);
 }
 
 TEST(GpuChunkCost, PersistedMeanLetsAKnownDeviceUntileFromFrameOne) {

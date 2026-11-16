@@ -46,19 +46,24 @@ uint32_t TiledDispatch::ColdSplitEdge(Extent groups, Capacity capacity, bool nat
     const uint64_t submission = std::max(uint64_t{1}, capacity.submissionBudgetNs);
     const uint64_t cuts = std::max(uint64_t{1}, (capacity.frameBudgetNs + submission - 1) / submission);
     const uint64_t layer = uint64_t{groups.x} * groups.y;
-    return TileEdge(kLaunchFloor, groups, (layer + cuts * cuts - 1) / (cuts * cuts));
+    return TileEdge(groups, std::max(uint64_t{kLaunchFloor} * kLaunchFloor, (layer + cuts * cuts - 1) / (cuts * cuts)));
 }
 
-uint32_t TiledDispatch::TileEdge(uint32_t squareEdge, Extent groups, uint64_t minTileGroups) {
+uint32_t TiledDispatch::TileEdge(Extent groups, uint64_t tileGroups) {
     const uint64_t wholeEdge = std::max(1u, std::max(groups.x, groups.y));
     const uint64_t shortSide = std::max(1u, std::min(groups.x, groups.y));
-    const uint64_t tileGroups = std::max(uint64_t{squareEdge} * squareEdge, minTileGroups);
+    tileGroups = std::max(uint64_t{1}, tileGroups);
     if (tileGroups <= shortSide * shortSide) {
-        uint64_t edge = squareEdge;
+        uint64_t edge = 1;
         while (edge * edge < tileGroups) ++edge;
-        return static_cast<uint32_t>(std::max(uint64_t{1}, edge));
+        return static_cast<uint32_t>(edge);
     }
     return static_cast<uint32_t>(std::min(wholeEdge, (tileGroups + shortSide - 1) / shortSide));
+}
+
+uint64_t TiledDispatch::RefinedTileGroups(uint64_t wanted, uint64_t measured, bool latencyKnown) {
+    if (latencyKnown || !measured || wanted >= measured) return wanted;
+    return std::clamp(wanted, std::max(uint64_t{1}, measured / 4), std::max(uint64_t{1}, measured / 2));
 }
 
 TiledDispatch::TiledDispatch() = default;
@@ -163,7 +168,8 @@ void TiledDispatch::Collect(uint32_t flight, Vixen::Log::Logger* reporter) {
         }
         cost_.Observe(groups, state.nominalGroups, ms * 1.0e6);
     }
-    if (fullTiles) cost_.ObserveScale(state.nominalGroups, fullTileMs * 1.0e6 / fullTiles);
+    if (fullTiles)
+        cost_.ObserveScale(state.nominalGroups, fullTileMs * 1.0e6 / fullTiles, prior_ == Prior::Unknown);
     // R503: publish the learned envelope to the task profile; CalibrationStore persists it per
     // device at shutdown, keyed by this flight's extent.
     if (persisted_ && cost_.Calibrated() && state.extentKey == calibrationKey_)
@@ -269,12 +275,12 @@ bool TiledDispatch::Plan(uint32_t flight, VkCommandBuffer first, Extent groups, 
             : cost_.Edge(std::max(uint64_t{1}, budgetNs / groups.z), wholeEdge, kLaunchFloor,
                          windowed ? &whole : nullptr, launch);
     if (prior_ == Prior::Unknown && tileable_ && edgeOverride < 0 && cost_.Calibrated()) {
-        // The rule sizes a square tile. Give a strip or a list the same workgroups per tile, and
-        // while the launch latency is not measured (two tile sizes are needed) refine by at most
-        // 4x a readback: an over-window pass must not be cut into hundreds of commands on a
-        // device, or beside another process, where each command costs milliseconds.
-        const uint64_t refineFloor = cost_.LaunchLatencyNs() > 0.0 ? 0 : measuredLayerGroups_ / 4;
-        planEdge_ = TileEdge(planEdge_, groups, refineFloor);
+        // The rule sizes a square tile of planEdge_^2 workgroups. Give a strip or a list the same
+        // workgroups per tile, and refine step by step until the launch latency is measured: an
+        // over-window pass must not be cut into hundreds of commands on a device, or beside
+        // another process, where each command costs milliseconds.
+        planEdge_ = TileEdge(groups, RefinedTileGroups(uint64_t{planEdge_} * planEdge_, measuredLayerGroups_,
+                                                       cost_.LaunchLatencyNs() > 0.0));
     }
     const uint32_t edge = planEdge_;
     state.nominalLayerGroups = uint64_t(std::min(edge, groups.x)) * std::min(edge, groups.y);

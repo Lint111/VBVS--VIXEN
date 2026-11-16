@@ -34,7 +34,8 @@ class SimpleTaskProfile;
  *   - measured: `GpuChunkCost::Edge` (one dispatch while the whole pass fits the whole-pass
  *     window, otherwise tiles sized to the submission budget, never below `kLaunchFloor`). A
  *     `Prior::Unknown` pass keeps that work per tile on any grid shape (`TileEdge`) and, while the
- *     device's launch latency is not measured, is refined by at most 4x a readback;
+ *     device's launch latency is not measured, is refined by 2x to 4x a readback
+ *     (`RefinedTileGroups`);
  *   - unmeasured: the node's prior (`Prior`), because a pass that is too long on its first
  *     frame loses the device before any measurement exists.
  *
@@ -76,11 +77,15 @@ public:
     /// Tile edge an unmeasured `Prior::Unknown` pass of `groups` workgroups launches with.
     [[nodiscard]] static uint32_t ColdSplitEdge(Extent groups, Capacity capacity, bool native);
 
-    /// Edge of the tiles that hold what a square tile of `squareEdge` holds (squareEdge^2
-    /// workgroups a layer), but at least `minTileGroups`, on a `groups` grid. A grid whose short
-    /// side is below the square edge (a strip, a list dispatched along one axis) gets longer
+    /// Edge of the tiles that hold `tileGroups` workgroups a layer on a `groups` grid. A grid whose
+    /// short side is below the square edge (a strip, a list dispatched along one axis) gets longer
     /// tiles, not more of them.
-    [[nodiscard]] static uint32_t TileEdge(uint32_t squareEdge, Extent groups, uint64_t minTileGroups);
+    [[nodiscard]] static uint32_t TileEdge(Extent groups, uint64_t tileGroups);
+    /// The tile size to plan when the rule wants `wanted` workgroups a tile and the last readback
+    /// measured tiles of `measured`. While the launch latency is unknown a refinement is kept
+    /// between 2x (two tile sizes that far apart are what measures the latency) and 4x (so the
+    /// pass is not cut into hundreds of commands before their cost is known).
+    [[nodiscard]] static uint64_t RefinedTileGroups(uint64_t wanted, uint64_t measured, bool latencyKnown);
 
     TiledDispatch();
     ~TiledDispatch();
