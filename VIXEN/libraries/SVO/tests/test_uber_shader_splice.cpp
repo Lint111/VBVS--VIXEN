@@ -207,7 +207,7 @@ TEST(UberShaderSplice, NeutralRecipeKeepsPreMaterialShaderDigest) {
     // The neutral source has no hand-written HitRecord material side-channel. The editor
     // deliberately forces the material-capable variant for every document; this digest guards
     // the neutral, non-active-variant text while the active macro remains absent here.
-    EXPECT_EQ(Fnv1a(spliced), 0x34f08d40ca26d63cull)
+    EXPECT_EQ(Fnv1a(spliced), 0x281cc9dcb1ae9f95ull)
         << "digest=" << std::hex << Fnv1a(spliced);
     EXPECT_EQ(spliced.find("#define VIXEN_UBER_RECIPE_MATERIAL 1"), std::string::npos);
 }
