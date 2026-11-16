@@ -1821,6 +1821,7 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
         std::uint32_t tapeVersusRuntimeWords = 0;
     };
     std::vector<ProgramResult> results;
+    std::uint32_t shaderCompiles = 0u;
     // A batch compiles one shader whose value and position storage is sized by its deepest program, so
     // mixing a 64-value program with a 64-position one makes every program pay for both (the native AMD
     // compile of such a batch ran 14 minutes without finishing). Cut contiguous batches where the
@@ -1870,19 +1871,15 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
                 << "(p, params" << (declaresPosition ? ", declaredPosition" : "") << "); break;\n";
         }
         dispatch << "default: distanceValue = -999.0; break; }\n";
-        std::string literalFields = fields.str();
-        std::string runtimeFields;
+        std::string fieldsWithTransport = fields.str();
         for (std::size_t at = 0;;) {
-            const auto next = literalFields.find(wordPattern, at);
-            if (next == std::string::npos) { runtimeFields += literalFields.substr(at); break; }
-            const auto close = literalFields.find("u)", next);
-            ASSERT_NE(close, std::string::npos);
-            runtimeFields += literalFields.substr(at, close - at);
-            runtimeFields += "u ^ tileRanges[63].x)";
-            at = close + 2;
+            const auto next = fieldsWithTransport.find(wordPattern, at);
+            if (next == std::string::npos) break;
+            fieldsWithTransport.replace(next, wordPattern.size(), "recipeTransportWord(");
+            at = next + std::string("recipeTransportWord(").size();
         }
 
-        const auto compose = [&](const std::string& fieldSource, bool tapeForm) {
+        const auto compose = [&]() {
             std::ostringstream shader;
             shader << "#version 450\n" << sdfCoreGlsl << "\n"
                 << "struct RecipeTapeInstruction { uint opCode; float data[32]; };\n"
@@ -1891,28 +1888,39 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
                 << "layout(set=0,binding=2,std430) readonly buffer InTileRanges { uvec2 tileRanges[]; };\n"
                 << "layout(set=0,binding=3,std430) writeonly buffer OutClauseCounts { uint clauseCounts[]; };\n"
                 << "layout(local_size_x=8,local_size_y=8) in;\n";
-            shader << (tapeForm ? TapeStorageDefines(tapeCounts) + tapeGlsl : fieldSource);
+            shader << TapeStorageDefines(tapeCounts) + tapeGlsl << "\n"
+                << "uint recipeTransportXor() { return gl_WorkGroupID.x / 2u == 1u ? tileRanges[63].x : 0u; }\n"
+                << "float recipeTransportWord(uint literal) { return uintBitsToFloat(literal ^ recipeTransportXor()); }\n"
+                << fieldsWithTransport;
             shader << "\nvoid main() {\n"
                 << "vec3 p = vec3(float(gl_LocalInvocationID.x) - 3.5, float(gl_LocalInvocationID.y) - 3.5, 0.25);\n"
                 << "float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);\n"
                 << "if (gl_WorkGroupID.x != 0u) { params[0]=1.5; params[1]=-2.25; params[2]=7.5; params[3]=0.75; params[4]=42.0; params[5]=-0.5; }\n"
                 << "float distanceValue = 0.0; vec3 declaredPosition = vec3(0.0); uint clauses = 0u;\n";
-            if (tapeForm)
-                shader << "uvec2 range = tileRanges[gl_WorkGroupID.y];\n"
-                    << "if (!EvalRecipeTape(range.x, range.y, p, distanceValue, clauses)) distanceValue = -999.0;\n";
-            else shader << dispatch.str();
+            // Each form occupies the same 16-pixel-wide image stripe. The single compiled module
+            // selects inline, runtime, or tape by the X workgroup stripe. The field source is
+            // emitted once; recipeTransportWord() keeps the kernel's integer literal visible and
+            // only applies the runtime XOR in the middle stripe, so every depth-shaped batch pays
+            // one ShaderCompiler invocation instead of three without duplicating field functions.
+            shader << "uint form = gl_WorkGroupID.x / 2u;\n"
+                << "if (form < 2u) { " << dispatch.str() << " }\n"
+                << "else { uvec2 range = tileRanges[gl_WorkGroupID.y];\n"
+                << "if (!EvalRecipeTape(range.x, range.y, p, distanceValue, clauses)) distanceValue = -999.0; }\n";
             shader << "imageStore(outImage, ivec2(gl_GlobalInvocationID.xy), vec4(distanceValue, declaredPosition));\n"
                 << "ivec2 size = imageSize(outImage); clauseCounts[gl_GlobalInvocationID.y * uint(size.x) + gl_GlobalInvocationID.x] = clauses;\n}\n";
             return shader.str();
         };
-        const auto render = [&](const std::string& source, std::vector<float>& pixels, const char* form) {
-            const auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute, source, "main", options);
-            ASSERT_TRUE(compiled.success) << form << " first=" << first << "\n" << compiled.GetFullLog();
+        const std::string combinedSource = compose();
+        const auto compiled = compiler.Compile(
+            ShaderManagement::ShaderStage::Compute, combinedSource, "main", options);
+        ASSERT_TRUE(compiled.success) << "combined first=" << first << "\n" << compiled.GetFullLog();
+        ++shaderCompiles;
+        const auto render = [&](std::vector<float>& pixels) {
             if (const char* root = std::getenv("BOUNDSCORE_TAPE_CAPTURE_DIR")) {
                 const auto directory = std::filesystem::path(root) / "corpus-shaders";
                 std::filesystem::create_directories(directory);
-                const auto stem = std::to_string(first) + "-" + form;
-                std::ofstream(directory / (stem + ".comp")) << source;
+                const auto stem = std::to_string(first) + "-combined";
+                std::ofstream(directory / (stem + ".comp")) << combinedSource;
                 std::ofstream binary(directory / (stem + ".spv"), std::ios::binary);
                 binary.write(reinterpret_cast<const char*>(compiled.spirv.data()),
                     static_cast<std::streamsize>(compiled.spirv.size() * sizeof(std::uint32_t)));
@@ -1920,31 +1928,36 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
             std::vector<std::uint32_t> clauses;
             double gpuMs = 0.0;
             ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(compiled.spirv, tape, ranges,
-                16, static_cast<std::uint32_t>(count * 8), pixels, clauses, gpuMs));
+                48, static_cast<std::uint32_t>(count * 8), pixels, clauses, gpuMs));
         };
-        std::vector<float> literal, runtime, tapePixels;
-        ASSERT_NO_FATAL_FAILURE(render(compose(literalFields, false), literal, "inline"));
-        ASSERT_NO_FATAL_FAILURE(render(compose(runtimeFields, false), runtime, "runtime"));
-        ASSERT_NO_FATAL_FAILURE(render(compose({}, true), tapePixels, "tape"));
-        ASSERT_EQ(literal.size(), runtime.size());
-        ASSERT_EQ(literal.size(), tapePixels.size());
+        std::vector<float> pixels;
+        ASSERT_NO_FATAL_FAILURE(render(pixels));
+        const std::size_t imageWidth = 48u;
+        const std::size_t formWidth = 16u;
         for (std::size_t local = 0; local < count; ++local) {
             ProgramResult result;
             result.name = corpus[first + local].name;
             result.tapeSupported = supported[local];
-            const std::size_t offset = local * 8 * 16 * 4;
-            for (std::size_t i = offset; i < offset + 8 * 16 * 4; ++i) {
-                std::uint32_t a = 0, b = 0, c = 0;
-                std::memcpy(&a, &literal[i], sizeof(a));
-                std::memcpy(&b, &runtime[i], sizeof(b));
-                std::memcpy(&c, &tapePixels[i], sizeof(c));
-                if (a != b) {
-                    if (result.literalVersusRuntimeWords++ == 0)
-                        result.firstLiteralDifference = "sample=" + std::to_string((i - offset) / 4)
-                            + " channel=" + std::to_string(i % 4) + " inline=" + std::to_string(a)
-                            + " runtime=" + std::to_string(b);
+            for (std::size_t y = 0; y < 8u; ++y) {
+                for (std::size_t x = 0; x < formWidth; ++x) {
+                    const std::size_t pixel = (local * 8u + y) * imageWidth + x;
+                    const std::size_t runtimePixel = pixel + formWidth;
+                    const std::size_t tapePixel = pixel + 2u * formWidth;
+                    const std::size_t literalIndex = pixel * 4u;
+                    const std::size_t runtimeIndex = runtimePixel * 4u;
+                    const std::size_t tapeIndex = tapePixel * 4u;
+                    std::uint32_t a = 0, b = 0, c = 0;
+                    std::memcpy(&a, &pixels[literalIndex], sizeof(a));
+                    std::memcpy(&b, &pixels[runtimeIndex], sizeof(b));
+                    std::memcpy(&c, &pixels[tapeIndex], sizeof(c));
+                    if (a != b) {
+                        if (result.literalVersusRuntimeWords++ == 0)
+                            result.firstLiteralDifference = "sample=" + std::to_string(y * formWidth + x)
+                                + " inline=" + std::to_string(a)
+                                + " runtime=" + std::to_string(b);
+                    }
+                    if (result.tapeSupported && c != b) ++result.tapeVersusRuntimeWords;
                 }
-                if (result.tapeSupported && c != b) ++result.tapeVersusRuntimeWords;
             }
             results.push_back(std::move(result));
         }
@@ -1968,6 +1981,7 @@ TEST_F(DeclaredPositionRenderTest, CorpusInlineLiteralsMatchRuntimeOperandsAndTa
     ASSERT_EQ(GetRecipeServiceApis().cpu.validateOpcodeTable(&opcodeReport, &opcodeDiagnostic), YK_RECIPE_OK);
     json << "],\"programCount\":" << results.size() << ",\"inlineExactPrograms\":" << inlineExact
         << ",\"tapeSupportedPrograms\":" << tapeSupportedCount << ",\"tapeExactPrograms\":" << tapeExact
+        << ",\"shaderCompiles\":" << shaderCompiles
         << ",\"opcodesCovered\":" << covered.size()
         << ",\"opcodesDeclared\":" << opcodeReport.opcodeCount << "}\n";
     std::cout << "[RecipeCorpusLiteralTransport] " << json.str();
