@@ -23,6 +23,11 @@
 #include "ShaderDataBundle.h"
 #include "IRenderTarget.h"
 #include "Core/NodeLogging.h"
+#include "Core/TaskProfiles/SimpleTaskProfile.h"
+#include "Nodes/Common/GpuDeviceClass.h"
+#include "SpirvReflector.h"
+#include <algorithm>
+#include <cstdlib>
 #include <set>
 #include <stdexcept>
 
@@ -126,6 +131,10 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
             gpuPerfLogger_->SetEnabled(true);
             gpuPerfLogger_->SetLogFrequency(120);  // ~2s at 60fps, matches ComputeDispatchNode
             gpuPerfLogger_->SetPrintToTerminal(false);
+            // Standard stages report each queued tile submission through CollectTileTiming.
+            // An external recorder remains one opaque submission and uses the logger's normal
+            // whole-dispatch path.
+            gpuPerfLogger_->SetSpansSeveralSubmissions(!externalRecorder_);
             if (auto* nodeLogger = GetLogger()) {
                 nodeLogger->AddChild(gpuPerfLogger_);
             }
@@ -138,6 +147,14 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
         } else {
             NODE_LOG_WARNING("[ComputeStageNode] GPUQueryManager not available from VulkanDevice");
         }
+    }
+
+    const std::string profileId = GetInstanceName() + "_gpu_dispatch";
+    chunkProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "compute");
+    chunkCalibrationKey_.clear();
+    if (chunkProfile_) {
+        RegisterPhaseProfile(TaskProfilePhase::Execute, chunkProfile_);
+        NODE_LOG_INFO("[ComputeStageNode] Registered GPU profile: " + profileId);
     }
 }
 
@@ -176,6 +193,7 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         VIXEN_FRAME_TRACE_SCOPE("perf", GetInstanceName());
         gpuPerfLogger_->CollectResults(currentFrameIndex);
     }
+    CollectTileTiming(currentFrameIndex);
 
     // Re-record on input change (always re-record to refresh push constants each frame).
     VkPipeline currentPipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
@@ -183,19 +201,29 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     std::vector<VkDescriptorSet> currentSets = ctx.In(ComputeStageNodeConfig::DESCRIPTOR_SETS);
     if (currentPipeline != lastPipeline_ || currentLayout != lastPipelineLayout_ ||
         currentSets != lastDescriptorSets_) {
+        const auto bundle = ctx.In(ComputeStageNodeConfig::SHADER_DATA_BUNDLE);
+        canTile_ = bundle && ShaderManagement::SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled(
+            bundle->GetSpirv(ShaderManagement::ShaderStage::Compute));
+        if (!canTile_)
+            NODE_LOG_WARNING("[GPUYIELD_UNBOUNDED] missing shader bundle or NumWorkgroups dependency: " +
+                             GetInstanceName());
         commandBuffers_.MarkAllDirty();
         lastPipeline_ = currentPipeline;
         lastPipelineLayout_ = currentLayout;
         lastDescriptorSets_ = currentSets;
+        chunkCost_ = {};
+        chunkCalibrationKey_.clear();
     }
 
     // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
     // completion timeline wait; RecordComputeCommands still selects image-derived values by imageIndex.
     VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
+    std::vector<VkCommandBuffer> recordedBuffers;
     bool recorded;
     {
         VIXEN_FRAME_TRACE_SCOPE("record", GetInstanceName());
-        recorded = RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer);
+        recorded = RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer,
+                                         recordedBuffers);
     }
     if (!recorded) {
         return;  // fault already reported (R213); nothing recorded to submit this frame.
@@ -206,8 +234,13 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     VkSemaphore timelineSem = ctx.In(ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN);
     uint64_t frameBase = ctx.In(ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    VkCommandBufferSubmitInfo cmdInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-    cmdInfo.commandBuffer = cmd;
+    std::vector<VkCommandBufferSubmitInfo> commandInfos;
+    commandInfos.reserve(recordedBuffers.size());
+    for (VkCommandBuffer recorded : recordedBuffers) {
+        VkCommandBufferSubmitInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        info.commandBuffer = recorded;
+        commandInfos.push_back(info);
+    }
 
     std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
@@ -276,19 +309,22 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
     si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
     si.pWaitSemaphoreInfos      = waits.data();
-    si.commandBufferInfoCount   = 1;
-    si.pCommandBufferInfos      = &cmdInfo;
+    si.commandBufferInfoCount   = static_cast<uint32_t>(commandInfos.size());
+    si.pCommandBufferInfos      = commandInfos.data();
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
     // R715: the graph's single submission point (published on the lowered executor, issued by the
     // owner at once on the sequential one).
     auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
-    if (gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
-        const uint64_t expectedNs = static_cast<uint64_t>(gpuPerfLogger_->GetLastDispatchMs() * 1'000'000.0f);
-        record.commandCostMeanNs.push_back(expectedNs);
-        record.commandCostUpperBoundsNs.push_back(expectedNs + expectedNs / 10 + 1);
+    record.submissionBudgetNs = tileBudgets_[currentFrameIndex];
+    for (std::size_t command = 0; command < tileWorkGroupCounts_[currentFrameIndex].size(); ++command) {
+        const uint32_t groups = tileWorkGroupCounts_[currentFrameIndex][command];
+        record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(groups));
+        const uint64_t lastFrame = frameCommandTimings_.Last(currentFrameIndex, command, groups);
+        record.commandCostMeanNs.push_back(lastFrame ? lastFrame : chunkCost_.MeanEstimate(groups));
     }
+    submissionBatches_[currentFrameIndex] = record.SubmissionBatches();
     if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
         result != VK_SUCCESS) {
         NODE_LOG_ERROR("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " + std::to_string(result));
@@ -305,12 +341,61 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(ComputeStageNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 }
 
+void ComputeStageNode::CollectTileTiming(uint32_t frameIndex) {
+    auto& query = tileQueries_[frameIndex];
+    if (!query || !query->ReadResults(0)) return;
+
+    frameCommandTimings_.Begin(frameIndex);
+    double fullTileMs = 0.0;
+    uint32_t fullTiles = 0;
+    for (uint32_t i = 0; i < tileCounts_[frameIndex]; ++i) {
+        const double elapsedMs = query->GetElapsedMs(0, i * 4, i * 4 + 3);
+        if (i >= tileWorkGroupCounts_[frameIndex].size() || !tileWorkGroupCounts_[frameIndex][i]) continue;
+        const uint32_t groups = tileWorkGroupCounts_[frameIndex][i];
+        frameCommandTimings_.Record(frameIndex, i, groups,
+                                    query->GetElapsedNs(0, i * 4, i * 4 + 3));
+        if (groups == tileNominalWorkGroupCounts_[frameIndex]) {
+            fullTileMs += elapsedMs;
+            ++fullTiles;
+        }
+        chunkCost_.Observe(groups, tileNominalWorkGroupCounts_[frameIndex], elapsedMs * 1.0e6);
+    }
+    if (fullTiles)
+        chunkCost_.ObserveScale(tileNominalWorkGroupCounts_[frameIndex], fullTileMs * 1.0e6 / fullTiles);
+    if (chunkProfile_ && chunkCost_.Calibrated() && tileExtentKeys_[frameIndex] == chunkCalibrationKey_) {
+        chunkProfile_->SetChunkCalibration(tileExtentKeys_[frameIndex],
+            {chunkCost_.AnchorUnits(), chunkCost_.UnitNs(), chunkCost_.FixedNs(),
+             chunkCost_.MeanUnitNs(), chunkCost_.MeanFixedNs()});
+    }
+
+    double worstSubmissionMs = 0.0;
+    for (const auto& batch : submissionBatches_[frameIndex]) {
+        if (!batch.count) continue;
+        const double elapsedMs = query->GetElapsedMs(0, batch.first * 4,
+            (batch.first + batch.count) * 4 - 1);
+        worstSubmissionMs = std::max(worstSubmissionMs, elapsedMs);
+        if (gpuPerfLogger_)
+            GPUPerformanceLogger::RecordSubmission(*gpuPerfLogger_, GetInstanceName(), elapsedMs,
+                                                   reportedTileReads_ < 16);
+        if (batch.count) {
+            uint64_t groups = 0;
+            for (std::size_t i = batch.first; i < batch.first + batch.count; ++i)
+                groups += tileWorkGroupCounts_[frameIndex][i];
+            if (groups) chunkCost_.ObserveBatch(groups, batch.count, elapsedMs * 1.0e6);
+        }
+        if (reportedTileReads_ < 16) ++reportedTileReads_;
+    }
+    (void)worstSubmissionMs;
+}
+
 // ============================================================================
 // RECORD
 // ============================================================================
 
 bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
-                                             uint32_t imageIndex, uint32_t frameIndex, bool isConsumer) {
+                                             uint32_t imageIndex, uint32_t frameIndex, bool isConsumer,
+                                             std::vector<VkCommandBuffer>& recordedBuffers) {
+    recordedBuffers.clear();
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     VIXEN_FRAME_COUNT(CommandRecordings, 1);
     if (const VkResult beginResult = vkBeginCommandBuffer(cmd, &beginInfo); beginResult != VK_SUCCESS) {
@@ -351,6 +436,11 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     }
 
     if (externalRecorder_) {
+        const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
+        tileBudgets_[frameIndex] = std::max(uint64_t{1},
+            std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
+        tileCounts_[frameIndex] = 1;
+        tileWorkGroupCounts_[frameIndex] = {1};
         std::string failure;
         auto* outputTarget = ctx.In(ComputeStageNodeConfig::IMAGE_WRITE);
         if (!outputTarget) {
@@ -379,6 +469,7 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
             GetOwningGraph()->ReportGpuFault(
                 "ComputeStageNode::RecordComputeCommands external recorder: " + failure, VK_ERROR_UNKNOWN);
         }
+        recordedBuffers.push_back(cmd);
         return true;  // unchanged: the external-recorder path still submits after reporting its fault.
     }
 
@@ -391,6 +482,12 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // timing column reads a real ~0ms rather than a stale/never-collected value, and
     // the shared query pool's per-frame reset invariant above stays satisfied.
     if (!GetParameterValue<bool>(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED, true)) {
+        const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
+        tileBudgets_[frameIndex] = std::max(uint64_t{1},
+            std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
+        tileCounts_[frameIndex] = 1;
+        tileWorkGroupCounts_[frameIndex] = {1};
+        recordedBuffers.push_back(cmd);
         if (gpuPerfLogger_) {
             gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
             gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, 0, 0);
@@ -461,6 +558,86 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         return abortRecording("dispatch dims unresolved (set dispatchX/Y/Z or connect SWAPCHAIN_INFO/IMAGE_WRITE)");
     }
 
+    const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
+    const uint64_t budgetNs = std::max(uint64_t{1},
+        std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
+    const std::string extentKey = std::to_string(dispatchX) + "x" + std::to_string(dispatchY);
+    if (extentKey != chunkCalibrationKey_) {
+        chunkCalibrationKey_ = extentKey;
+        const GpuChunkCost previous = chunkCost_;
+        chunkCost_ = {};
+        if (chunkProfile_) {
+            if (const auto restored = chunkProfile_->GetChunkCalibration(extentKey)) {
+                chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs,
+                                  restored->meanUnitNs, restored->meanFixedNs);
+            }
+        }
+        if (!chunkCost_.Calibrated() && previous.Calibrated()) {
+            chunkCost_.Import(previous.AnchorUnits(), previous.UnitNs(), previous.FixedNs(),
+                              previous.MeanUnitNs(), previous.MeanFixedNs());
+        }
+        if (!chunkCost_.Calibrated() && chunkProfile_) {
+            if (const auto neighbour = chunkProfile_->NearestChunkCalibration(extentKey)) {
+                chunkCost_.Import(neighbour->anchorUnits, neighbour->unitNs, neighbour->fixedNs,
+                                  neighbour->meanUnitNs, neighbour->meanFixedNs);
+            }
+        }
+    }
+    tileExtentKeys_[frameIndex] = extentKey;
+
+    // The diagnostic override is shared with ComputeDispatchNode; normal operation derives the
+    // edge solely from this pass's measured envelope and the graph's submission capacity.
+    static const long edgeOverride = [] {
+        const char* value = std::getenv("VIXEN_GPUYIELD_EDGE");
+        return value && *value ? std::strtol(value, nullptr, 10) : -1L;
+    }();
+    const uint32_t wholeEdge = std::max(1u, std::max(dispatchX, dispatchY));
+    const GpuChunkCost::WholePass whole{uint64_t(dispatchX) * dispatchY * dispatchZ,
+        NativeWholePassWindowNs(capacity.gpuSubmissionBudgetNs, capacity.gpuTimeBudgetNs)};
+    const GpuChunkCost::WholePass* wholePass =
+        GpuDeviceClassIsNative(GpuDeviceClassName(*GetDevice())) ? &whole : nullptr;
+    const uint64_t edgeBudgetNs = std::max(uint64_t{1}, budgetNs / std::max(1u, dispatchZ));
+    const uint32_t edge = !canTile_ || edgeOverride == 0
+        ? wholeEdge
+        : edgeOverride > 0
+            ? static_cast<uint32_t>(edgeOverride)
+            : chunkCost_.Edge(edgeBudgetNs, std::max(dispatchX, dispatchY), 7, wholePass);
+    tileNominalWorkGroupCounts_[frameIndex] =
+        std::min(edge, dispatchX) * std::min(edge, dispatchY) * dispatchZ;
+    const uint32_t count = std::max(1u, ((dispatchX + edge - 1) / edge) * ((dispatchY + edge - 1) / edge));
+
+    auto& extraBuffers = tileCommandBuffers_[frameIndex];
+    if (extraBuffers.size() + 1 < count) {
+        const uint32_t needed = count - 1 - static_cast<uint32_t>(extraBuffers.size());
+        std::vector<VkCommandBuffer> allocated(needed);
+        VkCommandBufferAllocateInfo allocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        allocation.commandPool = commandPool_;
+        allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocation.commandBufferCount = needed;
+        if (vkAllocateCommandBuffers(GetDevice()->device, &allocation, allocated.data()) != VK_SUCCESS) {
+            GetOwningGraph()->ReportGpuFault(
+                "ComputeStageNode::RecordComputeCommands tile command allocation", VK_ERROR_OUT_OF_HOST_MEMORY);
+            return false;
+        }
+        extraBuffers.insert(extraBuffers.end(), allocated.begin(), allocated.end());
+    }
+    std::vector<VkCommandBuffer> tileBuffers{cmd};
+    if (count > 1)
+        tileBuffers.insert(tileBuffers.end(), extraBuffers.begin(), extraBuffers.begin() + (count - 1));
+    if (tileQueryCapacities_[frameIndex] < count) {
+        tileQueryCapacities_[frameIndex] = std::max(count, tileQueryCapacities_[frameIndex] * 2u);
+        tileQueries_[frameIndex] = std::make_unique<Vixen::Vulkan::Resources::GPUTimestampQuery>(
+            GetDevice(), 1, tileQueryCapacities_[frameIndex] * 4);
+    }
+    tileCounts_[frameIndex] = count;
+    tileBudgets_[frameIndex] = chunkCost_.SubmissionBudgetNs(budgetNs);
+    tileWorkGroupCounts_[frameIndex].clear();
+    recordedBuffers = tileBuffers;
+    auto& tileQuery = *tileQueries_[frameIndex];
+    VkCommandBuffer currentCommand = cmd;
+    tileQuery.ResetQueryRange(currentCommand, 0, 0, 4);
+    tileQuery.WriteTimestamp(currentCommand, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+
     // Consumer: acquire-side transition of the swapchain image into GENERAL for the
     // storage write (WSI lifecycle — node-managed in Tier-1).
     if (isConsumer && swapchainInfo) {
@@ -509,15 +686,57 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     if (gpuPerfLogger_) {
         gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
     }
-    vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);
-    if (gpuPerfLogger_) {
-        gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, dispatchX * 8, dispatchY * 8);
+    uint32_t tileIndex = 0;
+    for (uint32_t baseY = 0; baseY < dispatchY; baseY += edge) {
+        for (uint32_t baseX = 0; baseX < dispatchX; baseX += edge) {
+            const uint32_t tileX = std::min(edge, dispatchX - baseX);
+            const uint32_t tileY = std::min(edge, dispatchY - baseY);
+            tileWorkGroupCounts_[frameIndex].push_back(canTile_
+                ? tileX * tileY * dispatchZ : dispatchX * dispatchY * dispatchZ);
+            tileQuery.WriteTimestamp(currentCommand, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     tileIndex * 4 + 1);
+            if (canTile_) {
+                vkCmdDispatchBase(currentCommand, baseX, baseY, 0, tileX, tileY, dispatchZ);
+            } else {
+                vkCmdDispatch(currentCommand, dispatchX, dispatchY, dispatchZ);
+            }
+            tileQuery.WriteTimestamp(currentCommand, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     tileIndex * 4 + 2);
+            if (++tileIndex != count) {
+                tileQuery.WriteTimestamp(currentCommand, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                         tileIndex * 4 - 1);
+                if (vkEndCommandBuffer(currentCommand) != VK_SUCCESS) {
+                    GetOwningGraph()->ReportGpuFault(
+                        "ComputeStageNode::RecordComputeCommands tile vkEndCommandBuffer", VK_ERROR_UNKNOWN);
+                    return false;
+                }
+                currentCommand = tileBuffers[tileIndex];
+                VIXEN_FRAME_COUNT(CommandRecordings, 1);
+                if (vkBeginCommandBuffer(currentCommand, &beginInfo) != VK_SUCCESS) {
+                    GetOwningGraph()->ReportGpuFault(
+                        "ComputeStageNode::RecordComputeCommands tile vkBeginCommandBuffer", VK_ERROR_UNKNOWN);
+                    return false;
+                }
+                tileQuery.ResetQueryRange(currentCommand, 0, tileIndex * 4, 4);
+                tileQuery.WriteTimestamp(currentCommand, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                         tileIndex * 4);
+                BindComputePipeline(currentCommand, pipeline, layout, descriptorSets[setIndex]);
+                SetPushConstants(ctx, currentCommand, layout);
+            }
+        }
     }
-    if (postDispatchRecorderForTest_) postDispatchRecorderForTest_(cmd);
+
+    tileQuery.WriteTimestamp(currentCommand, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, count * 4 - 1);
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchEnd(currentCommand, frameIndex, dispatchX * 8, dispatchY * 8);
+    }
+    if (postDispatchRecorderForTest_) postDispatchRecorderForTest_(currentCommand);
+    cmd = currentCommand;
 
     // Consumer is the last writer of the swapchain image → hand it to Present.
     if (isConsumer && swapchainInfo && swapchainInfo->UsesWsiSynchronization()) {
-        SwapchainBarriers::TransitionImageToPresentBarrier2(GetDevice(), cmd, swapchainInfo->GetImage(imageIndex));
+        SwapchainBarriers::TransitionImageToPresentBarrier2(GetDevice(), currentCommand,
+            swapchainInfo->GetImage(imageIndex));
         swapchainInfo->SetImageLayout(imageIndex, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     }
 
@@ -581,6 +800,19 @@ void ComputeStageNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
         externalCleanup_();
     }
     if (GetDevice() && GetDevice()->device != VK_NULL_HANDLE) {
+        for (uint32_t i = 0; i < tileQueries_.size(); ++i) CollectTileTiming(i);
+        for (auto& buffers : tileCommandBuffers_) {
+            if (!buffers.empty() && commandPool_ != VK_NULL_HANDLE)
+                vkFreeCommandBuffers(GetDevice()->device, commandPool_,
+                                     static_cast<uint32_t>(buffers.size()), buffers.data());
+            buffers.clear();
+        }
+        for (auto& query : tileQueries_) query.reset();
+        tileCounts_.fill(0);
+        tileQueryCapacities_.fill(0);
+        tileBudgets_.fill(0);
+        chunkCost_ = {};
+
         if (!commandBuffers_.empty() && commandPool_ != VK_NULL_HANDLE) {
             std::vector<VkCommandBuffer> rawHandles;
             rawHandles.reserve(commandBuffers_.size());

@@ -2,15 +2,27 @@
 // auto-sync FrameGraph P5b M2: generic single-compute-pass submit node.
 #pragma once
 
+#include <array>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "State/StatefulContainer.h"
 #include "Core/GPUPerformanceLogger.h"
+#include "Core/SubmitChannel.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
+#include "GPUTimestampQuery.h"
+#include "Nodes/Common/GpuChunkCost.h"
 #include "Nodes/Common/SwapchainBarriers.h"
 #include <functional>
+
+namespace Vixen::RenderGraph {
+class SimpleTaskProfile;
+}
 
 namespace Vixen::RenderGraph {
 
@@ -56,7 +68,9 @@ protected:
 private:
     /// Returns false when recording failed and the fault was reported (R213); the caller skips the submit.
     bool RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer,
-                               uint32_t imageIndex, uint32_t frameIndex, bool isConsumer);
+                               uint32_t imageIndex, uint32_t frameIndex, bool isConsumer,
+                               std::vector<VkCommandBuffer>& recordedBuffers);
+    void CollectTileTiming(uint32_t frameIndex);
     void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline,
                              VkPipelineLayout layout, VkDescriptorSet descriptorSet);
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout);
@@ -66,6 +80,25 @@ private:
 
     // Per-swapchain-image command buffers with dirty-state tracking.
     StatefulContainer<VkCommandBuffer> commandBuffers_;
+
+    // R861: a generic stage is a tiled producer/consumer just like ComputeDispatchNode. The
+    // first command buffer is the stateful flight-ring entry above; additional primaries and their
+    // timestamp queries are owned per flight and split into queued submit batches by SubmitRecord.
+    std::array<std::vector<VkCommandBuffer>, 4> tileCommandBuffers_;
+    std::array<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>, 4> tileQueries_;
+    std::array<uint32_t, 4> tileCounts_{};
+    std::array<uint64_t, 4> tileBudgets_{};
+    std::array<std::vector<uint32_t>, 4> tileWorkGroupCounts_;
+    std::array<std::vector<SubmitRecord::Batch>, 4> submissionBatches_;
+    FrameCommandTimingLedger frameCommandTimings_;
+    uint32_t reportedTileReads_ = 0;
+    std::array<uint32_t, 4> tileNominalWorkGroupCounts_{};
+    std::array<uint32_t, 4> tileQueryCapacities_{};
+    std::array<std::string, 4> tileExtentKeys_;
+    GpuChunkCost chunkCost_;
+    std::string chunkCalibrationKey_;
+    SimpleTaskProfile* chunkProfile_ = nullptr;
+    bool canTile_ = false;
 
     // Previous-frame inputs for dirty detection.
     VkPipeline lastPipeline_ = VK_NULL_HANDLE;
@@ -90,6 +123,7 @@ public:
         externalRecorder_ = std::move(recorder);
         externalInitialize_ = std::move(initialize);
         externalCleanup_ = std::move(cleanup);
+        if (gpuPerfLogger_) gpuPerfLogger_->SetSpansSeveralSubmissions(!externalRecorder_);
     }
     // Capture diagnostics may snapshot a pass's output before a later pipelined
     // writer replaces it. Install before the first command-buffer recording.
