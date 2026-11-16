@@ -19,6 +19,7 @@
         <ut-button id="save-button" label="Save"/>
         <ut-button id="reopen-button" label="Reopen saved"/>
         </ut-toolbar>
+        <div class="layer-action-legend" title="P provide | S solo | ^/v move | x remove">P provide | S solo | ^/v move | x remove</div>
         <div class="inputs-pinned">
             <div class="section-summary">Inputs <span class="section-count">({{parameters.size}})</span></div>
             <ut-number-field data-for="param : parameters" data-attr-label="param.name" data-attr-unit="param.unit"
@@ -28,7 +29,7 @@
             <div class="hint" data-if="parameters.size == 0">This document declares no inputs.</div>
         </div>
         <div class="outputs-pinned">
-            <div class="section-summary">Outputs
+            <div class="section-summary" title="Share of the surface per material">Outputs
                 <span class="section-detail" data-if="materialCoverageCount == 0">Distance + MaterialId</span>
                 <span class="section-detail" data-if="materialCoverageCount == 1">1 material</span>
                 <span class="section-detail" data-if="materialCoverageCount > 1">{{materialCoverageCount}} materials</span>
@@ -46,7 +47,6 @@
             </div>
             <div class="hint" data-if="materialCoverageCount == 0">No sampled material coverage yet.</div>
             <div class="hint" data-if="materialCoverageCount != 0 && materialCoverageStale">Measuring current revision...</div>
-            <div class="hint" data-if="materialCoverageCount != 0 && !materialCoverageStale">Share of the surface per material</div>
         </div>
         <ut-list class="fill">
             <div class="ut-row" data-for="row : layers">

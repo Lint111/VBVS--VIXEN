@@ -218,14 +218,23 @@ TEST_F(UiKitTest, ButtonVariantRoundForcesTheEllipseHitMask) {
 }
 
 TEST_F(UiKitTest, IconButtonPublishesAVisibleSelfExplainingGlyph) {
-    ASSERT_NE(Load(R"(<rml><body><ut-button id="up" label="move up" icon="up"/></body></rml>)"), nullptr);
-    auto* button = doc_->GetElementById("up");
-    ASSERT_NE(button, nullptr);
-    EXPECT_TRUE(button->IsClassSet("icon-up"));
-    EXPECT_FALSE(button->IsClassSet("icon-remove"));
-    ASSERT_NE(Part(button, "icon"), nullptr);
-    EXPECT_EQ(Part(button, "icon")->GetNumChildren(), 5);
-    EXPECT_EQ(Part(button, "label")->GetInnerRML(), "move up");
+    ASSERT_NE(Load(R"(<rml><body>
+        <ut-button id="provide" label="provide" icon="provide"/>
+        <ut-button id="solo" label="solo" icon="solo"/>
+        <ut-button id="up" label="move up" icon="up"/>
+        <ut-button id="down" label="move down" icon="down"/>
+        <ut-button id="remove" label="remove" icon="remove"/>
+    </body></rml>)"), nullptr);
+    const std::vector<std::pair<const char*, const char*>> glyphs = {
+        {"provide", "P"}, {"solo", "S"}, {"up", "^"}, {"down", "v"}, {"remove", "x"}};
+    for (const auto& [id, glyph] : glyphs) {
+        auto* button = doc_->GetElementById(id);
+        ASSERT_NE(button, nullptr) << id;
+        ASSERT_NE(Part(button, "icon"), nullptr);
+        EXPECT_EQ(Part(button, "icon")->GetNumChildren(), 5);
+        EXPECT_NE(Part(button, "icon")->GetInnerRML().find(glyph), std::string::npos) << id;
+    }
+    EXPECT_EQ(Part(doc_->GetElementById("up"), "label")->GetInnerRML(), "move up");
 }
 
 TEST_F(UiKitTest, DisabledButtonIsVisibleButDoesNotTakePointerInput) {

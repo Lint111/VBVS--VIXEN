@@ -6,6 +6,7 @@
 // them, or robin_hood's Table<> instantiations fail with "std::hash<T> has no operator()".
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
+#include "Recipe/SdfRecipeEval.h"
 #include "RuntimeMaterialTable.h"
 #include "Recipe/RecipeBounds.h"
 #include "SdfRecipes.h"
@@ -45,6 +46,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -250,8 +252,19 @@ std::string MaterialColorHex(uint32_t srgbColor) {
     return buffer;
 }
 
+struct MateriallessLayerCoverageInput {
+    uint32_t id = 0;
+    std::string name;
+    std::vector<Yeroket::Sdf::Generated::SdfInstruction> program;
+};
+
 std::shared_ptr<const EditorMaterialCoverageSnapshot> MeasureMaterialCoverage(
-    const Vixen::SVO::BakedRecipeOutputSet& output) {
+    const Vixen::SVO::BakedRecipeOutputSet& output,
+    const std::array<float, 6>& parameters,
+    const std::vector<MateriallessLayerCoverageInput>& materiallessLayers,
+    const std::unordered_map<uint32_t, std::string>& authoredMaterialLayers,
+    uint32_t defaultMaterial,
+    const std::string& defaultMaterialName) {
     auto snapshot = std::make_shared<EditorMaterialCoverageSnapshot>();
     const Vixen::SVO::Recipe::RecipeOutputDescriptor* distance = nullptr;
     const Vixen::SVO::Recipe::RecipeOutputDescriptor* material = nullptr;
@@ -263,6 +276,9 @@ std::shared_ptr<const EditorMaterialCoverageSnapshot> MeasureMaterialCoverage(
     }
     if (distance == nullptr || material == nullptr || output.resolution <= 0) return snapshot;
 
+    std::unordered_map<uint32_t, std::unordered_map<std::string, uint64_t>> sourceCounts;
+    constexpr float kBakeCenter = 32.0f;
+    constexpr float kRecipeUnitsPerVoxel = 0.25f;
     for (int z = 0; z < output.resolution; ++z) {
         for (int y = 0; y < output.resolution; ++y) {
             for (int x = 0; x < output.resolution; ++x) {
@@ -274,8 +290,49 @@ std::shared_ptr<const EditorMaterialCoverageSnapshot> MeasureMaterialCoverage(
                     std::floor(rawMaterial) != rawMaterial) continue;
                 ++snapshot->counts[static_cast<uint32_t>(rawMaterial)];
                 ++snapshot->totalSurfaceSamples;
+
+                // The stored sample set is the source of truth for this revision. Attribute a
+                // materialless layer by the layer field that is actually closest to the sampled
+                // surface, rather than guessing from document order or aggregate coverage.
+                if (!materiallessLayers.empty()) {
+                    const glm::vec3 point =
+                        (glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)) -
+                         glm::vec3(kBakeCenter)) * kRecipeUnitsPerVoxel;
+                    uint32_t owner = 0u;
+                    float bestDistance = std::numeric_limits<float>::infinity();
+                    for (const auto& layer : materiallessLayers) {
+                        if (layer.program.empty()) continue;
+                        const float layerDistance = Vixen::SVO::Recipe::evalRecipe(
+                            layer.program.data(), static_cast<uint32_t>(layer.program.size()), point,
+                            std::span<const float>(parameters.data(), parameters.size()));
+                        if (!std::isfinite(layerDistance)) continue;
+                        const float absolute = std::abs(layerDistance);
+                        if (absolute < bestDistance) {
+                            bestDistance = absolute;
+                            owner = layer.id;
+                        }
+                    }
+                    if (owner != 0u) {
+                        const uint32_t materialId = static_cast<uint32_t>(rawMaterial);
+                        std::string source = "none";
+                        const auto authored = authoredMaterialLayers.find(materialId);
+                        if (authored != authoredMaterialLayers.end()) {
+                            source = "from " + authored->second;
+                        } else if (materialId == defaultMaterial && defaultMaterial != 0u) {
+                            source = "default (" + defaultMaterialName + ")";
+                        }
+                        ++sourceCounts[owner][source];
+                    }
+                }
             }
         }
+    }
+    for (const auto& [layerId, counts] : sourceCounts) {
+        const auto best = std::max_element(
+            counts.begin(), counts.end(), [](const auto& left, const auto& right) {
+                return left.second < right.second;
+            });
+        if (best != counts.end()) snapshot->layerSources[layerId] = best->first;
     }
     return snapshot;
 }
@@ -462,6 +519,9 @@ void EditorApplication::DeInitialize() {
 void EditorApplication::RefreshLayersView() {
     std::vector<Vixen::App::EditorLayerData> layers;
     layers.reserve(doc_.LayerCount());
+    const auto layerMaterialCoverage = std::atomic_load_explicit(&materialCoverage_, std::memory_order_acquire);
+    const bool materialCoverageReady = layerMaterialCoverage && !layerMaterialCoverage->stale &&
+        layerMaterialCoverage->revision == doc_.Revision();
     const auto layerNameForId = [this](uint32_t id) {
         uint32_t index = 0u;
         return doc_.LayerIndexForId(id, index) ? doc_.LayerName(index) :
@@ -515,10 +575,15 @@ void EditorApplication::RefreshLayersView() {
                 }
             }
         } else {
-            // This row is deliberately not inferred from authored neighbours or aggregate
-            // material counts. The product must publish per-layer MaterialId attribution before
-            // the producer-facing "from <layer>" / "default (<name>)" wording can be truthful.
+            // A materialless row is only allowed to show a source after the stored measurement
+            // for this exact document revision is ready. Before that, retain the neutral state;
+            // the coverage readiness path owns the dim/stale presentation.
             row.materialName = "none";
+            if (materialCoverageReady) {
+                const auto source = layerMaterialCoverage->layerSources.find(row.id);
+                if (source != layerMaterialCoverage->layerSources.end() && !source->second.empty())
+                    row.materialName = source->second;
+            }
             row.materialClearId.clear();
             row.materialPickerId = "panel-picker-open";
         }
@@ -2398,6 +2463,11 @@ void EditorApplication::BuildRenderGraph() {
         uint32_t documentDefaultMaterial = 0u;
         if (doc_.FlattenToRecipeEntry(entry, snapshot, RecipeResolver(), MaterialResolver(), true,
                                       documentDefaultMaterial, diagnostic)) {
+            std::string materialError;
+            if (!ConvertMaterialHandlesToRuntimeRows(entry, documentDefaultMaterial, materialError)) {
+                ReportEditorError(materialError, "MaterialTable");
+                return;
+            }
             entry.defaultMaterialId = documentDefaultMaterial;
             ApplyEditorPreviewBounds(entry, doc_);
             const auto result = RegisterProceduralRecipe(kEditorProceduralRecipeId, entry);
@@ -2428,13 +2498,13 @@ void EditorApplication::BuildRenderGraph() {
     // R766: the editor's panels (DeclarePanels) were mounted on the UI node by the base graph build's
     // panel dock; there is no hard-wired editor document to re-point any more.
 
-    const Vixen::SVO::RuntimeMaterialTable materialTable = pack_.PackRoot().empty()
-        ? Vixen::SVO::RuntimeMaterialTable::Neutral(
-            "material table unavailable: the editor is rendering a loose document")
-        : Vixen::SVO::RuntimeMaterialTable::LoadFromPackRoot(pack_.PackRoot());
-    SetMaterialTable(materialTable.BuildGpuBuffer());
-    if (!materialTable.Loaded()) {
-        ReportEditorError(materialTable.Diagnostic(), "MaterialTable");
+    if (!materialTable_.Loaded() && pack_.PackRoot().empty()) {
+        materialTable_ = Vixen::SVO::RuntimeMaterialTable::Neutral(
+            "material table unavailable: the editor is rendering a loose document");
+    }
+    SetMaterialTable(materialTable_.BuildGpuBuffer());
+    if (!materialTable_.Loaded()) {
+        ReportEditorError(materialTable_.Diagnostic(), "MaterialTable");
     }
 
     if (auto* cameraInst = GetRenderGraph() ? GetRenderGraph()->GetInstanceByName("raymarch_camera") : nullptr) {
@@ -2619,6 +2689,11 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         ReportEditorDiagnostic(diagnostic);
         return false;
     }
+    std::string materialError;
+    if (!ConvertMaterialHandlesToRuntimeRows(entry, documentDefaultMaterial, materialError)) {
+        ReportEditorError(materialError, "MaterialTable");
+        return false;
+    }
     entry.defaultMaterialId = documentDefaultMaterial;
     ApplyEditorPreviewBounds(entry, doc_);
     TraceEditorLatency("flatten", "end", updateTick_);
@@ -2742,7 +2817,35 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     }
     materialCoverageGeneration_.fetch_add(1u, std::memory_order_release);
     const uint64_t documentRevision = snapshot.revision;
-    SetRecipePoolProducer([bakeRegistry, bakeCfg, coverageRequest, documentRevision, this]() mutable {
+    std::vector<MateriallessLayerCoverageInput> materiallessLayers;
+    std::unordered_map<uint32_t, std::string> authoredMaterialLayers;
+    for (uint32_t layerIndex = 0u; layerIndex < doc_.LayerCount(); ++layerIndex) {
+        Vixen::Editor::EditableDocumentLayer layer;
+        Vixen::Editor::DocumentDiagnostic layerDiagnostic;
+        if (!doc_.GetLayer(layerIndex, layer, layerDiagnostic) || !layer.enabled) continue;
+        std::string material;
+        if (doc_.GetLayerMaterial(layer.id, material, layerDiagnostic) && !material.empty()) {
+            const uint32_t global = materialTable_.GlobalRefFor(material);
+            const uint32_t runtime = materialTable_.RuntimeRefForGlobal(global);
+            if (runtime != Vixen::SVO::kMaterialRefNone)
+                authoredMaterialLayers.emplace(runtime, doc_.LayerName(layerIndex));
+        } else {
+            materiallessLayers.push_back({layer.id, doc_.LayerName(layerIndex), std::move(layer.program)});
+        }
+    }
+    std::string defaultMaterialName = doc_.DocumentDefaultMaterial();
+    for (const auto& row : materialRows_) {
+        if (row.name == defaultMaterialName) {
+            defaultMaterialName = row.name;
+            break;
+        }
+    }
+    SetRecipePoolProducer([bakeRegistry, bakeCfg, coverageRequest, documentRevision,
+                           parameters = snapshot.parameterValues,
+                           materiallessLayers = std::move(materiallessLayers),
+                           authoredMaterialLayers = std::move(authoredMaterialLayers),
+                           defaultMaterialName = std::move(defaultMaterialName),
+                           documentDefaultMaterial, this]() mutable {
         auto bakeResult = Vixen::SVO::BakeRegistryToPool(*bakeRegistry, bakeCfg);
         if (!bakeResult.ok) {
             throw std::runtime_error("BakeRegistryToPool failed: " + bakeResult.err);
@@ -2766,13 +2869,17 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
             }
             logger_->Info(slotLine.str());
             const auto coverage = MeasureMaterialCoverage(
-                bakeResult.owned[previewEntry->octreeSlot].recipeOutputSet);
+                bakeResult.owned[previewEntry->octreeSlot].recipeOutputSet,
+                parameters, materiallessLayers, authoredMaterialLayers,
+                documentDefaultMaterial, defaultMaterialName);
             std::ostringstream coverageLine;
             coverageLine << "[EDITOR/material-coverage] documentRevision=" << documentRevision
                          << " request=" << coverageRequest
                          << " total=" << coverage->totalSurfaceSamples;
             for (const auto& [slot, count] : coverage->counts)
                 coverageLine << " slot" << slot << "=" << count;
+            for (const auto& [layerId, source] : coverage->layerSources)
+                coverageLine << " layer" << layerId << "=" << source;
             logger_->Info(coverageLine.str());
             if (materialCoverageRevision_.load(std::memory_order_acquire) == coverageRequest) {
                 auto published = std::make_shared<EditorMaterialCoverageSnapshot>(*coverage);
@@ -2935,6 +3042,29 @@ bool EditorApplication::SaveDocument() {
     if (!flattened) {
         ReportEditorDiagnostic(diagnostic);
         return false;
+    }
+
+    // The product saves the authored VXD; the author CLI is the normal VRC1 producer.  Keep an
+    // opt-in parity witness for the editor's own canonical, resolver-backed entry so the saved
+    // document can be compared byte-for-byte without introducing a second flatten implementation.
+    if (const char* dumpPath = std::getenv("VIXEN_EDITOR_PRODUCT_VRC1_DUMP");
+        dumpPath != nullptr && *dumpPath != '\0') {
+        std::vector<uint8_t> productVrc1;
+        if (!doc_.Flatten(productVrc1, MaterialResolver(), diagnostic)) {
+            ReportEditorDiagnostic(diagnostic);
+            return false;
+        }
+        std::ofstream dump(dumpPath, std::ios::binary | std::ios::trunc);
+        if (!dump) {
+            ReportEditorError("cannot open product VRC1 parity dump: " + std::string(dumpPath));
+            return false;
+        }
+        dump.write(reinterpret_cast<const char*>(productVrc1.data()),
+                   static_cast<std::streamsize>(productVrc1.size()));
+        if (!dump) {
+            ReportEditorError("cannot write product VRC1 parity dump: " + std::string(dumpPath));
+            return false;
+        }
     }
 
     std::string outPath;
@@ -3151,6 +3281,13 @@ bool EditorApplication::RegisterPackRecipeRecursive(
         unavailablePackReferences_.insert(id);
         return false;
     }
+    uint32_t childDefaultMaterial = entry.defaultMaterialId;
+    if (!ConvertMaterialHandlesToRuntimeRows(entry, childDefaultMaterial, diagnostic)) {
+        state[id] = 3u;
+        unavailablePackReferences_.insert(id);
+        return false;
+    }
+    entry.defaultMaterialId = childDefaultMaterial;
     std::array<float, 3> center{};
     float radius = 0.0f;
     child.DeriveBoundsOf(entry, center, radius);
@@ -3216,14 +3353,44 @@ Vixen::Editor::EditorDocumentModel::RecipeReferenceResolver EditorApplication::R
 
 Vixen::Editor::EditorDocumentModel::MaterialReferenceResolver EditorApplication::MaterialResolver() const {
     return [this](const std::string& reference, uint32_t& resolved) {
-        for (const auto& row : materialRows_) {
-            if (row.name == reference) {
-                resolved = row.slot;
-                return true;
-            }
-        }
-        return false;
+        resolved = materialTable_.GlobalRefFor(reference);
+        return resolved != Vixen::SVO::kMaterialRefNone;
     };
+}
+
+bool EditorApplication::ConvertMaterialHandlesToRuntimeRows(
+    Vixen::SVO::RecipeRegistry::RecipeEntry& entry, uint32_t& defaultMaterial,
+    std::string& error) const {
+    const auto convert = [this, &error](float& operand) {
+        if (!std::isfinite(operand) || operand < 0.0f || std::floor(operand) != operand) {
+            error = "MaterialRef contains a non-integral global content-id handle";
+            return false;
+        }
+        const auto global = static_cast<uint32_t>(operand);
+        const auto runtime = materialTable_.RuntimeRefForGlobal(global);
+        if (global != Vixen::SVO::kMaterialRefNone && runtime == Vixen::SVO::kMaterialRefNone) {
+            error = "material content-id handle " + std::to_string(global) +
+                    " is absent from the runtime material table";
+            return false;
+        }
+        operand = static_cast<float>(runtime);
+        return true;
+    };
+    for (auto& instruction : entry.bytecode) {
+        if (static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode) !=
+            Vixen::SVO::Recipe::SdfOpCode::MaterialRef) continue;
+        if (!convert(instruction.data[0])) return false;
+    }
+    if (defaultMaterial != Vixen::SVO::kMaterialRefNone) {
+        const auto runtime = materialTable_.RuntimeRefForGlobal(defaultMaterial);
+        if (runtime == Vixen::SVO::kMaterialRefNone) {
+            error = "default material content-id handle " + std::to_string(defaultMaterial) +
+                    " is absent from the runtime material table";
+            return false;
+        }
+        defaultMaterial = runtime;
+    }
+    return true;
 }
 
 void EditorApplication::RefreshStatusView() {
@@ -3304,16 +3471,16 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
     logger_->Info("[EDITOR/state] pack root=" + pack_.PackRoot() + " id=" + pack_.PackId() +
                   " assets=" + pack_.AssetDirectory() + "/*" + pack_.AssetExtension() +
                   " recipes=" + std::to_string(pack_.Recipes().size()));
-    const auto materialTable = Vixen::SVO::RuntimeMaterialTable::LoadFromPackRoot(packRoot);
-    if (!materialTable.Loaded()) {
-        logger_->Warning("[EDITOR/materials] " + materialTable.Diagnostic());
+    materialTable_ = Vixen::SVO::RuntimeMaterialTable::LoadFromPackRoot(packRoot);
+    if (!materialTable_.Loaded()) {
+        logger_->Warning("[EDITOR/materials] " + materialTable_.Diagnostic());
     }
     materialRows_.clear();
-    materialRows_.reserve(materialTable.Rows().size());
+    materialRows_.reserve(materialTable_.Rows().size());
     if (layersView_ != nullptr) {
         std::vector<Vixen::App::EditorMaterialData> materials;
-        materials.reserve(materialTable.Rows().size());
-        for (const auto& row : materialTable.Rows()) {
+        materials.reserve(materialTable_.Rows().size());
+        for (const auto& row : materialTable_.Rows()) {
             const std::string name = row.name != nullptr ? row.name : "";
             materialRows_.push_back({row.id, name, row.srgbColor});
             materials.push_back({std::to_string(row.id), name, {},
@@ -3323,7 +3490,7 @@ bool EditorApplication::ConfigurePack(const std::string& packRoot, const std::st
         }
         Vixen::App::RefreshEditorMaterialsView(*layersView_, materials);
     } else {
-        for (const auto& row : materialTable.Rows()) {
+        for (const auto& row : materialTable_.Rows()) {
             materialRows_.push_back({row.id, row.name != nullptr ? row.name : "", row.srgbColor});
         }
     }

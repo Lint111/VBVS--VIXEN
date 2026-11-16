@@ -1,10 +1,10 @@
 <!-- ut-button: structure. Required parts: icon, label. Behaviour: UiKit.cpp (KitElement); look: kit.rcss. -->
 <span part="icon" class="ut-icon">
-    <span class="ut-icon-glyph ut-icon-provide"><span></span></span>
-    <span class="ut-icon-glyph ut-icon-solo"><span></span></span>
-    <span class="ut-icon-glyph ut-icon-up"><span></span></span>
-    <span class="ut-icon-glyph ut-icon-down"><span></span></span>
-    <span class="ut-icon-glyph ut-icon-remove"><span></span></span>
+    <span class="ut-icon-glyph ut-icon-provide">P</span>
+    <span class="ut-icon-glyph ut-icon-solo">S</span>
+    <span class="ut-icon-glyph ut-icon-up">^</span>
+    <span class="ut-icon-glyph ut-icon-down">v</span>
+    <span class="ut-icon-glyph ut-icon-remove">x</span>
 </span>
 <span part="label" class="ut-label"></span>
 <span part="reason" class="ut-reason"></span>

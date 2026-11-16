@@ -146,6 +146,45 @@ RuntimeMaterialTable RuntimeMaterialTable::LoadFromPackRoot(const std::string& p
     result.rows_.reserve(result.rawRows_.size());
     for (std::size_t i = 0; i < result.rawRows_.size(); ++i)
         result.rows_.push_back(MaterialPaletteSpecFromPackRow(static_cast<std::uint32_t>(i + 1u), result.rawRows_[i]));
+
+    // The pack table is declaration-ordered for GPU palette access, but authored MaterialRef
+    // operands are the global 1-based content-id handles. A core pack carries the frozen table
+    // beside its content directory; keep the mapping parallel to the runtime rows so the editor
+    // can convert once at the consumer boundary instead of changing the serialized contract.
+    const std::filesystem::path idCandidates[] = {
+        root / "content" / "content-ids.g.json",
+        root / "content-ids.g.json",
+        root.parent_path() / "content-ids.g.json",
+    };
+    for (const auto& candidate : idCandidates) {
+        std::ifstream idsFile(candidate, std::ios::binary);
+        if (!idsFile) continue;
+        const std::string source((std::istreambuf_iterator<char>(idsFile)), std::istreambuf_iterator<char>());
+        const std::size_t markerAt = source.find("\"ids\"");
+        const std::size_t begin = markerAt == std::string::npos
+            ? std::string::npos : source.find('[', markerAt + 5u);
+        if (begin == std::string::npos) continue;
+        std::vector<std::string> globalIds;
+        for (std::size_t at = begin + 1u; at < source.size() && source[at] != ']';) {
+            if (source[at] != '"') {
+                ++at;
+                continue;
+            }
+            const std::size_t end = source.find('"', at + 1u);
+            if (end == std::string::npos) break;
+            globalIds.emplace_back(source.substr(at + 1u, end - at - 1u));
+            at = end + 1u;
+        }
+        if (globalIds.empty()) continue;
+        result.globalRefs_.reserve(result.ids_.size());
+        for (const auto& id : result.ids_) {
+            const auto found = std::find(globalIds.begin(), globalIds.end(), id);
+            result.globalRefs_.push_back(found == globalIds.end()
+                ? kMaterialRefNone
+                : static_cast<std::uint32_t>(found - globalIds.begin()) + 1u);
+        }
+        break;
+    }
     result.loaded_ = true;
     return result;
 }
@@ -153,6 +192,21 @@ RuntimeMaterialTable RuntimeMaterialTable::LoadFromPackRoot(const std::string& p
 std::uint32_t RuntimeMaterialTable::RefFor(std::string_view id) const noexcept {
     for (std::size_t i = 0; i < ids_.size(); ++i)
         if (ids_[i] == id) return static_cast<std::uint32_t>(i + 1u);
+    return kMaterialRefNone;
+}
+
+std::uint32_t RuntimeMaterialTable::GlobalRefFor(std::string_view id) const noexcept {
+    for (std::size_t i = 0; i < ids_.size(); ++i) {
+        if (ids_[i] == id && i < globalRefs_.size()) return globalRefs_[i];
+    }
+    return kMaterialRefNone;
+}
+
+std::uint32_t RuntimeMaterialTable::RuntimeRefForGlobal(std::uint32_t globalRef) const noexcept {
+    if (globalRef == kMaterialRefNone) return kMaterialRefNone;
+    for (std::size_t i = 0; i < globalRefs_.size(); ++i) {
+        if (globalRefs_[i] == globalRef) return static_cast<std::uint32_t>(i + 1u);
+    }
     return kMaterialRefNone;
 }
 

@@ -58,16 +58,25 @@ TEST(ChannelFormat, RuntimeMaterialTableLoadsPackRowsInDeclarationOrder) {
     std::filesystem::create_directories(root / "core", ec);
     ASSERT_FALSE(ec);
     {
-        std::ofstream out(root / "core" / "materials.utdl");
+    std::ofstream out(root / "core" / "materials.utdl");
         out << "namespace core { type: material\n"
                "{ id: rock, color_hex: \"#A5946C\", default_edge_smoothness: 192, visibility: 1 }\n"
                "{ id: ice, color_hex: \"#BBC6D9\", default_edge_smoothness: 240, visibility: 0 }\n}\n";
+    }
+    std::filesystem::create_directories(root / "content", ec);
+    {
+        std::ofstream out(root / "content" / "content-ids.g.json");
+        out << R"({"ids":["0","core:rock","core:other","core:ice"]})";
     }
     const RuntimeMaterialTable table = RuntimeMaterialTable::LoadFromPackRoot(root.string());
     ASSERT_TRUE(table.Loaded()) << table.Diagnostic();
     ASSERT_EQ(table.Rows().size(), 2u);
     EXPECT_EQ(table.RefFor("core:rock"), 1u);
     EXPECT_EQ(table.RefFor("core:ice"), 2u);
+    EXPECT_EQ(table.GlobalRefFor("core:rock"), 2u);
+    EXPECT_EQ(table.GlobalRefFor("core:ice"), 4u);
+    EXPECT_EQ(table.RuntimeRefForGlobal(2u), 1u);
+    EXPECT_EQ(table.RuntimeRefForGlobal(4u), 2u);
     EXPECT_EQ(table.Rows()[0].defaultEdgeSmoothness, 192u);
     EXPECT_EQ(table.BuildGpuBuffer().size(), 64u * sizeof(GPUMaterial));
     std::filesystem::remove_all(root, ec);

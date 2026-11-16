@@ -258,6 +258,53 @@ TEST_F(PanelDockDocumentsTest, LayersPanelKeepsItsWidthWithThePickerAndManyRows)
     }
 }
 
+TEST_F(PanelDockDocumentsTest, OutputsCollapseAndActionLegendKeepFiveLayersVisible) {
+    std::vector<Vixen::App::EditorLayerData> rows;
+    for (int i = 0; i < 5; ++i) {
+        rows.push_back({"layer" + std::to_string(i), "Union", true, 0.0f});
+    }
+    layers_.PopulateFromDocument(0x1Fu, rows,
+                                 {{"input", "m", 1.0f, 0.0f, 2.0f}});
+    layers_.PopulateMaterials({
+        {"1", "material-1", "", "", "#2A3234", "#F0F2FF", "25%", false},
+        {"2", "material-2", "", "", "#3A4A6C", "#F0F2FF", "25%", false},
+        {"3", "material-3", "", "", "#A5946C", "#101826", "25%", false},
+        {"4", "material-4", "", "", "#F3D7AD", "#101826", "25%", false},
+        {"0", "default-material", "", "default-material", "#808080", "#F0F2FF", "", false},
+    });
+    Layout();
+
+    Rml::ElementDocument* doc = panelDocs_.at("layers");
+    Rml::Element* outputs = doc->QuerySelector(".outputs-pinned");
+    ASSERT_NE(outputs, nullptr);
+    EXPECT_EQ(outputs->GetProperty("overflow-y")->ToString(), "hidden");
+    EXPECT_LE(outputs->GetClientHeight(), 20.0f);
+    EXPECT_NE(doc->GetInnerRML().find("P provide | S solo | ^/v move | x remove"), std::string::npos);
+    EXPECT_NE(outputs->QuerySelector(".section-summary")->GetAttribute<Rml::String>("title", ""), "");
+    EXPECT_LE(doc->GetScrollHeight(), doc->GetClientHeight() + 1.0f);
+}
+
+TEST_F(PanelDockDocumentsTest, InspectorNodesHeaderPutsWrapPickerBelowTitle) {
+    Vixen::App::EditorGraphData graph;
+    graph.rawProgram = false;
+    graph.nodes.push_back({0, "Sphere", "Primitive", "", "radius 1", false, true});
+    graph.wrapChoices.push_back({0, 0, "SmoothUnion", "smooth union"});
+    layers_.PopulateFromDocument(0b01u, {{"body", "Union", true, 0.0f}}, {}, {}, {}, graph);
+    Layout();
+
+    Rml::ElementDocument* inspector = panelDocs_.at("inspector");
+    Rml::Element* header = inspector->QuerySelector(".node-list-header");
+    Rml::Element* title = inspector->QuerySelector(".node-list-header > .subtitle");
+    Rml::Element* picker = inspector->QuerySelector(".node-list-header > .wrap-picker");
+    ASSERT_NE(header, nullptr);
+    ASSERT_NE(title, nullptr);
+    ASSERT_NE(picker, nullptr);
+    const auto titleAt = title->GetAbsoluteOffset(Rml::BoxArea::Border);
+    const auto titleSize = title->GetBox().GetSize(Rml::BoxArea::Border);
+    const auto pickerAt = picker->GetAbsoluteOffset(Rml::BoxArea::Border);
+    EXPECT_GE(pickerAt.y, titleAt.y + titleSize.y - 0.5f);
+}
+
 // sn-editorpicker1: the Layers toolbar (Add, Undo, Redo, Save, Reopen saved) stays inside the panel and pinned above the
 // rows however many layers there are, at the default size and at the panel's minimum width; the rows scroll within the panel.
 TEST_F(PanelDockDocumentsTest, LayersToolbarStaysPinnedInsideThePanelWithEightLayers) {

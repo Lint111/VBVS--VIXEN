@@ -27,19 +27,25 @@ ut-button.icon-solo .ut-label,
 ut-button.icon-up .ut-label,
 ut-button.icon-down .ut-label,
 ut-button.icon-remove .ut-label { display: none; }
-ut-button .ut-icon-glyph { display: none; position: absolute; top: 0; left: 0; width: 12px; height: 12px; }
+ut-button .ut-icon-glyph {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 12px;
+    height: 12px;
+    color: #d0e0ff;
+    font-size: 11px;
+    font-weight: bold;
+    line-height: 12px;
+    text-align: center;
+}
 ut-button.icon-provide .ut-icon-provide,
 ut-button.icon-solo .ut-icon-solo,
 ut-button.icon-up .ut-icon-up,
 ut-button.icon-down .ut-icon-down,
 ut-button.icon-remove .ut-icon-remove { display: block; }
-/* Small geometric marks keep the legend legible without relying on a font glyph. */
-ut-button .ut-icon-provide span { display: block; width: 8px; height: 8px; margin: 1px; border-width: 2px; border-color: #d0e0ff; border-radius: 6px; }
-ut-button .ut-icon-solo span { display: block; width: 8px; height: 8px; margin: 1px; border-width: 2px; border-color: #d0e0ff; border-radius: 2px; background-color: #d0e0ff; }
-ut-button .ut-icon-up span, ut-button .ut-icon-down span { display: block; width: 7px; height: 7px; margin: 2px; border-left-width: 2px; border-left-color: #d0e0ff; border-top-width: 2px; border-top-color: #d0e0ff; transform: rotate(45deg); }
-ut-button .ut-icon-down span { margin-top: 0; transform: rotate(225deg); }
-ut-button .ut-icon-remove span { display: block; width: 10px; height: 2px; margin: 5px 1px; background-color: #d0e0ff; transform: rotate(45deg); }
-ut-button .ut-icon-remove span span { display: block; width: 10px; height: 2px; background-color: #d0e0ff; transform: rotate(90deg); }
+/* The glyph itself names the action: P provide, S solo, ^/v move, x remove. */
 ut-button .ut-reason, ut-disclosure .ut-reason { display: block; margin-top: 2px; color: #d09a9a; font-size: 11px; white-space: normal; pointer-events: none; }
 ut-disclosure { display: flex; flex-wrap: wrap; align-items: baseline; margin: 0; padding: 3px 4px; text-align: left; }
 ut-disclosure .ut-marker { width: 14px; color: #9fb0d0; }
