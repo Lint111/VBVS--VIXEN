@@ -132,8 +132,8 @@ struct RecipeRegistrationAnalysis {
 };
 
 struct RecipeRegistrationOptions {
-    // An authored bound normally wins.  When set, a bound the kernel can derive replaces it (the
-    // opt-in derived-bound/chunk-cull path); an underivable program keeps the authored bound.
+    // When set, a bound the kernel can derive replaces the authored one (the application sets it
+    // for every recipe without runtime parameters); an underivable program keeps the authored bound.
     bool preferDerivedBound = false;
     // False skips the occupancy grid (a runtime-parameter recipe must not inherit a grid sampled
     // at one parameter value) and leaves the entry's grid cleared.

@@ -731,20 +731,16 @@ bool HasRuntimeParameters(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) 
     });
 }
 
-bool DerivedBoundsEnabled() {
-    return std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr ||
-           std::getenv("VIXEN_RECIPE_CHUNK_CULL") != nullptr;
-}
-
-// The flag is intentionally opt-in until the native owner re-golden. Runtime-parameter recipes
-// remain on their authored/default bound because a zero-parameter derivation is not valid over
-// their parameter range, and never receive an occupancy grid: the grid samples one parameter
-// value, so its cells could incorrectly cull a changed field.
+// A bound the kernel analysis derives replaces the authored one (R892.3: on by default, no
+// switch). Runtime-parameter recipes remain on their authored/default bound because a
+// zero-parameter derivation is not valid over their parameter range, and never receive an
+// occupancy grid: the grid samples one parameter value, so its cells could incorrectly cull a
+// changed field.
 Vixen::SVO::Recipe::RecipeRegistrationOptions RegistrationOptionsFor(
     const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
     const bool hasRuntimeParameters = HasRuntimeParameters(entry);
     Vixen::SVO::Recipe::RecipeRegistrationOptions options;
-    options.preferDerivedBound = DerivedBoundsEnabled() && entry.boundRadius > 0.0f && !hasRuntimeParameters;
+    options.preferDerivedBound = entry.boundRadius > 0.0f && !hasRuntimeParameters;
     options.occupancy = !hasRuntimeParameters;
     return options;
 }
@@ -871,7 +867,6 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
                          std::to_string(recipeId) + " boundRadius=" + std::to_string(entry.boundRadius) +
                          " (" + sourceName(analysis.boundSource) + ") stepRelaxation=" +
                          std::to_string(entry.stepRelaxation) + " (service-analysis)" +
-                         " derivedBounds=" + (DerivedBoundsEnabled() ? "on" : "off") +
                          (HasRuntimeParameters(entry) ? " runtimeParameters=range-bound-required" : ""));
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
                          std::to_string(recipeId) + " occupancyGrid=" +
