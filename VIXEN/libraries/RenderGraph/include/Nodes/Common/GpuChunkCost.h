@@ -28,7 +28,7 @@ public:
         double worstNs = 0;
     };
     /// R892.2 margin, shared by the whole-pass window and by the tile size a measured plan keeps.
-    static constexpr double kHysteresis = 0.25;
+    static constexpr double kHysteresis = 0.0;  // DELIBERATE BREAK
     void Observe(uint64_t units, uint64_t fullTileUnits, double elapsedNs) {
         if (!units || elapsedNs <= 0) return;
         const double upper = elapsedNs * 1.1;
@@ -82,7 +82,7 @@ public:
             blend(reference_);
             std::swap(current_, reference_);
         } else if (!current_.units || Apart(units, current_.units)) {
-            reference_ = current_;
+            if (units > current_.units) reference_ = current_;  // DELIBERATE BREAK: a smaller scale replaces the only point
             current_ = next;
         } else if (!reference_.units || Apart(units, reference_.units)) {
             current_ = next;
