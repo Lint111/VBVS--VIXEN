@@ -4,7 +4,7 @@ REM Run the comparable correctness GPU list from a Windows-native checkout.
 REM Overrides: VIXEN_NATIVE_BUILD_DIR (configured tree), VIXEN_NATIVE_CTEST (full ctest.exe path).
 REM The build is intentionally separate: run build.bat all vixen-ninja-release first.
 REM Pass the literal selector "lookdev-hud" to run the four default look-dev states and the HUD
-REM producer together. Keeping this regex here avoids cmd.exe re-parsing VIXEN_NATIVE_ARGS.
+REM producer together. Keeping the exact test list in a file avoids cmd.exe re-parsing regex args.
 
 set "ROOT=%~dp0.."
 if defined VIXEN_NATIVE_BUILD_DIR (
@@ -36,7 +36,7 @@ if not defined CASE_TIMEOUT set "CASE_TIMEOUT=600"
 set "STOP_ARG=--stop-on-failure"
 if "%VIXEN_GPU_STOP_ON_FAILURE%"=="0" set "STOP_ARG="
 set "SELECT_ARGS=!VIXEN_NATIVE_ARGS!"
-if /i "%~1"=="lookdev-hud" set "SELECT_ARGS=-R "^(Application\.LookdevCapture\.State\.(midday^|late-afternoon^|overcast^|night-service)^|vixen_hud_capture_producer)$""
+if /i "%~1"=="lookdev-hud" set "SELECT_ARGS=--tests-from-file %ROOT%\tools\native-lookdev-hud.tests"
 if defined VIXEN_NATIVE_ARGS (
     set "VIXEN_PHASE_ARGS=--test-dir "%BUILD_DIR%" -L "^gpu$" -LE "^(native|nightly)$" --parallel --timeout %CASE_TIMEOUT% %STOP_ARG% --no-tests=error --output-on-failure !SELECT_ARGS!"
 ) else (
