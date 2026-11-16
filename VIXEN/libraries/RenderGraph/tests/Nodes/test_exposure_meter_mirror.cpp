@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
+#include "../TestAlwaysOn.h"
 #include <cmath>
 #include <cstdint>
 #include <string_view>
@@ -123,7 +123,7 @@ ExposureSettings FromPreset(const Config::ExposurePreset& preset) {
 
 ExposureSettings NamedPreset(const char* name) {
     const Config::ExposurePreset* preset = Config::FindExposurePreset(name);
-    assert(preset != nullptr);
+    VIXEN_TEST_CHECK(preset != nullptr);
     return FromPreset(*preset);
 }
 
@@ -131,10 +131,10 @@ void FirstFrameSnapsAndUniformSceneMetersItsLuminance() {
     // A uniform 0.18 frame meters EV100 = log2(0.18) + 3 to within half a bin and
     // maps to exposure 1 (key 0.18 / luminance 0.18); the first frame has no history.
     const MeterState state = Settle(std::vector<float>(64 * 64, 0.18f), {});
-    assert(state.adapted);
-    assert(Near(state.meteredEV100, std::log2(0.18f) + 3.0f, 0.125f));
-    assert(Near(state.log2Exposure, 0.0f, 0.125f));
-    assert(state.log2Exposure == state.targetLog2Exposure);
+    VIXEN_TEST_CHECK(state.adapted);
+    VIXEN_TEST_CHECK(Near(state.meteredEV100, std::log2(0.18f) + 3.0f, 0.125f));
+    VIXEN_TEST_CHECK(Near(state.log2Exposure, 0.0f, 0.125f));
+    VIXEN_TEST_CHECK(state.log2Exposure == state.targetLog2Exposure);
 }
 
 void LowPercentileRejectsDarkBackground() {
@@ -147,11 +147,11 @@ void LowPercentileRejectsDarkBackground() {
     settings.highPercent = 95.0f;
     settings.minEV100 = -32.0f;
     const MeterState state = Settle(frame, settings);
-    assert(Near(state.meteredEV100, std::log2(0.25f) + 3.0f, 0.125f));
+    VIXEN_TEST_CHECK(Near(state.meteredEV100, std::log2(0.25f) + 3.0f, 0.125f));
     // With no rejection the black pixels (bin 0) drag the meter to the histogram floor.
     settings.lowPercent = 0.0f;
     settings.highPercent = 100.0f;
-    assert(Settle(frame, settings).meteredEV100 < state.meteredEV100 - 10.0f);
+    VIXEN_TEST_CHECK(Settle(frame, settings).meteredEV100 < state.meteredEV100 - 10.0f);
 }
 
 void HighPercentileRejectsSolarOutliers() {
@@ -163,7 +163,7 @@ void HighPercentileRejectsSolarOutliers() {
     settings.minEV100 = -32.0f;
     const MeterState withSun = Settle(frame, settings);
     const MeterState withoutSun = Settle(std::vector<float>(100 * 100, 0.05f), settings);
-    assert(withSun.meteredEV100 == withoutSun.meteredEV100);
+    VIXEN_TEST_CHECK(withSun.meteredEV100 == withoutSun.meteredEV100);
 }
 
 void HistogramIsOrderIndependent() {
@@ -171,10 +171,10 @@ void HistogramIsOrderIndependent() {
     std::vector<float> frame;
     for (int i = 0; i < 4096; ++i) frame.push_back(std::exp2(static_cast<float>(i % 97) * 0.13f - 9.0f));
     std::vector<float> reversed(frame.rbegin(), frame.rend());
-    assert(MirrorHistogram(frame) == MirrorHistogram(reversed));
+    VIXEN_TEST_CHECK(MirrorHistogram(frame) == MirrorHistogram(reversed));
     const MeterState a = Settle(frame, {});
     const MeterState b = Settle(reversed, {});
-    assert(a.log2Exposure == b.log2Exposure && a.meteredEV100 == b.meteredEV100);
+    VIXEN_TEST_CHECK(a.log2Exposure == b.log2Exposure && a.meteredEV100 == b.meteredEV100);
 }
 
 void FullFrameIsMeteredNotOneTile() {
@@ -186,14 +186,14 @@ void FullFrameIsMeteredNotOneTile() {
         for (uint32_t x = 0; x < 16; ++x)
             blackCorner[y * 32 + x] = 0.0f;
     const Histogram histogram = MirrorHistogram(blackCorner);
-    assert(histogram[0] == 256u && histogram[MirrorBin(0.25f)] == 768u);
+    VIXEN_TEST_CHECK(histogram[0] == 256u && histogram[MirrorBin(0.25f)] == 768u);
     ExposureSettings settings;
     settings.lowPercent = 50.0f;
     settings.highPercent = 95.0f;
     settings.minEV100 = -32.0f;
-    assert(Near(MirrorReduce(histogram, settings, {}, 0.0f).meteredEV100, std::log2(0.25f) + 3.0f, 0.125f));
+    VIXEN_TEST_CHECK(Near(MirrorReduce(histogram, settings, {}, 0.0f).meteredEV100, std::log2(0.25f) + 3.0f, 0.125f));
     const std::vector<float> topLeftOnly(256, 0.0f);
-    assert(MirrorReduce(MirrorHistogram(topLeftOnly), settings, {}, 0.0f).meteredEV100 < -10.0f);
+    VIXEN_TEST_CHECK(MirrorReduce(MirrorHistogram(topLeftOnly), settings, {}, 0.0f).meteredEV100 < -10.0f);
 }
 
 void EV100ClampBoundsDarkAndBrightScenes() {
@@ -201,13 +201,13 @@ void EV100ClampBoundsDarkAndBrightScenes() {
     // key / (2^(min - 3)), so a dark scene is never pushed to white.
     ExposureSettings settings;
     const MeterState dark = Settle(std::vector<float>(64 * 64, 1.0e-5f), settings);
-    assert(dark.meteredEV100 < settings.minEV100);
-    assert(Near(dark.targetLog2Exposure, std::log2(settings.keyValue) - (settings.minEV100 - 3.0f), 1e-5f));
+    VIXEN_TEST_CHECK(dark.meteredEV100 < settings.minEV100);
+    VIXEN_TEST_CHECK(Near(dark.targetLog2Exposure, std::log2(settings.keyValue) - (settings.minEV100 - 3.0f), 1e-5f));
     // A frame brighter than the maximum is held at the maximum rather than crushed further.
     settings.maxEV100 = 6.0f;
     const MeterState bright = Settle(std::vector<float>(64 * 64, 4096.0f), settings);
-    assert(bright.meteredEV100 > settings.maxEV100);
-    assert(Near(bright.targetLog2Exposure, std::log2(settings.keyValue) - (settings.maxEV100 - 3.0f), 1e-5f));
+    VIXEN_TEST_CHECK(bright.meteredEV100 > settings.maxEV100);
+    VIXEN_TEST_CHECK(Near(bright.targetLog2Exposure, std::log2(settings.keyValue) - (settings.maxEV100 - 3.0f), 1e-5f));
 }
 
 void AdaptationIsFrameRateIndependent() {
@@ -220,10 +220,10 @@ void AdaptationIsFrameRateIndependent() {
     const float expected = bright.log2Exposure + (target - bright.log2Exposure) * (1.0f - std::exp(-1.0f));
     for (float hz : {30.0f, 60.0f, 144.0f, 240.0f}) {
         const MeterState after = Adapt(bright, darkScene, settings, 1.0f, 1.0f / hz);
-        assert(Near(after.log2Exposure, expected, 2e-4f));
+        VIXEN_TEST_CHECK(Near(after.log2Exposure, expected, 2e-4f));
     }
     // One 1 s step equals sixty 1/60 s steps (the 0.5 s wall-clock cap is the node's, not the math's).
-    assert(Near(MirrorReduce(darkScene, settings, bright, 1.0f).log2Exposure,
+    VIXEN_TEST_CHECK(Near(MirrorReduce(darkScene, settings, bright, 1.0f).log2Exposure,
                 Adapt(bright, darkScene, settings, 1.0f, 1.0f / 60.0f).log2Exposure, 2e-4f));
 }
 
@@ -235,34 +235,34 @@ void BrightenAndDarkenUseTheirOwnSpeeds() {
     const MeterState inDim = Settle(std::vector<float>(64 * 64, 0.18f), settings);
     const MeterState inLit = Settle(std::vector<float>(64 * 64, 2.88f), settings);
     const float gap = inDim.log2Exposure - inLit.log2Exposure;
-    assert(Near(gap, 4.0f, 0.25f));
+    VIXEN_TEST_CHECK(Near(gap, 4.0f, 0.25f));
     const MeterState toLit = Adapt(inDim, lit, settings, 0.5f, 1.0f / 60.0f);
     const MeterState toDim = Adapt(inLit, dim, settings, 0.5f, 1.0f / 60.0f);
     const float remainingToLit = (toLit.log2Exposure - inLit.log2Exposure) / gap;
     const float remainingToDim = (inDim.log2Exposure - toDim.log2Exposure) / gap;
-    assert(Near(remainingToLit, std::exp(-1.5f), 1e-3f));
-    assert(Near(remainingToDim, std::exp(-0.5f), 1e-3f));
+    VIXEN_TEST_CHECK(Near(remainingToLit, std::exp(-1.5f), 1e-3f));
+    VIXEN_TEST_CHECK(Near(remainingToDim, std::exp(-0.5f), 1e-3f));
     // A zero step or zero rate snaps straight to the target.
-    assert(MirrorReduce(lit, settings, inDim, 0.0f).log2Exposure == inLit.targetLog2Exposure);
+    VIXEN_TEST_CHECK(MirrorReduce(lit, settings, inDim, 0.0f).log2Exposure == inLit.targetLog2Exposure);
 }
 
 void EmptyHistogramHoldsTheAdaptedValue() {
     const MeterState settled = Settle(std::vector<float>(64 * 64, 0.5f), {});
     const MeterState held = MirrorReduce(Histogram{}, {}, settled, 1.0f / 60.0f);
-    assert(held.log2Exposure == settled.log2Exposure);
+    VIXEN_TEST_CHECK(held.log2Exposure == settled.log2Exposure);
 }
 
 void PresetTableNamesSpaceAndInterior() {
     // R670.2: "dark" became "interior" (it lifts the most); "space" is distinct and lifts least.
-    assert(Config::FindExposurePreset("dark") == nullptr);
-    assert(Config::FindExposurePreset("nonexistent") == nullptr);
+    VIXEN_TEST_CHECK(Config::FindExposurePreset("dark") == nullptr);
+    VIXEN_TEST_CHECK(Config::FindExposurePreset("nonexistent") == nullptr);
     const ExposureSettings ordinary = NamedPreset("default");
     const ExposureSettings interior = NamedPreset("interior");
     const ExposureSettings bright = NamedPreset("bright");
     const ExposureSettings space = NamedPreset("space");
-    assert(interior.minEV100 < ordinary.minEV100 && ordinary.minEV100 < bright.minEV100);
-    assert(bright.minEV100 < space.minEV100);
-    assert(std::string_view(Config::EXPOSURE_PRESETS[0].name) == "default");
+    VIXEN_TEST_CHECK(interior.minEV100 < ordinary.minEV100 && ordinary.minEV100 < bright.minEV100);
+    VIXEN_TEST_CHECK(bright.minEV100 < space.minEV100);
+    VIXEN_TEST_CHECK(std::string_view(Config::EXPOSURE_PRESETS[0].name) == "default");
 }
 
 void SpacePresetLimitsTheLift() {
@@ -275,20 +275,20 @@ void SpacePresetLimitsTheLift() {
     const ExposureSettings interior = NamedPreset("interior");
     // Space never brightens beyond log2(key) - (floor - 3) = +0.026 EV: at most 1.02x.
     const float spaceCap = std::log2(space.keyValue) - (space.minEV100 - 3.0f);
-    assert(spaceCap < 0.03f);
+    VIXEN_TEST_CHECK(spaceCap < 0.03f);
     const std::vector<float>* darkFrames[] = {&navy, &nearBlack};
     for (const std::vector<float>* frame : darkFrames) {
         const MeterState settled = Settle(*frame, space);
-        assert(settled.meteredEV100 < space.minEV100);
-        assert(Near(settled.log2Exposure, spaceCap, 1e-5f));
+        VIXEN_TEST_CHECK(settled.meteredEV100 < space.minEV100);
+        VIXEN_TEST_CHECK(Near(settled.log2Exposure, spaceCap, 1e-5f));
     }
     // The ordinary and interior presets lift the same frames far more (the round-2 HUD look).
-    assert(Settle(navy, ordinary).log2Exposure > spaceCap + 1.5f);
-    assert(Settle(nearBlack, ordinary).log2Exposure > spaceCap + 8.0f);
-    assert(Settle(nearBlack, interior).log2Exposure > Settle(nearBlack, ordinary).log2Exposure + 3.0f);
+    VIXEN_TEST_CHECK(Settle(navy, ordinary).log2Exposure > spaceCap + 1.5f);
+    VIXEN_TEST_CHECK(Settle(nearBlack, ordinary).log2Exposure > spaceCap + 8.0f);
+    VIXEN_TEST_CHECK(Settle(nearBlack, interior).log2Exposure > Settle(nearBlack, ordinary).log2Exposure + 3.0f);
     // Space only limits the lift: a frame above its floor meters exactly as the default does.
     const std::vector<float> lit(64 * 64, 0.5f);
-    assert(Settle(lit, space).log2Exposure == Settle(lit, ordinary).log2Exposure);
+    VIXEN_TEST_CHECK(Settle(lit, space).log2Exposure == Settle(lit, ordinary).log2Exposure);
 }
 
 void FixedExposureBypassesTheMeter() {
@@ -297,7 +297,7 @@ void FixedExposureBypassesTheMeter() {
     const float fixedEV100 = -1.05893f;  // the planet scene's declaration: exposure 3
     const ExposureSettings fixed = FromPreset(Config::FixedExposure(fixedEV100));
     const float expected = std::log2(fixed.keyValue) - (fixedEV100 - 3.0f);
-    assert(Near(expected, 1.585f, 1e-4f));
+    VIXEN_TEST_CHECK(Near(expected, 1.585f, 1e-4f));
     std::vector<float> sun(100 * 100, 0.05f);
     std::fill(sun.begin(), sun.begin() + 200, 2048.0f);
     const std::vector<std::vector<float>> frames = {
@@ -305,14 +305,14 @@ void FixedExposureBypassesTheMeter() {
         std::vector<float>(64 * 64, 4096.0f), sun};
     for (const auto& frame : frames) {
         const MeterState first = Settle(frame, fixed);
-        assert(first.log2Exposure == expected);
+        VIXEN_TEST_CHECK(first.log2Exposure == expected);
         for (const auto& next : frames) {
             const MeterState after = MirrorReduce(MirrorHistogram(next), fixed, first, 1.0f / 60.0f);
-            assert(after.log2Exposure == expected);
+            VIXEN_TEST_CHECK(after.log2Exposure == expected);
         }
     }
     // The meter still reads the frame (for diagnostics); only its effect is bypassed.
-    assert(Settle(frames[0], fixed).meteredEV100 < Settle(frames[2], fixed).meteredEV100);
+    VIXEN_TEST_CHECK(Settle(frames[0], fixed).meteredEV100 < Settle(frames[2], fixed).meteredEV100);
 }
 
 }  // namespace

@@ -43,6 +43,11 @@ add_test(NAME Codegen.StageGpuSchemaSource
             -P "${VIXEN_ROOT}/cmake/tests/test_stage_gpu_schema_source.cmake")
 set_tests_properties(Codegen.StageGpuSchemaSource PROPERTIES LABELS "Codegen;cpu")
 
+add_test(NAME Native.NoReleaseDisabledAssertions
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_ASSERT_SCAN_ROOT=${VIXEN_ROOT}"
+            -P "${VIXEN_ROOT}/cmake/tests/test_native_assertions.cmake")
+set_tests_properties(Native.NoReleaseDisabledAssertions PROPERTIES LABELS "cpu")
+
 add_test(NAME Native.WslDozenHostGate
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_DOZEN_GATE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/wsl-dozen-host-gate"
             -P "${VIXEN_ROOT}/cmake/tests/test_wsl_dozen_host_gate.cmake")
