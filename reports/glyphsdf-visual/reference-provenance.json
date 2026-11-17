@@ -1,7 +1,7 @@
 {
   "schema": "vixen-glyphsdf-reference/v1",
   "reference_set": "GlyphSdf / StoredSdf / SdfFilter native CTest captures (Application.LookdevCapture.GlyphSdf.*, StoredSdf.*, SdfFilter.NonText*)",
-  "source_commit": "b70c04c1caec2ae3e4c693604e5fa959abb5a998",
+  "source_commit": "2c0a6d285ed98141259f817fea2fef311b6f2bfc",
   "captured_at": "2026-11-17",
   "machine": "ws",
   "device": "AMD Radeon(TM) 8060S Graphics, AMD proprietary driver 25.20.18 (LLPC), native Windows Vulkan",
@@ -9,12 +9,14 @@
     1920,
     1080
   ],
-  "form": "sha256 of each capture PNG, path relative to runtime-captures/glyphsdf; the PNGs (about 4.9 MB each) are kept in /home/liory/codeman-cases/undertow/reports/opus-rt7-evidence/regold/glyphsdf on ws, not in the repo",
+  "form": "sha256 of each capture PNG, path relative to runtime-captures/glyphsdf; the PNGs (about 4.9 MB each) are kept in /home/liory/codeman-cases/undertow/reports/fable-glyph6-evidence/regold/glyphsdf on ws, not in the repo",
   "count": 20,
   "owner_rulings": [
     "R892.8 (latin/qps-rtl embossed)",
     "R892.9 (shadow speckle)",
     "R892.15 (5 stored-SDF sphere captures after the vx10 merge)",
-    "R892.16 (glyph sliver fix 6131e8d82)"
+    "R892.16 (glyph sliver fix 6131e8d82)",
+    "R892.20 (baked glyph walk: RTL pair, latin carved/embossed; dark pixels explained)",
+    "R892.22 (baked glyph walk: the rest of the set, 10 changed references)"
   ]
 }
