@@ -41,8 +41,8 @@
 namespace Vixen::SVO::Recipe {
 
 inline constexpr std::uint32_t kGlyphBakeMagic = 0x42594C47u; // 'GLYB'
-inline constexpr std::uint32_t kGlyphBakeLayoutVersion = 4;
-// Layout 4 (R892.23): the image ends with two floats per glyph, the facts a shell that drops the
+inline constexpr std::uint32_t kGlyphBakeLayoutVersion = 5;
+// Since layout 4 (R892.23) the image ends with two floats per glyph, the facts a shell that drops the
 // glyph needs: an upper bound of the distance from a point inside the glyph to its outline (font
 // units) and the ink coverage of its bounds box (0..1).
 inline constexpr std::uint32_t kGlyphBakeFactWords = 2;
