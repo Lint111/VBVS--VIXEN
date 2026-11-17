@@ -205,6 +205,7 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "Generated/TileHeader.g.h"
 #include "Generated/TileSortedCandidate.g.h"
 #include "Nodes/MultiDispatchNode.h"  // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
+#include "Nodes/TileBinViewProjection.h"  // GB1 list capacity (kTileListCapacityLog2)
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/UIRenderNode.h"  // S0: composite-HUD render node (RmlUi) — AFTER BodyOctreeSceneNode.h
@@ -1658,11 +1659,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
 
     // GB1: the generated tile passes use one header/counter per 8x8 tile and a
-    // fixed 512-entry candidate slab per tile. The list capacity is independent
-    // of the scene's instance count, so the old 192-instance storage shape is
-    // not part of this allocation contract.
+    // fixed candidate slab per tile (kTileListCapacityLog2, shared with the view
+    // record). The list capacity is independent of the scene's instance count.
     constexpr uint32_t kTileSize = 8u;
-    constexpr uint32_t kTileListCapacityLog2 = 9u;
+    using Vixen::RenderGraph::kTileListCapacityLog2;
     const uint32_t tileCount = ((renderExtent.width + kTileSize - 1u) / kTileSize) *
                                 ((renderExtent.height + kTileSize - 1u) / kTileSize);
     const uint32_t tileListCapacity = 1u << kTileListCapacityLog2;

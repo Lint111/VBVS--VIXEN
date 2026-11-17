@@ -337,19 +337,27 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     int candidateBase = 0;
 #ifdef VIXEN_PRIMARY_TILE_CANDIDATES
     TileHeader primaryTile;
+    bool useTileList = false;
     if (g_usePrimaryTileCandidates) {
         ivec2 tileCoord = g_primaryTilePixel / 8;
         int tileWidth = (g_primaryTileImageSize.x + 7) / 8;
         int tileIndex = tileCoord.x + tileCoord.y * tileWidth;
         primaryTile = tileHeaders[tileIndex];
-        candidateCount = primaryTile.count;
-        candidateBase = primaryTile.index << primaryTile.capacityLog2;
+        // R861.1: a tile offered more candidates than its list holds has an incomplete
+        // list; it marches the bounded instance loop instead (the pre-GB1 contract).
+        useTileList = primaryTile.demand <= primaryTile.count;
+        if (useTileList) {
+            candidateCount = primaryTile.count;
+            candidateBase = primaryTile.index << primaryTile.capacityLog2;
+        } else {
+            candidateCount = min(numInstances, 3 * 64);
+        }
     }
 #endif
     for (int candidateOffset = 0; candidateOffset < candidateCount; ++candidateOffset) {
         int instIdx = candidateOffset;
 #ifdef VIXEN_PRIMARY_TILE_CANDIDATES
-        if (g_usePrimaryTileCandidates)
+        if (useTileList)
             instIdx = int(tileCandidates[candidateBase + candidateOffset].instance);
 #endif
         if (instIdx < 0 || instIdx >= numInstances) continue;

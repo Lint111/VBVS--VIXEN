@@ -10,6 +10,13 @@
 
 namespace Vixen::RenderGraph {
 
+// GB1 candidate list capacity per 8x8 tile, shared by the view record and the list buffers.
+// 64 bounds the per-tile serial sort in TileBinSortSystem: at 512 the 2,197-instance load
+// field took 500-720 ms a frame and lost the device (base-reds #119). A tile offered more
+// candidates than this keeps an incomplete list, and the camera march falls back to the
+// bounded instance loop for that tile (R861.1).
+inline constexpr uint32_t kTileListCapacityLog2 = 6u;
+
 // GB1 (R857): the tile scatter's camera record, in the exact pixel convention of
 // the primary rays (CameraRay.glsl getRayDir):
 //   ndc.x = 2(px + 0.5)/W - 1,  ndc.y = -(2(py + 0.5)/H - 1)
@@ -41,7 +48,7 @@ inline Vixen::Codegen::Gpu::TileBinView MakeTileBinView(const CameraData& camera
     view.tileSize = 8.0f;
     view.tilesX = static_cast<int32_t>((width + 7u) / 8u);
     view.tilesY = static_cast<int32_t>((height + 7u) / 8u);
-    view.listCapacityLog2 = 9;  // 512 candidates per tile; no 192-instance cap.
+    view.listCapacityLog2 = static_cast<int32_t>(kTileListCapacityLog2);
     view.instanceCount = std::max(instanceCount, 0);
     return view;
 }
