@@ -4,7 +4,11 @@
 
 - **B6: DONE, witnessed, LANDABLE.** The shadow wave is 8% faster at 1080p and 13% faster at 4K,
   and output is byte-identical everywhere it was checked.
-- **1b (shadow speckle, R892.8): see section 1b.**
+- **1b (shadow speckle, R892.8): STOPPED for owner review.** Cause found and fixed at the source
+  (`11b45cde1`): the 1 mm self-hit guard discarded real occluders closer than 1 mm, which dropped the
+  whole recipe instance. Shadow-caused speckles 5 -> 0. Captures change by intent; the review
+  package is ready; references are unchanged. The remaining 24 detector hits are not shadow-caused
+  (two findings).
 - **GB1: not started.** vx10 (`ac5b6da09`) is not on `origin/wave/authoring-convergence` yet, and
   the controller asked me to wait for it or ask first.
 - Nothing pushed.
@@ -77,9 +81,126 @@ dirs `C:\vixen-native\rt6-scratch\w1-*`, `w2-*`.
 | 20 `GlyphSdf` captures | all equal `b5/b5-glyphsdf.sha256` (`glyphsdf.sha256`) |
 | Affected native GPU CTest (label gpu, `LookdevCapture|Recipe|UberShader|Glyph|SwitchCost|DeclaredPosition|NestedInvocation`, registered reds excluded, as fable-glyph1) | **106/106 passed**, 3 declared Disabled/Skipped, no device loss, 1696 s (`gpu-affected.log`, `C:\vixen-native\rt6-scratch\suite\ctest.log`) |
 
+## 1b: shadow speckle (R892.8) — STOP for owner review
+
+**Shadow-caused speckles 5 -> 0, fixed at the source** (VIXEN `11b45cde1`, hand-written shadow
+march; kernel unchanged). Captures change by intent; **references not changed**; owner review
+package below. Speckles that are *not* shadow-caused remain and are reported as findings (two
+pre-existing defects, neither in the shadow path).
+
+### Detector
+
+`opus-rt6-evidence/speckle/speckle.py` (measurement-only, evidence folder, not in a repo): a pixel
+whose luminance differs from all 8 neighbours by more than 12 levels in the same direction, the 8
+neighbours agreeing within 12, and (strict form) the 16 pixels of the 5x5 ring agreeing too, so
+stair-step corners of silhouettes and shadow boundaries are not counted. Run over the GlyphSdf set
+(20), RTL pair and look-dev 16: **29 speckles on the reference set.**
+
+Classification by probe (shader-source overrides of the same binary, shared GPU runs):
+- **shadow-caused** = present in the stock capture and absent with shadows disabled
+  (`TraceWorldShadowImpl` returns "lit", probe D): latin-embossed 4, qps-rtl-embossed 1.
+- the rest persist with shadows disabled, so they are not shadow speckle.
+
+### Cause (shadow-caused class)
+
+The shadow ray of each speckle pixel, a plaque pixel inside the cast shadow of an embossed glyph,
+hits the glyph's own wall between **0.1 and 1 mm** along the ray. `TraceWorldShadowImpl` rejected
+every recipe hit closer than a fixed `kProceduralShadowTMin = 1e-3` world metres ("do not treat the
+origin itself as an occluder", commit `9492f3c98`), and because plaque and glyph rows are **one
+instance**, that rejection dropped the whole instance: the pixel read lit inside the shadow. Where
+the hit lands relative to 1 mm varies pixel by pixel along the glyph wall, so the failures are
+isolated pixels, and they move when bounds change the step sequence (the R892.7 package observation).
+
+Probe evidence (latin-embossed, `speckle-probe*.log`, run dirs `C:\vixen-native\rt6-scratch\sp*`):
+
+| Probe | Change | Result |
+|---|---|---|
+| A | count any hit below 1 mm as occluder | 4 of 4 shadow speckles gone, but plaque-rim acne appears (a 1 px dark line, 50 px > 8) |
+| B | count exhausted marches as occluder | byte-identical to stock: exhaustion not involved |
+| C | march out of the start surface (no hit before one outside sample) | byte-identical: the first sample is never inside |
+| E1/E2/E3 | count hits in [0,1e-6] / (1e-6,1e-4] / (1e-4,1e-3] world | E1 = the rim acne only; E2 = no change; **E3 = exactly the 5 speckle pixels, nothing else > 8** |
+| G1/G2 | E3 restricted to hits certified by the cone/bracket refinement / by `d <= EPS_MIN` | **G1 = E3**, G2 = stock |
+| I (the fix) | C's start-surface rule + no world-distance guard for registry recipes | = E3 on latin-embossed; qps-rtl-embossed speckle gone; carved variants and RTL pair byte-identical |
+
+### Fix (`11b45cde1`)
+
+- `traceUberRecipeBodyImpl` (occlusionOnly only): until one sample is outside (`d > EPS_MIN`) the
+  field the ray reads is the surface it starts on, so it marches out of it (`t += max(-d, max(4
+  EPS_MIN, t))`) instead of certifying a hit at the origin. This is the start-surface case the
+  1 mm guard was written for, now handled where it happens.
+- `TraceWorldShadowImpl`: a registry recipe's hit is accepted from `tmin` (no world-distance
+  guard); the march starts at `tmin` instead of filtering hits before it afterwards, so a hit
+  before `tmin` no longer discards the instance. Legacy analytic bodies (recipe 0/1) keep the guard.
+- Affected native GPU CTest on `11b45cde1`: **106/106 passed**, no device loss, 992 s to the last capture (`gpu-affected-1b.log`). No test asserts the changed pixels (the look-dev references are hash lists the owner signs off).
+- Camera and probe rays (nearest hit) unchanged: RTL pair 1080p stays `8e83e9ac...` (B5 `new/`),
+  HUD 3 unchanged.
+
+### Review package (`~/codeman-cases/undertow/reports/opus-rt6-evidence/speckle/` on ws)
+
+`ref/` = the current references (B5 `new/` look-dev 16, the 20 GlyphSdf captures of the B5 binary,
+RTL pair 12 frames); `new/` = the same captures from `11b45cde1` (CTest captures + RTL runner);
+`sheets/<capture>-sheet.png` = full ref | full new with every differing pixel boxed (magenta <= 8,
+yellow > 8), and the 8 largest changes zoomed (ref above new); `sheets/zooms-overview.png`;
+`sheets/zoom-2x/glyph-sliver-1x-vs-2x.png` (finding 1).
+
+| Capture | differing px | > 8 | > 32 | max | speckles ref -> new |
+|---|--:|--:|--:|--:|--:|
+| GlyphSdf latin-embossed | 489 | 5 | 5 | 40 | 8 -> 4 |
+| GlyphSdf qps-rtl-embossed | 32 | 1 | 1 | 40 | 8 -> 7 |
+| other 18 GlyphSdf, RTL pair, HUD 3 | 0 | 0 | 0 | 0 | unchanged |
+| look-dev late-afternoon 1 / 2 / 3 / 0 | 2243 / 1909 / 1234 / 0 | 70 / 1 / 0 / 0 | 70 / 1 / 0 / 0 | 144 / 97 / 1 / 0 | 2/0/5/0 unchanged |
+| look-dev night-service 0 / 1 / 2 / 3 | 708 / 542 / 512 / 511 | 3 / 1 / 1 / 5 | same | 82 / 142 / 87 / 142 | unchanged |
+| look-dev overcast 0 / 1 / 2 / 3 | 464 / 196 / 429 / 299 | 1 / 1 / 1 / 3 | same | 74 / 54 / 98 / 77 | unchanged |
+| look-dev midday 0 / 1 / 2 / 3 | 0 / 0 / 36 / 26 | 0 / 0 / 1 / 0 | same | 0 / 0 / 137 / 1 | unchanged |
+| **total (strict detector)** | | | | | **29 -> 24** |
+
+**What I see (every sheet looked at):**
+- GlyphSdf embossed: the isolated lit dots inside the cast glyph shadows are gone; nothing else
+  moves by more than 8 levels (the rest are 1-level changes scattered over the frame).
+- Look-dev late-afternoon angle 1: **the thin orange lit line along the top edge of the red front
+  slab, under the grey slab above it, is gone**: that edge now reads in contact shadow (70 px). This
+  is the same class as the "lit sliver under every overhang edge" the origin-bias comment describes:
+  the occluder there is closer than 1 mm and was discarded. The visible change is a one-pixel line.
+- Look-dev midday 2, overcast 0: parts of a thin lit/cyan sliver along a contact edge on the
+  figure become shadowed, the same class.
+- Night-service, overcast 2/3, late-afternoon 2: single pixels on existing shadow boundaries move
+  by one pixel (stair-step edges); no shadow appears or disappears.
+- The many changes of 1 level over the whole frame (sky included) follow from the frame's average
+  luminance: the auto-exposure reads a slightly darker frame.
+- No geometry, material or colour region changes; no shadow is lost. I do not treat any of this as
+  a regression, but the late-afternoon line and the figure slivers are visible by intent: **owner
+  decides.**
+
+### Findings (not shadow speckle; not fixed here)
+
+1. **GlyphSdf embossed: zero-width "sliver" walls out of the glyph outlines** (latin-embossed 4,
+   qps-rtl-embossed 7 detector hits). They persist with shadows disabled and vanish with the glyph
+   rows removed (probe P); their colours are the glyph top band (~154) and wall/shadow band (~96).
+   At 2x (`sp10-i-le4k`) each becomes a dotted line continuing a thin bright sliver out of a letter
+   (`sheets/zoom-2x/`): a zero-thickness extruded wall that rays hit only where they land within
+   the hit epsilon. Most likely a degenerate (back-and-forth / zero-area) piece in the packed glyph
+   outline stream (the walk ignores the stored `ContourStart`, but every segment carries its own
+   control points, so no implicit bridge exists in the walk). Owner: VIXEN glyph outline packing /
+   text shaping or the kernel glyph row builder; lane size M; needs a CPU walk of the latin row
+   stream around the sliver to locate the segment.
+2. **Look-dev isolated dark/lit dots on curved surfaces** (late-afternoon 1: 2, 3: 5; night-service
+   1/2: 1 each; overcast 3: 1; plus analytic-vs-voxel yaw30 x2 and isolation-StoredNormals 1 in the
+   GlyphSdf set). Late-afternoon 3's five persist with shadows disabled (probe D), and normal tap size
+   (N1) and bracket refinement depth (N2) do not remove them; they sit on the yellow figure and on
+   silhouette outline bands. Primary/shading path; cause not isolated here.
+
+Target "detector 0" is therefore met for the shadow class only (5 -> 0); the remaining 24 are the two
+findings above.
+
 ## LANDABLE NOW
 
 - VIXEN `2bd159789` (B6) on base `c2e97b00f`. Byte-identical; witnessed above.
+- VIXEN `11b45cde1` (speckle fix): **not landable until the owner accepts the review package**
+  (it changes look-dev and GlyphSdf references).
+
+## GB1
+
+Not started: vx10 (`ac5b6da09`) has not landed on `origin/wave/authoring-convergence`; I ask the controller before GB1, as agreed. Measurement already in hand for it: after B1/B5/marchrule/B6 the 1080p RTL march is 38.5 ms = 54 Mrays/s (11.7% of the 461 Mrays/s budget), the wave 33 ms, and traversal is about 97% of the GPU. RTL has 3 instances, so the per-pixel instance loop GB1's tile lists remove is at most a few ms of it (fb-gpubudget1: about 1 ms per instance per 1080p frame). The rest of the RTL march is the glyph walk near the text (B4) and the per-body march itself (GB2). GB1's gain is in many-instance scenes (look-dev, the load scenario).
 
 ## REDS
 
@@ -91,6 +212,9 @@ dirs `C:\vixen-native\rt6-scratch\w1-*`, `w2-*`.
   6-CPU grant.
 
 ## CONSOLIDATION ISSUES
+
+- One probe batch (`speckle-probe3`) was launched from an ssh shell with `&` instead of a harness background task; it ran and finished normally, but it was not harness-tracked. My process slip.
+- Shader-source overrides (`VIXEN_SHADER_SOURCE_DIR_OVERRIDE`) made a 12-probe root-cause search possible with no rebuild (shared GPU runs of 15 to 110 s each). A probe harness that does this as a declared tool would save every lane the hand-made copies.
 
 - A core-service timeout during a running job killed an admitted build (exit 2, `WRAPPER_SET_E`)
   instead of retrying the reservation refresh.
