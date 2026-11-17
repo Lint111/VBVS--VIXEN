@@ -1098,9 +1098,10 @@ TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
 
 // R892.14 / R619.1: the shader walk over baked glyph rows against its CPU face, on the packed
 // words both read. The shader text is the production walk, cut out of RecipeGlyphBindings.glsl.
-// The sign must agree at every sample that is not on the outline; the distance may differ by the
-// rounding the GPU is allowed in a division and a square root, and the test prints how many
-// samples are bit-equal.
+// The sign must agree at every sample that is not on the outline. The distance may differ by the
+// rounding the GPU is allowed in a division and a square root: the projection onto a chord
+// subtracts numbers of the size of the sample coordinates, so the bound is two units in the
+// last place of the larger coordinate. The test prints how many samples are bit-equal.
 TEST_F(RecipeGlslNumericalParityTest, BakedGlyphRowsMatchTheCpuFace) {
     using namespace Vixen::SVO::Recipe;
     std::ifstream bindingsFile(VIXEN_RECIPE_GLYPH_BINDINGS_GLSL_PATH);
@@ -1158,7 +1159,7 @@ void main() {
     ASSERT_TRUE(BuildGlyphBakeStream(rows, {}, stream, &error)) << error;
 
     std::uint64_t samples = 0, bitEqual = 0, signMismatches = 0, beyondTolerance = 0, inside = 0, chords = 0;
-    std::uint32_t worstUlps = 0;
+    float worstDifference = 0.0f, worstAllowed = 0.0f;
     std::uint32_t state = 2026u;
     for (std::uint32_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
         const GlyphBakeImage& image = *images[rowIndex < 41 ? 0 : 1];
@@ -1190,17 +1191,19 @@ void main() {
                                   << "): cpu " << cpu << " gpu " << gpu;
                 continue;
             }
-            const std::uint32_t ulps = cpuBits > gpuBits ? cpuBits - gpuBits : gpuBits - cpuBits;
-            worstUlps = std::max(worstUlps, ulps);
-            if (std::fabs(cpu - gpu) > 1e-5f * std::max(1.0f, std::fabs(cpu)) && ++beyondTolerance <= 5)
+            const float coordinate = std::max(1.0f, std::max(std::fabs(points[i].x), std::fabs(points[i].y)));
+            const float allowed = 2.0f * coordinate * std::numeric_limits<float>::epsilon() + 1e-6f * std::fabs(cpu);
+            if (std::fabs(cpu - gpu) > worstDifference) { worstDifference = std::fabs(cpu - gpu); worstAllowed = allowed; }
+            if (std::fabs(cpu - gpu) > allowed && ++beyondTolerance <= 5)
                 ADD_FAILURE() << "distance differs in row " << rowIndex << " at (" << points[i].x << ", " << points[i].y
                               << "): cpu " << cpu << " gpu " << gpu;
         }
     }
     std::printf("[GLYPH_BAKE_GPU] rows=%zu samples=%llu bit_equal=%llu sign_mismatches=%llu beyond_tolerance=%llu "
-                "worst_ulps=%u inside=%llu chords_per_sample=%.2f\n",
+                "worst_difference=%.3g (allowed there %.3g, row units) inside=%llu chords_per_sample=%.2f\n",
                 rows.size(), static_cast<unsigned long long>(samples), static_cast<unsigned long long>(bitEqual),
-                static_cast<unsigned long long>(signMismatches), static_cast<unsigned long long>(beyondTolerance), worstUlps,
+                static_cast<unsigned long long>(signMismatches), static_cast<unsigned long long>(beyondTolerance),
+                static_cast<double>(worstDifference), static_cast<double>(worstAllowed),
                 static_cast<unsigned long long>(inside), static_cast<double>(chords) / static_cast<double>(samples));
     EXPECT_EQ(signMismatches, 0u);
     EXPECT_EQ(beyondTolerance, 0u);
