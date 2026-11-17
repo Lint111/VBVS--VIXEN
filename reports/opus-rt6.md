@@ -20,6 +20,8 @@
 - **Investigations reported:** R894 premise (no GPU tape interpreter in the march; only TAPE_OPERANDS in
   the material variant), uber-march anatomy (glyph walk about 80% of march / 88% of wave; hit normal and
   material about half of field evaluations), cold-compile "regression" = AMD driver shader cache.
+- **CHECKPOINT (controller, 11-17):** this session stops after the guard/scatter witness; a successor
+  Opus lane continues from "CHECKPOINT AND SUCCESSOR BRIEF" below.
 - Nothing pushed.
 
 | Repo | Branch / commit | Content |
@@ -308,7 +310,184 @@ evaluation and discards the id through the 3-argument wrapper; whether the drive
 not checked. The per-channel projection (distance-only function for traversal and gradient, property
 functions at hit resolution) belongs with the TAPE_OPERANDS lane and the analytic-gradient work (R892.10).
 
+## CHECKPOINT AND SUCCESSOR BRIEF (11-17)
+
+This session stops here at the controller's request. A fresh Opus lane continues from this brief.
+
+### vx11 commits and witness status
+
+| Commit | Content | Witness |
+|---|---|---|
+| `2bd159789` | B6 any-hit recipe march | two exclusive windows (wave -8% 1080p, -13% 4K); RTL, look-dev 16, HUD 3 and 20 GlyphSdf byte-identical; affected GPU set 106/106 |
+| `11b45cde1` | shadow speckle fix (R892.9) | probes A-I, shared runs; affected GPU set 106/106 on it; owner accepted |
+| `bbb51e518` | look-dev 16 references re-recorded (R892.6 + R892.9) + provenance | from the `11b45cde1` CTest captures, first and repeat identical |
+| `lane-rt6-guard` `10c3406fd` | base-reds #119 guard: 64-entry tile lists, march falls back on overflowing tiles | standalone on `02ac526f2`; witnessed only together with the scatter (load scenario all legs through tier 3, no device loss; mirror 20/20) |
+| `6d0f8a23d` | parallel GB1 scatter | mirror 20/20; load scenario as above; RTL 1080p 12f `8e83e9ac` unchanged (RTL binning 0.15 ms scatter + 0.18 ms sort, was 8.5-17 + 1.5-2.5); affected GPU set 107/107, no device loss |
+
+Also on lane-rt6 (not vx11 code): `72a527a39` (wave `8c0bf73c3` merge, kernel pin `cb9a4f5b7`), SPT
+inboxes `3d7fc523c`, `f888b09b5`, reports. Kernel lane-rt6 `cb9a4f5b7` = main `5640985e2` + lane-glyph1
+`0800a13e4` (unpushed; vx11 needs it or the equivalent merge): SG 1510/1510, CG 3874 passed 0 failed.
+
+### Last witness (lane-rt6 `6d0f8a23d` build, affected GPU set `gpu-affected-gb1.log`, 107/107)
+
+Captures against the accepted sets (references are hash or PNG sets, not test assertions):
+- RTL pair 1080p: identical. HUD 3: not rerun on this build (no HUD path change).
+- Look-dev 16: 11 identical to the committed `bbb51e518` references; 5 differ by at most 3 levels in
+  2 to 24 pixels (midday 3, late-afternoon 3, night-service 1/2/3). `bbb51e518` was recorded on the
+  pre-merge build, so these are most likely the vx10 GB1 visit order (depth-sorted tile lists change
+  the march's `tEnd`, hence the last bits of some hits); guard and scatter leave these lists unchanged
+  (at most 15 candidates per tile). Inference, not isolated: confirm with
+  `VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES` on one state. vx11 needs the look-dev references
+  re-recorded on the merged tree.
+- GlyphSdf: 15 of 20 identical (text, RTL, carved, embossed, analytic-vs-voxel); 5 stored-SDF nontext captures
+  (`sdf-filter-nontext-128-yaw0`, `isolation-ExtraApron`, `-ShadowBiasOneVoxel`, `-SlowTrilinear`,
+  `-StoredNormals`) changed: about 38k pixels at 1-8 levels and about 400 pixels above 8 in one column band
+  at x 994-1019. By eye: the grey sliver on the left silhouette of the voxel sphere is gone, which reads as
+  an improvement. Neither the guard nor the scatter touches the stored-SDF path, so this comes from the vx10
+  merge. Owner/controller to confirm.
+- Capture dirs: `C:\vixen-native\rt6\build\ninja-release\runtime-captures`; the nontext before/after
+  sheet and zoom: `opus-rt6-evidence/gb1-witness/nontext-ref-new.png`, `nontext-zoom.png`.
+
+### Bases for the successor
+
+- VIXEN: worktree `~/projects/VBVS--VIXEN/.claude-worktrees/rt6`, branch `lane-rt6` (tip after this
+  report). Native tree `C:\vixen-native\rt6` (warm, Release, all targets). Reuse it (`--lane rt6`).
+- Kernel: `~/projects/Yeroket-Fantasy/.claude-worktrees/rt6`, branch `lane-rt6` `cb9a4f5b7`.
+- Undertow pairing worktree for kernel suites: `~/projects/undertow/.claude/worktrees/rt6-pair`
+  (detached `origin/main-wave` `248f655d6`).
+- Continuation record: `opus-rt6-evidence/continuation.json`.
+
+### Rulings that apply
+
+- **R892.9** speckle fix + re-golden accepted. **R892.10** hit normals become a kernel-generated
+  analytic gradient per recipe (R602), one evaluation for distance + gradient (+ material).
+  **R892.11** traversal evaluates only the distance subgraph; properties once at hit resolution;
+  per-channel projections if the compiler does not strip. **R892.12** GB1 per-tile sort as a plain
+  kernel callable `Sort(slice, comparator)`, cooperative shared-memory sort per workgroup on the GPU,
+  std::sort on the CPU face, no author-facing shared arrays or barriers (R682/R683); owner: MEASURE BOTH
+  this and z-bin before deciding. **R892.13** no arc lists in per-cell glyph grids (patent); adaptive
+  chords at bake; lower-fidelity shadows allowed as quality-preset fields (natives stay exact); analytic
+  glyph face vs march measured before deciding. **R892.14** glyph transformation pre-baked at font
+  import (rule set per glyph, stored with the font pack asset, content-addressed).
+- Also: R857.3 (binning budget 0.6 ms), R857.5 (generator gaps are kernel tasks), R861.1 (overflow:
+  fallback this frame, grow next), R682/R683 (cooperative work is derived), R894 (no interpreter on the
+  GPU), R619.1 (CPU/GPU parity), R665.3, R761 (worst case first), R884 (shared GPU runs; exclusive only
+  for benchmarks).
+
+### Order (controller, 11-17)
+
+z-bin prototype -> `Sort` callable -> fable-research1 rank 3 (certified lit/shadowed/uncertain shadow
+tile classes) -> uber trim + R892.11 -> R892.10 analytic gradient + rank 4 (certified safe step) ->
+R892.13.3 lower-fidelity shadow presets. Measure z-bin and Sort with the same witness; the owner decides
+on numbers and images.
+
+### 1. z-bin prototype (fable-research1 B-A), no kernel surface
+
+Contract changes from "exact front-to-back list per tile" to "same candidate set, deterministic nearest
+hit": the nearest hit is the minimum over candidates whatever the order, ties by lowest instance id
+(`isCloserHit`). Order matters only for early stop and, at the bit level, for the march's `tEnd`
+(`tMaxWorld = bestT`), which feeds the cone-refinement window (`afterT <= tEnd` in
+`traceUberRecipeBodyImpl`). So a visit order other than (near depth, instance) may move hits in the last
+bits: expect RTL/look-dev hashes to change and produce sheets (owner decides), unless the visit order
+stays (near depth, instance).
+
+Mapping onto the existing generated systems (`VIXEN/codegen/gpu-systems/TileBinningSystem.cs`,
+`TileBinSortSystem.cs`; regenerate with `frame_targets_refresh` in the native tree, see commands):
+- **Instance order once per frame.** Sort instances by near depth (view z - radius, `ProjectBound`'s
+  `nearDepth`), ties by instance id, producing `rank -> instance`. 2,197 keys: one small pass. Options:
+  CPU in `TileBinViewNode` (bounds are uploaded from the CPU, `InstanceBoundDerivation.h`), or one GPU
+  system. The CPU route needs the view transform (it is in `TileBinView`) and keeps the GPU side free of
+  any sort. The ordered instance list is a new buffer (a kind-shaped row: declare it in
+  `codegen/config-schemas/TileBinning.cs` beside `TileCandidate`; R879 census note applies).
+- **Scatter** writes bits instead of appending: tile word `w = rank / 32`, `atomicOr(1 << rank % 32)`.
+  Words per tile = ceil(instanceCount / 32) (69 at 2,197); storage = tiles x words (32,400 x 69 x 4 B =
+  8.9 MB at 1080p, 8x8 tiles). fable-research1 suggests 16 px tiles or a two-level array above about
+  4,000 instances, and whole-word writes for large instances (a row of tiles at a time).
+- **Sort system** goes away. **Consumer** (`TraceWorld.glsl` GB1 block): iterate the tile's set bits in
+  rank order (`findLSB` per word), `instIdx = rankToInstance[rank]`; stop when the next candidate's near
+  depth key exceeds the current best hit t (keys lower-bound ray distance). The guard's fallback stays
+  for safety.
+- CPU mirror: `TileBinningMirror.h` asserts exact sorted lists; change it to "same candidate set" and
+  "same nearest hit" (march mirror not needed: compare sets and rank order).
+- Measure: binning ms per tier (scatter + order pass), march per leg, frame p50/max per leg, RTL and
+  look-dev hashes (sheets if changed).
+
+### 2. `Sort(slice, comparator)` (R892.12), kernel first
+
+- **Facade:** a kernel static callable, e.g. `KernelSort.Sort<T>(T[] values, int first, int count,
+  comparator)` with a `[KernelCallable]`-style comparator method group `bool Before(T a, T b)`
+  (TileBinSortSystem's `CandidateBefore` takes four scalars today; a two-struct comparator reads more
+  plainly). Managed implementation: a deterministic total-order sort (the comparator is total: depth then
+  instance).
+- **GLSL lowering** (`SourceGenerator~/Transpiler/GaiaGpuSystemModel.cs` `EmitGlsl`,
+  `GlslAstVisitor.cs` intrinsics, `IntrinsicCatalog.cs`): when a system body calls `Sort`, the system is
+  lowered cooperatively. One workgroup per row; for TileBinSortSystem a row is a tile and the existing
+  8x8 workgroup over the view-depth extent is exactly one tile, but the derivation must not rely on that:
+  the manifest needs "workgroups = rows" (VIXEN `GeneratedSystemStage` dispatch sizing reads the
+  manifest `extent`). Statements before the sort run on lane 0, then barrier; the sort loads the slice
+  into shared memory padded to a power of two, bitonic network, lanes stride the compare-exchange,
+  barrier per step, store back; statements after run on lane 0. Shared size needs a compile-time bound:
+  derive it from the slice's declared capacity (here `1 << listCapacityLog2`; today it is a runtime
+  view field, so either a schema capacity facet or the kernel's capacity constant has to supply it;
+  that is a design point to settle in the lane).
+- **C++ face:** `std::sort(values + first, values + first + count, Before)`. CodegenTool tests: the
+  emitted GLSL compiles (glslang), CPU face equals the managed sort, and a GPU-vs-CPU parity fixture if
+  one exists for systems.
+- File the hoisted-guard callable gap (SPT `63665642c7c8`) alongside; the Sort lowering touches the same
+  main() emission.
+- Then raise `kTileListCapacityLog2` back up (the guard's 64 is a bound for the serial sort only) and
+  re-measure fallback-free tiers.
+
+### 3. Rank 3: certified shadow tile classes (exact)
+
+fable-research1 rank 3: per tile, certify lit / shadowed / uncertain from light-space bounds so the
+shadow wave traces only uncertain pixels; exact output. Wave cost today: RTL 33 ms at 1080p (88% glyph
+walk), load scenario 3-56 ms.
+
+### 4. Uber trim + R892.11
+
+The splice (`BuildRenderGraph.cpp:2108`, `UberShaderSplice.h`) compiles every registered recipe into
+the uber shaders (RTL carries 15, uses 2). Trim to the instanced recipe ids. Pixel-identical; measure
+march, wave and cold compile (with the driver shader cache disabled or keyed fresh, SPT
+`db8eb3eee0f2`). Decide what triggers a recompile when an instance of an unspliced recipe appears
+(R864 edit latency). R892.11: RTL and look-dev already run distance-only `sdfRecipe_<id>(vec3,
+float[6])`; the material variant does not (see "R892.11 distance-only check" and the TAPE_OPERANDS
+plan).
+
+### Witness commands (ws)
+
+- Native build: `cd ~/projects/VBVS--VIXEN/.claude-worktrees/rt6 && bash /home/liory/.local/bin/with-test-lock.sh
+  --agent <lane> --resource build --label <lane>:build-N -- bash tools/vixen-native.sh --lane rt6 build all
+  vixen-ninja-release` (commit first; the checkout syncs to the committed tip, and a branch that moves
+  during the sync fails the job).
+- Generated systems: same wrapper with `build build vixen-ninja-release frame_targets_refresh`; copy the
+  changed `shaders/Generated/*` and `include/Generated/*` back from `C:\vixen-native\rt6` and
+  `git checkout --` them there (the native checkout refuses to sync with local changes).
+- Captures: `~/codeman-cases/undertow/reports/opus-rt6-evidence/cap.sh JOB shared|bench
+  name:scene(rtl|state|glyph):W:H:frames:shaders(stock|base|<dir under rt6-scratch>)[:state:angle[:K=V,...]]`;
+  summary `summ.sh NAME`. Shader probes: copy `git archive HEAD VIXEN/shaders` into
+  `C:\vixen-native\rt6-scratch\<probe>` and edit (VIXEN_SHADER_SOURCE_DIR_OVERRIDE, measurement only).
+- Load scenario: `with-test-lock.sh --agent <lane> --resource gpu --label <lane>:load-X -- bash
+  tools/vixen-native.sh --lane rt6 bat tools/run-load-scenario.bat --evidence-root
+  "C:\vixen-native\rt6-scratch\load" NAME VIXEN_WINDOW_WIDTH:1920 VIXEN_WINDOW_HEIGHT:1080`; per-leg
+  numbers from `timeline.csv` (render_ms) and `GPU_SUBMIT_TIME` reads in `run.log`.
+- Affected GPU set: `... --resource gpu ... -- bash tools/vixen-native.sh --lane rt6 ps
+  /mnt/c/vixen-native/rt6-scratch/suite-affected.ps1 -OutDir "C:\vixen-native\rt6-scratch\suite-X" -Lane rt6`.
+- CPU mirror: `... --resource test ... ps /mnt/c/vixen-native/rt6-scratch/ctest-filter.ps1 -Regex
+  "TileBinningMirror|TraceWorldShadowMirror|InstanceBound" -OutDir "C:\vixen-native\rt6-scratch\mirror-X"`.
+- Speckle detector and sheets: `opus-rt6-evidence/speckle/speckle.py`, `sheets.py` (measurement only,
+  not in a repo).
+- Cold compile: compare "Phase 3b: Compile all nodes" to `BootPipelineProbe` in run.log, and only
+  between runs with the driver cache in the same state (see SPT `db8eb3eee0f2`).
+- References: RTL pair 1080p 12 frames `8e83e9acd342...6905dc`; 4K 12 frames `23f2f85705ac...b243a9`;
+  look-dev 16 = `reports/lookdev-visual/captures-shadow-on/` (`bbb51e518`); HUD 3 `754bcd8e`, `7c4d3688`,
+  `cdb9b393`; GlyphSdf = `opus-rt6-evidence/speckle/new/glyphsdf` (latin-embossed `7d22095f`,
+  qps-rtl-embossed `d4a49218`, other 18 = `fable-glyph1-evidence/b5/b5-glyphsdf.sha256`).
+
 ## REDS
+
+- **base-reds #119 (registered, ws base-reds.md):** `vixen_load_scenario` 1080p loses the device at tier 3
+  on the landed vx10 tile lists (per-tile serial sort 500-720 ms). Fixed by the guard `10c3406fd`.
 
 - **Queue fault (resolved by the controller's rollback to box-queue 9533918):** `op-rt6:native-build-1`
   was killed after admission by `with-test-lock.sh:6435 (_flow_reserved_others_refresh)` "resident
@@ -318,6 +497,15 @@ functions at hit resolution) belongs with the TAPE_OPERANDS lane and the analyti
   6-CPU grant.
 
 ## CONSOLIDATION ISSUES
+
+- The AMD driver shader cache (outside VIXEN's cache dirs) makes "cold" compile timings 5 s or 67 s for
+  the same binary and shaders; a 4.7 s vs 65 s comparison was read as a regression (SPT `db8eb3eee0f2`).
+- `vixen-native.sh build` fails (`is at X, expected Y`) when the branch moves while it syncs, and refuses
+  to sync over local generated outputs; regenerating generated files in the native tree means copying them
+  back and resetting them there by hand.
+- The GPU-system generator hoists a leading guard with a callable argument unindexed (SPT `63665642c7c8`).
+- `VIXEN_PIPELINE_STATS` (register/occupancy) exists only in the benchmark flavour (R889), so the uber
+  shader's register cost cannot be read from a normal capture build.
 
 - One probe batch (`speckle-probe3`) was launched from an ssh shell with `&` instead of a harness background task; it ran and finished normally, but it was not harness-tracked. My process slip.
 - Shader-source overrides (`VIXEN_SHADER_SOURCE_DIR_OVERRIDE`) made a 12-probe root-cause search possible with no rebuild (shared GPU runs of 15 to 110 s each). A probe harness that does this as a declared tool would save every lane the hand-made copies.
