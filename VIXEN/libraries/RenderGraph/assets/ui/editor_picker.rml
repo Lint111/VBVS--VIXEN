@@ -39,7 +39,7 @@
             <div class="hint picker-hint" data-if="materials.size == 0">No pack materials match "{{pickerFilter}}".</div>
             <div class="picker-rows">
                 <ut-button variant="row" data-for="item : materials" data-attr-id="item.elementId" data-attr-label="item.name"
-                            data-attr-style="'--material-color: ' + item.color"> </ut-button>
+                            data-attr-style="'--material-color: ' + item.color + '; --material-text-color: ' + item.textColor"> </ut-button>
             </div>
             <div class="hint picker-hint">From input: no material-typed parameters in this document.</div>
         </div>

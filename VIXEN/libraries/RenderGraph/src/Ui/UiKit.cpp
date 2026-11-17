@@ -98,6 +98,18 @@ std::string ContrastingTextHex(std::uint32_t srgbColor) {
     return hex(contrast(kLightText) >= contrast(kDarkText) ? kLightText : kDarkText);
 }
 
+std::string LayerOpShortLabel(std::string_view catalogueName) {
+    // This table is the one presentation rule for the generated layer-op catalogue. The full
+    // catalogue name remains the row title, so a compact label never hides which operation is
+    // selected.
+    if (catalogueName == "SmoothUnion") return "Smooth";
+    if (catalogueName == "Subtract") return "Subtract";
+    if (catalogueName == "Intersect") return "Intersect";
+    if (catalogueName == "Union") return "Union";
+    if (catalogueName == "Provide") return "Provide";
+    return std::string(catalogueName);
+}
+
 // ================================================================================================ the override contract
 namespace {
 
@@ -113,7 +125,7 @@ struct KindInfo {
 
 const std::vector<KindInfo>& Kinds() {
     static const std::vector<KindInfo> kinds = {
-        {Kind::Button, "ut-button", "button", {"label", "variant", "disabled", "reason"}, {"label", "reason"}},
+        {Kind::Button, "ut-button", "button", {"label", "variant", "disabled", "reason", "icon"}, {"icon", "label", "reason"}},
         {Kind::Disclosure, "ut-disclosure", "disclosure", {"label", "open", "disabled", "reason", "tabindex"},
          {"marker", "label", "reason"}},
         {Kind::Toggle, "ut-toggle", "toggle", {"checked", "variant"}, {"mark"}},
@@ -389,6 +401,13 @@ private:
         }
     }
 
+    void RefreshIcon() {
+        if (info_.kind != Kind::Button) return;
+        const std::string icon = Attr("icon");
+        for (const char* name : {"provide", "solo", "up", "down", "remove"})
+            SetClass(std::string("icon-") + name, icon == name);
+    }
+
     // Do not use the Windows SDK's min/max macro names in the kit's native state.
     // The identifier guard runs before a Windows build and intentionally catches these
     // declarations even though Linux preprocessors do not expand them.
@@ -402,6 +421,7 @@ private:
     void Refresh() {
         switch (info_.kind) {
             case Kind::Button:
+                RefreshIcon();
                 SetText(Part("label"), Attr("label"));
                 RefreshActionState();
                 break;

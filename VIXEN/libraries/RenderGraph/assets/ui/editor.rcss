@@ -78,12 +78,6 @@ body.layers .outputs-pinned:focus-within {
     max-height: 180px;
     overflow-y: auto;
 }
-body.layers .outputs-pinned {
-    /* Four coverage rows plus the summary/default row and the explanatory note fit
-       in the 1280x720 editor without requiring the pinned region to scroll. */
-    max-height: 160px;
-    overflow-y: auto;
-}
 .section-summary {
     display: block;
     min-height: 18px;
@@ -112,8 +106,33 @@ body.layers .outputs-pinned {
     border-color: #7f90c0;
 }
 .material-chip { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.material-control {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: 0;
+    color: var(--material-text-color, #f0f2ff);
+    background-color: var(--material-color, #506090);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
 .material-coverage-percent { flex: 0 0 auto; min-width: 32px; text-align: right; }
 .material-coverage { white-space: nowrap; }
+.default-material-row > .ut-field-label { flex: 0 0 auto; width: 48px; margin-right: 6px; }
+.default-material-row > .default-material-chip {
+    flex: 0 1 150px;
+    min-width: 80px;
+    max-width: 150px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.default-material-row > .default-material-chip .ut-label {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
 .default-material-unused {
     flex: 1 1 auto;
     min-width: 0;
@@ -129,6 +148,19 @@ body.layers .outputs-pinned {
 .material-coverage.stale .material-coverage-percent { opacity: 0.55; }
 .col-op { display: inline-block; min-width: 72px; max-width: 96px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .node-material-chip { flex: 0 0 auto; margin-top: 4px; font-size: 11px; }
+.layer-action-legend {
+    flex: none;
+    margin: 0 0 3px 0;
+    color: #7886a8;
+    font-size: 10px;
+    line-height: 13px;
+    white-space: nowrap;
+}
+.node-list-header { display: block; min-width: 0; }
+.node-list-header > .subtitle { display: block; min-width: 0; }
+.node-list-header > .wrap-picker { display: block; margin: 0 0 4px 0; }
+.node-list-header > .wrap-picker > .ut-label { width: auto; margin-right: 3px; }
+.node-list-header > .wrap-picker ut-button { margin-left: 1px; padding: 1px 3px; }
 
 /* The Add flyout: a filter field above the matching catalogue primitives (R872.1 rows, ranked by match). */
 body.picker {

@@ -17,17 +17,23 @@
             <ut-button data-for="choice : opChoices" data-attr-id="choice.elementId" data-attr-label="choice.name"
                        data-class-selected="choice.isCurrent"> </ut-button>
         </ut-choice-group>
-        <div class="subtitle">Nodes</div>
+        <div class="node-list-header">
+            <div class="subtitle">Nodes</div>
+            <ut-choice-group class="wrap-picker compact" label="wrap in..." data-if="!rawProgram">
+                <ut-button data-for="choice : nodeWrapChoices" data-attr-id="choice.elementId"
+                           data-attr-label="choice.label" data-attr-title="'wrap nodes in ' + choice.label"> </ut-button>
+            </ut-choice-group>
+        </div>
         <div class="hint" data-if="rawProgram">raw program: {{rawProgramDiagnostic}}</div>
         <ut-list class="node-outline" data-if="!rawProgram">
             <div class="node-entry" data-for="node : nodes"
                  data-attr-style="'padding-left: ' + (node.indent * 14) + 'px'">
                 <div class="node-row">
                     <ut-disclosure class="node-toggle" data-attr-id="node.toggleId"
-                                   data-attr-label="node.nodeIndex + '  ' + node.name + '  (' + node.category + ')'"
+                                   data-attr-label="node.displayIndex + '  ' + node.name + '  (' + node.category + ')'"
                                    data-attr-open="node.isExpanded" data-attr-title="node.summary" tabindex="0"> </ut-disclosure>
                     <span class="node-material-chip" data-if="node.materialName != ''"
-                          data-attr-style="node.materialColor == '' ? '' : '--material-color: ' + node.materialColor">{{node.materialName}}</span>
+                          data-attr-style="node.materialColor == '' ? '' : '--material-color: ' + node.materialColor + '; --material-text-color: ' + node.materialTextColor">{{node.materialName}}</span>
                     <div class="node-summary">{{node.summary}}</div>
                     <div class="node-warning" data-if="node.warning != ''">{{node.warning}}</div>
                     <div class="node-actions">
@@ -68,21 +74,19 @@
         <div class="node-entry material-outline-row" data-for="row : layers" data-if="row.isSelected">
             <div class="node-row">
                 <span class="ut-field-label">Material</span>
-                <span data-attr-style="row.materialColor == '' ? '' : '--material-color: ' + row.materialColor">{{row.materialName}}</span>
-                <ut-button data-if="row.materialClearId != ''" data-attr-id="row.materialClearId" label="clear"> </ut-button>
+                <ut-button class="material-control" variant="row" data-attr-id="row.materialPickerId"
+                            data-attr-label="row.materialName"
+                            data-attr-title="'choose material for ' + selectedLayerName"
+                            data-attr-style="row.materialColor == '' ? '' : '--material-color: ' + row.materialColor + '; --material-text-color: ' + row.materialTextColor"> </ut-button>
             </div>
         </div>
-        <ut-choice-group class="wrap-picker" label="wrap in..." data-if="!rawProgram">
-            <ut-button data-for="choice : nodeWrapChoices" data-attr-id="choice.elementId"
-                       data-attr-label="choice.label" data-attr-title="'wrap nodes in ' + choice.label"> </ut-button>
-        </ut-choice-group>
         <!-- Placement is the one layer-level transform shortcut. Transform node arguments are summarized above,
              not repeated here, so position/rotation/scale have one editable representation. -->
         <div class="subtitle">Placement of {{selectedLayerName}} (layer {{selectedLayer}})</div>
         <ut-number-field variant="inline" data-for="field : transform" data-attr-label="field.label"
                          data-attr-value="field.value" data-attr-value-id="field.valueId"> </ut-number-field>
         <div class="subtitle">Layers</div>
-        <div class="kv">{{activeLayerCount}} of {{layers.size}} rule layers enabled</div>
+        <div class="kv">{{activeLayerCount}} of {{layers.size}} enabled layers</div>
     </ut-panel>
 </body>
 </rml>

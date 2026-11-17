@@ -19,6 +19,7 @@
 // in-Execute re-materialize — no MarkNeedsRecompile).
 #include "VulkanGraphApplication.h"
 #include "EditorDocumentModel.h"
+#include "RuntimeMaterialTable.h"
 #include "PackRecipeSource.h"
 #include "AppFlowChannel.h"
 #include "KeyMap.h"
@@ -57,6 +58,7 @@ namespace Vixen::RenderGraph::Debug { struct PendingRenderTargetPngCapture; }
 // token used to discard an older worker result.
 struct EditorMaterialCoverageSnapshot {
     std::unordered_map<uint32_t, uint64_t> counts;
+    std::unordered_map<uint32_t, std::string> layerSources;
     uint64_t totalSurfaceSamples = 0;
     uint64_t revision = 0;
     bool stale = false;
@@ -207,6 +209,9 @@ private:
                                      std::string& diagnostic, uint32_t depth);
     Vixen::Editor::EditorDocumentModel::RecipeReferenceResolver RecipeResolver() const;
     Vixen::Editor::EditorDocumentModel::MaterialReferenceResolver MaterialResolver() const;
+    bool ConvertMaterialHandlesToRuntimeRows(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
+                                             uint32_t& defaultMaterial,
+                                             std::string& error) const;
 
 
     std::string documentPath_;
@@ -280,6 +285,7 @@ private:
     // document-default controls. They remain pack-owned; authored layer references are stored by
     // EditorDocumentModel and resolve through this table at flatten time.
     std::vector<MaterialRow> materialRows_;
+    Vixen::SVO::RuntimeMaterialTable materialTable_;
     std::shared_ptr<const EditorMaterialCoverageSnapshot> materialCoverage_;
     std::atomic<uint64_t> materialCoverageRevision_{0};
     std::atomic<uint64_t> materialCoverageGeneration_{0};

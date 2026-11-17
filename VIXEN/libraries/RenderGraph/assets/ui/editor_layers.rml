@@ -19,6 +19,7 @@
         <ut-button id="save-button" label="Save"/>
         <ut-button id="reopen-button" label="Reopen saved"/>
         </ut-toolbar>
+        <div class="layer-action-legend" title="P provide | S solo | ^/v move | x remove">P provide | S solo | ^/v move | x remove</div>
         <div class="inputs-pinned">
             <div class="section-summary">Inputs <span class="section-count">({{parameters.size}})</span></div>
             <ut-number-field data-for="param : parameters" data-attr-label="param.name" data-attr-unit="param.unit"
@@ -28,7 +29,7 @@
             <div class="hint" data-if="parameters.size == 0">This document declares no inputs.</div>
         </div>
         <div class="outputs-pinned">
-            <div class="section-summary">Outputs
+            <div class="section-summary" title="Share of the surface per material">Outputs
                 <span class="section-detail" data-if="materialCoverageCount == 0">Distance + MaterialId</span>
                 <span class="section-detail" data-if="materialCoverageCount == 1">1 material</span>
                 <span class="section-detail" data-if="materialCoverageCount > 1">{{materialCoverageCount}} materials</span>
@@ -40,25 +41,24 @@
             </div>
             <div class="default-material-row" data-for="material : materials" data-if="material.defaultId != ''">
                 <span class="ut-field-label">Default</span>
-                <ut-button variant="row" data-attr-id="material.defaultId" data-attr-label="material.name"
-                            data-attr-style="'--material-color: ' + material.color"> </ut-button>
+                <ut-button class="default-material-chip" variant="row" data-attr-id="material.defaultId" data-attr-label="material.name"
+                            data-attr-style="'--material-color: ' + material.color + '; --material-text-color: ' + material.textColor"> </ut-button>
                 <span class="default-material-unused" data-if="material.coverage == ''">not used: every surface has material</span>
             </div>
             <div class="hint" data-if="materialCoverageCount == 0">No sampled material coverage yet.</div>
             <div class="hint" data-if="materialCoverageCount != 0 && materialCoverageStale">Measuring current revision...</div>
-            <div class="hint" data-if="materialCoverageCount != 0 && !materialCoverageStale">Share of the surface per material</div>
         </div>
         <ut-list class="fill">
             <div class="ut-row" data-for="row : layers">
                 <ut-toggle data-attr-id="row.elementId" data-attr-checked="row.isChecked"> </ut-toggle>
                 <ut-button variant="name" data-attr-id="row.selectId" data-attr-label="row.name" data-class-selected="row.isSelected"> </ut-button>
-                <span class="col-op" data-attr-title="row.op">{{row.op}}</span>
+                <span class="col-op" data-attr-title="row.opTitle">{{row.op}}</span>
                 <span class="dependency-mark" data-attr-title="row.dependencyTitle + (row.warningTitle == '' ? '' : ' - ' + row.warningTitle)">{{row.providesMark}} {{row.readsMark}} {{row.readByMark}} {{row.warningMark}}</span>
-                <ut-button class="layer-icon-button layer-provide" data-attr-id="row.provideId" label="P" data-attr-title="'provide ' + row.name"> </ut-button>
-                <ut-button class="layer-icon-button layer-solo" data-attr-id="row.soloId" label="S" data-class-selected="row.isSolo" data-attr-title="'solo ' + row.name"> </ut-button>
-                <ut-button class="layer-icon-button" data-attr-id="row.moveUpId" label="^" data-attr-title="'move ' + row.name + ' up'"> </ut-button>
-                <ut-button class="layer-icon-button" data-attr-id="row.moveDownId" label="v" data-attr-title="'move ' + row.name + ' down'"> </ut-button>
-                <ut-button class="layer-icon-button" data-attr-id="row.deleteId" label="x" data-attr-title="'remove ' + row.name"> </ut-button>
+                <ut-button class="layer-icon-button layer-provide" data-attr-id="row.provideId" icon="provide" data-attr-title="'provide ' + row.name"> </ut-button>
+                <ut-button class="layer-icon-button layer-solo" data-attr-id="row.soloId" icon="solo" data-class-selected="row.isSolo" data-attr-title="'solo ' + row.name"> </ut-button>
+                <ut-button class="layer-icon-button" data-attr-id="row.moveUpId" icon="up" data-attr-title="'move ' + row.name + ' up'"> </ut-button>
+                <ut-button class="layer-icon-button" data-attr-id="row.moveDownId" icon="down" data-attr-title="'move ' + row.name + ' down'"> </ut-button>
+                <ut-button class="layer-icon-button" data-attr-id="row.deleteId" icon="remove" data-attr-title="'remove ' + row.name"> </ut-button>
                 <div class="layer-diagnostic" data-if="row.diagnostic != ''">{{row.diagnostic}}</div>
             </div>
         </ut-list>

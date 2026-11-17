@@ -61,6 +61,15 @@ TEST(UiKitRule, MaterialChipTextContrastsAgainstMaterialTableAlbedos) {
         EXPECT_EQ(UiKit::ContrastingTextHex(row.srgb), row.expectedText) << row.id;
 }
 
+TEST(UiKitRule, LayerOperationLabelsStayCompactAndKeepTheCatalogueNameForTitles) {
+    EXPECT_EQ(UiKit::LayerOpShortLabel("SmoothUnion"), "Smooth");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("Subtract"), "Subtract");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("Intersect"), "Intersect");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("Union"), "Union");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("Provide"), "Provide");
+    EXPECT_EQ(UiKit::LayerOpShortLabel("FutureCatalogueOp"), "FutureCatalogueOp");
+}
+
 TEST(UiKitContract, InstancesMayOnlyCarryTheOverrideContract) {
     EXPECT_TRUE(UiKit::AttributeAllowed("ut-number-field", "value-id"));
     EXPECT_TRUE(UiKit::AttributeAllowed("ut-number-field", "data-attr-value"));
@@ -206,6 +215,26 @@ TEST_F(UiKitTest, ButtonVariantRoundForcesTheEllipseHitMask) {
     EXPECT_EQ(b->GetAttribute<Rml::String>("hit-mask", ""), "ellipse");
     EXPECT_EQ(ParseHitMask(b->GetAttribute<Rml::String>("hit-mask", "")).shape, HitMaskShape::Ellipse);
     EXPECT_EQ(doc_->GetElementById("t")->GetAttribute<Rml::String>("hit-mask", ""), "none");
+}
+
+TEST_F(UiKitTest, IconButtonPublishesAVisibleSelfExplainingGlyph) {
+    ASSERT_NE(Load(R"(<rml><body>
+        <ut-button id="provide" label="provide" icon="provide"/>
+        <ut-button id="solo" label="solo" icon="solo"/>
+        <ut-button id="up" label="move up" icon="up"/>
+        <ut-button id="down" label="move down" icon="down"/>
+        <ut-button id="remove" label="remove" icon="remove"/>
+    </body></rml>)"), nullptr);
+    const std::vector<std::pair<const char*, const char*>> glyphs = {
+        {"provide", "P"}, {"solo", "S"}, {"up", "^"}, {"down", "v"}, {"remove", "x"}};
+    for (const auto& [id, glyph] : glyphs) {
+        auto* button = doc_->GetElementById(id);
+        ASSERT_NE(button, nullptr) << id;
+        ASSERT_NE(Part(button, "icon"), nullptr);
+        EXPECT_EQ(Part(button, "icon")->GetNumChildren(), 5);
+        EXPECT_NE(Part(button, "icon")->GetInnerRML().find(glyph), std::string::npos) << id;
+    }
+    EXPECT_EQ(Part(doc_->GetElementById("up"), "label")->GetInnerRML(), "move up");
 }
 
 TEST_F(UiKitTest, DisabledButtonIsVisibleButDoesNotTakePointerInput) {
