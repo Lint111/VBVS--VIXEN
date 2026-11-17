@@ -238,7 +238,16 @@ In order:
 6. Kernel `f4b200e00` witness (merge lane-glyph3 into a scratch kernel branch on top of
    `ff5e3c403`, move the pin, rebuild, GlyphSdf + look-dev hashes), then the analytic
    extruded-glyph face A/B (R892.13.4): with baked chords it is a DDA over the same grid.
-7. Before DONE: full kernel preflight line for the final tips; affected GPU CTest; `git status`.
+7. **R892.21 (owner, 11-17), after the review set and the dark-pixel answer: three LOD bands for
+   world text.** (1) The analytic baked walk while the glyph is large. (2) The MSDF atlas band from
+   about 16 px of projected glyph height down to a few px: `SelectWorldTextRenderBand`
+   (`VIXEN/libraries/Text/include/Text/GlyphOutline.h`) exists and has no caller; wire it.
+   (3) At about 1 px or below, the R860 certified shell with the glyph subtree dropped and its
+   colour folded. That needs a declared relaxation bound on the glyph-outline SdfCoreKernel
+   (R860.5: from emboss depth / stroke width, no new attribute class) so the shell deriver can
+   certify the drop. Witness: band selection per projected size, images at each switch (owner
+   review only if a switch is visible, R860.2), frame time of a far-text scene.
+8. Before DONE: full kernel preflight line for the final tips; affected GPU CTest; `git status`.
 
 ## LANDABLE NOW
 
