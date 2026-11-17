@@ -4,7 +4,10 @@
 // image the tool writes samples: points and the value its own walk returned for them. The C++
 // face must return the same bits for every one of them.
 
+#include "Recipe/GlyphBakeBand.h"
 #include "Recipe/GlyphBakeStream.h"
+#include "Recipe/RecipeRegistry.h"
+#include "Recipe/SdfRecipeEval.h"
 
 #include <gtest/gtest.h>
 
@@ -238,6 +241,135 @@ TEST(GlyphBakeStream, ARowUsesTheNarrowestBakeThatCoversItsBand) {
     EXPECT_TRUE(stream.empty());
     EXPECT_NE(error.find("needs an exact band of 0.05"), std::string::npos) << error;
     EXPECT_NE(error.find("--exact-band-em"), std::string::npos) << error;
+}
+
+SdfInstruction Op(SdfOpCode op, float d0 = 0.0f) {
+    SdfInstruction in{};
+    in.opCode = static_cast<std::uint8_t>(op);
+    in.data[0] = d0;
+    return in;
+}
+
+// World -> row transform as the text scenes write it: positions scaled by 1 / rowScale, the
+// distance scaled back by rowScale at RestorePos.
+SdfInstruction RowTransform(float rowScale) {
+    SdfInstruction in = Op(SdfOpCode::Transform);
+    in.data[7] = 1.0f;
+    in.data[8] = in.data[9] = in.data[10] = 1.0f / rowScale;
+    in.data[11] = rowScale;
+    return in;
+}
+
+SdfInstruction GlyphRow(std::uint32_t row) { return Op(SdfOpCode::GlyphOutline, std::bit_cast<float>(row)); }
+
+TEST(GlyphBakeBand, TheNeedIsTheLargestOffsetInRowUnits) {
+    // Inside the transform the glyph is rounded by 12 row units; outside, by 0.5 world units,
+    // which is 0.5 / 0.004 row units.
+    SdfInstruction box = Op(SdfOpCode::Box, 100.0f);
+    box.data[1] = box.data[2] = 100.0f;
+    const std::vector<SdfInstruction> program{
+        RowTransform(0.004f), GlyphRow(3), box, Op(SdfOpCode::Intersect), Op(SdfOpCode::Round, 12.0f),
+        Op(SdfOpCode::RestorePos), Op(SdfOpCode::Round, 0.5f),
+        GlyphRow(5), Op(SdfOpCode::Union)};
+    const std::vector<GlyphBandNeed> needs = DeriveGlyphBandNeeds(program);
+    ASSERT_EQ(needs.size(), 2u);
+    EXPECT_EQ(needs[0].row, 3u);
+    EXPECT_EQ(needs[0].instructionIndex, 1u);
+    EXPECT_NEAR(needs[0].offsetRowUnits, 12.0f + 0.5f / 0.004f, 1e-3f);
+    EXPECT_EQ(needs[1].row, 5u);
+    EXPECT_EQ(needs[1].offsetRowUnits, 0.0f);
+}
+
+TEST(GlyphBakeBand, AnOnionAndASmoothUnionAddTheirWidth) {
+    SdfInstruction smooth = Op(SdfOpCode::SmoothUnion);
+    smooth.data[2] = 7.0f;
+    const std::vector<SdfInstruction> program{
+        GlyphRow(0), Op(SdfOpCode::Onion, 2.0f), Op(SdfOpCode::Sphere, 1.0f), smooth};
+    const std::vector<GlyphBandNeed> needs = DeriveGlyphBandNeeds(program);
+    ASSERT_EQ(needs.size(), 1u);
+    EXPECT_EQ(needs[0].offsetRowUnits, 9.0f);
+}
+
+TEST(GlyphBakeBand, AnOperationWithNoKnownBoundNeedsAnExactBake) {
+    const std::vector<SdfInstruction> program{GlyphRow(0), Op(SdfOpCode::MathSin)};
+    const std::vector<GlyphBandNeed> needs = DeriveGlyphBandNeeds(program);
+    ASSERT_EQ(needs.size(), 1u);
+    EXPECT_TRUE(std::isinf(needs[0].offsetRowUnits));
+}
+
+struct RegisteredGlyph {
+    Vixen::SVO::RecipeRegistry registry;
+    Vixen::SVO::RecipeRegistry::RegisterResult result{};
+    std::shared_ptr<const GlyphBakeImage> image;
+    std::uint32_t glyphId = 0;
+    float fontPerRow = 2000.0f / 1536.0f;
+};
+
+// A recipe of one Lato glyph rounded by `roundRowUnits`, with or without its baked row.
+RegisteredGlyph RegisterRoundedGlyph(float roundRowUnits, bool baked) {
+    RegisteredGlyph out;
+    out.image = LoadImage(GLYPH_BAKE_LATO_IMAGE);
+    if (!out.image) return out;
+    out.glyphId = OutlinedGlyphs(*out.image, 40).back();
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    entry.bytecode = {RowTransform(0.004f), GlyphRow(0), Op(SdfOpCode::Round, roundRowUnits), Op(SdfOpCode::RestorePos)};
+    entry.glyphInstances.emplace_back();
+    entry.glyphInstances.back().SegmentCount = 1; // a row with an outline
+    if (baked) entry.glyphBakedRows.push_back({FaceOf(out.image), out.fontPerRow, {{out.glyphId, 0.0f, 0.0f}}});
+    out.result = out.registry.Register(7u, entry);
+    return out;
+}
+
+TEST(GlyphBakeRegistry, TheCpuEvaluatesTheBakedRowTheGpuWalks) {
+    RegisteredGlyph glyph = RegisterRoundedGlyph(4.0f, true);
+    ASSERT_NE(glyph.image, nullptr);
+    ASSERT_EQ(glyph.result, Vixen::SVO::RecipeRegistry::RegisterResult::Ok) << glyph.registry.GlyphDiagnostic();
+    EXPECT_TRUE(glyph.registry.UnbakedGlyphRows().empty());
+    std::vector<std::uint32_t> stream;
+    std::string error;
+    ASSERT_TRUE(glyph.registry.BuildGlyphBakeStream(stream, &error)) << error;
+    ASSERT_TRUE(GlyphBakeStreamHasRow(stream, 0));
+    const auto* entry = glyph.registry.Get(7u);
+    ASSERT_NE(entry, nullptr);
+    float minX, minY, maxX, maxY;
+    ASSERT_TRUE(glyph.registry.GlyphBakedBlob()[0].Bounds(*glyph.image, minX, minY, maxX, maxY));
+    std::uint32_t state = 99u, inside = 0;
+    for (int sample = 0; sample < 5000; ++sample) {
+        auto next = [&state]() { state = state * 1664525u + 1013904223u; return static_cast<float>(state >> 8) / 16777216.0f; };
+        // World units: the row is 0.004 world units per row unit.
+        const glm::vec3 p((minX - 60.0f + next() * (maxX - minX + 120.0f)) * 0.004f,
+                          (minY - 60.0f + next() * (maxY - minY + 120.0f)) * 0.004f, 0.0f);
+        const float value = evalRecipe(entry->bytecode.data(), static_cast<std::uint32_t>(entry->bytecode.size()), p, {},
+                                       nullptr, &glyph.registry, glyph.registry.GlyphOutlineBlob(), {}, nullptr, 0u, nullptr, 0u, stream);
+        const glm::vec3 rowPoint = p * (1.0f / 0.004f);
+        const float expected = (EvaluateGlyphBakeRow(stream, 0, rowPoint.x, rowPoint.y) - 4.0f) * 0.004f;
+        ASSERT_NEAR(value, expected, 1e-6f) << p.x << ", " << p.y;
+        inside += value < 0.0f ? 1u : 0u;
+    }
+    EXPECT_GT(inside, 100u);
+}
+
+TEST(GlyphBakeRegistry, ARecipeThatOffsetsPastEveryBandIsRefusedWithTheFix) {
+    // 0.03 em at 24 px is 46 row units; a 60-unit round needs more than any bake here has.
+    RegisteredGlyph glyph = RegisterRoundedGlyph(60.0f, true);
+    ASSERT_NE(glyph.image, nullptr);
+    EXPECT_EQ(glyph.result, Vixen::SVO::RecipeRegistry::RegisterResult::GlyphBandUnavailable);
+    const std::string& diagnostic = glyph.registry.GlyphDiagnostic();
+    EXPECT_NE(diagnostic.find("recipe 7"), std::string::npos) << diagnostic;
+    EXPECT_NE(diagnostic.find("glyph row 0"), std::string::npos) << diagnostic;
+    EXPECT_NE(diagnostic.find("VIXEN_GLYPH_BAKE_BANDS_EM"), std::string::npos) << diagnostic;
+    EXPECT_EQ(glyph.registry.Get(7u), nullptr);
+    // 30 row units is 0.0195 em, and the margin keeps it inside 0.03.
+    EXPECT_EQ(RegisterRoundedGlyph(30.0f, true).result, Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+}
+
+TEST(GlyphBakeRegistry, ARowWithAnOutlineAndNoBakedFormIsReported) {
+    RegisteredGlyph glyph = RegisterRoundedGlyph(4.0f, false);
+    ASSERT_EQ(glyph.result, Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+    EXPECT_EQ(glyph.registry.UnbakedGlyphRows(), std::vector<std::uint32_t>{0u});
+    std::vector<std::uint32_t> stream;
+    ASSERT_TRUE(glyph.registry.BuildGlyphBakeStream(stream));
+    EXPECT_FALSE(GlyphBakeStreamHasRow(stream, 0));
 }
 
 } // namespace
