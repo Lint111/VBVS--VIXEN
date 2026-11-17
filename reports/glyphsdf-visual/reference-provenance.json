@@ -1,7 +1,7 @@
 {
   "schema": "vixen-glyphsdf-reference/v1",
   "reference_set": "GlyphSdf / StoredSdf / SdfFilter native CTest captures (Application.LookdevCapture.GlyphSdf.*, StoredSdf.*, SdfFilter.NonText*)",
-  "source_commit": "2c0a6d285ed98141259f817fea2fef311b6f2bfc",
+  "source_commit": "1acf77c15ff09c357ef93a20a6d65c53e90656db",
   "captured_at": "2026-11-17",
   "machine": "ws",
   "device": "AMD Radeon(TM) 8060S Graphics, AMD proprietary driver 25.20.18 (LLPC), native Windows Vulkan",
@@ -17,6 +17,7 @@
     "R892.15 (5 stored-SDF sphere captures after the vx10 merge)",
     "R892.16 (glyph sliver fix 6131e8d82)",
     "R892.20 (baked glyph walk: RTL pair, latin carved/embossed; dark pixels explained)",
-    "R892.22 (baked glyph walk: the rest of the set, 10 changed references)"
+    "R892.22 (baked glyph walk: the rest of the set, 10 changed references)",
+    "R892.24 (R892.7a position extent rules in the vx11 kernel pin: latin-embossed and qps-rtl-embossed, a few edge pixels)"
   ]
 }

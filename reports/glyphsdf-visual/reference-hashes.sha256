@@ -8,10 +8,10 @@ b19837a525ea5c1d64acfffd48864d16b937abe5e4e850bd0c26296ec2aa2bac  ./isolation-Sh
 b19837a525ea5c1d64acfffd48864d16b937abe5e4e850bd0c26296ec2aa2bac  ./isolation-SlowTrilinear/sdf-filter-nontext-analytic-vs-voxel.png
 7397920ab1f839101b050ba5b3f147d2c255cc81e144934c6ce42c026cbd2398  ./isolation-StoredNormals/sdf-filter-nontext-analytic-vs-voxel.png
 2e32f043dd14445346795afeff083b1c4d6cb5793f7168a06bf29f496f9a741e  ./latin-carved/glyphsdf-latin-carved.png
-b6a6376dbd233496c72a7d1ed07d26d5825f973881c77dd316208c57c82f4dc5  ./latin-embossed/glyphsdf-latin-embossed.png
+199839d725d84e5884a372bc341f8be4842b5a8d7f116fdfb150d45f2e558348  ./latin-embossed/glyphsdf-latin-embossed.png
 743e3e7404db3e5317946866f679d9d078ac5e4200fe5c7d03910720602d64b4  ./nontext-brickmap/midday-angle-0.png
 f57ab14f6519272a36ca87d877ab6cf6342e5b03a1954d7a1b71378b028dc073  ./qps-rtl-carved/glyphsdf-qps-rtl-carved.png
-c0710f77fc6de899383e428dbb3ffca74be67467f9814d52bbddcb117f833b05  ./qps-rtl-embossed/glyphsdf-qps-rtl-embossed.png
+be86617998044ed3c7b56efc346f007dc614008bf56492cc561f2581b1aade7e  ./qps-rtl-embossed/glyphsdf-qps-rtl-embossed.png
 353d519ec1f5499ab95dca72b40f30cc55dd51df9a8ecaabeddc10c2ebadbc15  ./rtl-proof-pair/glyphsdf-rtl-proof-pair.png
 ee7a44c9b6f11b56800295febb05bc700e7e172253adcc28cff08427369e25b6  ./rtl-proof-submit-guard/glyphsdf-rtl-proof-pair.png
 b19837a525ea5c1d64acfffd48864d16b937abe5e4e850bd0c26296ec2aa2bac  ./sdf-filter-nontext-128-yaw0/sdf-filter-nontext-analytic-vs-voxel.png
