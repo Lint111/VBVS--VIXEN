@@ -285,6 +285,7 @@ bool traceUberRecipeBodyImpl(uint recipeId, vec3 boundCenter, float boundRadius,
     // below 1024 iterations; unusually long bounds receive a proportionally larger cap.
     int stepBudget = clamp(32 + int(ceil(raySpan * 160.0)), 32, 2048);
     float lastRefinementT = -1e30;
+    bool leftStartSurface = !occlusionOnly;
 #ifdef VIXEN_SDF_TRACE_PROBE
     float traceLastD = 1e30;
     float traceLastT = tNear;
@@ -303,6 +304,21 @@ bool traceUberRecipeBodyImpl(uint recipeId, vec3 boundCenter, float boundRadius,
 #endif
         float hitEpsilon = max(EPS_MIN, max(t, 0.0) * max(pixelAngle, 0.0) *
                                           CONE_EPSILON_SCALE);
+        if (!leftStartSurface) {
+            // A visibility ray starts on the surface it leaves. Until one sample is outside
+            // (d > EPS_MIN) the field it reads is that surface, not an occluder: march out of
+            // it (|d| is the distance back to the surface; the t term doubles the step so a
+            // tangent start exits in a bounded number of steps) instead of certifying a hit
+            // at the origin, which the caller rejects and which hid every occluder of the same
+            // recipe further along the ray (R892.8 shadow speckle).
+            if (d > EPS_MIN) {
+                leftStartSurface = true;
+            } else {
+                t += max(-d, max(4.0 * EPS_MIN, t));
+                if (t > tEnd) return false;
+                continue;
+            }
+        }
         if (d <= EPS_MIN) {
             vec3 gradient = vec3(0.0);
             if (!occlusionOnly) {

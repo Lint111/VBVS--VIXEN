@@ -57,7 +57,7 @@ bool recipeChunkInterval(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax,
 // still the sole hit authority; chunk boxes only bound its [entry, exit].
 bool traceRecipeChunks(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                        vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
-                       float params[6], float tMaxWorld, bool occlusionOnly,
+                       float params[6], float tMinWorld, float tMaxWorld, bool occlusionOnly,
                        out vec3 hitNormal, out float hitT, out uint stepsUsed) {
 #ifdef VIXEN_RECIPE_CHUNK_CULL
     bool found = false;
@@ -68,7 +68,7 @@ bool traceRecipeChunks(uint recipeId, vec3 boundCenter, float boundRadius, float
         RecipeChunkAabb chunk = recipeChunkAabbs[i];
         if (chunk.recipeId != recipeId) continue;
         float entry; float exit;
-        if (!recipeChunkInterval(ro, rd, chunk.minLocal, chunk.maxLocal, 0.0, closest, entry, exit)) continue;
+        if (!recipeChunkInterval(ro, rd, chunk.minLocal, chunk.maxLocal, tMinWorld, closest, entry, exit)) continue;
         vec3 candidateNormal; float candidateT; uint candidateSteps;
         recordRecipeChunkMarch();
         bool candidateHit = traceUberRecipeBodyImpl(recipeId, boundCenter, boundRadius, relaxation,
@@ -97,7 +97,7 @@ bool traceRecipeChunks(uint recipeId, vec3 boundCenter, float boundRadius, float
 #else
     return traceUberRecipeBodyImpl(recipeId, boundCenter, boundRadius, relaxation,
                                    ro, rd, conservativeStepScale, pixelAngle, params,
-                                   0.0, tMaxWorld, occlusionOnly, hitNormal, hitT, stepsUsed);
+                                   tMinWorld, tMaxWorld, occlusionOnly, hitNormal, hitT, stepsUsed);
 #endif
 }
 #endif
@@ -495,7 +495,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
                                              instOrigin, instDir, conservativeSdfStepScale,
                                              VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
-                                             bestT / worldUnitsPerInstUnit, false,
+                                             0.0, bestT / worldUnitsPerInstUnit, false,
                                              pNormal, pT, pSteps);
                     addLeafInstrSteps(pSteps);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
@@ -1089,6 +1089,13 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
 #if defined(VIXEN_RTQUERY_TRAVERSAL) && defined(VIXEN_RECIPE_CHUNK_CULL)
             if (inst.recipeId >= 2u) continue; // the TLAS ray query already owns this recipe
 #endif
+            // The origin has already been offset by the surface bias. At very
+            // large scales, float rounding can leave it just inside this same
+            // procedural surface; the SDF marcher then reports that starting
+            // sample at t=0. Do not treat the origin itself as an occluder. Applies to
+            // the legacy analytic bodies; registry recipes use the any-hit march's
+            // start-surface rule instead.
+            const float kProceduralShadowTMin = 1e-3;  // world metres
             vec3 pNormal;
             float pT;
             bool pHit = false;
@@ -1117,10 +1124,16 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 float uberParams[6] = float[6](
                     inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                     inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
-                // Any-hit (R892 B6): the occlusion answer reads only pT.
+                // Any-hit (R892 B6): the occlusion answer reads only pT. The any-hit march
+                // steps out of the surface the ray starts on before it certifies a hit, so
+                // a registry recipe needs no world-distance self-hit guard (R892.8): the
+                // 1 mm guard below also rejected real occluders that close, such as the wall
+                // of an embossed glyph beside the shaded plaque pixel, which read as isolated
+                // lit pixels inside its cast shadow.
                 pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
                                          instOrigin, instDir, conservativeSdfStepScale,
                                          VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
+                                         tmin / worldUnitsPerInstUnit,
                                          tmax / worldUnitsPerInstUnit, true, pNormal, pT, pSteps);
             }
 #endif
@@ -1128,12 +1141,10 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
             if (pHit && !preserveLegacyProcedural) {
                 pT *= worldUnitsPerInstUnit;
             }
-            // The origin has already been offset by the surface bias. At very
-            // large scales, float rounding can leave it just inside this same
-            // procedural surface; the SDF marcher then reports that starting
-            // sample at t=0. Do not treat the origin itself as an occluder.
-            const float kProceduralShadowTMin = 1e-3;  // world metres
-            if (pHit && pT >= max(tmin, kProceduralShadowTMin) && pT <= tmax) {
+            // A registry recipe's any-hit march already excludes its start surface; the
+            // legacy analytic bodies still apply the guard to the hit.
+            const float pTMin = inst.recipeId < 2u ? max(tmin, kProceduralShadowTMin) : tmin;
+            if (pHit && pT >= pTMin && pT <= tmax) {
 #ifdef VIXEN_COMPOSITION_COUNTERS
                 g_lastShadowCompositionSourceMask |= 1u;
 #endif
