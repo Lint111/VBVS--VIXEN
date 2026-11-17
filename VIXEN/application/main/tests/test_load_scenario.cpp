@@ -264,6 +264,9 @@ public:
         if (inLeg == 0) {
             if (legIndex != 0) RecordVram(legIndex - 1);
             event += "leg-start;";
+            // Places the sampled [GPU_SUBMIT_TIME] reads (same stdout) on their leg.
+            std::printf("[LOAD_LEG] name=%s frame=%u\n", leg->name, frame_);
+            std::fflush(stdout);
             // Day lighting for every leg: the view-switch leg cycles presets and would otherwise
             // leave the run in night-service, which renders the tier-3 captures near-black.
             if (viewIndex_ % Lookdev::LightingPresets().size() != 0) {
