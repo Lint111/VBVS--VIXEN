@@ -1,7 +1,11 @@
 # fable-glyph6: dark pixels explained, review set accepted and recorded, R896 rebase, glyph image in the shared cache
 
-Successor of fable-glyph5 on the VIXEN glyph ray-march track. Nothing pushed. Kernel unchanged.
-References changed: the 10 GlyphSdf hashes the owner accepted (R892.22).
+Successor of fable-glyph5 on the VIXEN glyph ray-march track. Nothing pushed.
+References changed: the 10 GlyphSdf hashes the owner accepted in R892.22, and two of them again in
+R892.24 when the position extent rules (R892.7a) entered the kernel pin.
+
+**Landable tips (vx11): kernel `lane-glyph7k` `921f30108`, VIXEN `lane-glyph7` (this commit).**
+Sections 1 to 4 were written on `lane-glyph6`; section 3a says what changed after that.
 
 ## STATUS
 
@@ -9,28 +13,32 @@ References changed: the 10 GlyphSdf hashes the owner accepted (R892.22).
 |---|---|
 | 1. R892.20 dark pixels | **Done.** Replayed on the CPU; three real sub-pixel features, no defect, nothing fixed (section 1). |
 | 2. Rest of the review set | **Done, accepted by the owner (R892.22).** 10 GlyphSdf references re-recorded (sections 2, 3). |
-| 3. R896 rebase | **Done.** Branch `lane-glyph6` on slice 2a `1823dad07`; full build, affected GPU set 108 of 108, captures byte-identical to before the rebase (section 3). |
+| 3. R896 rebase | **Done.** On slice 2a `1823dad07` and its slot fix `53471a71e`; full build, affected GPU set 108 of 108 (sections 3, 3a). |
+| 3a. vx11 kernel chain with R892.7a | **Done.** Linear chain to `921f30108`; two embossed references re-recorded (R892.24) (section 3a). |
 | 4. Baked image in the shared cache | **Done.** Manifest with content key from the build step; image loaded from the cache by key, imported on a miss (section 4). |
-| 5. R892.21 glyph LOD | **Not built, by instruction.** Two rulings are needed first; options and my recommendation in section 5. |
+| 5. R892.21 glyph LOD | **Not on this stack.** The two rulings of section 5 were given (R892.23); the work is on kernel `lane-glyph7k-lod` and VIXEN `lane-glyph7-lod`. |
 | 6. Path-distance bake note | **Done** (design note, section 6). The `f4b200e00` subtree-skip witness was **not started**. |
 
 ## SHAs
 
 | Repo | Branch | Commit | Content |
 |---|---|---|---|
-| Kernel | `lane-glyph5` (on `cb9a4f5b7`) | `c36e2bc82`, `ef88ddac8`, `ff5e3c403` | unchanged from fable-glyph5: GlyphBake library, CLI, tests |
-| VIXEN | `lane-glyph6` (on `1823dad07`, R896 slice 2a) | `d3a37617a`, `8a4e23525`, `aaeacc700`, `e4e0650b6`, `6e488112a` | fable-glyph5's baked walk, rebased (`RecipeGlyphBindings.glsl` binds `VXB_GlyphOutlineFlatBuffer`) |
-| VIXEN | `lane-glyph6` | `c73a03f30`, `1b2c9b977` | fable-glyph5's report commits, rebased |
-| VIXEN | `lane-glyph6` | `536138e63`, `31c1bea35`, `232d61138` | CPU replay of a capture pixel (test side, read-only registry accessor) |
-| VIXEN | `lane-glyph6` | `2c0a6d285` | glyph image from the shared cache by content key |
-| VIXEN | `lane-glyph6` | `4d718b810` | 10 GlyphSdf references (R892.20, R892.22) |
-| VIXEN | `lane-glyph6` | this report's commit | `reports/fable-glyph6.md` |
+| Kernel | `lane-glyph7k` (on `cb9a4f5b7`) | `f88d249dc`, `6103fdb4f` | R892.7a: extent rules for position ops and material markers, and its test fix (cherry-picks of `690f965c1`, `3558b23c5` from lane-glyph1; accepted in R892.8, never landed before) |
+| Kernel | `lane-glyph7k` | `1bd8c5c27`, `2a8876046`, `921f30108` | GlyphBake library, CLI and tests (fable-glyph5's `c36e2bc82`, `ef88ddac8`, `ff5e3c403`, replayed on top) |
+| VIXEN | `lane-glyph7` (on `53471a71e`, R896 slice 2a `1823dad07` + opus-bind1's slot fix) | 5 commits | fable-glyph5's baked walk, rebased (`RecipeGlyphBindings.glsl` binds `VXB_GlyphOutlineFlatBuffer`) |
+| VIXEN | `lane-glyph7` | 2 commits | fable-glyph5's report commits |
+| VIXEN | `lane-glyph7` | 3 commits | CPU replay of a capture pixel (test side, read-only registry accessor) |
+| VIXEN | `lane-glyph7` | 1 commit | glyph image from the shared cache by content key |
+| VIXEN | `lane-glyph7` | 1 commit | 10 GlyphSdf references (R892.20, R892.22) |
+| VIXEN | `lane-glyph7` | `1acf77c15` | kernel pin `921f30108` |
+| VIXEN | `lane-glyph7` | `cca2f7281` | latin-embossed and qps-rtl-embossed references on that pin (R892.8, R892.24) |
+| VIXEN | `lane-glyph7` | this commit | this report |
 
-`lane-glyph5` (tip `71d86a080`) holds the same work before the rebase and is superseded; land
-from `lane-glyph6`. The rebase went to a new branch because `vixen-native.sh` only fast-forwards
-the native tree. Worktree (ws): `~/projects/VBVS--VIXEN/.claude-worktrees/glyph5`, now on
-`lane-glyph6`. Native tree `C:\vixen-native\glyph1` is built from `lane-glyph6` `2c0a6d285`
-(`4d718b810` and the report change no built file).
+Superseded, do not land: kernel `lane-glyph5` (`ff5e3c403`), VIXEN `lane-glyph5`, `lane-glyph6`,
+`lane-glyph6b`. They hold the same work on earlier bases; a rebase goes to a new branch name because
+`vixen-native.sh` only fast-forwards the native tree. Worktrees (ws):
+`~/projects/Yeroket-Fantasy/.claude-worktrees/glyph5`, `~/projects/VBVS--VIXEN/.claude-worktrees/glyph5`.
+Native tree: `C:\vixen-native\glyph1`.
 
 ## 1. The dark pixels of latin-embossed (R892.20): explained, no defect, nothing fixed
 
@@ -126,6 +134,27 @@ references.** Recorded in section 3.
   analytic-vs-voxel frames) and `reference-provenance.json` (source commit `2c0a6d285`, rulings
   R892.20 and R892.22 added). PNGs: `fable-glyph6-evidence/regold/glyphsdf/` on ws, verified
   against the hash list.
+
+## 3a. After the R896 rebase: the slot fix and the vx11 kernel chain
+
+- **Slot fix.** opus-bind1 found an output-slot alias on `1823dad07` and fixed it in `53471a71e`;
+  the stack was rebased onto it without conflict.
+- **Kernel chain.** R892.7a (extent rules for position ops and material markers, four named
+  `SdfRecipeBoundRule` members, accepted by the owner in R892.8) existed only on kernel
+  `lane-glyph1`: it was in neither `cb9a4f5b7` nor `origin/main`. The vx11 chain is now linear:
+  `cb9a4f5b7` -> `f88d249dc` -> `6103fdb4f` -> the GlyphBake three, tip `921f30108`. Kernel tests
+  through the queue: CodegenTool recipe tests 126 pass (1 skipped), SourceGenerator recipe tests
+  133, GlyphBake 60 (`ktest7-1.log`).
+- **VIXEN on that pin** (`1acf77c15`): full native build exit 0 (`build-g7.log`); affected native
+  GPU CTest 108 of 108 (`suite-g7.log`, `suite-g7.ctest.log`). No generated file drifted.
+- **Captures.** Look-dev 16 and 18 of the 20 GlyphSdf captures are byte-identical to the recorded
+  set. latin-embossed and qps-rtl-embossed differ: 6 and 7 isolated edge pixels move by more than 8
+  levels, one each by more than 32 (`review-g7/`). With the extent rules an embossed row gets a
+  derived bound and an occupancy grid, so the march takes different steps. These are the two
+  captures R892.8 had already accepted with R892.7a; R892.22 re-recorded them on a pin without it.
+  **R892.24 (owner, 11-17): both accepted as the vx11 references.** Recorded in `cca2f7281`
+  (`reference-hashes.sha256`, provenance R892.8 + R892.24); PNGs in
+  `fable-glyph6-evidence/regold/glyphsdf/`, verified against the hash list.
 
 ## 4. The glyph image in the shared cache (`2c0a6d285`; `71d86a080` before the rebase)
 
@@ -287,9 +316,10 @@ scene that does.
 
 ## SUCCESSOR BRIEF
 
-Bases: kernel `lane-glyph5` `ff5e3c403`; VIXEN `lane-glyph6` tip (this report's commit). Native
-tree `C:\vixen-native\glyph1` is this lane's alone (controller, 11-17) and is built from
-`lane-glyph6`. Harness in `fable-glyph6-evidence/`: `nbuild6.sh N [TARGET]` (queue build of
+Bases: kernel `lane-glyph7k` `921f30108`; VIXEN `lane-glyph7` tip (this report's commit). Native
+tree `C:\vixen-native\glyph1` is this lane's alone (controller, 11-17). The glyph LOD work
+(R892.23: both rulings of section 5 were given as recommended) continues on kernel
+`lane-glyph7k-lod` and VIXEN `lane-glyph7-lod`, off this stack. Harness in `fable-glyph6-evidence/`: `nbuild6.sh N [TARGET]` (queue build of
 lane-glyph6), `suite6.sh N` (affected GPU CTest; start with `setsid nohup`), `cap.sh JOB
 shared|bench RUN...` (the last field of a RUN is extra environment, `KEY=VALUE[,KEY=VALUE]`),
 `cpu6.runs.sh`,
@@ -317,12 +347,12 @@ Traps I paid for:
 
 | Repo | Commit | State |
 |---|---|---|
-| Kernel `lane-glyph5` | `c36e2bc82`, `ef88ddac8`, `ff5e3c403` | GlyphBake.Tests 60 of 60 (fable-glyph5); standalone tooling. |
-| VIXEN `lane-glyph6` | `1823dad07..` tip (12 commits + this report) | Owner accepted the image change (R892.20, R892.22); on R896 slice 2a; full native build green; affected GPU set 108 of 108; references recorded. It must land after, or with, opus-bind1's `1823dad07` and with the kernel pin `ff5e3c403`. |
+| Kernel `lane-glyph7k` | `cb9a4f5b7..921f30108` (5 commits) | Recipe tests 126 + 133, GlyphBake 60. R892.7a accepted in R892.8. |
+| VIXEN `lane-glyph7` | `53471a71e..` tip (15 commits + this report) | Owner accepted the image changes (R892.20, R892.22, R892.24); on R896 slice 2a and its slot fix; full native build green; affected GPU set 108 of 108; references recorded. It lands with the kernel pin `921f30108`. |
 
 `PREFLIGHT lane-preflight-248f655d626c 248f655d626ca08f556385fc70f7f1dbf02b740a: green all-gates`
-(kernel `ff5e3c403`, undertow `248f655d6` = origin/main-wave, launcher `e994efb6a` = origin/main;
-report `reports/lane-preflight-cli/20261117T140910Z-1225287/report.md`; `preflight.log`).
+(kernel `921f30108`, undertow `248f655d6` = origin/main-wave, launcher `e994efb6a` = origin/main;
+report `reports/lane-preflight-cli/20261117T164835Z-2885119/report.md`; `preflight-7k.log`).
 
 ## REDS
 
