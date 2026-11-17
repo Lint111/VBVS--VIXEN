@@ -105,8 +105,10 @@ public static class TileBinScatterSystem
         // rectangle alone, one atomic per tile: 8 to 17 ms at 1080p for three instances.
         // The append order changes; the sort orders each list by (depth, instance), so the
         // lists are the same whenever no tile overflows.
-        if (i >= view[0].instanceCount * TileBinOps.ScatterLanes(view[0])) return;
+        // The lane count is computed before the bound check: a callable inside the leading
+        // guard is hoisted into main() with its block argument unindexed (generator gap).
         int lanes = TileBinOps.ScatterLanes(view[0]);
+        if (i >= view[0].instanceCount * lanes) return;
         int instance = i / lanes;
         int lane = i - instance * lanes;
         TileRect rect = TileBinOps.ProjectBound(bounds[instance].centerX, bounds[instance].centerY,
