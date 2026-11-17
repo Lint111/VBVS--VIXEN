@@ -5,6 +5,7 @@
 // face must return the same bits for every one of them.
 
 #include "Recipe/GlyphBakeBand.h"
+#include "Recipe/GlyphBakeCache.h"
 #include "Recipe/GlyphBakeStream.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/SdfRecipeEval.h"
@@ -370,6 +371,127 @@ TEST(GlyphBakeRegistry, ARowWithAnOutlineAndNoBakedFormIsReported) {
     std::vector<std::uint32_t> stream;
     ASSERT_TRUE(glyph.registry.BuildGlyphBakeStream(stream));
     EXPECT_FALSE(GlyphBakeStreamHasRow(stream, 0));
+}
+
+// ---------------------------------------------------------------------------------------------
+// The image in the shared cache (R892.19): found by content key, imported on a miss.
+// ---------------------------------------------------------------------------------------------
+
+std::filesystem::path FreshCacheDirectory(const char* name) {
+    const std::filesystem::path directory = std::filesystem::path(::testing::TempDir()) / "vixen-glyph-bake-cache" / name;
+    std::filesystem::remove_all(directory);
+    return directory;
+}
+
+GlyphBakeManifestEntry ManifestEntryOf(const char* face) {
+    std::vector<GlyphBakeManifestEntry> entries;
+    std::string error;
+    EXPECT_TRUE(ReadGlyphBakeManifest(GLYPH_BAKE_MANIFEST, entries, &error)) << error;
+    for (const GlyphBakeManifestEntry& entry : entries)
+        if (entry.face == face) return entry;
+    ADD_FAILURE() << "the manifest lists no bake of " << face;
+    return {};
+}
+
+TEST(GlyphBakeCache, TheManifestNamesTheKeyOfEveryImageTheBuildWrote) {
+    std::vector<GlyphBakeManifestEntry> entries;
+    std::string error;
+    ASSERT_TRUE(ReadGlyphBakeManifest(GLYPH_BAKE_MANIFEST, entries, &error)) << error;
+    ASSERT_GE(entries.size(), 2u);
+    bool lato = false, noto = false;
+    for (const GlyphBakeManifestEntry& entry : entries) {
+        const auto image = GlyphBakeImage::Load(entry.image, &error);
+        ASSERT_NE(image, nullptr) << error;
+        EXPECT_EQ(GlyphBakeKeyText(*image), entry.key) << entry.image;
+        EXPECT_TRUE(std::filesystem::exists(entry.pack)) << entry.pack;
+        lato = lato || entry.face == "LatoLatin-Regular";
+        noto = noto || entry.face == "NotoSansArabic-VF";
+    }
+    EXPECT_TRUE(lato && noto);
+}
+
+TEST(GlyphBakeCache, AMissImportsTheImageAndAHitDoesNotReadTheImportFile) {
+    GlyphBakeManifestEntry entry = ManifestEntryOf("LatoLatin-Regular");
+    ASSERT_FALSE(entry.key.empty());
+    const std::filesystem::path cache = FreshCacheDirectory("miss-then-hit");
+    std::string error;
+    GlyphBakeCacheSource source{};
+    const auto imported = LoadCachedGlyphBakeImage(entry, cache, &error, &source);
+    ASSERT_NE(imported, nullptr) << error;
+    EXPECT_EQ(source, GlyphBakeCacheSource::Imported);
+    const std::filesystem::path cached = cache / (entry.key + ".glyphimage");
+    ASSERT_TRUE(std::filesystem::exists(cached));
+    EXPECT_EQ(std::filesystem::file_size(cached), std::filesystem::file_size(entry.image));
+    // Nothing but the published image is left in the cache directory.
+    std::size_t files = 0;
+    for (const auto& item : std::filesystem::directory_iterator(cache)) { (void)item; ++files; }
+    EXPECT_EQ(files, 1u);
+
+    entry.image = cache / "no-such-import-file.glyphimage";
+    const auto hit = LoadCachedGlyphBakeImage(entry, cache, &error, &source);
+    ASSERT_NE(hit, nullptr) << error;
+    EXPECT_EQ(source, GlyphBakeCacheSource::Cache);
+    EXPECT_EQ(GlyphBakeKeyText(*hit), entry.key);
+    EXPECT_EQ(hit->GlyphCount(), imported->GlyphCount());
+}
+
+TEST(GlyphBakeCache, ACachedFileThatIsNotTheKeysImageIsReplaced) {
+    const GlyphBakeManifestEntry entry = ManifestEntryOf("LatoLatin-Regular");
+    const GlyphBakeManifestEntry other = ManifestEntryOf("NotoSansArabic-VF");
+    ASSERT_FALSE(entry.key.empty());
+    ASSERT_FALSE(other.key.empty());
+    const std::filesystem::path cache = FreshCacheDirectory("replaced");
+    std::filesystem::create_directories(cache);
+    const std::filesystem::path cached = cache / (entry.key + ".glyphimage");
+    std::string error;
+    GlyphBakeCacheSource source{};
+
+    { std::ofstream truncated(cached, std::ios::binary); truncated << "cut short"; }
+    ASSERT_NE(LoadCachedGlyphBakeImage(entry, cache, &error, &source), nullptr) << error;
+    EXPECT_EQ(source, GlyphBakeCacheSource::Imported);
+    EXPECT_EQ(std::filesystem::file_size(cached), std::filesystem::file_size(entry.image));
+
+    // A sound image of another font under this key.
+    std::filesystem::copy_file(other.image, cached, std::filesystem::copy_options::overwrite_existing);
+    const auto image = LoadCachedGlyphBakeImage(entry, cache, &error, &source);
+    ASSERT_NE(image, nullptr) << error;
+    EXPECT_EQ(source, GlyphBakeCacheSource::Imported);
+    EXPECT_EQ(GlyphBakeKeyText(*image), entry.key);
+    ASSERT_NE(LoadCachedGlyphBakeImage(entry, cache, &error, &source), nullptr) << error;
+    EXPECT_EQ(source, GlyphBakeCacheSource::Cache);
+}
+
+TEST(GlyphBakeCache, AnImportImageOfAnotherKeyIsRefusedWithTheFix) {
+    GlyphBakeManifestEntry entry = ManifestEntryOf("LatoLatin-Regular");
+    const GlyphBakeManifestEntry other = ManifestEntryOf("NotoSansArabic-VF");
+    ASSERT_FALSE(entry.key.empty());
+    entry.image = other.image;
+    const std::filesystem::path cache = FreshCacheDirectory("refused");
+    std::string error;
+    EXPECT_EQ(LoadCachedGlyphBakeImage(entry, cache, &error), nullptr);
+    EXPECT_NE(error.find("manifest names key"), std::string::npos) << error;
+    EXPECT_NE(error.find("vixen_glyph_bake"), std::string::npos) << error;
+    EXPECT_FALSE(std::filesystem::exists(cache / (entry.key + ".glyphimage")));
+
+    entry.image = cache / "no-such-import-file.glyphimage";
+    EXPECT_EQ(LoadCachedGlyphBakeImage(entry, cache, &error), nullptr);
+    EXPECT_NE(error.find("cannot be imported"), std::string::npos) << error;
+}
+
+TEST(GlyphBakeCache, AFaceLoadsEveryBandOfTheManifestAndAnUnknownFaceFails) {
+    const std::filesystem::path cache = FreshCacheDirectory("face");
+    std::string error;
+    const auto face = LoadGlyphBakeFace("LatoLatin-Regular", GLYPH_BAKE_MANIFEST, cache, &error);
+    ASSERT_NE(face, nullptr) << error;
+    std::vector<GlyphBakeManifestEntry> entries;
+    ASSERT_TRUE(ReadGlyphBakeManifest(GLYPH_BAKE_MANIFEST, entries, &error)) << error;
+    std::size_t bands = 0;
+    for (const GlyphBakeManifestEntry& entry : entries) bands += entry.face == "LatoLatin-Regular" ? 1u : 0u;
+    EXPECT_EQ(face->images.size(), bands);
+    EXPECT_EQ(LoadGlyphBakeFace("NoSuchFace", GLYPH_BAKE_MANIFEST, cache, &error), nullptr);
+    EXPECT_NE(error.find("lists no bake of face NoSuchFace"), std::string::npos) << error;
+    EXPECT_EQ(LoadGlyphBakeFace("LatoLatin-Regular", cache / "no-manifest.tsv", cache, &error), nullptr);
+    EXPECT_NE(error.find("cannot open glyph bake manifest"), std::string::npos) << error;
 }
 
 } // namespace

@@ -872,6 +872,8 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             COMMENT "[glyph-bake] building the kernel font import tool"
             JOB_POOL msbuild VERBATIM)
         set(_glyph_bake_outputs "")
+        set(_glyph_bake_images "")
+        set(_glyph_bake_manifest_lines "")
         foreach(_font IN LISTS VIXEN_GLYPH_BAKE_FONT_NAMES)
             foreach(_band IN LISTS VIXEN_GLYPH_BAKE_BANDS_EM)
                 vixen_glyph_bake_file(_baked "${_font}" "${_band}" glyphbake)
@@ -888,8 +890,22 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
                     COMMENT "[glyph-bake] ${_font} (exact band ${_band} em)"
                     VERBATIM)
                 list(APPEND _glyph_bake_outputs "${_baked}" "${_image}" "${_samples}")
+                list(APPEND _glyph_bake_images "${_image}")
+                string(APPEND _glyph_bake_manifest_lines
+                    "${_font}\t${_band}\t${_font}.band${_band}.glyphimage\t${_font}.band${_band}.glyphbake\n")
             endforeach()
         endforeach()
+        # The manifest names the content key of every image; the runtime finds the image in the
+        # shared cache by that key and imports it from here on a miss (Recipe/GlyphBakeCache.h).
+        set(_glyph_bake_manifest_script "${VIXEN_ROOT}/cmake/VixenGlyphBakeManifest.cmake")
+        file(CONFIGURE OUTPUT "${VIXEN_GLYPH_BAKE_DIR}/manifest.in" CONTENT "${_glyph_bake_manifest_lines}" @ONLY)
+        add_custom_command(OUTPUT "${VIXEN_GLYPH_BAKE_MANIFEST}"
+            COMMAND "${CMAKE_COMMAND}" "-DIN=${VIXEN_GLYPH_BAKE_DIR}/manifest.in"
+                "-DOUT=${VIXEN_GLYPH_BAKE_MANIFEST}" -P "${_glyph_bake_manifest_script}"
+            DEPENDS ${_glyph_bake_images} "${VIXEN_GLYPH_BAKE_DIR}/manifest.in" "${_glyph_bake_manifest_script}"
+            COMMENT "[glyph-bake] manifest"
+            VERBATIM)
+        list(APPEND _glyph_bake_outputs "${VIXEN_GLYPH_BAKE_MANIFEST}")
         add_custom_target(vixen_glyph_bake_files DEPENDS ${_glyph_bake_outputs})
         add_dependencies(vixen_glyph_bake vixen_glyph_bake_files)
     endif()

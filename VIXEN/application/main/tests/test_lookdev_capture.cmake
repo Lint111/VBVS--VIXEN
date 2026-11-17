@@ -12,8 +12,6 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         add_test(NAME "${name}" COMMAND ${_command})
     endfunction()
 
-    vixen_glyph_bake_images(_lookdev_lato_glyph_bake_images LatoLatin-Regular)
-    vixen_glyph_bake_images(_lookdev_noto_glyph_bake_images NotoSansArabic-VF)
     add_executable(vixen_lookdev_capture
         ${CMAKE_CURRENT_LIST_DIR}/test_lookdev_capture.cpp)
     vixen_whole_archive_link_vixen_app(vixen_lookdev_capture PRIVATE)
@@ -21,8 +19,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     target_compile_definitions(vixen_lookdev_capture PRIVATE
         TEXT_LATO_FONT_PATH="${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/LatoLatin-Regular.ttf"
         TEXT_NOTO_ARABIC_FONT_PATH="${VIXEN_ROOT}/libraries/Text/tests/data/NotoSansArabic-VF.ttf"
-        TEXT_LATO_GLYPH_BAKE_IMAGES="${_lookdev_lato_glyph_bake_images}"
-        TEXT_NOTO_ARABIC_GLYPH_BAKE_IMAGES="${_lookdev_noto_glyph_bake_images}")
+        TEXT_GLYPH_BAKE_MANIFEST="${VIXEN_GLYPH_BAKE_MANIFEST}")
     add_dependencies(vixen_lookdev_capture vixen_glyph_bake)
     set_target_properties(vixen_lookdev_capture PROPERTIES FOLDER "Tests/Application")
     set(_lookdev_test_environment

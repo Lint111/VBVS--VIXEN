@@ -35,6 +35,7 @@
 #include "PackRecipeSource.h"
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/RecipeBounds.h"
+#include "Recipe/GlyphBakeCache.h"
 #include "Recipe/RecipeIngest.h"
 #include "Recipe/RecipeMarchReplay.h"
 #include "Recipe/SdfRecipeEval.h"
@@ -592,12 +593,11 @@ bool ParseRecipeScale(float& scale, std::string& error) {
 // R892.14: the imported (baked) form of a bundled face, written by the build (vixen_glyph_bake).
 std::shared_ptr<const Vixen::SVO::Recipe::GlyphBakeFace> LoadBundledGlyphBake(bool notoArabic, std::string& error) {
     std::string reason;
+    // The decompressed image comes from the shared cache by content key (R892.19).
     auto bake = Vixen::SVO::Recipe::LoadGlyphBakeFace(
-        notoArabic ? "NotoSansArabic-VF" : "LatoLatin-Regular",
-        notoArabic ? TEXT_NOTO_ARABIC_GLYPH_BAKE_IMAGES : TEXT_LATO_GLYPH_BAKE_IMAGES, &reason);
-    if (!bake)
-        error = "the baked glyphs of the bundled face are unavailable: " + reason +
-            "; fix: build target vixen_glyph_bake";
+        notoArabic ? "NotoSansArabic-VF" : "LatoLatin-Regular", TEXT_GLYPH_BAKE_MANIFEST,
+        Vixen::SVO::Recipe::GlyphBakeCacheDirectory(), &reason);
+    if (!bake) error = "the baked glyphs of the bundled face are unavailable: " + reason;
     return bake;
 }
 

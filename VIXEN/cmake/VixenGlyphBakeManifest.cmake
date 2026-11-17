@@ -1,0 +1,37 @@
+# Writes the glyph bake manifest (script mode; see cmake/VixenGlyphBake.cmake).
+#   cmake -DIN=<list file> -DOUT=<manifest> -P VixenGlyphBakeManifest.cmake
+# IN has one line per bake: face <TAB> band <TAB> image file <TAB> pack file, names relative to
+# the directory of OUT. The content key is read from each image (bytes 16..47 of its header, the
+# key the kernel tool computed from the font bytes and the bake parameters), so the manifest
+# always names the key of the image that is on disk.
+if(NOT IN OR NOT OUT)
+    message(FATAL_ERROR "[glyph-bake] manifest: IN and OUT are required")
+endif()
+get_filename_component(_directory "${OUT}" DIRECTORY)
+file(STRINGS "${IN}" _lines)
+set(_manifest "")
+foreach(_line IN LISTS _lines)
+    if(_line STREQUAL "")
+        continue()
+    endif()
+    string(REPLACE "\t" ";" _fields "${_line}")
+    list(LENGTH _fields _count)
+    if(NOT _count EQUAL 4)
+        message(FATAL_ERROR "[glyph-bake] manifest: malformed line in ${IN}: ${_line}")
+    endif()
+    list(GET _fields 0 _face)
+    list(GET _fields 1 _band)
+    list(GET _fields 2 _image)
+    list(GET _fields 3 _pack)
+    if(NOT EXISTS "${_directory}/${_image}")
+        message(FATAL_ERROR "[glyph-bake] manifest: ${_directory}/${_image} is missing")
+    endif()
+    file(READ "${_directory}/${_image}" _key OFFSET 16 LIMIT 32 HEX)
+    string(LENGTH "${_key}" _key_length)
+    if(NOT _key_length EQUAL 64)
+        message(FATAL_ERROR "[glyph-bake] manifest: ${_directory}/${_image} has no content key")
+    endif()
+    string(APPEND _manifest "${_face}\t${_band}\t${_key}\t${_image}\t${_pack}\n")
+endforeach()
+file(WRITE "${OUT}.tmp" "${_manifest}")
+file(RENAME "${OUT}.tmp" "${OUT}")

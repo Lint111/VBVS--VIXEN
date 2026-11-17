@@ -814,7 +814,8 @@ target_compile_definitions(test_glyph_bake_stream PRIVATE
     GLYPH_BAKE_LATO_IMAGE="${_glyph_bake_lato_image}"
     GLYPH_BAKE_LATO_SAMPLES="${_glyph_bake_lato_samples}"
     GLYPH_BAKE_NOTO_IMAGE="${_glyph_bake_noto_image}"
-    GLYPH_BAKE_NOTO_SAMPLES="${_glyph_bake_noto_samples}")
+    GLYPH_BAKE_NOTO_SAMPLES="${_glyph_bake_noto_samples}"
+    GLYPH_BAKE_MANIFEST="${VIXEN_GLYPH_BAKE_MANIFEST}")
 set_target_properties(test_glyph_bake_stream PROPERTIES FOLDER "Tests/SVO Tests")
 vixen_gtest_discover_tests(SVO test_glyph_bake_stream)
 
