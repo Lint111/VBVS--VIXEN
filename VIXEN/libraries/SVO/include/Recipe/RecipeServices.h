@@ -321,6 +321,8 @@ inline std::uint32_t StampGlyphInsideDistances(RecipeRegistry::RecipeEntry& entr
                 shell.certifiedError = info.certifiedError;
                 shell.rules = info.rules;
                 shell.certificate = info.certificate;
+                shell.toleranceScale = (info.rules & YK_RECIPE_ANALYSIS_RULE_DROP_VANISHING_ROW) != 0u
+                    ? YK_RECIPE_ANALYSIS_VANISHING_ROW_TOLERANCE_SCALE : 1.0f;
                 entry.derivedShells.push_back(std::move(shell));
             }
         }

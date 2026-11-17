@@ -604,6 +604,7 @@ TEST_P(GlyphBakeShellSign, TheCoarsestShellHasNoGlyphRowAndStaysWithinItsCertifi
     EXPECT_EQ(shell.bytecode.size(), 1u) << "the plaque alone";
     EXPECT_NE(shell.rules & YK_RECIPE_ANALYSIS_RULE_DROP_VANISHING_ROW, 0u);
     EXPECT_EQ(shell.certificate, static_cast<std::uint32_t>(YK_RECIPE_ANALYSIS_CERTIFICATE_RULE_BOUNDS));
+    EXPECT_EQ(shell.toleranceScale, 0.4f) << "a shell that dropped a text row switches at 0.4 of the tolerance (R892.28)";
     // The error is the larger of the depth of the row in the plaque and the glyph's inside distance
     // (each with the row's round), plus the search margin.
     const float insideWorld = full.bytecode[2].data[1] * sign.rowScale + 0.02f;

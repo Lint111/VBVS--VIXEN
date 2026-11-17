@@ -774,11 +774,13 @@ Vixen::SVO::Recipe::RecipeRegistrationAnalysis AnalyzeEntry(Vixen::SVO::RecipeRe
     const std::uint32_t forced = ForcedShellLevel();
     if (forced != 0u) {
         for (std::size_t level = 0; level < entry.derivedShells.size(); ++level)
-            std::printf("[RECIPE_SHELL] level=%zu records=%zu of %zu certified_error=%.9g bound_radius=%.9g rules=%u certificate=%u%s\n",
+            std::printf("[RECIPE_SHELL] level=%zu records=%zu of %zu certified_error=%.9g bound_radius=%.9g rules=%u certificate=%u tolerance_scale=%.3g%s\n",
                         level + 1, entry.derivedShells[level].bytecode.size(), entry.bytecode.size(),
                         static_cast<double>(entry.derivedShells[level].certifiedError),
                         static_cast<double>(entry.derivedShellBoundRadius), entry.derivedShells[level].rules,
-                        entry.derivedShells[level].certificate, level + 1 == forced ? " FORCED" : "");
+                        entry.derivedShells[level].certificate,
+                        static_cast<double>(entry.derivedShells[level].toleranceScale), level + 1 == forced ? " FORCED" : "");
+        if (entry.derivedShells.empty()) std::printf("[RECIPE_SHELL] none (records=%zu)\n", entry.bytecode.size());
         std::fflush(stdout);
     }
     if (forced != 0u && forced <= entry.derivedShells.size()) {
