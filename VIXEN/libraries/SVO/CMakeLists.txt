@@ -56,6 +56,7 @@ add_library(SVO STATIC
     src/RuntimeMaterialTable.cpp
     # src/SVOFactory.cpp  # TODO: Implement
     src/RecipePackLoader.cpp  # I2.5: manifest+blobs→registry, fail-loud
+    src/Recipe/GlyphBakeWalk.cpp  # CPU face of the baked glyph walk (R892.14), compiled without fused multiply-add
     src/Recipe/LodSelection.cpp  # Recipe LOD selection, hysteresis, and upload gating (Wave A)
     src/Recipe/MultiBodyRenderer.cpp  # Multi-body render-list builder (R2)
     src/Recipe/RecipeComposition.cpp  # Recipe composition role validation and resolution (Wave B)

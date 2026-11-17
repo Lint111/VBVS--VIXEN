@@ -223,7 +223,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "cb9a4f5b779642d5ef3557812aacc9af5fdeb40f")
+set(_vixen_tracked_yeroket_kernel_sha "ff5e3c403084ce6c3ffe889497193141c8996bde")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -842,6 +842,56 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # thing that rebuilds it. Checks and regen targets depend on this target and run the staged DLL;
     # none of them restores or builds the managed tool. Regeneration stays its own *_regen step.
     add_custom_target(engine_codegen_tool DEPENDS "${_tool_stamp}" "${_yk_dll}")
+
+    # Font import (R892.14, R892.18): build the kernel's glyph-bake tool from the same pinned
+    # snapshot as the CodegenTool, then bake every declared font once per exact band. Outputs are
+    # named by cmake/VixenGlyphBake.cmake. `samples` writes walk results of the kernel tool that
+    # the C++ face must reproduce bit for bit (test_glyph_bake_stream).
+    set(_glyph_bake_project
+        "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/GlyphBake~/Yeroket.KernelFramework.GlyphBake.csproj")
+    if(_codegen_need_wsl_bridge)
+        message(WARNING "[glyph-bake] fonts are not baked through the WSL dotnet bridge; "
+            "GlyphOutline recipes will fail registration. Fix: provision a native dotnet (build.bat provision).")
+    elseif(NOT EXISTS "${_glyph_bake_project}")
+        message(FATAL_ERROR "[glyph-bake] the pinned kernel ${YEROKET_KERNEL_SHA} has no GlyphBake~ project; "
+            "the tracked pin must contain the font import tool (kernel lane-glyph5 or later)")
+    else()
+        set(_glyph_bake_bin "${CMAKE_CURRENT_BINARY_DIR}/glyph-bake-tool")
+        set(_glyph_bake_dll "${_glyph_bake_bin}/Yeroket.KernelFramework.GlyphBake.dll")
+        if(UNIX AND NOT APPLE)
+            set(_glyph_bake_build ${_codegen_linux_dotnet_cli_command} "${_glyph_bake_project}")
+        else()
+            set(_glyph_bake_build "${VIXEN_DOTNET}" build "${_glyph_bake_project}")
+        endif()
+        add_custom_command(OUTPUT "${_glyph_bake_dll}"
+            COMMAND ${_glyph_bake_build} -c Release -m:1 -nodeReuse:false -nologo -v q
+                --artifacts-path "${CMAKE_CURRENT_BINARY_DIR}/glyph-bake-artifacts"
+                --output "${_glyph_bake_bin}/"
+            DEPENDS "${_yk_root}/.archive-complete"
+            COMMENT "[glyph-bake] building the kernel font import tool"
+            JOB_POOL msbuild VERBATIM)
+        set(_glyph_bake_outputs "")
+        foreach(_font IN LISTS VIXEN_GLYPH_BAKE_FONT_NAMES)
+            foreach(_band IN LISTS VIXEN_GLYPH_BAKE_BANDS_EM)
+                vixen_glyph_bake_file(_baked "${_font}" "${_band}" glyphbake)
+                vixen_glyph_bake_file(_image "${_font}" "${_band}" glyphimage)
+                vixen_glyph_bake_file(_samples "${_font}" "${_band}" glyphsamples)
+                add_custom_command(OUTPUT "${_baked}" "${_image}" "${_samples}"
+                    COMMAND "${CMAKE_COMMAND}" -E make_directory "${VIXEN_GLYPH_BAKE_DIR}"
+                    COMMAND "${VIXEN_DOTNET}" "${_glyph_bake_dll}" bake
+                        --font "${VIXEN_GLYPH_BAKE_FONT_${_font}}" --out "${_baked}" --image "${_image}"
+                        --exact-band-em "${_band}"
+                    COMMAND "${VIXEN_DOTNET}" "${_glyph_bake_dll}" samples
+                        --baked "${_baked}" --out "${_samples}" --per-glyph 64
+                    DEPENDS "${_glyph_bake_dll}" "${VIXEN_GLYPH_BAKE_FONT_${_font}}"
+                    COMMENT "[glyph-bake] ${_font} (exact band ${_band} em)"
+                    VERBATIM)
+                list(APPEND _glyph_bake_outputs "${_baked}" "${_image}" "${_samples}")
+            endforeach()
+        endforeach()
+        add_custom_target(vixen_glyph_bake_files DEPENDS ${_glyph_bake_outputs})
+        add_dependencies(vixen_glyph_bake vixen_glyph_bake_files)
+    endif()
     if(_codegen_need_wsl_bridge)
         _codegen_to_wsl_path("${_yk_dll}" _yk_dll_run)
     else()
