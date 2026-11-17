@@ -278,6 +278,40 @@ bool envFlagEnabledOrDefault(const char* name, bool defaultValue) {
     return envFlagEnabled(name);
 }
 
+std::string SceneCostIdentity() {
+    const char* scene = std::getenv("VIXEN_SCENE");
+    std::string identity = scene && *scene ? scene : "cornell";
+    const auto appendEnv = [&identity](const char* name) {
+        if (const char* value = std::getenv(name); value && *value) {
+            identity += '|';
+            identity += name;
+            identity += '=';
+            identity += value;
+        }
+    };
+    // GlyphSDF is selected by independent capture flags rather than VIXEN_SCENE. Include the
+    // variant and proof/text inputs that change the march workload, fixing the RTL order hazard.
+    appendEnv("VIXEN_GLYPHSDF_SCENE");
+    appendEnv("VIXEN_GLYPHSDF_VARIANT");
+    appendEnv("VIXEN_GLYPHSDF_RTL_PROOF");
+    appendEnv("VIXEN_GLYPHSDF_TEXT_INVARIANT");
+    appendEnv("VIXEN_GLYPHSDF_BAKE_RESOLUTION");
+    appendEnv("VIXEN_UI_DEMO");
+    appendEnv("VIXEN_INSTANCING_DEMO");
+    appendEnv("VIXEN_AUTOSYNC_DEMO");
+    appendEnv("VIXEN_FANIN_DEMO");
+    return identity;
+}
+
+std::string SceneCostQualityProfile(const VulkanGraphApplication::RenderPathConfig& config) {
+    return "scale=" + std::to_string(config.renderScale) +
+        ";upscaler=" + std::to_string(static_cast<int>(config.upscaler)) +
+        ";aa=" + std::string(config.antiAliasing) +
+        ";history=" + std::to_string(config.antiAliasingHistoryWeight) +
+        ";jitter=" + std::to_string(config.temporalJitter ? 1 : 0) +
+        ";sampling=" + std::to_string(static_cast<int>(config.samplingPath));
+}
+
 // Dynamic exposure config: the built-in scenes are the default SceneLook, so they contribute it as the
 // scene layer (the space exposure preset). Environment overrides form the dev layer, which resolves above
 // every scene: VIXEN_HDR_EXPOSURE_PRESET=<name> replaces all seven preset values and
@@ -507,6 +541,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
         return;
     }
+    renderGraph->SetSceneCostConfiguration({SceneCostIdentity(), SceneCostQualityProfile(renderPathConfig)});
 
     // S0: opt into the UI-only RmlUi demo graph via env var, leaving the voxel path untouched.
     if (envFlagEnabled("VIXEN_UI_DEMO")) {

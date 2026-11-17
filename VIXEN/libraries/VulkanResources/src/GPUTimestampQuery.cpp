@@ -312,6 +312,15 @@ uint64_t GPUTimestampQuery::GetElapsedNs(uint32_t frameIndex, uint32_t startQuer
     return static_cast<uint64_t>(static_cast<double>(deltaTicks) * static_cast<double>(timestampPeriod_));
 }
 
+bool GPUTimestampQuery::AllAvailable(uint32_t frameIndex, uint32_t first, uint32_t count) const {
+    if (!timestampSupported_ || frameIndex >= framesInFlight_ || !count) return false;
+    const auto& frame = frameData_[frameIndex];
+    if (!frame.resultsValid || first >= maxTimestamps_ || count > maxTimestamps_ - first) return false;
+    for (uint32_t i = first; i < first + count; ++i)
+        if (!frame.available[i]) return false;
+    return true;
+}
+
 uint64_t GPUTimestampQuery::GetRawTimestampTicks(uint32_t frameIndex, uint32_t queryIndex) const {
     if (!timestampSupported_ || frameIndex >= framesInFlight_) {
         return 0;
