@@ -4,7 +4,7 @@
 
 - **B6: DONE, witnessed, LANDABLE.** The shadow wave is 8% faster at 1080p and 13% faster at 4K,
   and output is byte-identical everywhere it was checked.
-- **1b (shadow speckle, R892.8): STOPPED for owner review.** Cause found and fixed at the source
+- **1b (shadow speckle, R892.8): DONE. Owner accepted the fix and the re-golden (R892.9, 11-17).** Cause found and fixed at the source
   (`11b45cde1`): the 1 mm self-hit guard discarded real occluders closer than 1 mm, which dropped the
   whole recipe instance. Shadow-caused speckles 5 -> 0. Captures change by intent; the review
   package is ready; references are unchanged. The remaining 24 detector hits are not shadow-caused
@@ -81,7 +81,16 @@ dirs `C:\vixen-native\rt6-scratch\w1-*`, `w2-*`.
 | 20 `GlyphSdf` captures | all equal `b5/b5-glyphsdf.sha256` (`glyphsdf.sha256`) |
 | Affected native GPU CTest (label gpu, `LookdevCapture|Recipe|UberShader|Glyph|SwitchCost|DeclaredPosition|NestedInvocation`, registered reds excluded, as fable-glyph1) | **106/106 passed**, 3 declared Disabled/Skipped, no device loss, 1696 s (`gpu-affected.log`, `C:\vixen-native\rt6-scratch\suite\ctest.log`) |
 
-## 1b: shadow speckle (R892.8) — STOP for owner review
+## 1b: shadow speckle (R892.8) — accepted (R892.9)
+
+**R892.9 (owner, 11-17): `11b45cde1` and its re-golden accepted.** Committed on lane-rt6: the
+16 look-dev references (`reports/lookdev-visual/captures-shadow-on/` and `-repeat/`, from the
+`11b45cde1` CTest captures; first and repeat byte-identical) with `reference-provenance.json`
+(source `11b45cde1`, known visual changes `15f0832af` R892.6 derived bounds and `11b45cde1` R892.9).
+All 16 differ from the previously committed set because the B5 re-golden (R892.6) had not been
+committed either. RTL pair and HUD 3 are unchanged. GlyphSdf has no committed reference files in the
+repo; its new hashes are `opus-rt6-evidence/speckle/new/` (latin-embossed `7d22095f...`,
+qps-rtl-embossed `d4a49218...`, the other 18 equal `b5/b5-glyphsdf.sha256`).
 
 **Shadow-caused speckles 5 -> 0, fixed at the source** (VIXEN `11b45cde1`, hand-written shadow
 march; kernel unchanged). Captures change by intent; **references not changed**; owner review
@@ -195,8 +204,7 @@ findings above.
 ## LANDABLE NOW
 
 - VIXEN `2bd159789` (B6) on base `c2e97b00f`. Byte-identical; witnessed above.
-- VIXEN `11b45cde1` (speckle fix): **not landable until the owner accepts the review package**
-  (it changes look-dev and GlyphSdf references).
+- VIXEN `11b45cde1` (speckle fix) + the reference commit: accepted (R892.9), for vx11.
 
 ## GB1
 
