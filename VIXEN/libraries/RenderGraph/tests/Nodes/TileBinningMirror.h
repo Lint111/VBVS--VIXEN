@@ -43,6 +43,8 @@ struct TileRectMirror {
 struct TileBinMirrorMetrics {
     uint64_t scatterInstanceIterations = 0;
     uint64_t scatterTileIterations = 0;
+    // Longest tile walk of one scatter invocation: the serial chain the GPU pays.
+    uint64_t scatterLongestLaneIterations = 0;
     uint64_t sortTileIterations = 0;
     uint64_t sortCopyIterations = 0;
     uint64_t sortCompareIterations = 0;
@@ -130,6 +132,17 @@ inline TileRectMirror MirrorProjectBound(float centerX, float centerY, float cen
     return {minX, minY, maxX, maxY, nearDepth, 0};
 }
 
+// TileBinOps.ScatterLanes: invocations per instance in the generated scatter.
+inline int MirrorScatterLanes(const TileBinView& view) {
+    constexpr int kScatterLaneCount = 256;
+    constexpr int kTilePixels = 64;
+    const int available = (view.tilesX - 1) * (view.tilesY - 1) * kTilePixels;
+    if (view.instanceCount <= 0) return kScatterLaneCount;
+    const int lanes = available / view.instanceCount;
+    if (lanes > kScatterLaneCount) return kScatterLaneCount;
+    return lanes < 1 ? 1 : lanes;
+}
+
 inline bool MirrorCandidateBefore(const TileSortedCandidate& a,
                                   const TileSortedCandidate& b) {
     return a.nearDepth < b.nearDepth ||
@@ -187,16 +200,31 @@ inline TileBinMirrorResult RunTileBinMirror(
         static_cast<uint64_t>(tileCount) * MirrorBitonicCompareCount(capacity);
 
     std::vector<std::vector<TileCandidate>> expected(static_cast<size_t>(tileCount));
+    // The generated scatter runs ScatterLanes invocations per instance, each walking the
+    // instance's tile rectangle in stride. The GPU order of their appends is arbitrary, so
+    // the mirror appends lane-major across all instances (the opposite of a serial walk)
+    // and the sort must still give the expected lists.
+    const int lanes = MirrorScatterLanes(view);
+    std::vector<TileRectMirror> rects(static_cast<size_t>(view.instanceCount));
     for (int i = 0; i < view.instanceCount; ++i) {
         ++result.metrics.scatterInstanceIterations;
         const InstanceBound& bound = bounds[static_cast<size_t>(i)];
-        const TileRectMirror rect = MirrorProjectBound(bound.centerX, bound.centerY,
-                                                      bound.centerZ, bound.radius, view);
-        if (rect.cull != 0) continue;
-
-        for (int tileY = rect.minY; tileY <= rect.maxY; ++tileY) {
-            for (int tileX = rect.minX; tileX <= rect.maxX; ++tileX) {
+        rects[static_cast<size_t>(i)] = MirrorProjectBound(bound.centerX, bound.centerY,
+                                                           bound.centerZ, bound.radius, view);
+    }
+    for (int lane = 0; lane < lanes; ++lane) {
+        for (int i = 0; i < view.instanceCount; ++i) {
+            const TileRectMirror& rect = rects[static_cast<size_t>(i)];
+            if (rect.cull != 0) continue;
+            const int width = rect.maxX - rect.minX + 1;
+            const int area = width * (rect.maxY - rect.minY + 1);
+            uint64_t laneIterations = 0;
+            for (int offset = lane; offset < area; offset += lanes) {
+                ++laneIterations;
                 ++result.metrics.scatterTileIterations;
+                const int row = offset / width;
+                const int tileY = rect.minY + row;
+                const int tileX = rect.minX + (offset - row * width);
                 const int tile = tileY * view.tilesX + tileX;
                 MirrorRequire(tile >= 0 && tile < tileCount, "scatter tile index outside grid");
 
@@ -227,8 +255,19 @@ inline TileBinMirrorResult RunTileBinMirror(
                               "scatter candidate index outside slab");
                 result.candidates[entry] = TileCandidate{rect.nearDepth, static_cast<uint32_t>(i)};
             }
+            result.metrics.scatterLongestLaneIterations =
+                std::max(result.metrics.scatterLongestLaneIterations, laneIterations);
         }
     }
+    // Every (instance, tile) pair of every rectangle is visited exactly once.
+    uint64_t rectangleTiles = 0;
+    for (const TileRectMirror& rect : rects) {
+        if (rect.cull != 0) continue;
+        rectangleTiles += static_cast<uint64_t>(rect.maxX - rect.minX + 1) *
+                          static_cast<uint64_t>(rect.maxY - rect.minY + 1);
+    }
+    MirrorRequire(rectangleTiles == result.metrics.scatterTileIterations,
+                  "scatter lanes did not visit every rectangle tile exactly once");
 
     for (int tile = 0; tile < tileCount; ++tile) {
         ++result.metrics.sortTileIterations;
