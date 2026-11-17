@@ -2660,7 +2660,8 @@ private:
     // each listed pixel on the CPU (Recipe/RecipeMarchReplay.h, the field the GPU walks) and writes
     // <capture>.replay.txt beside the image: the pixel's HitRecord, the replayed march, a dense
     // scan of the field along each shadow ray, and the agreement of the replay with the HitRecords
-    // of the surrounding pixels. Registry recipes on axis-aligned, uniformly scaled instances.
+    // of the surrounding pixels. With VIXEN_LOOKDEV_REPLAY_SUPERSAMPLE it also writes the window
+    // around each pixel at 16 x 16 rays per pixel (<capture>.replay-<x>-<y>.pgm). Registry recipes on axis-aligned, uniformly scaled instances.
     bool ReplayPixels(const CaptureScenario& scenario) {
         using Vixen::SVO::Recipe::RecipeMarchExit;
         using Vixen::SVO::Recipe::RecipeMarchReplay;
@@ -2768,9 +2769,10 @@ private:
             in.grid = body.entry->occupancyGridValues;
             return in;
         };
-        auto cameraRay = [&](int x, int y) {
+        // (x, y) is a position in pixels; a pixel's own ray is at its centre, +0.5.
+        auto cameraRay = [&](float x, float y) {
             const float tanHalfFov = std::tan(glm::radians(camera.fov * 0.5f));
-            glm::vec2 ndc = (glm::vec2(static_cast<float>(x), static_cast<float>(y)) + 0.5f) /
+            glm::vec2 ndc = glm::vec2(x, y) /
                 glm::vec2(static_cast<float>(width), static_cast<float>(height)) * 2.0f - 1.0f;
             ndc.y = -ndc.y;
             return glm::normalize(camera.cameraDir + camera.cameraRight * ndc.x * tanHalfFov * camera.aspect +
@@ -2778,12 +2780,15 @@ private:
         };
         // The camera march of TraceWorld for one registry instance (one instance wins every pixel
         // of these scenes; the replay marches the instance the HitRecord names).
-        auto replayPrimary = [&](const Body& body, int x, int y) {
+        auto replayPrimaryAt = [&](const Body& body, float x, float y) {
             RecipeMarchReplayInput in = marchInput(body);
             in.ro = (camera.cameraPos - body.translation) / body.scale;
             in.rd = cameraRay(x, y);
             in.pixelAngle = primaryCone;
             return Vixen::SVO::Recipe::ReplayRecipeMarch(in, fieldOf(body));
+        };
+        auto replayPrimary = [&](const Body& body, int x, int y) {
+            return replayPrimaryAt(body, static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f);
         };
         struct ShadowRay {
             bool traced = false;
@@ -2935,6 +2940,36 @@ private:
                     out << "    scan: inside from t=" << runStart << " to the end of the scan (deepest " << runMinimum << ")\n";
                 out << "    scan: " << runs << " stretches inside up to t=" << scanEnd << "; least field value after the start "
                     << minimum << " at t=" << minimumT << '\n';
+            }
+
+            // The same window at kSub x kSub rays per pixel, as an image: what one ray per pixel
+            // samples. Grey = 40 + 215 * NdotL of light 0 where the replayed shadow ray is clear,
+            // 40 in shadow or facing away, 0 where the camera ray misses.
+            if (std::getenv("VIXEN_LOOKDEV_REPLAY_SUPERSAMPLE")) {
+                const int kSub = 16, kRadius = 6, side = (2 * kRadius + 1) * kSub;
+                std::vector<unsigned char> grey(static_cast<std::size_t>(side) * side, 0);
+                for (int sy = 0; sy < side; ++sy) {
+                    for (int sx = 0; sx < side; ++sx) {
+                        const float fx = static_cast<float>(px - kRadius) + (static_cast<float>(sx) + 0.5f) / kSub;
+                        const float fy = static_cast<float>(py - kRadius) + (static_cast<float>(sy) + 0.5f) / kSub;
+                        const RecipeMarchReplay sub = replayPrimaryAt(body, fx, fy);
+                        if (!sub.hit) continue;
+                        Record subRecord{};
+                        subRecord.hitT = sub.hitT * body.scale;
+                        subRecord.worldPos = camera.cameraPos + cameraRay(fx, fy) * subRecord.hitT;
+                        subRecord.worldNormal = glm::normalize(sub.gradient);
+                        subRecord.primaryFootprint = subRecord.hitT * primaryCone;
+                        const ShadowRay subRay = replayShadow(body, subRecord, lighting.lights[0]);
+                        const float lit = subRay.traced && !subRay.occluded ? subRay.nDotL : 0.0f;
+                        grey[static_cast<std::size_t>(sy) * side + sx] = static_cast<unsigned char>(40.0f + 215.0f * lit);
+                    }
+                }
+                std::ofstream image(stem.string() + ".replay-" + std::to_string(px) + "-" + std::to_string(py) + ".pgm",
+                                    std::ios::binary | std::ios::trunc);
+                image << "P5\n" << side << ' ' << side << "\n255\n";
+                image.write(reinterpret_cast<const char*>(grey.data()), static_cast<std::streamsize>(grey.size()));
+                out << "  supersampled window: " << side << "x" << side << " (" << kSub << " rays per pixel side, radius "
+                    << kRadius << " pixels)\n";
             }
 
             // Agreement of the replay with the capture around the pixel.
