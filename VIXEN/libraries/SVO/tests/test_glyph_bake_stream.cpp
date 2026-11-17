@@ -8,6 +8,7 @@
 #include "Recipe/GlyphBakeCache.h"
 #include "Recipe/GlyphBakeStream.h"
 #include "Recipe/RecipeRegistry.h"
+#include "Recipe/RecipeServices.h"
 #include "Recipe/SdfRecipeEval.h"
 
 #include <gtest/gtest.h>
@@ -493,5 +494,150 @@ TEST(GlyphBakeCache, AFaceLoadsEveryBandOfTheManifestAndAnUnknownFaceFails) {
     EXPECT_EQ(LoadGlyphBakeFace("LatoLatin-Regular", cache / "no-manifest.tsv", cache, &error), nullptr);
     EXPECT_NE(error.find("cannot open glyph bake manifest"), std::string::npos) << error;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Glyph facts and the shell without glyph rows (R892.21, R892.23).
+// ---------------------------------------------------------------------------------------------
+
+TEST(GlyphBakeFacts, EveryOutlinedGlyphHasAnInsideDistanceAboveTheWalkAndACoverage) {
+    for (const BakedFont& font : kFonts) {
+        const auto image = LoadImage(font.image);
+        ASSERT_NE(image, nullptr);
+        std::uint32_t outlined = 0;
+        for (std::uint32_t glyphId = 0; glyphId < image->GlyphCount(); ++glyphId) {
+            const auto block = image->Block(glyphId);
+            const float inside = image->InsideDistanceUnits(glyphId), coverage = image->InkCoverage(glyphId);
+            if (block.empty()) {
+                EXPECT_EQ(inside, 0.0f) << font.name << " glyph " << glyphId;
+                continue;
+            }
+            ++outlined;
+            EXPECT_GT(inside, 0.0f) << font.name << " glyph " << glyphId;
+            EXPECT_GT(coverage, 0.0f) << font.name << " glyph " << glyphId;
+            EXPECT_LE(coverage, 1.0f) << font.name << " glyph " << glyphId;
+            // The walk never returns a value below minus the stored bound, anywhere in the bounds.
+            const float minX = std::bit_cast<float>(block[4]), minY = std::bit_cast<float>(block[5]);
+            const float maxX = std::bit_cast<float>(block[6]), maxY = std::bit_cast<float>(block[7]);
+            if (glyphId % 7u != 0u) continue; // every seventh glyph is sampled
+            std::uint32_t state = 4242u + glyphId;
+            auto next = [&state]() { state = state * 1664525u + 1013904223u; return static_cast<float>(state >> 8) / 16777216.0f; };
+            for (int sample = 0; sample < 400; ++sample) {
+                const float value = EvaluateGlyphBakeBlock(block.data(), minX + next() * (maxX - minX), minY + next() * (maxY - minY));
+                ASSERT_GE(value, -inside) << font.name << " glyph " << glyphId;
+            }
+        }
+        EXPECT_GT(outlined, 100u) << font.name;
+    }
+}
+
+// The sign scenes' shape: a plaque, and one glyph row raised out of it (Union) or cut into it
+// (Subtract) by `depth` world units around the plaque's front face.
+struct SignRecipe {
+    Vixen::SVO::RecipeRegistry::RecipeEntry entry;
+    float rowScale = 0.004f;
+    float plaqueHalfDepth = 0.5f;
+};
+
+SignRecipe MakeSign(const std::shared_ptr<const GlyphBakeImage>& image, std::uint32_t glyphId, bool carved, float depth) {
+    SignRecipe sign;
+    const float fontPerRow = 2000.0f / 1536.0f;
+    float minX, minY, maxX, maxY;
+    GlyphBakedRow row{FaceOf(image), fontPerRow, {{glyphId, 0.0f, 0.0f}}};
+    EXPECT_TRUE(row.Bounds(*image, minX, minY, maxX, maxY));
+    SdfInstruction plaque = Op(SdfOpCode::BoxRounded, 8.0f);
+    plaque.data[1] = 8.0f; plaque.data[2] = sign.plaqueHalfDepth; plaque.data[3] = 0.05f;
+    SdfInstruction transform = RowTransform(sign.rowScale);
+    transform.data[0] = -0.5f * (minX + maxX) * sign.rowScale;
+    transform.data[1] = -0.5f * (minY + maxY) * sign.rowScale;
+    transform.data[2] = sign.plaqueHalfDepth;
+    SdfInstruction boxCentre = RowTransform(1.0f);
+    boxCentre.data[0] = 0.5f * (minX + maxX);
+    boxCentre.data[1] = 0.5f * (minY + maxY);
+    SdfInstruction box = Op(SdfOpCode::Box, 0.5f * (maxX - minX) + 30.0f);
+    box.data[1] = 0.5f * (maxY - minY) + 30.0f;
+    box.data[2] = depth / sign.rowScale;
+    sign.entry.bytecode = {plaque, transform, GlyphRow(0), boxCentre, box, Op(SdfOpCode::Intersect),
+        Op(SdfOpCode::Round, 0.02f / sign.rowScale), Op(SdfOpCode::RestorePos), Op(SdfOpCode::RestorePos),
+        Op(carved ? SdfOpCode::Subtract : SdfOpCode::Union)};
+    sign.entry.glyphInstances.emplace_back();
+    sign.entry.glyphInstances.back().SegmentCount = 1;
+    sign.entry.glyphBakedRows.push_back(std::move(row));
+    sign.entry.boundRadius = 14.0f;
+    return sign;
+}
+
+TEST(GlyphBakeShell, RegistrationStampsTheInsideDistanceOfEveryBakedRow) {
+    const auto image = LoadImage(GLYPH_BAKE_LATO_IMAGE);
+    ASSERT_NE(image, nullptr);
+    const std::uint32_t glyphId = OutlinedGlyphs(*image, 40).back();
+    SignRecipe sign = MakeSign(image, glyphId, false, 0.3f);
+    EXPECT_EQ(StampGlyphInsideDistances(sign.entry), 1u);
+    const float expected = image->InsideDistanceUnits(glyphId) / (2000.0f / 1536.0f);
+    EXPECT_GE(sign.entry.bytecode[2].data[1], expected);
+    EXPECT_LE(sign.entry.bytecode[2].data[1], expected * 1.0001f);
+    // A row without a baked form keeps 0: its leaf never vanishes.
+    sign.entry.glyphBakedRows.clear();
+    EXPECT_EQ(StampGlyphInsideDistances(sign.entry), 0u);
+    EXPECT_EQ(sign.entry.bytecode[2].data[1], 0.0f);
+}
+
+class GlyphBakeShellSign : public ::testing::TestWithParam<bool> {};
+
+TEST_P(GlyphBakeShellSign, TheCoarsestShellHasNoGlyphRowAndStaysWithinItsCertifiedError) {
+    const bool carved = GetParam();
+    if (!GetRecipeServiceApis().available) GTEST_SKIP() << "the kernel recipe services are not available";
+    const auto image = LoadImage(GLYPH_BAKE_LATO_IMAGE);
+    ASSERT_NE(image, nullptr);
+    const std::uint32_t glyphId = OutlinedGlyphs(*image, 40).back();
+    const float depth = 0.3f;
+    SignRecipe sign = MakeSign(image, glyphId, carved, depth);
+    Vixen::SVO::RecipeRegistry::RecipeEntry full = sign.entry;
+    RecipeRegistrationOptions options;
+    options.preferDerivedBound = true;
+    options.shells = true;
+    const RecipeRegistrationAnalysis analysis = AnalyzeRecipeRegistration(full, 14.0f, 0.9f, 64u, 16u, options);
+    ASSERT_EQ(analysis.status, static_cast<std::uint32_t>(YK_RECIPE_ANALYSIS_OK)) << analysis.diagnostic;
+    ASSERT_FALSE(full.derivedShells.empty()) << "a baked glyph row must leave a shell";
+    const auto& shell = full.derivedShells.back();
+    for (const SdfInstruction& in : shell.bytecode)
+        EXPECT_NE(static_cast<SdfOpCode>(in.opCode), SdfOpCode::GlyphOutline);
+    EXPECT_EQ(shell.bytecode.size(), 1u) << "the plaque alone";
+    EXPECT_NE(shell.rules & YK_RECIPE_ANALYSIS_RULE_DROP_VANISHING_ROW, 0u);
+    EXPECT_EQ(shell.certificate, static_cast<std::uint32_t>(YK_RECIPE_ANALYSIS_CERTIFICATE_RULE_BOUNDS));
+    // The error is the depth of the row in the plaque (plus the round and the search margin).
+    EXPECT_GE(shell.certifiedError, depth);
+    EXPECT_LE(shell.certifiedError, (depth + 0.02f) * 1.25f);
+    std::printf("[GLYPH_SHELL] %s depth=%.4f certified_error=%.6f bound_radius=%.4f records=%zu of %zu\n",
+                carved ? "carved" : "embossed", depth, shell.certifiedError, full.derivedShellBoundRadius,
+                shell.bytecode.size(), full.bytecode.size());
+
+    // Where the recipe and the shell disagree about inside and outside, the shell's value is
+    // within the certified error: the glyph evaluated here, on the CPU face of the walk.
+    Vixen::SVO::RecipeRegistry registry;
+    ASSERT_EQ(registry.Register(7u, full), Vixen::SVO::RecipeRegistry::RegisterResult::Ok) << registry.GlyphDiagnostic();
+    std::vector<std::uint32_t> stream;
+    std::string error;
+    ASSERT_TRUE(registry.BuildGlyphBakeStream(stream, &error)) << error;
+    const auto* entry = registry.Get(7u);
+    ASSERT_NE(entry, nullptr);
+    std::uint32_t state = 1357u, disagree = 0;
+    float worst = 0.0f;
+    auto next = [&state]() { state = state * 1664525u + 1013904223u; return static_cast<float>(state >> 8) / 16777216.0f; };
+    for (int sample = 0; sample < 200000; ++sample) {
+        const glm::vec3 p(-4.0f + 8.0f * next(), -4.0f + 8.0f * next(), sign.plaqueHalfDepth - 0.45f + 0.9f * next());
+        const float recipe = evalRecipe(entry->bytecode.data(), static_cast<std::uint32_t>(entry->bytecode.size()), p, {},
+                                        nullptr, &registry, registry.GlyphOutlineBlob(), {}, nullptr, 0u, nullptr, 0u, stream);
+        const float simple = evalRecipe(shell.bytecode.data(), static_cast<std::uint32_t>(shell.bytecode.size()), p);
+        if ((recipe <= 0.0f) == (simple <= 0.0f)) continue;
+        ++disagree;
+        worst = std::max(worst, std::fabs(simple));
+        ASSERT_LE(std::fabs(simple), shell.certifiedError) << "at (" << p.x << ", " << p.y << ", " << p.z << ")";
+    }
+    EXPECT_GT(disagree, 200u) << "the glyph must be sampled";
+    EXPECT_GT(worst, 0.5f * shell.certifiedError) << "the certified error is not vacuous";
+    std::printf("[GLYPH_SHELL] %s disagreeing_samples=%u worst_shell_value=%.6f\n", carved ? "carved" : "embossed", disagree, worst);
+}
+
+INSTANTIATE_TEST_SUITE_P(EmbossedAndCarved, GlyphBakeShellSign, ::testing::Bool());
 
 } // namespace

@@ -1855,11 +1855,18 @@ public:
             const float orbitCenterX = orbitCenter.x;
             const float orbitCenterY = orbitCenter.y;
             const float orbitCenterZ = orbitCenter.z;
-            const float orbitDistance = framedScene
+            // VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE=k moves the camera k times farther along the same
+            // line of sight (far-view witnesses of LOD shells, R892.23); CameraNode clamps the result.
+            float distanceScale = 1.0f;
+            if (const char* scaleText = std::getenv("VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE")) {
+                const float parsed = std::strtof(scaleText, nullptr);
+                if (std::isfinite(parsed) && parsed > 0.0f) distanceScale = parsed;
+            }
+            const float orbitDistance = distanceScale * (framedScene
                 ? (recipePreview
                     ? recipeFrame.distance
                     : FitOrbitDistance(glyphScene, GetWindowAspect()))
-                : 14.0f;
+                : 14.0f);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
@@ -3568,7 +3575,9 @@ TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
-    if (std::getenv("VIXEN_GLYPHSDF_TEXT_INVARIANT")) {
+    // The invariant expects readable glyphs at the framed distance: not a far view, not a shell.
+    if (std::getenv("VIXEN_GLYPHSDF_TEXT_INVARIANT") && !std::getenv("VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE") &&
+        !std::getenv("VIXEN_RECIPE_FORCE_SHELL_LEVEL")) {
         ASSERT_TRUE(ValidateGlyphTextInvariant(
             outputDir / scenarios.front().filename, std::getenv("VIXEN_GLYPHSDF_RTL_PROOF") != nullptr, error))
             << error;
