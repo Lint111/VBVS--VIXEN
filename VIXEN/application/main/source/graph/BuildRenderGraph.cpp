@@ -2121,7 +2121,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetRecipeChunkBoxes(Vixen::Core::Env::Enabled("VIXEN_RECIPE_CHUNK_CULL")
                     ? Vixen::SVO::Recipe::DeriveRecipeChunkBoxes(proceduralRecipes_)
                     : std::vector<Vixen::SVO::Recipe::RecipeChunkAabb>{});
-                bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
+                // R892.14: the walk reads baked rows only. A row registered without an imported
+                // font, or a band no bake covers, stops the shader build with the reason.
+                std::vector<std::uint32_t> glyphBakeStream;
+                std::string glyphBakeError;
+                const std::vector<std::uint32_t> unbakedGlyphRows = proceduralRecipes_.UnbakedGlyphRows();
+                if (!unbakedGlyphRows.empty())
+                    glyphBakeError = std::to_string(unbakedGlyphRows.size()) + " GlyphOutline row(s) were registered "
+                        "without a baked glyph (first: row " + std::to_string(unbakedGlyphRows.front()) +
+                        "). Fix: give the recipe entry glyphBakedRows from a font imported by glyph-bake";
+                if (!glyphBakeError.empty() || !proceduralRecipes_.BuildGlyphBakeStream(glyphBakeStream, &glyphBakeError)) {
+                    if (mainLogger && mainLogger->IsEnabled())
+                        mainLogger->Error("[BuildRenderGraph] glyph rows cannot be rendered: " + glyphBakeError);
+                    throw std::runtime_error("glyph rows cannot be rendered: " + glyphBakeError);
+                }
+                bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob), std::move(glyphBakeStream));
                 bodyScene->SetRecipeTape(std::move(recipeTapeBlob));
                 bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
                 // GB1: the tile scatter bins each body by the bound sphere this splice bakes.

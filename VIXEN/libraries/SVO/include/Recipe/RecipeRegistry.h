@@ -17,6 +17,8 @@
 #include "Recipe/RecipeComposition.h"
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeStack.h"
+#include "Recipe/GlyphBakeBand.h"
+#include "Recipe/GlyphBakeStream.h"
 #include "Recipe/generated/GlyphOutlineInstance.g.hpp"
 #include "Recipe/generated/PathInstance.g.hpp"
 
@@ -110,6 +112,10 @@ public:
         // Register(), operands point into RecipeRegistry's shared GlyphOutlineBlob(); this
         // vector remains as CPU-side staging for existing specialized-shader call sites.
         std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances;
+        // R892.14: the same rows as baked glyphs of an imported font, by the same index. The
+        // GPU walk and the CPU evaluation read these; a row without a baked form has only the
+        // segment row above, which the CPU evaluates and the GPU cannot render.
+        std::vector<Recipe::GlyphBakedRow> glyphBakedRows;
         // PathDistance indexes one complete PathInstance row the same way.
         std::vector<Yeroket::Sdf::Kernels::PathInstance> pathInstances;
     };
@@ -141,7 +147,13 @@ public:
         RecursiveInvocation,   // InvokeRecipe graph contains a cycle (direct or indirect)
         NestingTooDeep,        // InvokeRecipe chain exceeds kMaxRecipeNestingDepth
         MissingId,
+        // A recipe offsets a glyph farther than any bake of its font is exact (R892.19).
+        // GlyphDiagnostic() names the row, the band needed and the fix.
+        GlyphBandUnavailable,
     };
+
+    // Why the last Register() returned GlyphBandUnavailable.
+    [[nodiscard]] const std::string& GlyphDiagnostic() const noexcept { return glyphDiagnostic_; }
 
     RegisterResult Register(uint32_t recipeId, const RecipeEntry& entry) {
         if (entries_.count(recipeId)) return RegisterResult::DuplicateId;
@@ -179,12 +191,37 @@ public:
             if (localIndex >= normalizedEntry.glyphInstances.size())
                 return RegisterResult::InvalidGlyphIndex;
         }
+        // R892.19: the exact band each baked row needs is the largest offset this program
+        // applies to it plus a margin; a row no bake of its font covers is refused here, never
+        // rendered from a bound.
+        std::vector<float> neededBandEm(normalizedEntry.glyphInstances.size(), 0.0f);
+        for (const Recipe::GlyphBandNeed& need : Recipe::DeriveGlyphBandNeeds(normalizedEntry.bytecode)) {
+            if (need.row >= normalizedEntry.glyphBakedRows.size() || !normalizedEntry.glyphBakedRows[need.row].Baked())
+                continue;
+            const Recipe::GlyphBakedRow& row = normalizedEntry.glyphBakedRows[need.row];
+            const float unitsPerEm = row.face->images.empty() || !row.face->images.front()
+                ? 1.0f : static_cast<float>(row.face->images.front()->UnitsPerEm());
+            const float bandEm = need.offsetRowUnits * row.fontUnitsPerRowUnit / unitsPerEm + Recipe::kGlyphBakeBandMarginEm;
+            neededBandEm[need.row] = std::max(neededBandEm[need.row], bandEm);
+            const std::vector<std::uint32_t> glyphIds = row.GlyphIds();
+            if (!row.face->Select(neededBandEm[need.row], glyphIds)) {
+                glyphDiagnostic_ = "recipe " + std::to_string(recipeId) + ": instruction " + std::to_string(need.instructionIndex) +
+                    " offsets glyph row " + std::to_string(need.row) + " of face " + row.face->name + " by " +
+                    std::to_string(need.offsetRowUnits) + " row units and needs an exact band of " + std::to_string(bandEm) +
+                    " em; the widest bake of the face has " + std::to_string(row.face->WidestBandEm()) +
+                    " em (or a glyph of the row has no outline). Fix: add a wider band to VIXEN_GLYPH_BAKE_BANDS_EM";
+                return RegisterResult::GlyphBandUnavailable;
+            }
+        }
         for (auto& instruction : normalizedEntry.bytecode) {
             if (static_cast<Recipe::SdfOpCode>(instruction.opCode) != Recipe::SdfOpCode::GlyphOutline)
                 continue;
             const std::uint32_t localIndex = std::bit_cast<std::uint32_t>(instruction.data[0]);
+            static const Recipe::GlyphBakedRow kNotBaked;
             instruction.data[0] = std::bit_cast<float>(InternGlyphOutline(
-                normalizedEntry.glyphInstances[localIndex]));
+                normalizedEntry.glyphInstances[localIndex],
+                localIndex < normalizedEntry.glyphBakedRows.size() ? normalizedEntry.glyphBakedRows[localIndex] : kNotBaked,
+                neededBandEm[localIndex]));
         }
 
         switch (ValidateLodLadder(normalizedEntry.lodLadder)) {
@@ -262,6 +299,8 @@ public:
         entries_.clear();
         glyphOutlineBlob_.clear();
         glyphOutlineHashBuckets_.clear();
+        glyphBakedBlob_.clear();
+        glyphBandNeedEm_.clear();
         ++generation_;
     }
 
@@ -315,6 +354,26 @@ public:
         return glyphOutlineBlob_.size() * sizeof(Yeroket::Sdf::Kernels::GlyphOutlineInstance);
     }
 
+    // R892.14: the baked form of GlyphOutlineBlob(), row for row (a row registered without one
+    // is not Baked()).
+    [[nodiscard]] std::span<const Recipe::GlyphBakedRow> GlyphBakedBlob() const noexcept { return glyphBakedBlob_; }
+
+    // Rows that have an outline and no baked form: the GPU cannot render them. (A row without
+    // segments, a space, is empty in both forms.)
+    [[nodiscard]] std::vector<std::uint32_t> UnbakedGlyphRows() const {
+        std::vector<std::uint32_t> rows;
+        for (std::uint32_t index = 0; index < glyphBakedBlob_.size(); ++index)
+            if (!glyphBakedBlob_[index].Baked() && glyphOutlineBlob_[index].SegmentCount != 0u) rows.push_back(index);
+        return rows;
+    }
+
+    // The packed words of every registered row, for the packed glyph buffer and for CPU
+    // evaluation (evalRecipe reads the same words). Each row uses the narrowest bake that
+    // covers the band its recipes need.
+    [[nodiscard]] bool BuildGlyphBakeStream(std::vector<std::uint32_t>& words, std::string* error = nullptr) const {
+        return Recipe::BuildGlyphBakeStream(glyphBakedBlob_, glyphBandNeedEm_, words, error);
+    }
+
     // Compatibility accessor for specialized pipeline call sites. GlyphOutline operands are
     // global shared-blob indices after Register(), so no per-entry prefix is required.
     [[nodiscard]] uint32_t GlyphInstanceBase(uint32_t recipeId) const {
@@ -329,17 +388,28 @@ private:
     std::uint64_t generation_ = 0;
     std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphOutlineBlob_;
     std::map<std::uint64_t, std::vector<std::uint32_t>> glyphOutlineHashBuckets_;
+    // Parallel to glyphOutlineBlob_: the baked form of each row and the widest exact band (em)
+    // any registered recipe needs around it.
+    std::vector<Recipe::GlyphBakedRow> glyphBakedBlob_;
+    std::vector<float> glyphBandNeedEm_;
+    std::string glyphDiagnostic_;
 
     [[nodiscard]] std::uint32_t InternGlyphOutline(
-        const Yeroket::Sdf::Kernels::GlyphOutlineInstance& outline) {
+        const Yeroket::Sdf::Kernels::GlyphOutlineInstance& outline,
+        const Recipe::GlyphBakedRow& baked, float neededBandEm) {
         const std::uint64_t hash = Vixen::Hash::ComputeHash64(&outline, sizeof(outline));
         auto& candidates = glyphOutlineHashBuckets_[hash];
         for (const std::uint32_t index : candidates) {
-            if (std::memcmp(&glyphOutlineBlob_[index], &outline, sizeof(outline)) == 0)
+            if (std::memcmp(&glyphOutlineBlob_[index], &outline, sizeof(outline)) == 0 &&
+                glyphBakedBlob_[index] == baked) {
+                glyphBandNeedEm_[index] = std::max(glyphBandNeedEm_[index], neededBandEm);
                 return index;
+            }
         }
         const std::uint32_t index = static_cast<std::uint32_t>(glyphOutlineBlob_.size());
         glyphOutlineBlob_.push_back(outline);
+        glyphBakedBlob_.push_back(baked);
+        glyphBandNeedEm_.push_back(neededBandEm);
         candidates.push_back(index);
         return index;
     }

@@ -587,6 +587,18 @@ bool ParseRecipeScale(float& scale, std::string& error) {
     return true;
 }
 
+// R892.14: the imported (baked) form of a bundled face, written by the build (vixen_glyph_bake).
+std::shared_ptr<const Vixen::SVO::Recipe::GlyphBakeFace> LoadBundledGlyphBake(bool notoArabic, std::string& error) {
+    std::string reason;
+    auto bake = Vixen::SVO::Recipe::LoadGlyphBakeFace(
+        notoArabic ? "NotoSansArabic-VF" : "LatoLatin-Regular",
+        notoArabic ? TEXT_NOTO_ARABIC_GLYPH_BAKE_IMAGES : TEXT_LATO_GLYPH_BAKE_IMAGES, &reason);
+    if (!bake)
+        error = "the baked glyphs of the bundled face are unavailable: " + reason +
+            "; fix: build target vixen_glyph_bake";
+    return bake;
+}
+
 bool LoadRecipeGlyphRows(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
                          const std::string& recipeId, const std::string& sourcePath,
                          std::string& error) {
@@ -614,6 +626,13 @@ bool LoadRecipeGlyphRows(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
         return false;
     }
     Vixen::Text::GlyphAtlas atlas;
+    const auto glyphBake = LoadBundledGlyphBake(false, error);
+    if (!glyphBake) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        return false;
+    }
+    atlas.AttachGlyphBake(face, glyphBake);
     for (const unsigned char character : text) {
         const FT_UInt glyphIndex = FT_Get_Char_Index(face, character);
         if (!glyphIndex) continue;
@@ -629,6 +648,8 @@ bool LoadRecipeGlyphRows(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
         return false;
     }
     entry.glyphInstances.assign(rows.begin(), rows.begin() + glyphCount);
+    const auto bakedRows = atlas.BakedBlob();
+    entry.glyphBakedRows.assign(bakedRows.begin(), bakedRows.begin() + glyphCount);
     FT_Done_Face(face);
     FT_Done_FreeType(library);
     return true;
@@ -866,6 +887,13 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     }
 
     Vixen::Text::GlyphAtlas glyphAtlas;
+    const auto glyphBake = LoadBundledGlyphBake(rtlProof, error);
+    if (!glyphBake) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        return false;
+    }
+    glyphAtlas.AttachGlyphBake(face, glyphBake);
     constexpr std::array<std::uint32_t, 2> requiredScriptTags{{
         (static_cast<std::uint32_t>('L') << 24U) | (static_cast<std::uint32_t>('a') << 16U) |
         (static_cast<std::uint32_t>('t') << 8U) | static_cast<std::uint32_t>('n'),
@@ -1044,6 +1072,10 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         float height = 0.0f;
     };
     std::vector<GlyphOutlineInstance> recipeGlyphRows(glyphRows.begin(), glyphRows.end());
+    // R892.14: the baked form of every row, by the same index. A merged row places the baked
+    // glyphs where the merge translated their segments.
+    const std::span<const Vixen::SVO::Recipe::GlyphBakedRow> glyphBakedRows = glyphAtlas.BakedBlob();
+    std::vector<Vixen::SVO::Recipe::GlyphBakedRow> recipeBakedRows(glyphBakedRows.begin(), glyphBakedRows.end());
     std::array<std::vector<GlyphGroup>, 2> glyphGroups;
     if (rtlProofPair) {
         for (std::size_t layoutIndex = 0; layoutIndex < layouts.size(); ++layoutIndex) {
@@ -1061,6 +1093,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
             const float textCenterX = (layoutMinX + layoutMaxX) * 0.5f;
             const float textCenterY = (layoutMinY + layoutMaxY) * 0.5f;
             GlyphOutlineInstance merged{};
+            Vixen::SVO::Recipe::GlyphBakedRow mergedBaked;
             float minX = std::numeric_limits<float>::max();
             float minY = std::numeric_limits<float>::max();
             float maxX = std::numeric_limits<float>::lowest();
@@ -1080,13 +1113,19 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                     recenter(segment.P2);
                     recenter(segment.P3);
                 }
+                for (Vixen::SVO::Recipe::GlyphBakePlacement& placement : mergedBaked.placements) {
+                    placement.offsetX -= centerX;
+                    placement.offsetY -= centerY;
+                }
                 merged.BoundsMin = {minX - centerX, minY - centerY, 0.0f};
                 merged.BoundsMax = {maxX - centerX, maxY - centerY, 0.0f};
                 glyphGroups[layoutIndex].push_back({
                     static_cast<std::uint32_t>(recipeGlyphRows.size()), centerX, centerY,
                     maxX - minX, maxY - minY});
                 recipeGlyphRows.push_back(merged);
+                recipeBakedRows.push_back(mergedBaked);
                 merged = {};
+                mergedBaked = {};
                 minX = minY = std::numeric_limits<float>::max();
                 maxX = maxY = std::numeric_limits<float>::lowest();
             };
@@ -1105,6 +1144,12 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 const float rawX = static_cast<float>(glyph.x) + glyphCenterX - textCenterX;
                 const float rawY = static_cast<float>(glyph.y) + glyphCenterY - textCenterY;
                 const float translatedX = layout.mirrorX ? -rawX : rawX;
+                if (const Vixen::SVO::Recipe::GlyphBakedRow& glyphBaked = glyphBakedRows[glyph.outlineIndex];
+                    glyphBaked.Baked()) {
+                    mergedBaked.face = glyphBaked.face;
+                    mergedBaked.fontUnitsPerRowUnit = glyphBaked.fontUnitsPerRowUnit;
+                    mergedBaked.placements.push_back({glyph.glyphId, translatedX, rawY});
+                }
                 for (std::uint32_t segmentIndex = 0; segmentIndex < outline.SegmentCount; ++segmentIndex) {
                     PathSegment segment = outline.Segments[segmentIndex];
                     const auto translate = [translatedX, rawY](auto& point) {
@@ -1317,6 +1362,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
         Vixen::SVO::RecipeRegistry::RecipeEntry entry;
         entry.bytecode = recipe.instructions;
         entry.glyphInstances = recipeGlyphRows;
+        entry.glyphBakedRows = recipeBakedRows;
         entry.boundCenter = glm::vec3(0.0f);
         entry.boundRadius = 18.0f;
         entry.stepRelaxation = 0.9f;
@@ -1346,6 +1392,9 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     if (!compareAnalyticAndVoxel) return true;
 
     const GlyphSdfRecipe& recipe = recipes.front().second;
+    // The CPU evaluates the baked rows the GPU walks (R619.1).
+    std::vector<std::uint32_t> glyphBakeStream;
+    if (!Vixen::SVO::Recipe::BuildGlyphBakeStream(recipeBakedRows, {}, glyphBakeStream, &error)) return false;
 
     int bakeResolution = 256;
     if (const char* requestedResolution = std::getenv("VIXEN_GLYPHSDF_BAKE_RESOLUTION")) {
@@ -1381,7 +1430,8 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
     auto evaluate = [&](const glm::vec3& gridPoint) {
         return Vixen::SVO::Recipe::evalRecipe(
             recipe.instructions.data(), static_cast<std::uint32_t>(recipe.instructions.size()),
-            (gridPoint - bakeCenter) * recipeUnitsPerVoxel, {}, nullptr, nullptr, glyphRows);
+            (gridPoint - bakeCenter) * recipeUnitsPerVoxel, {}, nullptr, nullptr, glyphRows,
+            {}, nullptr, 0u, nullptr, 0u, glyphBakeStream);
     };
     const auto neutralVoxelColor = [](const glm::vec3&) { return glm::vec3(1.0f); };
     auto baked = Vixen::SVO::BakeSdfWorld(evaluate, bakeCenter, bakeResolution, bakeBandDistance, 3,
@@ -1402,7 +1452,7 @@ bool BuildGlyphSdfScene(GlyphSdfSceneBundle& scene, const std::filesystem::path&
                 sampleZ);
             const float analytic = Vixen::SVO::Recipe::evalRecipe(
                 recipe.instructions.data(), static_cast<std::uint32_t>(recipe.instructions.size()),
-                localPoint, {}, nullptr, nullptr, glyphRows);
+                localPoint, {}, nullptr, nullptr, glyphRows, {}, nullptr, 0u, nullptr, 0u, glyphBakeStream);
             const glm::vec3 gridPoint = bakeCenter + localPoint / recipeUnitsPerVoxel;
             const auto nearest = baked.sampleStored(gridPoint);
             const auto trilinear = baked.sampleStoredTrilinear(gridPoint);

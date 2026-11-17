@@ -34,6 +34,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -194,6 +195,28 @@ struct GlyphBakeFace {
         return widest;
     }
 };
+
+// The bakes of one face from a list of image files joined by "|" (the form of the compile
+// definitions cmake/VixenGlyphBake.cmake produces). Null, with the reason, when any is unreadable.
+[[nodiscard]] inline std::shared_ptr<const GlyphBakeFace> LoadGlyphBakeFace(std::string name, std::string_view joinedPaths,
+                                                                            std::string* error = nullptr) {
+    auto face = std::make_shared<GlyphBakeFace>();
+    face->name = std::move(name);
+    while (!joinedPaths.empty()) {
+        const std::size_t bar = joinedPaths.find('|');
+        const std::string_view path = joinedPaths.substr(0, bar);
+        joinedPaths = bar == std::string_view::npos ? std::string_view{} : joinedPaths.substr(bar + 1);
+        if (path.empty()) continue;
+        auto image = GlyphBakeImage::Load(std::filesystem::path(path), error);
+        if (!image) return nullptr;
+        face->images.push_back(std::move(image));
+    }
+    if (face->images.empty()) {
+        if (error) *error = "no glyph bake image is declared for face " + face->name;
+        return nullptr;
+    }
+    return face;
+}
 
 struct GlyphBakePlacement {
     std::uint32_t glyphId = 0;

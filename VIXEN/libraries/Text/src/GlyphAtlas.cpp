@@ -419,6 +419,8 @@ struct GlyphAtlas::Impl {
     std::unordered_map<OutlineKey, std::shared_ptr<const GlyphOutlineInstance>, OutlineKeyHash> outlineInstances;
     std::unordered_map<OutlineKey, std::uint32_t, OutlineKeyHash> outlineIndices;
     std::vector<GlyphOutlineInstance> outlineBlob;
+    std::vector<Vixen::SVO::Recipe::GlyphBakedRow> bakedBlob; // parallel to outlineBlob
+    std::unordered_map<FT_Face, std::shared_ptr<const Vixen::SVO::Recipe::GlyphBakeFace>> glyphBakes;
     std::map<std::uint64_t, std::vector<std::uint32_t>> outlineHashBuckets;
     GlyphCacheKey storeKey;
     std::filesystem::path storePath;
@@ -430,15 +432,16 @@ struct GlyphAtlas::Impl {
     std::unique_ptr<Rml::CallbackTextureSource> currentSource;
     std::vector<std::unique_ptr<Rml::CallbackTextureSource>> retainedSources;
 
-    std::uint32_t InternOutline(const GlyphOutlineInstance& outline) {
+    std::uint32_t InternOutline(const GlyphOutlineInstance& outline, const Vixen::SVO::Recipe::GlyphBakedRow& baked) {
         const std::uint64_t hash = Vixen::Hash::ComputeHash64(&outline, sizeof(outline));
         auto& candidates = outlineHashBuckets[hash];
         for (const std::uint32_t index : candidates) {
-            if (std::memcmp(&outlineBlob[index], &outline, sizeof(outline)) == 0)
+            if (std::memcmp(&outlineBlob[index], &outline, sizeof(outline)) == 0 && bakedBlob[index] == baked)
                 return index;
         }
         const std::uint32_t index = static_cast<std::uint32_t>(outlineBlob.size());
         outlineBlob.push_back(outline);
+        bakedBlob.push_back(baked);
         candidates.push_back(index);
         return index;
     }
@@ -511,8 +514,31 @@ std::shared_ptr<const GlyphOutlineInstance> GlyphAtlas::GetOrAddOutline(
         return {};
     }
 
+    // R892.14: the baked form of the glyph, when the face has one. The font units of the bake
+    // map to the 26.6 units of the row by the face's pixel size alone (unhinted).
+    Vixen::SVO::Recipe::GlyphBakedRow baked;
+    if (const auto bake = impl_->glyphBakes.find(face);
+        bake != impl_->glyphBakes.end() && face->size && face->size->metrics.x_ppem != 0 &&
+        !bake->second->images.empty() && bake->second->images.front()) {
+        const Vixen::SVO::Recipe::GlyphBakeImage& image = *bake->second->images.front();
+        if (!image.Block(glyphIndex).empty()) {
+            baked.face = bake->second;
+            baked.fontUnitsPerRowUnit = static_cast<float>(image.UnitsPerEm()) /
+                (static_cast<float>(face->size->metrics.x_ppem) * 64.0f);
+            baked.placements.push_back({glyphIndex, 0.0f, 0.0f});
+            float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+            if (baked.Bounds(image, minX, minY, maxX, maxY)) {
+                const bool empty = instance.SegmentCount == 0U;
+                instance.BoundsMin.X = empty ? minX : std::min(instance.BoundsMin.X, minX);
+                instance.BoundsMin.Y = empty ? minY : std::min(instance.BoundsMin.Y, minY);
+                instance.BoundsMax.X = empty ? maxX : std::max(instance.BoundsMax.X, maxX);
+                instance.BoundsMax.Y = empty ? maxY : std::max(instance.BoundsMax.Y, maxY);
+            }
+        }
+    }
+
     auto sharedInstance = std::make_shared<const GlyphOutlineInstance>(instance);
-    const std::uint32_t outlineIndex = impl_->InternOutline(instance);
+    const std::uint32_t outlineIndex = impl_->InternOutline(instance, baked);
     impl_->outlineInstances.emplace(key, sharedInstance);
     impl_->outlineIndices.emplace(key, outlineIndex);
     if (diagnostic)
@@ -534,6 +560,14 @@ std::uint32_t GlyphAtlas::GetOrAddOutlineIndex(
 
 std::span<const GlyphOutlineInstance> GlyphAtlas::OutlineBlob() const noexcept {
     return impl_->outlineBlob;
+}
+
+void GlyphAtlas::AttachGlyphBake(FT_Face face, std::shared_ptr<const Vixen::SVO::Recipe::GlyphBakeFace> bake) {
+    if (face && bake) impl_->glyphBakes[face] = std::move(bake);
+}
+
+std::span<const Vixen::SVO::Recipe::GlyphBakedRow> GlyphAtlas::BakedBlob() const noexcept {
+    return impl_->bakedBlob;
 }
 
 std::uint64_t GlyphAtlas::OutlineBlobBytes() const noexcept {

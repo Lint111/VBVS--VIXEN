@@ -618,58 +618,18 @@ void BodyOctreeSceneNode::RefreshRecipeTapeBuffer() {
 }
 
 void BodyOctreeSceneNode::SetGlyphOutlineInstances(
-    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances) {
+    std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances,
+    std::vector<std::uint32_t> glyphBakeStream) {
     // R631: this payload is produced by the same shader-build callback as the spliced recipe
     // source. The registry owns one content-deduplicated blob and the emitted operands carry
     // its global indices, so the SSBO and generated shader are always one generation pair.
     glyphOutlineInstances_ = std::move(glyphInstances);
-    // R768: keep the production uber shader away from the fixed-capacity 3,616-byte row ABI.
-    // The first word is the row count, followed by ten words per row and fourteen words per
-    // uploaded segment (four float3 control points plus kind/contour-start).
-    constexpr std::size_t kHeaderWords = 10;
-    constexpr std::size_t kSegmentWords = 14;
-    const auto word = [](float value) { return std::bit_cast<std::uint32_t>(value); };
-    std::size_t segmentCountTotal = 0;
-    for (const auto& row : glyphOutlineInstances_) {
-        segmentCountTotal += std::min<std::uint32_t>(row.SegmentCount,
-            static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity));
-    }
-    glyphOutlineFlatWords_.assign(1 + glyphOutlineInstances_.size() * kHeaderWords +
-        segmentCountTotal * kSegmentWords, 0u);
-    glyphOutlineFlatWords_[0] = static_cast<std::uint32_t>(glyphOutlineInstances_.size());
-    const std::size_t segmentDataBase = 1 + glyphOutlineInstances_.size() * kHeaderWords;
-    std::size_t segmentOffset = 0;
-    for (std::size_t rowIndex = 0; rowIndex < glyphOutlineInstances_.size(); ++rowIndex) {
-        const auto& row = glyphOutlineInstances_[rowIndex];
-        const std::size_t header = 1 + rowIndex * kHeaderWords;
-        const std::uint32_t rowSegmentCount = std::min<std::uint32_t>(row.SegmentCount,
-            static_cast<std::uint32_t>(Yeroket::Sdf::Kernels::SegmentCapacity));
-        glyphOutlineFlatWords_[header + 0] = static_cast<std::uint32_t>(segmentOffset);
-        glyphOutlineFlatWords_[header + 1] = rowSegmentCount;
-        glyphOutlineFlatWords_[header + 2] = row.FillRule;
-        glyphOutlineFlatWords_[header + 4] = word(row.BoundsMin.X);
-        glyphOutlineFlatWords_[header + 5] = word(row.BoundsMin.Y);
-        glyphOutlineFlatWords_[header + 6] = word(row.BoundsMin.Z);
-        glyphOutlineFlatWords_[header + 7] = word(row.BoundsMax.X);
-        glyphOutlineFlatWords_[header + 8] = word(row.BoundsMax.Y);
-        glyphOutlineFlatWords_[header + 9] = word(row.BoundsMax.Z);
-        for (std::uint32_t segmentIndex = 0; segmentIndex < rowSegmentCount; ++segmentIndex) {
-            const auto& segment = row.Segments[segmentIndex];
-            const std::size_t base = segmentDataBase + segmentOffset * kSegmentWords;
-            const auto emitPoint = [&](std::size_t offset, const auto& point) {
-                glyphOutlineFlatWords_[base + offset + 0] = word(point.X);
-                glyphOutlineFlatWords_[base + offset + 1] = word(point.Y);
-                glyphOutlineFlatWords_[base + offset + 2] = word(point.Z);
-            };
-            emitPoint(0, segment.P0);
-            emitPoint(3, segment.P1);
-            emitPoint(6, segment.P2);
-            emitPoint(9, segment.P3);
-            glyphOutlineFlatWords_[base + 12] = segment.Kind;
-            glyphOutlineFlatWords_[base + 13] = segment.ContourStart;
-            ++segmentOffset;
-        }
-    }
+    // R892.14: the packed buffer holds the baked rows the registry packed
+    // (Recipe/GlyphBakeStream.h); the walk reads nothing else. An empty payload is one zero
+    // word, a row count of zero.
+    glyphOutlineFlatWords_ = std::move(glyphBakeStream);
+    if (glyphOutlineFlatWords_.empty()) glyphOutlineFlatWords_.push_back(0u);
+
     // The shader builder runs after this node's CompileImpl. Persistent octree buffers therefore
     // already exist by the time the registry's glyph blob is known; replacing only this buffer
     // keeps the runtime payload synchronized without rebuilding unrelated octree data.
