@@ -57,7 +57,7 @@ bool recipeChunkInterval(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax,
 // still the sole hit authority; chunk boxes only bound its [entry, exit].
 bool traceRecipeChunks(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                        vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
-                       float params[6], float tMaxWorld,
+                       float params[6], float tMaxWorld, bool occlusionOnly,
                        out vec3 hitNormal, out float hitT, out uint stepsUsed) {
 #ifdef VIXEN_RECIPE_CHUNK_CULL
     bool found = false;
@@ -71,9 +71,10 @@ bool traceRecipeChunks(uint recipeId, vec3 boundCenter, float boundRadius, float
         if (!recipeChunkInterval(ro, rd, chunk.minLocal, chunk.maxLocal, 0.0, closest, entry, exit)) continue;
         vec3 candidateNormal; float candidateT; uint candidateSteps;
         recordRecipeChunkMarch();
-        bool candidateHit = traceUberRecipeBody(recipeId, boundCenter, boundRadius, relaxation,
+        bool candidateHit = traceUberRecipeBodyImpl(recipeId, boundCenter, boundRadius, relaxation,
                                 ro, rd, conservativeStepScale, pixelAngle, params,
-                                entry, min(exit, closest), candidateNormal, candidateT, candidateSteps);
+                                entry, min(exit, closest), occlusionOnly,
+                                candidateNormal, candidateT, candidateSteps);
         recordRecipeSteps(candidateSteps);
         totalSteps += candidateSteps;
         if (candidateHit) {
@@ -94,9 +95,9 @@ bool traceRecipeChunks(uint recipeId, vec3 boundCenter, float boundRadius, float
     stepsUsed = totalSteps;
     return found;
 #else
-    return traceUberRecipeBody(recipeId, boundCenter, boundRadius, relaxation,
-                               ro, rd, conservativeStepScale, pixelAngle, params,
-                               0.0, tMaxWorld, hitNormal, hitT, stepsUsed);
+    return traceUberRecipeBodyImpl(recipeId, boundCenter, boundRadius, relaxation,
+                                   ro, rd, conservativeStepScale, pixelAngle, params,
+                                   0.0, tMaxWorld, occlusionOnly, hitNormal, hitT, stepsUsed);
 #endif
 }
 #endif
@@ -494,7 +495,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
                                              instOrigin, instDir, conservativeSdfStepScale,
                                              VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
-                                             bestT / worldUnitsPerInstUnit, pNormal, pT, pSteps);
+                                             bestT / worldUnitsPerInstUnit, false,
+                                             pNormal, pT, pSteps);
                     addLeafInstrSteps(pSteps);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
                     // step count (>=1, even on a miss that exhausted its ray-interval budget or exited
@@ -1115,18 +1117,16 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 float uberParams[6] = float[6](
                     inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                     inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
-                g_recipeProvenStepOnly = true;
+                // Any-hit (R892 B6): the occlusion answer reads only pT.
                 pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
                                          instOrigin, instDir, conservativeSdfStepScale,
                                          VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
-                                         tmax / worldUnitsPerInstUnit, pNormal, pT, pSteps);
-                g_recipeProvenStepOnly = false;
+                                         tmax / worldUnitsPerInstUnit, true, pNormal, pT, pSteps);
             }
 #endif
 
             if (pHit && !preserveLegacyProcedural) {
                 pT *= worldUnitsPerInstUnit;
-                pNormal = instanceLocalToWorldNormal(instanceIndex, pNormal);
             }
             // The origin has already been offset by the surface bias. At very
             // large scales, float rounding can leave it just inside this same
