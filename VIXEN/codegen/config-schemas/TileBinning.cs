@@ -4,6 +4,11 @@ namespace Vixen.Codegen.Gpu;
 
 // GB1 (R857.4/R857.5): the schema-owned records shared by the generated tile
 // candidate systems and their native render-graph resource nodes.
+//
+// z-bin form (fable-research1 B-A, R892.12 measured against the per-tile sort): instances are
+// ranked once per frame by near depth (ties by instance id), each tile holds one bit per rank,
+// and the march visits a tile's set bits in rank order, i.e. front to back. No per-tile list,
+// no per-tile sort and no per-tile header exist: the march derives the word count from the view.
 [GpuStruct(Layout = GpuLayout.Std430)]
 public struct InstanceBound
 {
@@ -21,39 +26,30 @@ public struct TileBinView
     public float viewZx; public float viewZy; public float viewZz; public float viewZw;
     public float focalX; public float focalY; public float centerX; public float centerY;
     public float nearPlane; public float tileSize;
-    public int tilesX; public int tilesY; public int listCapacityLog2;
+    public int tilesX; public int tilesY;
+    // Rank words allocated per tile (32 ranks each); instanceCount above wordCapacity * 32
+    // marks every tile incomplete and the march falls back (R861.1).
+    public int wordCapacity;
     public int instanceCount;
 }
 
+// One word of a tile's rank set. Word-major: word w of tile t is entry w * tileCount + t, so a
+// pass over tiles touches consecutive words.
 [GpuStruct(Layout = GpuLayout.Std430)]
-public struct TileBinCounter
+public struct TileRankWord
 {
-    // Candidates appended this frame: the scatter increments it atomically and the
-    // sort consumes and zeroes it.
-    public int count;
+    public uint bits;
 }
 
+// Entry r: the instance ranked r (front to back) and its rank key, the near view depth of its
+// bound (a lower bound on any camera-ray hit distance, so the march stops once the key passes
+// its nearest hit). Entry i: the rank of instance i.
 [GpuStruct(Layout = GpuLayout.Std430)]
-public struct TileHeader
+public struct InstanceOrder
 {
-    public int count;
-    public int demand;
-    public int index;
-    public int capacityLog2;
-}
-
-[GpuStruct(Layout = GpuLayout.Std430)]
-public struct TileCandidate
-{
-    public float nearDepth;
     public uint instance;
-}
-
-[GpuStruct(Layout = GpuLayout.Std430)]
-public struct TileSortedCandidate
-{
-    public float nearDepth;
-    public uint instance;
+    public uint rank;
+    public float depth;
 }
 
 [GpuStruct(Layout = GpuLayout.Std430)]

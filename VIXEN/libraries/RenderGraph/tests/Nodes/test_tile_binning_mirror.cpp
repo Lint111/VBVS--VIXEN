@@ -25,7 +25,7 @@ constexpr int kTilesY = (kHeight + kTileSize - 1) / kTileSize;
 constexpr int kTierSide = 13;
 constexpr int kBaseInstanceCount = 13;
 constexpr int kInstanceCount = kTierSide * kTierSide * kBaseInstanceCount;
-constexpr int kListCapacityLog2 = 9;
+constexpr int kWordCapacity = 128;
 
 TileBinView LookdevTier3View() {
     // This is the load scenario's first overview pose: tier-3's 13x13 copies,
@@ -59,7 +59,7 @@ TileBinView LookdevTier3View() {
     view.tileSize = 8.0f;
     view.tilesX = kTilesX;
     view.tilesY = kTilesY;
-    view.listCapacityLog2 = kListCapacityLog2;
+    view.wordCapacity = kWordCapacity;
     view.instanceCount = kInstanceCount;
     return view;
 }
@@ -105,58 +105,50 @@ TEST(TileBinningMirror, Tier3InputsTerminateAndPreserveCandidateLists) {
 
     EXPECT_EQ(bounds.size(), static_cast<size_t>(kInstanceCount));
     EXPECT_EQ(view.instanceCount, kInstanceCount);
-    EXPECT_EQ(view.listCapacityLog2, kListCapacityLog2);
     EXPECT_EQ(result.metrics.overflowed, 0u);
+    EXPECT_EQ(result.metrics.consumerFallbackPixels, 0u);
     EXPECT_GT(result.metrics.scatterTileIterations, 0u);
     EXPECT_GT(result.metrics.consumerCandidateIterations, 0u);
-
-    // Before the fix, every tile paid for all 512 entries.  The active-count
-    // network must be materially smaller while retaining the exact sorted lists.
-    EXPECT_GT(result.metrics.legacyFullSlabCompareIterations,
-              result.metrics.sortCompareIterations * 4u);
-    EXPECT_LT(result.metrics.sortCompareIterations,
-              result.metrics.legacyFullSlabCompareIterations);
     std::cout << "GB1 CPU mirror: instances=" << view.instanceCount
               << " tiles=" << (view.tilesX * view.tilesY)
               << " maxOffered=" << result.metrics.maximumOffered
-              << " activeSortComparisons=" << result.metrics.sortCompareIterations
-              << " legacyFullSlabComparisons="
-              << result.metrics.legacyFullSlabCompareIterations
+              << " rankComparisons=" << result.metrics.rankCompareIterations
+              << " consumerWords=" << result.metrics.consumerWordIterations
               << " consumerCandidates=" << result.metrics.consumerCandidateIterations
               << " overflowed=" << result.metrics.overflowed << '\n';
 }
 
-TEST(TileBinningMirror, SortZeroesCountersSoNextFrameStartsEmpty) {
-    // The counter buffer persists across frames and is zero only at allocation.
-    // The sort must hand the next scatter zeroed counts: a tile that no instance
-    // touches in frame 2 must not replay frame 1's list, and a repeated frame
-    // must not accumulate.
+TEST(TileBinningMirror, PrepareClearsLastFramesRankWords) {
+    // The rank-word buffer persists across frames. The prepare pass must clear it: a tile
+    // that no instance touches in frame 2 must not replay frame 1's set, and a repeated
+    // frame must give the same sets.
     TileBinView view = LookdevTier3View();
     const auto bounds = LookdevTier3Bounds();
     const std::vector<float> previousDepth(static_cast<size_t>(kWidth) * kHeight,
                                             std::numeric_limits<float>::max());
-    std::vector<Vixen::Codegen::Gpu::TileBinCounter> counters(
-        static_cast<size_t>(kTilesX) * kTilesY);
+    std::vector<Vixen::Codegen::Gpu::TileRankWord> words(
+        static_cast<size_t>(kTilesX) * kTilesY * kWordCapacity, {0xFFFFFFFFu});
 
-    const auto first = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &counters);
-    const auto repeated = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &counters);
-    ASSERT_EQ(first.headers.size(), repeated.headers.size());
-    for (size_t tile = 0; tile < first.headers.size(); ++tile)
-        EXPECT_EQ(first.headers[tile].count, repeated.headers[tile].count) << "tile " << tile;
+    const auto first = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &words);
+    const auto repeated = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &words);
+    ASSERT_EQ(first.visited.size(), repeated.visited.size());
+    for (size_t tile = 0; tile < first.visited.size(); ++tile)
+        EXPECT_EQ(first.visited[tile], repeated.visited[tile]) << "tile " << tile;
+    EXPECT_EQ(first.metrics.consumerCandidateIterations, repeated.metrics.consumerCandidateIterations);
     EXPECT_GT(first.metrics.consumerCandidateIterations, 0u);
 
     // A ViewDepth history nobody has written (first frame, or no reconstruction
-    // depth producer) is cleared to zero and must not cull: the lists match the
+    // depth producer) is cleared to zero and must not cull: the sets match the
     // far-depth history exactly.
     const std::vector<float> clearedDepth(static_cast<size_t>(kWidth) * kHeight, 0.0f);
-    const auto cleared = RunTileBinMirror(view, bounds, clearedDepth, kWidth, kHeight, &counters);
+    const auto cleared = RunTileBinMirror(view, bounds, clearedDepth, kWidth, kHeight, &words);
     EXPECT_EQ(cleared.metrics.consumerCandidateIterations,
               first.metrics.consumerCandidateIterations);
 
     view.instanceCount = 0;
-    const auto empty = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &counters);
+    const auto empty = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight, &words);
     EXPECT_EQ(empty.metrics.consumerCandidateIterations, 0u);
-    for (const auto& counter : counters) EXPECT_EQ(counter.count, 0);
+    for (const auto& tile : empty.visited) EXPECT_TRUE(tile.empty());
 }
 
 TEST(TileBinningMirror, ViewRecordProjectsPrimaryRayPixelsIntoTheirTiles) {
@@ -217,7 +209,6 @@ TEST(TileBinningMirror, ScreenSizedInstanceIsWalkedByManyLanes) {
     camera.cameraRight = glm::vec3(1.0f, 0.0f, 0.0f);
     camera.cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
     TileBinView view = Vixen::RenderGraph::MakeTileBinView(camera, width, height, 3);
-    view.listCapacityLog2 = 4;
     const std::vector<InstanceBound> bounds = {
         {0.0f, 0.0f, 0.0f, 24.0f},   // covers the frame
         {2.0f, 1.0f, 3.0f, 1.0f},    // a small body in front of it
@@ -245,32 +236,29 @@ TEST(TileBinningMirror, LanesShrinkWhenTheDispatchCannotHoldThem) {
     EXPECT_EQ(Vixen::RenderGraph::Mirror::MirrorScatterLanes(view), 1);
 }
 
-TEST(TileBinningMirror, OverflowingTilesFallBackInsteadOfSortingUnbounded) {
-    // base-reds #119: the 2,197-instance field offered hundreds of candidates to dense tiles
-    // and the per-tile serial sort lost the device. The list capacity bounds the sort; a tile
-    // offered more keeps an incomplete list that the march must not read (R861.1).
+TEST(TileBinningMirror, InstancesBeyondTheRankWordsFallBack) {
+    // R861.1: more instances than the rank words hold leaves some unbinned; every tile then
+    // reports itself incomplete and the march falls back instead of missing them.
     TileBinView view = LookdevTier3View();
-    view.listCapacityLog2 = 2;  // four entries: the dense overview tiles overflow
+    view.wordCapacity = 2;  // 64 ranks for the 2,197-instance field
     const auto bounds = LookdevTier3Bounds();
     const std::vector<float> previousDepth(static_cast<size_t>(kWidth) * kHeight, 0.0f);
     const auto result = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight);
     EXPECT_GT(result.metrics.overflowed, 0u);
-    EXPECT_GT(result.metrics.consumerFallbackPixels, 0u);
-    for (const auto& header : result.headers) {
-        EXPECT_LE(header.count, 4);
-        if (header.demand <= 4) EXPECT_EQ(header.count, header.demand);
-    }
+    EXPECT_EQ(result.metrics.consumerFallbackPixels,
+              static_cast<uint64_t>(kWidth) * static_cast<uint64_t>(kHeight));
+    for (const auto& tile : result.visited) EXPECT_TRUE(tile.empty());
 }
 
-TEST(TileBinningMirror, ProductionCapacityKeepsTheLookdevListsComplete) {
-    // The capacity the node uploads (kTileListCapacityLog2) holds every look-dev tile list, so
-    // the RTL and look-dev captures keep their exact lists and no tile falls back.
+TEST(TileBinningMirror, ProductionCapacityRanksTheLoadField) {
+    // The capacity the node uploads (kTileRankWordCapacity) ranks the 2,197-instance tier-3
+    // field, so no tile falls back: dense tiles are complete, unlike the 64-entry lists.
     TileBinView view = LookdevTier3View();
-    view.instanceCount = 13;
-    view.listCapacityLog2 = static_cast<int>(Vixen::RenderGraph::kTileListCapacityLog2);
+    view.wordCapacity = static_cast<int>(Vixen::RenderGraph::kTileRankWordCapacity);
     const auto bounds = LookdevTier3Bounds();
     const std::vector<float> previousDepth(static_cast<size_t>(kWidth) * kHeight, 0.0f);
     const auto result = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight);
     EXPECT_EQ(result.metrics.overflowed, 0u);
     EXPECT_EQ(result.metrics.consumerFallbackPixels, 0u);
+    EXPECT_GT(result.metrics.consumerCandidateIterations, 0u);
 }

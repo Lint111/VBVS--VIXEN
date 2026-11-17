@@ -1182,17 +1182,21 @@ layout(std430, binding = VXB_BodyInstanceTransformBuffer) readonly buffer BodyIn
 };
 
 #ifdef VIXEN_PRIMARY_TILE_CANDIDATES
-// GB1 (R857): the generated tile pass publishes front-to-back candidates for
-// the primary march. The header gives the tile-local count and stride.
-// Bindings 53/54: 48/49 belong to the march motion images under
-// VIXEN_RECONSTRUCTION_INPUTS (BodyInstanceRayMarch.comp), 50-52 are taken too.
-#include "Generated/TileHeader.glsl"
-#include "Generated/TileSortedCandidate.glsl"
-layout(std430, binding = VXB_TileHeaderBuffer) readonly buffer TileHeaderBuffer {
-    TileHeader tileHeaders[];
+// GB1 (R857, z-bin): the generated tile passes publish one rank bit per candidate
+// instance per tile; ranks run front to back (near depth, then instance id) and
+// instanceOrder maps a rank to its instance. The view record gives the word count.
+// Binding numbers are generated (R896: VXB_<Name>).
+#include "Generated/TileBinView.glsl"
+#include "Generated/TileRankWord.glsl"
+#include "Generated/InstanceOrder.glsl"
+layout(std430, binding = VXB_TileBinViewBuffer) readonly buffer TileBinViewBuffer {
+    TileBinView tileBinView[];
 };
-layout(std430, binding = VXB_TileSortedCandidateBuffer) readonly buffer TileSortedCandidateBuffer {
-    TileSortedCandidate tileCandidates[];
+layout(std430, binding = VXB_TileRankWordBuffer) readonly buffer TileRankWordBuffer {
+    TileRankWord tileRankWords[];
+};
+layout(std430, binding = VXB_InstanceOrderBuffer) readonly buffer InstanceOrderBuffer {
+    InstanceOrder instanceOrder[];
 };
 #endif
 

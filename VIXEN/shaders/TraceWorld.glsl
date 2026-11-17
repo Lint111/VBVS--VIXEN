@@ -334,21 +334,30 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     numInstances = min(numInstances, 3 * 64);
 #endif
     int candidateCount = numInstances;
-    int candidateBase = 0;
+    int primaryTileIndex = 0;
 #ifdef VIXEN_PRIMARY_TILE_CANDIDATES
-    TileHeader primaryTile;
     bool useTileList = false;
+    int rankWordEnd = 0;
+    int rankWordStride = 0;
+    // z-bin cursor: the tile's rank words are walked in order and each word's set bits
+    // lowest first, so candidates arrive front to back (rank = near depth, then instance).
+    int rankWord = 0;
+    uint rankBits = 0u;
     if (g_usePrimaryTileCandidates) {
         ivec2 tileCoord = g_primaryTilePixel / 8;
         int tileWidth = (g_primaryTileImageSize.x + 7) / 8;
-        int tileIndex = tileCoord.x + tileCoord.y * tileWidth;
-        primaryTile = tileHeaders[tileIndex];
-        // R861.1: a tile offered more candidates than its list holds has an incomplete
-        // list; it marches the bounded instance loop instead (the pre-GB1 contract).
-        useTileList = primaryTile.demand <= primaryTile.count;
+        primaryTileIndex = tileCoord.x + tileCoord.y * tileWidth;
+        const TileBinView binView = tileBinView[0];
+        // R861.1: ranks were dropped (more instances than the rank words hold); the
+        // tile marches the bounded instance loop instead (the pre-GB1 contract).
+        useTileList = binView.instanceCount <= binView.wordCapacity * 32;
         if (useTileList) {
-            candidateCount = primaryTile.count;
-            candidateBase = primaryTile.index << primaryTile.capacityLog2;
+            // Every candidate is one set bit, and a tile holds at most numInstances.
+            candidateCount = numInstances;
+            rankWordEnd = min((binView.instanceCount + 31) / 32, binView.wordCapacity);
+            rankWordStride = binView.tilesX * binView.tilesY;
+            if (rankWord < rankWordEnd)
+                rankBits = tileRankWords[primaryTileIndex].bits;
         } else {
             candidateCount = min(numInstances, 3 * 64);
         }
@@ -357,8 +366,20 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     for (int candidateOffset = 0; candidateOffset < candidateCount; ++candidateOffset) {
         int instIdx = candidateOffset;
 #ifdef VIXEN_PRIMARY_TILE_CANDIDATES
-        if (useTileList)
-            instIdx = int(tileCandidates[candidateBase + candidateOffset].instance);
+        if (useTileList) {
+            while (rankBits == 0u && ++rankWord < rankWordEnd)
+                rankBits = tileRankWords[rankWord * rankWordStride + primaryTileIndex].bits;
+            if (rankBits == 0u) break;
+            const int rankBit = findLSB(rankBits);
+            rankBits &= rankBits - 1u;
+            const InstanceOrder ranked = instanceOrder[rankWord * 32 + rankBit];
+            // Candidates arrive by near view depth, a lower bound on their hit distance along
+            // this normalized camera ray: once it passes the nearest hit, nothing later can
+            // win (strictly farther, so the lower-instance tie rule is unaffected; the margin
+            // covers rounding of the key).
+            if (ranked.depth > bestT * (1.0 + 1e-5)) break;
+            instIdx = int(ranked.instance);
+        }
 #endif
         if (instIdx < 0 || instIdx >= numInstances) continue;
 
