@@ -856,7 +856,9 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         message(FATAL_ERROR "[glyph-bake] the pinned kernel ${YEROKET_KERNEL_SHA} has no GlyphBake~ project; "
             "the tracked pin must contain the font import tool (kernel lane-glyph5 or later)")
     else()
-        set(_glyph_bake_bin "${CMAKE_CURRENT_BINARY_DIR}/glyph-bake-tool")
+        # The tool directory is named by the pin: a pin change is the only thing that rebuilds the
+        # tool (the snapshot stamp is touched at every configure, so it cannot be a dependency).
+        set(_glyph_bake_bin "${CMAKE_CURRENT_BINARY_DIR}/glyph-bake-tool-${YEROKET_KERNEL_SHA}")
         set(_glyph_bake_dll "${_glyph_bake_bin}/Yeroket.KernelFramework.GlyphBake.dll")
         if(UNIX AND NOT APPLE)
             set(_glyph_bake_build ${_codegen_linux_dotnet_cli_command} "${_glyph_bake_project}")
@@ -867,7 +869,6 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             COMMAND ${_glyph_bake_build} -c Release -m:1 -nodeReuse:false -nologo -v q
                 --artifacts-path "${CMAKE_CURRENT_BINARY_DIR}/glyph-bake-artifacts"
                 --output "${_glyph_bake_bin}/"
-            DEPENDS "${_yk_root}/.archive-complete"
             COMMENT "[glyph-bake] building the kernel font import tool"
             JOB_POOL msbuild VERBATIM)
         set(_glyph_bake_outputs "")
