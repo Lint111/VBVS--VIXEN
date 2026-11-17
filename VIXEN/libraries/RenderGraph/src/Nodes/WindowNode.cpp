@@ -17,9 +17,6 @@ namespace Vixen::RenderGraph {
 
 // ====== WindowNodeType ======
 
-std::unique_ptr<NodeInstance> WindowNodeType::CreateInstance(const std::string& instanceName) const {
-    return std::make_unique<WindowNode>(instanceName, const_cast<WindowNodeType*>(this));
-}
 
 // ====== WindowNode ======
 

@@ -504,7 +504,7 @@ protected:
      * @param bundleIndex Bundle index to validate (default: 0)
      * @return true if validation passed, false otherwise
      */
-    virtual bool ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex = 0) {
+    virtual bool ValidateVariadicInputsImpl([[maybe_unused]] Context& ctx, size_t bundleIndex = 0) {
         size_t count = GetVariadicInputCount(bundleIndex);
 
         // Validate count constraints
@@ -651,14 +651,14 @@ protected:
      *
      * @param ctx Setup context (no I/O access, no variadic extensions needed)
      */
-    virtual void VariadicSetupImpl(VariadicSetupContext& ctx) {}
+    virtual void VariadicSetupImpl([[maybe_unused]] VariadicSetupContext& ctx) {}
 
     /**
      * @brief VariadicCompileImpl with variadic-extended Context - override in derived classes
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void VariadicCompileImpl(VariadicCompileContext& ctx) {}
+    virtual void VariadicCompileImpl([[maybe_unused]] VariadicCompileContext& ctx) {}
 
     /**
      * @brief VariadicExecuteImpl with variadic-extended Context - override in derived classes
@@ -672,7 +672,7 @@ protected:
      *
      * @param ctx Cleanup context (no I/O access, no variadic extensions needed)
      */
-    virtual void VariadicCleanupImpl(VariadicCleanupContext& ctx) {}
+    virtual void VariadicCleanupImpl([[maybe_unused]] VariadicCleanupContext& ctx) {}
 
     // ============================================================================
     // BUILT-IN VARIADIC LIFECYCLE - owned by the node type, never registered

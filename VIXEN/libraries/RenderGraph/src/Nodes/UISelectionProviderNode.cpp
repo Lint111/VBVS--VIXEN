@@ -21,12 +21,6 @@ namespace Vixen::RenderGraph {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> UISelectionProviderNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<UISelectionProviderNode>(
-        instanceName, const_cast<UISelectionProviderNodeType*>(this));
-}
 
 // ============================================================================
 // UI SELECTION PROVIDER NODE IMPLEMENTATION

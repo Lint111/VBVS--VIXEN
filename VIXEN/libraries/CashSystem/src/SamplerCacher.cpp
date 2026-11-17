@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "error/VulkanError.h"
 #include "SamplerCacher.h"
 #include "CacheKeyHasher.h"
 #include "MainCacher.h"
@@ -94,10 +95,8 @@ std::shared_ptr<SamplerWrapper> SamplerCacher::Create(const SamplerCreateParams&
     createInfo.unnormalizedCoordinates = ci.unnormalizedCoordinates;
 
     VkResult result = vkCreateSampler(GetDevice()->device, &createInfo, nullptr, &wrapper->resource);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("SamplerCacher: Failed to create sampler (VkResult: " +
+    VK_CHECK_THROW(result, "SamplerCacher: Failed to create sampler (VkResult: " +
                                  std::to_string(result) + ")");
-    }
 
     LOG_DEBUG("VkSampler created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->resource)));
 

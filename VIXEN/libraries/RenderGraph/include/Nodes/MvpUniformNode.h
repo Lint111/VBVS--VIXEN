@@ -10,13 +10,14 @@ namespace Vixen::RenderGraph {
  * @brief Node type for the binding-0 MVP uniform buffer (UBO)
  * Type ID: 123
  */
-class MvpUniformNodeType : public TypedNodeType<MvpUniformNodeConfig> {
+class MvpUniformNode;
+
+class MvpUniformNodeType : public TypedNodeType<MvpUniformNodeConfig, MvpUniformNode> {
 public:
     MvpUniformNodeType(const std::string& typeName = "MvpUniform")
-        : TypedNodeType<MvpUniformNodeConfig>(typeName) {}
+        : TypedNodeType<MvpUniformNodeConfig, MvpUniformNode>(typeName) {}
     virtual ~MvpUniformNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

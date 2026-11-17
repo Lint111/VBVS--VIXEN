@@ -21,13 +21,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for the generic compute-stage submit node.
  */
-class ComputeStageNodeType : public TypedNodeType<ComputeStageNodeConfig> {
+class ComputeStageNode;
+
+class ComputeStageNodeType : public TypedNodeType<ComputeStageNodeConfig, ComputeStageNode> {
 public:
     ComputeStageNodeType(const std::string& typeName = "ComputeStage")
-        : TypedNodeType<ComputeStageNodeConfig>(typeName) {}
+        : TypedNodeType<ComputeStageNodeConfig, ComputeStageNode>(typeName) {}
     ~ComputeStageNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

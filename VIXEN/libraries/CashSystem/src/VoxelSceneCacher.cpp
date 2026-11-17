@@ -822,9 +822,7 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
         bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         VkResult result = vkCreateBuffer(m_device->device, &bufferCreateInfo, nullptr, info.buffer);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] Failed to create buffer");
-        }
+        VK_CHECK_THROW(result, "[VoxelSceneCacher::UploadToGPU] Failed to create buffer");
 
         VkMemoryRequirements memReq;
         vkGetBufferMemoryRequirements(m_device->device, *info.buffer, &memReq);
@@ -858,16 +856,12 @@ void VoxelSceneCacher::UploadToGPU(VoxelSceneData& data) {
     allocInfo.memoryTypeIndex = memoryTypeIndex;
 
     VkResult result = vkAllocateMemory(m_device->device, &allocInfo, nullptr, &data.memory);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] Failed to allocate device memory");
-    }
+    VK_CHECK_THROW(result, "[VoxelSceneCacher::UploadToGPU] Failed to allocate device memory");
 
     // Bind buffers to memory at their offsets
     for (size_t i = 0; i < buffers.size(); ++i) {
         result = vkBindBufferMemory(m_device->device, *buffers[i].buffer, data.memory, bufferMemReqs[i].second);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("[VoxelSceneCacher::UploadToGPU] Failed to bind buffer memory");
-        }
+        VK_CHECK_THROW(result, "[VoxelSceneCacher::UploadToGPU] Failed to bind buffer memory");
     }
 
     // Upload data via VulkanDevice (Sprint 5 Phase 2.5.3)
@@ -901,9 +895,7 @@ VkBuffer VoxelSceneCacher::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags us
 
     VkBuffer buffer;
     VkResult result = vkCreateBuffer(m_device->device, &bufferInfo, nullptr, &buffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[VoxelSceneCacher::CreateBuffer] Failed to create buffer");
-    }
+    VK_CHECK_THROW(result, "[VoxelSceneCacher::CreateBuffer] Failed to create buffer");
 
     return buffer;
 }

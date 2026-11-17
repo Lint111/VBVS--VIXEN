@@ -18,18 +18,17 @@ namespace Vixen::RenderGraph {
  * DescriptorResourceGathererNode/PushConstantGathererNode's own variadic-
  * gatherer shape.
  */
-class BufferSyncGathererNodeType : public TypedNodeType<BufferSyncGathererNodeConfig> {
+class BufferSyncGathererNode;
+
+class BufferSyncGathererNodeType : public TypedNodeType<BufferSyncGathererNodeConfig, BufferSyncGathererNode> {
 public:
     BufferSyncGathererNodeType(const std::string& typeName = "BufferSyncGatherer")
-        : TypedNodeType<BufferSyncGathererNodeConfig>(typeName)
+        : TypedNodeType<BufferSyncGathererNodeConfig, BufferSyncGathererNode>(typeName)
         , defaultMinVariadicInputs(0)
         , defaultMaxVariadicInputs(SIZE_MAX)
     {}
     virtual ~BufferSyncGathererNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 
     size_t GetDefaultMinVariadicInputs() const { return defaultMinVariadicInputs; }
     size_t GetDefaultMaxVariadicInputs() const { return defaultMaxVariadicInputs; }

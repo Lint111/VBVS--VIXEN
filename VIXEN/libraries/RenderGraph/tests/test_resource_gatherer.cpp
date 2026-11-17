@@ -9,7 +9,7 @@
 // - Heterogeneous input types
 
 #include <iostream>
-#include <cassert>
+#include "TestAlwaysOn.h"
 #include <vector>
 #include <array>
 #include <tuple>
@@ -30,12 +30,12 @@ public:
     void set(T&& value) { value_ = std::move(value); hasValue_ = true; }
 
     const T& get() const {
-        assert(hasValue_ && "Slot accessed before value set");
+        VIXEN_TEST_CHECK(hasValue_ && "Slot accessed before value set");
         return value_;
     }
 
     T& get() {
-        assert(hasValue_ && "Slot accessed before value set");
+        VIXEN_TEST_CHECK(hasValue_ && "Slot accessed before value set");
         return value_;
     }
 
@@ -155,7 +155,7 @@ void testBasicGathering() {
 
     // Verify output
     auto& gathered = gatherer.gatheredResources.get();
-    assert(gathered.size() == 3 && "Should have 3 resources");
+    VIXEN_TEST_CHECK(gathered.size() == 3 && "Should have 3 resources");
 
     std::cout << "  Gathered " << gathered.size() << " resources\n";
     std::cout << "  ✅ Basic gathering successful\n";
@@ -188,7 +188,7 @@ void testVectorInputs() {
     gatherer.execute();
 
     auto& gathered = gatherer.gatheredResources.get();
-    assert(gathered.size() == 2 && "Should have 2 resource collections");
+    VIXEN_TEST_CHECK(gathered.size() == 2 && "Should have 2 resource collections");
 
     std::cout << "  Input 0: " << images.size() << " images\n";
     std::cout << "  Input 1: " << buffers.size() << " buffers\n";
@@ -229,7 +229,7 @@ void testFieldExtractionCompatibility() {
     gatherer.execute();
 
     auto& gathered = gatherer.gatheredResources.get();
-    assert(gathered.size() == 2 && "Should have 2 resources");
+    VIXEN_TEST_CHECK(gathered.size() == 2 && "Should have 2 resources");
 
     std::cout << "  Extracted images: " << extractedImages.size() << " items\n";
     std::cout << "  Extracted swapchain: 0x" << std::hex
@@ -251,7 +251,7 @@ void testHomogeneousGatherer() {
     gatherer.execute();
 
     auto& gathered = gatherer.gatheredResources.get();
-    assert(gathered.size() == 5 && "Should have 5 images");
+    VIXEN_TEST_CHECK(gathered.size() == 5 && "Should have 5 images");
 
     std::cout << "  Gathered " << gathered.size() << " images\n";
     for (size_t i = 0; i < gathered.size(); ++i) {
@@ -281,7 +281,7 @@ void testUniversalGatherer() {
     gatherer.execute();
 
     auto& gathered = gatherer.gatheredResources.get();
-    assert(gathered.size() == 4 && "Should have 4 resources");
+    VIXEN_TEST_CHECK(gathered.size() == 4 && "Should have 4 resources");
 
     std::cout << "  Gathered " << gathered.size() << " heterogeneous resources\n";
     std::cout << "  Input types: VkImage, VkBuffer, VkSampler, VkPipeline\n";
@@ -302,7 +302,7 @@ void testMixedResourceGatherer() {
     gatherer.execute();
 
     auto& gathered = gatherer.gatheredResources.get();
-    assert(gathered.size() == 4 && "Should have 4 resources");
+    VIXEN_TEST_CHECK(gathered.size() == 4 && "Should have 4 resources");
 
     std::cout << "  Gathered " << gathered.size() << " mixed resources\n";
     std::cout << "  ✅ Mixed resource gathering successful\n";
@@ -343,7 +343,7 @@ void testComplexScenario() {
     gatherer.execute();
 
     auto& gathered = gatherer.gatheredResources.get();
-    assert(gathered.size() == 4 && "Should have 4 resources");
+    VIXEN_TEST_CHECK(gathered.size() == 4 && "Should have 4 resources");
 
     std::cout << "  Gathered from 2 structs (SwapChain, 2x Pipeline)\n";
     std::cout << "  Field extractions:\n";

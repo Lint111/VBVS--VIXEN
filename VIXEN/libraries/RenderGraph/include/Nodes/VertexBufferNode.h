@@ -20,13 +20,14 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 103
  */
-class VertexBufferNodeType : public TypedNodeType<VertexBufferNodeConfig> {
+class VertexBufferNode;
+
+class VertexBufferNodeType : public TypedNodeType<VertexBufferNodeConfig, VertexBufferNode> {
 public:
     VertexBufferNodeType(const std::string& typeName = "VertexBuffer")
-        : TypedNodeType<VertexBufferNodeConfig>(typeName) {}
+        : TypedNodeType<VertexBufferNodeConfig, VertexBufferNode>(typeName) {}
     virtual ~VertexBufferNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Core/Resource.h"
 #include "VulkanDevice.h"
 #include <stdexcept>
@@ -115,9 +117,7 @@ void Resource::AllocateImage(VkDevice device, const ImageDescription& desc) {
     }
 
     VkResult result = vkCreateImage(device, &imageInfo, nullptr, &image);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create image resource");
-    }
+    VK_CHECK_THROW(result, "Failed to create image resource");
 
     // Allocate memory
     VkMemoryRequirements memRequirements;
@@ -167,9 +167,7 @@ void Resource::AllocateBuffer(VkDevice device, const BufferDescription& desc) {
         bufferInfo.usage |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
     VkResult result = vkCreateBuffer(device, &bufferInfo, nullptr, &buffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create buffer resource");
-    }
+    VK_CHECK_THROW(result, "Failed to create buffer resource");
 
     // Allocate memory
     VkMemoryRequirements memRequirements;
@@ -224,9 +222,7 @@ void Resource::CreateImageView(VkDevice device, VkImageAspectFlags aspectMask) {
     viewInfo.subresourceRange.layerCount = desc->arrayLayers;
 
     VkResult result = vkCreateImageView(device, &viewInfo, nullptr, &imageView);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create image view");
-    }
+    VK_CHECK_THROW(result, "Failed to create image view");
 }
 
 void Resource::Destroy(VkDevice device) {

@@ -29,15 +29,14 @@ namespace Vixen::RenderGraph {
  * Creates VkComputePipeline from SPIRV shaders using ComputePipelineCacher.
  * Shares VkPipelineCache with graphics pipelines for optimal performance.
  */
-class ComputePipelineNodeType : public TypedNodeType<ComputePipelineNodeConfig> {
+class ComputePipelineNode;
+
+class ComputePipelineNodeType : public TypedNodeType<ComputePipelineNodeConfig, ComputePipelineNode> {
 public:
     ComputePipelineNodeType(const std::string& typeName = "ComputePipeline")
-        : TypedNodeType<ComputePipelineNodeConfig>(typeName) {}
+        : TypedNodeType<ComputePipelineNodeConfig, ComputePipelineNode>(typeName) {}
     virtual ~ComputePipelineNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

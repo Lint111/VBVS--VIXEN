@@ -19,15 +19,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for the voxel-domain selection provider (SEL-P2).
  */
-class VoxelSelectionProviderNodeType : public TypedNodeType<VoxelSelectionProviderNodeConfig> {
+class VoxelSelectionProviderNode;
+
+class VoxelSelectionProviderNodeType : public TypedNodeType<VoxelSelectionProviderNodeConfig, VoxelSelectionProviderNode> {
 public:
     VoxelSelectionProviderNodeType(const std::string& typeName = "VoxelSelectionProvider")
-        : TypedNodeType<VoxelSelectionProviderNodeConfig>(typeName) {}
+        : TypedNodeType<VoxelSelectionProviderNodeConfig, VoxelSelectionProviderNode>(typeName) {}
     ~VoxelSelectionProviderNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/SamplerNode.h"
 #include "Core/NodeRegistration.h"
 #include "VulkanDevice.h"
@@ -20,8 +22,7 @@ void SamplerNode::TypedCompileImpl(TypedCompileContext& ctx) {
         info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         info.maxLod = 0.0f;
         info.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
-        if (vkCreateSampler(GetDevice()->device, &info, nullptr, &sampler_) != VK_SUCCESS)
-            throw std::runtime_error("[SamplerNode] vkCreateSampler failed");
+        VK_CHECK_THROW(vkCreateSampler(GetDevice()->device, &info, nullptr, &sampler_), "[SamplerNode] vkCreateSampler failed");
     }
     ctx.Out(SamplerNodeConfig::SAMPLER, sampler_);
 }

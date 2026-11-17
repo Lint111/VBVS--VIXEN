@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/SkyProjectionNode.h"
 #include "Core/NodeRegistration.h"
@@ -29,7 +31,7 @@ namespace Vixen::RenderGraph {
 namespace {
 
 void Check(VkResult r, const char* what) {
-    if (r != VK_SUCCESS) throw std::runtime_error(std::string("[SkyProjectionNode] ") + what);
+    VK_CHECK_THROW(r, std::string("[SkyProjectionNode] ") + what);
 }
 
 uint32_t FindMemoryType(const VkPhysicalDeviceMemoryProperties& memProps, uint32_t typeFilter,
@@ -96,9 +98,6 @@ static_assert(sizeof(PushConstantLayout) == 48, "must match SkyProjection.vert's
 
 // ====== SkyProjectionNodeType ======
 
-std::unique_ptr<NodeInstance> SkyProjectionNodeType::CreateInstance(const std::string& instanceName) const {
-    return std::make_unique<SkyProjectionNode>(instanceName, const_cast<SkyProjectionNodeType*>(this));
-}
 
 // ====== SkyProjectionNode ======
 

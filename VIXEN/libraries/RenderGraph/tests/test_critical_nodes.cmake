@@ -228,6 +228,7 @@ add_custom_command(
             # custom command produces, and it is test-only infrastructure never loaded by the
             # live app, so defining it unconditionally here does not affect production defaults.
             -DVIXEN_GPU_TRACE_HOOKS=1
+            -DVIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES=1
             ${_brm_src}
             -o ${_brm_spv}
     DEPENDS ${_brm_src} ${_brm_includes}
@@ -271,6 +272,7 @@ add_custom_command(
             -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
             --target-env=vulkan1.2
             -DVIXEN_GPU_TRACE_HOOKS=1
+            -DVIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES=1
             -DVIXEN_B1_OCCLUSION_CULL=1
             ${_brm_src}
             -o ${_brm_spv_b1}
@@ -291,6 +293,7 @@ add_custom_command(
             -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
             --target-env=vulkan1.2
             -DVIXEN_GPU_TRACE_HOOKS=1
+            -DVIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES=1
             -DVIXEN_B1_OCCLUSION_CULL=1
             -DVIXEN_B2_PROXY_PREPASS=1
             ${_brm_src}
@@ -311,6 +314,7 @@ add_test(NAME test_body_instance_raymarch_rtquery_compile
         -I "${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
         --target-env=vulkan1.3
         -DVIXEN_GPU_TRACE_HOOKS=1
+        -DVIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES=1
         -DVIXEN_RTQUERY_TRAVERSAL=1
         "${_brm_src}"
         -o "${_brm_spv_rtquery}"
@@ -326,6 +330,7 @@ add_test(NAME test_body_instance_raymarch_shell_normals_compile
         -I "${_brm_shader_dir}"
         -I "${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
         --target-env=vulkan1.3
+        -DVIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES=1
         -DVIXEN_SHELL_NORMALS=1
         "${_brm_src}"
         -o "${_brm_spv_shell_normals}"

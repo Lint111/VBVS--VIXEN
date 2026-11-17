@@ -1,3 +1,6 @@
+#include "error/VulkanError.h"
+#include "Nodes/Common/SwapchainBarriers.h"
+
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Persistent worldPos/depth companion history pair, with immutable previous-frame input and
 // separate current-frame output roles matching AccumulationHistoryNode.
@@ -33,9 +36,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== WorldPosHistoryNodeType ======
 
-std::unique_ptr<NodeInstance> WorldPosHistoryNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<WorldPosHistoryNode>(n, const_cast<WorldPosHistoryNodeType*>(this));
-}
 
 // ====== WorldPosHistoryNode ======
 
@@ -151,9 +151,7 @@ void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool comman
     imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (vkCreateImage(vkDevice, &imgInfo, nullptr, &image) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] vkCreateImage failed");
-    }
+    VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &image), "[WorldPosHistoryNode] vkCreateImage failed");
 
     // --- Allocate device-local memory via real memory-type selection ---
     VkMemoryRequirements req{};
@@ -185,9 +183,7 @@ void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool comman
     viewInfo.format           = kFormat;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &view) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] vkCreateImageView failed");
-    }
+    VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &view), "[WorldPosHistoryNode] vkCreateImageView failed");
 
     // One-time UNDEFINED -> GENERAL transition. Storage images stay GENERAL across dispatches.
     TransitionToGeneral(commandPool, image);
@@ -200,58 +196,39 @@ void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool comman
 void WorldPosHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkImage image) {
     VkDevice vkDevice = GetDevice()->device;
 
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool        = commandPool;
-    allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
+    SwapchainBarriers::RecordAndSubmitOneShot(
+        vkDevice, commandPool,
+        [&](VkCommandBuffer cmd) {
+            VkImageMemoryBarrier barrier{};
+            barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.srcAccessMask       = 0;
+            barrier.dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+            barrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image               = image;
+            barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] vkAllocateCommandBuffers (transition) failed");
-    }
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[WorldPosHistoryNode] vkBeginCommandBuffer (transition) failed");
-    }
-
-    VkImageMemoryBarrier barrier{};
-    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask       = 0;
-    barrier.dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
-    barrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image               = image;
-    barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-    vkCmdPipelineBarrier(
-        cmd,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier
-    );
-
-    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[WorldPosHistoryNode] vkEndCommandBuffer (transition) failed");
-    }
-
-    // R715: the one-shot rides the graph's submission stream (queue order and its barrier
-    // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
-    // so there is no submit-then-wait-idle here.
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[WorldPosHistoryNode] queue-owner transition submit failed");
-    }
-
+            vkCmdPipelineBarrier(
+                cmd,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+            );
+        },
+        [&](VkCommandBuffer cmd) {
+            // R715: the one-shot rides the graph's submission stream; queue order and its barrier
+            // order it before every later submit, with retirement handled by the graph owner.
+            return GetOwningGraph()->SubmitOneShot(this, commandPool, cmd);
+        },
+        "[WorldPosHistoryNode] vkAllocateCommandBuffers (transition) failed",
+        "[WorldPosHistoryNode] vkBeginCommandBuffer (transition) failed",
+        "[WorldPosHistoryNode] vkEndCommandBuffer (transition) failed",
+        "[WorldPosHistoryNode] queue-owner transition submit failed");
 }
 
 void WorldPosHistoryNode::DestroyImages() {

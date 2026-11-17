@@ -1,5 +1,7 @@
 #pragma once
 
+#include "error/VulkanError.h"
+
 #include <vulkan/vulkan.h>
 #include <stdexcept>
 #include <string>
@@ -49,11 +51,7 @@ inline BufferAllocationResult CreateDeviceLocalBuffer(
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     VkResult vkResult = vkCreateBuffer(device, &bufferInfo, nullptr, &result.buffer);
-    if (vkResult != VK_SUCCESS) {
-        throw std::runtime_error(
-            "Failed to create buffer" + (bufferName.empty() ? "" : ": " + bufferName)
-        );
-    }
+    VK_CHECK_THROW(vkResult, "Failed to create buffer" + (bufferName.empty() ? "" : ": " + bufferName));
 
     // Query memory requirements
     VkMemoryRequirements memReq;

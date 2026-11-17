@@ -8,7 +8,7 @@
 #   jobs                       print the queue grant or direct node width used for the native build and the count
 #   checkout                   create $VIXEN_NATIVE_ROOT/<lane> as a clone of this worktree if missing
 #   sync                       checkout, then fast-forward it to this worktree's branch tip and verify it
-#   provision                  run build.bat provision when the pinned Ninja/CMake files are missing
+#   provision                  run build.bat provision when the pinned Ninja/CMake/.NET files are missing
 #   prepare                    sync + kernel pin fetch + provision (run this before queueing the build)
 #   build [ACTION [PRESET [TARGET]]]
 #                              prepare, then build.bat (ACTION defaults to build.bat's own default)
@@ -313,7 +313,7 @@ run_bat() {
     fi
     export VIXEN_FETCHCONTENT_CACHE="${VIXEN_FETCHCONTENT_CACHE:-$(base_dir)/.tmp/fetch}"
     mkdir -p "$VIXEN_FETCHCONTENT_CACHE"
-    local forward="VIXEN_JOBSERVER_AUTH:VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_NATIVE_BUILD_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_LOOKDEV_RECIPE_PATH/p:VIXEN_LOOKDEV_PACK_ROOT/p:VIXEN_LOOKDEV_PACK_SCHEMA/p:VIXEN_LOOKDEV_CAPTURE_DIR/p:VIXEN_LOOKDEV_RECIPE_ID:VIXEN_LOOKDEV_RECIPE_PARAMS:VIXEN_LOOKDEV_RECIPE_SCALE:VIXEN_LOOKDEV_RECIPE_TEXT:VIXEN_LOOKDEV_EXPECT_UNKNOWN_RECIPE:VIXEN_LOOKDEV_CAPTURE_STATE:VIXEN_LOOKDEV_CAPTURE_ANGLE:VIXEN_LOOKDEV_CAPTURE_FRAMES:VIXEN_LOOKDEV_CAPTURE_BUDGET_MS:VIXEN_MAX_BUILD_JOBS:UT_QUEUE_CREDITS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p:UT_QUEUE_WINROOT_FILE/p"
+    local forward="VIXEN_JOBSERVER_AUTH:VIXEN_NATIVE_ARGS:UNDERTOW_ROOT/p:YEROKET_ROOT/p:VIXEN_BINARY_DIR/p:VIXEN_NATIVE_BUILD_DIR/p:VIXEN_FETCHCONTENT_CACHE/p:VIXEN_CAPTURE_ROOT/p:UT_QUEUE_CAPTURE_ROOT/p:VIXEN_LOOKDEV_RECIPE_PATH/p:VIXEN_LOOKDEV_PACK_ROOT/p:VIXEN_LOOKDEV_PACK_SCHEMA/p:VIXEN_LOOKDEV_CAPTURE_DIR/p:VIXEN_LOOKDEV_RECIPE_ID:VIXEN_LOOKDEV_RECIPE_PARAMS:VIXEN_LOOKDEV_RECIPE_SCALE:VIXEN_LOOKDEV_RECIPE_TEXT:VIXEN_LOOKDEV_EXPECT_UNKNOWN_RECIPE:VIXEN_LOOKDEV_CAPTURE_STATE:VIXEN_LOOKDEV_CAPTURE_ANGLE:VIXEN_LOOKDEV_CAPTURE_FRAMES:VIXEN_LOOKDEV_CAPTURE_BUDGET_MS:VIXEN_MAX_BUILD_JOBS:UT_QUEUE_CREDITS:VIXEN_BUILD_LOG_DIR/p:VIXEN_BUILD_ID:VIXEN_BUILD_LOCK_TIMEOUT:VIXEN_SKIP_BUILD_LOCK:VIXEN_QUEUE_TICKET_ID:VIXEN_NATIVE_PIDFILE/p:UT_QUEUE_WINROOT_FILE/p"
     export WSLENV="${WSLENV:+$WSLENV:}$forward"
     mkdir -p "$(dirname "$log_file")"
     # The lock scripts write the Windows process-tree root here (Register-NativeRunRoot.ps1) so a
@@ -402,7 +402,7 @@ cancel_native() {
 do_provision() {
     local dir tool missing=0
     dir="$(base_dir)"
-    for tool in ninja-bin.txt cmake-exe.txt; do
+    for tool in ninja-bin.txt cmake-exe.txt dotnet-bin.txt; do
         [[ -f "$dir/VIXEN/.win-native-toolchain/$tool" ]] || missing=1
     done
     if [[ "$missing" == 0 ]]; then say "native toolchain already provisioned in $dir"; return 0; fi

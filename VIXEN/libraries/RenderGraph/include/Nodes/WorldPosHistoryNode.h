@@ -10,13 +10,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for the worldPos/depth companion history target (persistent storage image).
  */
-class WorldPosHistoryNodeType : public TypedNodeType<WorldPosHistoryNodeConfig> {
+class WorldPosHistoryNode;
+
+class WorldPosHistoryNodeType : public TypedNodeType<WorldPosHistoryNodeConfig, WorldPosHistoryNode> {
 public:
     WorldPosHistoryNodeType(const std::string& typeName = "WorldPosHistory")
-        : TypedNodeType<WorldPosHistoryNodeConfig>(typeName) {}
+        : TypedNodeType<WorldPosHistoryNodeConfig, WorldPosHistoryNode>(typeName) {}
     virtual ~WorldPosHistoryNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

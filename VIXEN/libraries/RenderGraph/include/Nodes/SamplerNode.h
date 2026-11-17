@@ -29,12 +29,11 @@ private:
     VkSampler sampler_ = VK_NULL_HANDLE;
 };
 
-class SamplerNodeType final : public TypedNodeType<SamplerNodeConfig> {
+class SamplerNode;
+
+class SamplerNodeType final : public TypedNodeType<SamplerNodeConfig, SamplerNode> {
 public:
     SamplerNodeType() : TypedNodeType("Sampler") {}
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& name) const override {
-        return std::make_unique<SamplerNode>(name, const_cast<SamplerNodeType*>(this));
-    }
 };
 
 } // namespace Vixen::RenderGraph

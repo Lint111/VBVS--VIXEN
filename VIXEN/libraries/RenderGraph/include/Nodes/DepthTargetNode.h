@@ -10,13 +10,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for the B1 occlusion depth ping-pong pair.
  */
-class DepthTargetNodeType : public TypedNodeType<DepthTargetNodeConfig> {
+class DepthTargetNode;
+
+class DepthTargetNodeType : public TypedNodeType<DepthTargetNodeConfig, DepthTargetNode> {
 public:
     DepthTargetNodeType(const std::string& typeName = "DepthTarget")
-        : TypedNodeType<DepthTargetNodeConfig>(typeName) {}
+        : TypedNodeType<DepthTargetNodeConfig, DepthTargetNode>(typeName) {}
     virtual ~DepthTargetNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

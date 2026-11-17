@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Core/NodeRegistration.h"  // M3: VIXEN_REGISTER_NODE self-registration
 #include "Core/RenderGraph.h"
@@ -10,14 +12,16 @@
 #include "EmitterPower.h"  // R502.2: EmitterRootPowers
 #include "Recipe/RecipeBaker.h" // runtime recipe edits bake on the shared RunAsync producer
 #include "ResidencyDefault.h"  // Lazy-Procedural-Delta-Baseline Inc0 M2: DeriveResidencyDefault
+#include "EnvironmentFlags.h"
 
 #include <algorithm>
 #include <bit>
 #include <chrono>
-#include <cctype>    // std::isspace for whitespace-safe boolean env flags
+#include <cctype>    // std::isspace for VIXEN_RT_LIGHTING parsing
 #include <cstdio>    // std::snprintf (BrickDataHash log line)
 #include <cstdlib>   // std::getenv
 #include <cstring>
+#include <cmath>
 #include <iostream>  // FIX 5: std::cout -- BrickDataHash bypasses the disabled per-node logger
 #include <stdexcept>
 #include <string>
@@ -29,6 +33,7 @@
 #include "Generated/EmitterTotals.g.h"
 #include "Generated/RecipeEmitterEntry.g.h"
 #include "Generated/SparseEmitterEntry.g.h"
+#include "Generated/InstanceBound.g.h"
 
 // R502.2: the CPU emitter records in RecipeEmitterTable.h (SVO has no RenderGraph dependency)
 // must stay byte-identical to the generated GPU records.
@@ -82,15 +87,6 @@ const uint32_t BodyOctreeSceneNode::kRingSize = FrameSyncNodeConfig::MAX_FRAMES_
 
 namespace {
 
-bool envFlagEnabled(const char* name) {
-    const char* value = std::getenv(name);
-    if (value == nullptr) return false;
-    for (; *value != '\0'; ++value) {
-        if (!std::isspace(static_cast<unsigned char>(*value))) return true;
-    }
-    return false;
-}
-
 enum class RtLightingMode { Auto, Off, Force };
 
 RtLightingMode ParseRtLightingMode() {
@@ -132,9 +128,7 @@ void CreateHostBuffer(VulkanDevice* device,
     bufferInfo.usage       = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &outBuffer) != VK_SUCCESS) {
-        throw std::runtime_error(std::string("[BodyOctreeSceneNode] vkCreateBuffer failed for ") + context);
-    }
+    VK_CHECK_THROW(vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &outBuffer), std::string("[BodyOctreeSceneNode] vkCreateBuffer failed for ") + context);
 
     VkMemoryRequirements req{};
     vkGetBufferMemoryRequirements(vkDevice, outBuffer, &req);
@@ -166,9 +160,7 @@ void CreateHostBuffer(VulkanDevice* device,
 
     if (data != nullptr && size > 0) {
         void* mapped = nullptr;
-        if (vkMapMemory(vkDevice, outMemory, 0, size, 0, &mapped) != VK_SUCCESS) {
-            throw std::runtime_error(std::string("[BodyOctreeSceneNode] vkMapMemory failed for ") + context);
-        }
+        VK_CHECK_THROW(vkMapMemory(vkDevice, outMemory, 0, size, 0, &mapped), std::string("[BodyOctreeSceneNode] vkMapMemory failed for ") + context);
         std::memcpy(mapped, data, static_cast<size_t>(size));
         vkUnmapMemory(vkDevice, outMemory);
     }
@@ -237,12 +229,6 @@ uint64_t Fnv1a64(const std::vector<T>& v) {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> BodyOctreeSceneNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::unique_ptr<NodeInstance>(
-        new BodyOctreeSceneNode(instanceName, const_cast<BodyOctreeSceneNodeType*>(this)));
-}
 
 // ============================================================================
 // BODY OCTREE SCENE NODE
@@ -251,8 +237,8 @@ std::unique_ptr<NodeInstance> BodyOctreeSceneNodeType::CreateInstance(
 BodyOctreeSceneNode::BodyOctreeSceneNode(const std::string& instanceName, NodeType* nodeType)
     : TypedNode<BodyOctreeSceneNodeConfig>(instanceName, nodeType)
 {
-    wholesaleAdmissionEnabled_ = envFlagEnabled("VIXEN_WHOLESALE_ADMISSION");
-    if (envFlagEnabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
+    wholesaleAdmissionEnabled_ = Vixen::Core::Env::Enabled("VIXEN_WHOLESALE_ADMISSION");
+    if (Vixen::Core::Env::Enabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
         residencyRequested_ = true;
     }
     NODE_LOG_INFO("[BodyOctreeSceneNode] constructor");
@@ -334,6 +320,16 @@ bool BodyOctreeSceneNode::UpdateInstanceRows(std::span<const Vixen::SVO::BodyIns
     return true;
 }
 
+int32_t BodyOctreeSceneNode::MarchedInstanceCount() const {
+    // Same paired-stream clamp RefreshInstanceStreams applies to the emitted INSTANCE_COUNT.
+    int32_t capacity = std::min(
+        static_cast<int32_t>(transformRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceTransformGpu)),
+        static_cast<int32_t>(materialRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceMaterialGpu)));
+    if (motionGuidesEnabled_) capacity = std::min(capacity,
+        static_cast<int32_t>(motionRingCapacity_ / sizeof(Vixen::Gpu::BodyInstanceMotion)));
+    return std::max(0, std::min(instanceCount_, capacity));
+}
+
 void BodyOctreeSceneNode::RefreshInstanceStreams() {
     instanceTransforms_.clear();
     instanceTransforms_.reserve(instances_.size());
@@ -406,7 +402,7 @@ void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstr
         // mip, normal, and optional anisotropic pools are consequently part of the job.
         auto recipe = bakeRecipe_;
         if (!recipe.empty() &&
-            (envFlagEnabled("VIXEN_STORED_SDF_DEMO") || envFlagEnabled("VIXEN_BRICKMAP_SCENE"))) {
+            (Vixen::Core::Env::Enabled("VIXEN_STORED_SDF_DEMO") || Vixen::Core::Env::Enabled("VIXEN_BRICKMAP_SCENE"))) {
             requestedPoolProducer_ = [recipe = std::move(recipe)]() mutable {
                 Vixen::SVO::RecipeRegistry registry;
                 Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
@@ -768,6 +764,10 @@ void BodyOctreeSceneNode::SetRecipeEmitterShapes(Vixen::SVO::RecipeEmitterShapes
     emitterTableDirty_ = true;
 }
 
+void BodyOctreeSceneNode::SetRecipeBoundSpheres(RecipeBoundSpheres spheres) {
+    recipeBoundSpheres_ = std::move(spheres);
+}
+
 const Vixen::SVO::EmitterTable& BodyOctreeSceneNode::GetEmitterTable() {
     if (emitterTableDirty_ || emitterTableMipData_ != concatenated_.mipPool.data() ||
         emitterTableMipSize_ != concatenated_.mipPool.size()) {
@@ -784,7 +784,7 @@ const Vixen::SVO::EmitterTable& BodyOctreeSceneNode::GetEmitterTable() {
 }
 
 void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
-    if (wholesaleAdmissionEnabled_ && envFlagEnabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
+    if (wholesaleAdmissionEnabled_ && Vixen::Core::Env::Enabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
         resident = true;
     }
     // Stash only — mirrors SetBakeRecipe/SetRecipePool's dirty-flag pattern. ExecuteImpl
@@ -885,7 +885,7 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
             : 1u;
         ShellGenerationPayload initial = BuildShellGenerationPayload(
             std::move(concatenated_), shellDilation_,
-            envFlagEnabled("VIXEN_SHELL_NORMALS"), workers);
+            Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS"), workers);
         concatenated_ = std::move(initial.pool);
         shellCache_ = std::move(initial.shell);
         publishedEmitterRootPowers_ = std::move(initial.emitterRootPowers);
@@ -908,6 +908,9 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
         EnsureRingAllocated(devicePtr,
             std::max<VkDeviceSize>(transformBytes, sizeof(Vixen::SVO::BodyInstanceTransformGpu)),
             std::max<VkDeviceSize>(materialBytes, sizeof(Vixen::SVO::BodyInstanceMaterialGpu)));
+        EnsureBoundsAllocated(devicePtr,
+            std::max<VkDeviceSize>(instanceCount_ * sizeof(Vixen::Codegen::Gpu::InstanceBound),
+                                   sizeof(Vixen::Codegen::Gpu::InstanceBound)));
     }
 
     // 4) Publish outputs. Both stream handles start at ring slot 0;
@@ -918,6 +921,7 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,        configBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,    materialPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,   transformPerFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER, boundPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_MOTION_BUFFER,
             motionGuidesEnabled_ ? motionPerFrame_.GetUniformBuffer(0) : VkBuffer(VK_NULL_HANDLE));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,              instanceCount_);
@@ -1114,6 +1118,18 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,
             transformPerFrame_.GetUniformBuffer(frameIndex));
 
+    auto* boundMapped = static_cast<Vixen::Codegen::Gpu::InstanceBound*>(
+        boundPerFrame_.GetUniformBufferMapped(frameIndex));
+    if (boundMapped != nullptr) {
+        for (size_t i = 0; i < instances_.size() &&
+             i * sizeof(Vixen::Codegen::Gpu::InstanceBound) < boundRingCapacity_; ++i) {
+            boundMapped[i] = DeriveInstanceBound(instances_[i], recipeBoundSpheres_);
+        }
+        VIXEN_LEDGER_WRITTEN(boundMapped, std::min<size_t>(instances_.size() * sizeof(*boundMapped), boundRingCapacity_));
+    }
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER,
+            boundPerFrame_.GetUniformBuffer(frameIndex));
+
     // Clamp to the smaller stream capacity so no consumer can read a partial record.
     const int32_t transformCount = static_cast<int32_t>(
         transformRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceTransformGpu));
@@ -1225,7 +1241,7 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
     // true default-coef tier-crossing distance (596.75wu) -- the first 3 near
     // bodies (D≈507-539wu, see plan ledger's Batch 11 entry) can never cross it.
     // VIXEN_STORED_SDF_DEMO keeps the original 3-body bake unchanged.
-    const bool isBrickmapScene = envFlagEnabled("VIXEN_BRICKMAP_SCENE");
+    const bool isBrickmapScene = Vixen::Core::Env::Enabled("VIXEN_BRICKMAP_SCENE");
     // Round-18 multi-distance close: +2 more far bodies (kinds 4/5, D~800/D~1200) past
     // the round-12 far body (kind 3), reusing the plain-sphere recipe.
     // Deep-field-mip-policy design-doc regime-3 divergence scene (2026-08-08): +1 more
@@ -1245,7 +1261,7 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
     // to a solid body whose mips saturate to coverage=1.
     // ponytail: sparse body only ever asked for alongside the brickmap scene (the
     // divergence matrix is brickmap-based end to end) -- no standalone combination.
-    const bool isSparseBody = isBrickmapScene && envFlagEnabled("VIXEN_SPARSE_BODY");
+    const bool isSparseBody = isBrickmapScene && Vixen::Core::Env::Enabled("VIXEN_SPARSE_BODY");
     // Batch 50 / KI-047 residual (VIXEN_SPARSE_BODY_OVERLAP, sol-b49-validation.md
     // V1.3): +1 more kind, a plain sphere placed directly behind the round-12
     // D~612wu body on the SAME camera ray (BuildRenderGraph.cpp's
@@ -1255,11 +1271,11 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
     // VIXEN_SPARSE_BODY the same way NEBULA is orthogonal to FAR: gated only on
     // VIXEN_SPARSE_BODY being set too, so an overlap-off boot bakes exactly the
     // same kind count as before (byte-identical, criterion C1).
-    const bool isSparseBodyOverlap = isSparseBody && envFlagEnabled("VIXEN_SPARSE_BODY_OVERLAP");
+    const bool isSparseBodyOverlap = isSparseBody && Vixen::Core::Env::Enabled("VIXEN_SPARSE_BODY_OVERLAP");
     const uint32_t sdfKindCount =
         (isBrickmapScene ? kKindCount + 3 : kKindCount) + (isSparseBody ? 1 : 0) +
         (isSparseBodyOverlap ? 1 : 0);
-    if (envFlagEnabled("VIXEN_STORED_SDF_DEMO") || isBrickmapScene) {
+    if (Vixen::Core::Env::Enabled("VIXEN_STORED_SDF_DEMO") || isBrickmapScene) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_STORED_SDF_DEMO/VIXEN_BRICKMAP_SCENE/VIXEN_SPARSE_BODY: baking " +
                       std::to_string(sdfKindCount) + " Stored-SDF octrees");
 
@@ -1428,9 +1444,9 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         // Flag-off (default) keeps this call byte-identical to before —
         // ConcatenateSdfWithMips only, no mipAnisoPool attached, identity
         // hash unmoved.
-        if (envFlagEnabled("VIXEN_MIP_ANISO_BAKE")) {
+        if (Vixen::Core::Env::Enabled("VIXEN_MIP_ANISO_BAKE")) {
             concatenated_ = Vixen::SVO::ConcatenateSdfWithAniso(
-                sdfPtrs, {}, envFlagEnabled("VIXEN_SHELL_NORMALS"));
+                sdfPtrs, {}, Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS"));
             // Batch-32 JOB 2a: the [MipAnisoPool] print RecipeBaker.h emits
             // lives off this runtime path (BodyOctreeSceneNode's Stored-SDF
             // demo boot never calls into RecipeBaker) -- reuses the pool
@@ -1441,7 +1457,7 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
                         sdfPtrs.size(), concatenated_.mipAnisoPool.size());
         } else {
             concatenated_ = Vixen::SVO::ConcatenateSdfWithMips(
-                sdfPtrs, {}, envFlagEnabled("VIXEN_SHELL_NORMALS"));
+                sdfPtrs, {}, Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS"));
         }
         octreesBuilt_ = true;
 
@@ -1862,6 +1878,20 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device,
                   "B transforms and " + std::to_string(static_cast<uint64_t>(materialCapacity)) + "B materials");
 }
 
+void BodyOctreeSceneNode::EnsureBoundsAllocated(VulkanDevice* device, VkDeviceSize capacity) {
+    if (boundPerFrame_.IsInitialized() && capacity <= boundRingCapacity_) return;
+    if (boundPerFrame_.IsInitialized()) {
+        vkDeviceWaitIdle(device->device);
+        boundPerFrame_.Cleanup();
+        boundRingCapacity_ = 0;
+    }
+    boundPerFrame_.Initialize(device, kRingSize);
+    for (uint32_t i = 0; i < kRingSize; ++i) {
+        boundPerFrame_.CreateStorageBuffer(i, capacity);
+    }
+    boundRingCapacity_ = capacity;
+}
+
 void BodyOctreeSceneNode::Rematerialize(
     uint64_t executeFrame,
     Vixen::SVO::ConcatenatedOctrees pool,
@@ -1952,7 +1982,7 @@ void BodyOctreeSceneNode::ScheduleShellGeneration() {
 
     auto payload = std::make_shared<ShellGenerationPayload>();
     const uint32_t dilation = shellDilation_;
-    const bool bakeNormals = envFlagEnabled("VIXEN_SHELL_NORMALS");
+    const bool bakeNormals = Vixen::Core::Env::Enabled("VIXEN_SHELL_NORMALS");
     const uint64_t owner = static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(this));
     const Vixen::KernelDispatch::TaskId taskId{owner == 0 ? 1u : owner,
                                                 static_cast<uint32_t>(requestId)};
@@ -2551,18 +2581,14 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     poolInfo.queueFamilyIndex = device->graphicsQueueIndex;
     VkCommandPool buildPool = VK_NULL_HANDLE;
-    if (vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &buildPool) != VK_SUCCESS) {
-        throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateCommandPool failed");
-    }
+    VK_CHECK_THROW(vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &buildPool), "[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateCommandPool failed");
 
     // R715: each build rides the graph's submission stream instead of submit plus wait idle. The
     // command buffer (and a BLAS's scratch) is released once the queue timeline reaches it; queue
     // order plus the barriers recorded in the TLAS command order the TLAS after every BLAS and
     // every later frame read after the TLAS.
     auto submitOneShot = [&](VkCommandBuffer cmd, std::function<void()> release) {
-        if (GetOwningGraph()->SubmitOneShot(this, buildPool, cmd, std::move(release)) != VK_SUCCESS) {
-            throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkQueueSubmit failed");
-        }
+        VK_CHECK_THROW(GetOwningGraph()->SubmitOneShot(this, buildPool, cmd, std::move(release)), "[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkQueueSubmit failed");
     };
     // A failure path must not destroy the pool under its still-pending BLAS command buffers.
     auto releasePool = [&] {
@@ -2635,9 +2661,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         createInfo.buffer = blas.asAllocation.buffer;
         createInfo.size = sizeInfo.accelerationStructureSize;
         createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-        if (vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle) != VK_SUCCESS) {
-            throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
-        }
+        VK_CHECK_THROW(vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle), "[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
         buildInfo.dstAccelerationStructure = blas.handle;
         buildInfo.scratchData.deviceAddress = scratchAllocation.deviceAddress != 0
             ? scratchAllocation.deviceAddress
@@ -2737,9 +2761,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         createInfo.buffer = blas.asAllocation.buffer;
         createInfo.size = sizeInfo.accelerationStructureSize;
         createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-        if (vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle) != VK_SUCCESS) {
-            throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
-        }
+        VK_CHECK_THROW(vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle), "[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkCreateAccelerationStructureKHR (BLAS) failed");
 
         buildInfo.dstAccelerationStructure = blas.handle;
         buildInfo.scratchData.deviceAddress = scratchAllocation.deviceAddress != 0
@@ -3048,9 +3070,11 @@ void BodyOctreeSceneNode::DestroyBuffers() {
     transformPerFrame_.Cleanup();
     materialPerFrame_.Cleanup();
     motionPerFrame_.Cleanup();
+    boundPerFrame_.Cleanup();
     motionRingCapacity_ = 0;
     transformRingCapacity_ = 0;
     materialRingCapacity_ = 0;
+    boundRingCapacity_ = 0;
     materialDirty_.clear();
     materialDirtyRows_.clear();
 

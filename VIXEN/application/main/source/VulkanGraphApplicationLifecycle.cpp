@@ -1,4 +1,5 @@
 #include "VulkanGraphApplication.h"
+#include "EnvironmentFlags.h"
 #include "VulkanGlobalNames.h"
 #include "graph/UpscalerModules.h"
 #include "Core/FrameSyncSchedule.h"
@@ -18,10 +19,77 @@
 #include <GLFW/glfw3.h>
 
 #include <cstdlib>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <set>
+
+VulkanGraphApplication::UpdateEnvironmentFlags VulkanGraphApplication::ReadUpdateEnvironmentFlags() {
+    UpdateEnvironmentFlags flags;
+    const auto isSet = Vixen::Core::Env::Present;
+
+    if (const char* env = std::getenv("VIXEN_RESIZE_AT_FRAME")) {
+        flags.resizeAtFrame = std::strtol(env, nullptr, 10);
+    }
+    if (const char* env = std::getenv("VIXEN_RESIZE_WIDTH")) {
+        const int value = std::atoi(env);
+        if (value > 0) flags.resizeWidth = value;
+    }
+    if (const char* env = std::getenv("VIXEN_RESIZE_HEIGHT")) {
+        const int value = std::atoi(env);
+        if (value > 0) flags.resizeHeight = value;
+    }
+
+    flags.restirGateDemo = isSet("VIXEN_RESTIR_GATE_DEMO");
+    flags.m5ShadeGateDemo = isSet("VIXEN_M5_SHADE_GATE_DEMO");
+    flags.ddgiLeakGateDemo = isSet("VIXEN_DDGI_LEAK_GATE_DEMO");
+    flags.ddgiAmortizationProbeLog = isSet("VIXEN_DDGI_AMORTIZATION_PROBE_LOG");
+    flags.ddgiEditLoopDemo = isSet("VIXEN_DDGI_EDIT_LOOP_DEMO");
+    flags.ddgiCornellBakedDemo = isSet("VIXEN_DDGI_CORNELL_BAKED_DEMO");
+    flags.ddgiCornellVirtualDemo = isSet("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO");
+    flags.ddgiCornellHybridDemo = isSet("VIXEN_DDGI_CORNELL_HYBRID_DEMO");
+    flags.ddgiCornellMixedDemo = isSet("VIXEN_DDGI_CORNELL_MIXED_DEMO");
+    flags.cornellSeamWindow = isSet("VIXEN_CORNELL_SEAM_WINDOW");
+    flags.cornellNormalDump = isSet("VIXEN_CORNELL_NORMAL_DUMP");
+    if (const char* env = std::getenv("VIXEN_SHADOW_DBG_PX")) {
+        flags.shadowDbgPxSet = true;
+        flags.shadowDbgPx = std::atoi(env);
+    }
+    if (const char* env = std::getenv("VIXEN_SHADOW_DBG_PY")) {
+        flags.shadowDbgPySet = true;
+        flags.shadowDbgPy = std::atoi(env);
+    }
+    flags.residencyGateDemo = isSet("VIXEN_RESIDENCY_GATE_DEMO");
+    flags.residencyGateStatic = isSet("VIXEN_RESIDENCY_GATE_STATIC");
+    flags.restirOrbitDemo = isSet("VIXEN_RESTIR_ORBIT_DEMO");
+    flags.lookTargetDemo = isSet("VIXEN_LOOK_TARGET_DEMO");
+    flags.tierZoomDemo = isSet("VIXEN_TIER_ZOOM_DEMO");
+    flags.storedSdfDemo = isSet("VIXEN_STORED_SDF_DEMO");
+    flags.bootLazyGateDemo = isSet("VIXEN_BOOT_LAZY_GATE_DEMO");
+    flags.tierEarthDemo = isSet("VIXEN_TIER_EARTH_DEMO");
+    flags.tierEarthZoomDemo = isSet("VIXEN_TIER_EARTH_ZOOM_DEMO");
+    flags.tierEarthZoomScript = isSet("VIXEN_TIER_EARTH_ZOOM_SCRIPT");
+    flags.tierObservableDemo = isSet("VIXEN_TIER_OBSERVABLE_DEMO");
+    flags.tierObservableZoomDemo = isSet("VIXEN_TIER_OBSERVABLE_ZOOM_DEMO");
+    flags.tierObservableZoomScript = isSet("VIXEN_TIER_OBSERVABLE_ZOOM_SCRIPT");
+    flags.tierObservablePlateauDemo = isSet("VIXEN_TIER_OBSERVABLE_PLATEAU_DEMO");
+    flags.tierObservableShowcaseDemo = isSet("VIXEN_TIER_OBSERVABLE_SHOWCASE_DEMO");
+    flags.tierM8EarthDemo = isSet("VIXEN_TIER_M8_EARTH_DEMO");
+    flags.tierM8EarthZoomDemo = isSet("VIXEN_TIER_M8_EARTH_ZOOM_DEMO");
+    flags.tierM8EarthZoomScript = isSet("VIXEN_TIER_M8_EARTH_ZOOM_SCRIPT");
+    flags.tierM8FlightDemo = isSet("VIXEN_TIER_M8_FLIGHT_DEMO");
+    flags.tierM8FlightDebugZDir = isSet("VIXEN_TIER_M8_FLIGHT_DEBUG_ZDIR");
+    flags.tierM8FlightDebugZPosOctantAim = isSet("VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM");
+    if (const char* env = std::getenv("VIXEN_TIER_M8_FLIGHT_AIM_OFFSET")) {
+        flags.tierM8FlightAimOffsetSet = true;
+        float dx = 0.0f, dy = 0.0f, dz = 0.0f;
+        if (std::sscanf(env, "%f,%f,%f", &dx, &dy, &dz) == 3) {
+            flags.tierM8FlightAimOffset = glm::vec3(dx, dy, dz);
+        }
+    }
+    return flags;
+}
 
 VulkanGraphApplication::VulkanGraphApplication()
     : VulkanApplicationBase(),
@@ -31,6 +99,11 @@ VulkanGraphApplication::VulkanGraphApplication()
       height(500),
       hudView_(Vixen::App::MakeHudView()),
       buildingInspectorView_(Vixen::App::MakeBuildingInspectorView()) {
+
+    // Update() demo gates are process configuration, not live controls. Capture their exact
+    // historical presence-based semantics once; changing the environment mid-run was never
+    // supported and would otherwise make a frame's behavior depend on getenv timing.
+    updateEnvironmentFlags_ = ReadUpdateEnvironmentFlags();
 
     // Perf measurement (perf sweep 2026-07): fixed A/B window sizes without a rebuild.
     // VIXEN_WINDOW_WIDTH / VIXEN_WINDOW_HEIGHT override the 500x500 default when set.

@@ -69,9 +69,6 @@ bool ResolveAccumulationReprojectionEnabled() {
 
 // ====== AccumulationConfigNodeType ======
 
-std::unique_ptr<NodeInstance> AccumulationConfigNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<AccumulationConfigNode>(n, const_cast<AccumulationConfigNodeType*>(this));
-}
 
 // ====== AccumulationConfigNode ======
 

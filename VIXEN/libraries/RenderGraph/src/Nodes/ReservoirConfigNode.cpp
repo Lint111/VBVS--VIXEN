@@ -81,9 +81,6 @@ Vixen::Gpu::ReservoirConfig MakeDefaultReservoirConfig() {
 
 // ====== ReservoirConfigNodeType ======
 
-std::unique_ptr<NodeInstance> ReservoirConfigNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<ReservoirConfigNode>(n, const_cast<ReservoirConfigNodeType*>(this));
-}
 
 // ====== ReservoirConfigNode ======
 

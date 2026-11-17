@@ -54,7 +54,7 @@ constexpr uint32_t kExtraRecipeId = 0x4c4f4144u;            // LOAD: a recipe sw
 // Copies per side for each instance tier: 1x1, 3x3, 7x7, 13x13 copies of the 13-instance scene.
 constexpr std::array<int, 4> kTierSide{{1, 3, 7, 13}};
 
-enum class Path : uint8_t { Orbit, Flythrough, FastPan, CloseUp };
+enum class Path : uint8_t { Orbit, Flythrough, FastPan, CloseUp, Overview };
 
 struct Leg {
     const char* name;
@@ -66,18 +66,24 @@ struct Leg {
     uint32_t materialEvery;     // per-frame-style material colour/param change pushed via SetBodyInstances
     uint32_t viewEvery;         // lighting preset (view) switch
     bool recipeSwap;            // register a new recipe and move instances onto it at the leg start
-    bool capture;               // hash a frame at the end of the leg
+    bool capture;               // hash a frame of the leg (its last, or captureAt)
+    int captureAt = -1;         // frame within the leg to capture; -1 = the last frame
 };
 
-// The timeline: 810 frames, about 13.5 s of the 60 fps budget (plus the recompile stalls).
-constexpr std::array<Leg, 10> kLegs{{
+// The timeline: 900 frames, about 15 s of the 60 fps budget (plus the recompile stalls). Every leg
+// starts in the day preset (midday); only the view-switch leg leaves it, and the next leg restores it.
+constexpr std::array<Leg, 11> kLegs{{
     {"warm-orbit-t0",        60, 0, Path::Orbit,      0,  0,  0, false, true },
     {"flythrough-t0",       120, 0, Path::Flythrough, 0,  0,  0, false, true },
     {"fastpan-t1",           60, 1, Path::FastPan,    0,  0,  0, false, true },
     {"view-switches-t1",     60, 1, Path::Orbit,      0,  0, 15, false, true },
     {"closeup-t2",          120, 2, Path::CloseUp,    0,  0,  0, false, true },
-    {"flythrough-t3",       120, 3, Path::Flythrough, 0,  1,  0, false, true },
-    {"fastpan-t3",           60, 3, Path::FastPan,    0,  0,  0, false, true },
+    // Tier-3 flythrough and pan are captured mid-leg: their last frames look away from the field
+    // (GB0: the tier-3 captures were a single flat colour).
+    {"flythrough-t3",       120, 3, Path::Flythrough, 0,  1,  0, false, true, 60 },
+    {"fastpan-t3",           60, 3, Path::FastPan,    0,  0,  0, false, true, 30 },
+    // GB0 (R857.2): the whole 13x13 field in frame at tier 3, slowly orbiting.
+    {"overview-orbit-t3",    90, 3, Path::Overview,   0,  0,  0, false, true },
     // Recipe legs last: each edit or swap recompiles the procedural shader, and the recompiles
     // exhaust the 32 GPU timestamp query slots, so per-pass GPU time is only valid before them.
     {"recipe-edits-t3",      90, 3, Path::Orbit,     40,  5,  0, false, true },
@@ -134,9 +140,21 @@ Pose PoseFor(Path path, int tier, uint32_t frameInLeg, uint32_t legFrames) {
         return {at(t), at(t + 0.06f) + glm::vec3(0.0f, -0.4f, 0.0f)};
     }
     case Path::FastPan: {
-        const glm::vec3 eye{kSceneCenter.x, 3.5f, kSceneCenter.z + std::max(8.0f, half * 0.5f)};
+        // Eye in the gap between four copies (copies are 10 wide on a 12 pitch), so no tier puts the
+        // camera inside an instance: from tier 1 up the old eye sat inside a copy and the pan saw one
+        // flat colour (GB0).
+        const glm::vec3 eye{kSceneCenter.x + 6.0f, 3.5f, kSceneCenter.z + 6.0f};
         const float angle = 6.28318530718f * t;   // one full turn over the leg
         return {eye, eye + glm::vec3{std::cos(angle), -0.12f, std::sin(angle)} * 10.0f};
+    }
+    case Path::Overview: {
+        // High oblique orbit far enough out that the whole field (half extent `half`, so a
+        // diagonal of about 1.41 * 2 * half) fits the 45 degree vertical field of view.
+        const float yaw = 0.015f * static_cast<float>(frameInLeg) + 0.6f;
+        const float pitch = 0.62f;
+        const float radius = half * 2.3f;
+        const glm::vec3 offset{std::cos(yaw) * std::cos(pitch), std::sin(pitch), std::sin(yaw) * std::cos(pitch)};
+        return {kSceneCenter + offset * radius, kSceneCenter};
     }
     case Path::CloseUp: {
         // Glide in to a fixed surface point of the main structure, then back out.
@@ -191,7 +209,7 @@ public:
         config.samplingPath = Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture;
         SetRenderPathConfig(config);
         timeline_.open(outputDir_ / "timeline.csv");
-        timeline_ << "frame,leg,tier,instances,event,render_ms,eye_x,eye_y,eye_z\n";
+        timeline_ << "frame,leg,tier,instances,marched,event,render_ms,eye_x,eye_y,eye_z\n";
         hashes_.open(outputDir_ / "hashes.csv");
         hashes_ << "frame,leg,file,fnv1a64\n";
         vram_.open(outputDir_ / "vram.csv");
@@ -246,6 +264,13 @@ public:
         if (inLeg == 0) {
             if (legIndex != 0) RecordVram(legIndex - 1);
             event += "leg-start;";
+            // Day lighting for every leg: the view-switch leg cycles presets and would otherwise
+            // leave the run in night-service, which renders the tier-3 captures near-black.
+            if (viewIndex_ % Lookdev::LightingPresets().size() != 0) {
+                viewIndex_ = 0;
+                ApplyLighting(viewIndex_);
+                event += "day-lighting;";
+            }
             if (leg->tier != tier_ || leg->recipeSwap) {
                 if (leg->recipeSwap && !SwapInRecipe()) return false;
                 tier_ = leg->tier;
@@ -276,16 +301,19 @@ public:
         if (!VulkanGraphApplication::Render()) return false;
         const double renderMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 
-        const bool lastOfLeg = inLeg + 1 == leg->frames;
-        if (lastOfLeg && leg->capture) {
+        const bool captureNow = leg->captureAt >= 0 ? inLeg == static_cast<uint32_t>(leg->captureAt)
+                                                    : inLeg + 1 == leg->frames;
+        if (captureNow && leg->capture) {
             const std::string file = std::string("frame-") + std::to_string(frame_) + ".png";
             const std::filesystem::path path = outputDir_ / file;
             if (!CaptureOffscreenFrameToPng(path.string(), error_)) return false;
             pendingHashes_.push_back({frame_, leg->name, file, frame_ + 3u});
             event += "capture;";
         }
-        timeline_ << frame_ << ',' << leg->name << ',' << tier_ << ',' << currentCount_ << ',' << event << ','
-                  << renderMs << ',' << pose.eye.x << ',' << pose.eye.y << ',' << pose.eye.z << '\n';
+        // `instances` is what the scenario asked for; `marched` is what the march loop iterates
+        // (stream capacity and the shader's 192 loop cap applied), read from the body node.
+        timeline_ << frame_ << ',' << leg->name << ',' << tier_ << ',' << currentCount_ << ','
+                  << MarchedBodyInstanceCount() << ',' << event << ',' << renderMs << ',' << pose.eye.x << ',' << pose.eye.y << ',' << pose.eye.z << '\n';
         if (frame_ + 1 == TotalFrames()) RecordVram(kLegs.size() - 1);
         ++frame_;
         return true;

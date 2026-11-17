@@ -21,9 +21,6 @@ const uint32_t LightTreeBufferNode::kRingSize = FrameSyncNodeConfig::MAX_FRAMES_
 
 // ====== LightTreeBufferNodeType ======
 
-std::unique_ptr<NodeInstance> LightTreeBufferNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<LightTreeBufferNode>(n, const_cast<LightTreeBufferNodeType*>(this));
-}
 
 // ====== LightTreeBufferNode ======
 

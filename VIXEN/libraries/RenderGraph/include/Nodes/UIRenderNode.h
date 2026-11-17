@@ -31,13 +31,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for rendering an RmlUi document (data-driven UI) into the swapchain.
  */
-class UIRenderNodeType : public TypedNodeType<UIRenderNodeConfig> {
+class UIRenderNode;
+
+class UIRenderNodeType : public TypedNodeType<UIRenderNodeConfig, UIRenderNode> {
 public:
     UIRenderNodeType(const std::string& typeName = "UIRender")
-        : TypedNodeType<UIRenderNodeConfig>(typeName) {}
+        : TypedNodeType<UIRenderNodeConfig, UIRenderNode>(typeName) {}
     ~UIRenderNodeType() override = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

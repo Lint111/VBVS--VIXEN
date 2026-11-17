@@ -10,13 +10,14 @@ namespace Vixen::RenderGraph {
  * @brief Node type for the per-instance model-matrix storage buffer (SSBO)
  * Type ID: 122
  */
-class InstanceBufferNodeType : public TypedNodeType<InstanceBufferNodeConfig> {
+class InstanceBufferNode;
+
+class InstanceBufferNodeType : public TypedNodeType<InstanceBufferNodeConfig, InstanceBufferNode> {
 public:
     InstanceBufferNodeType(const std::string& typeName = "InstanceBuffer")
-        : TypedNodeType<InstanceBufferNodeConfig>(typeName) {}
+        : TypedNodeType<InstanceBufferNodeConfig, InstanceBufferNode>(typeName) {}
     virtual ~InstanceBufferNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

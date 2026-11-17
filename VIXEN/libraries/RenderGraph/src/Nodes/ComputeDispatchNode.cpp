@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "FrameTrace.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/ComputeDispatchNode.h"
@@ -34,11 +36,6 @@ static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> ComputeDispatchNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<ComputeDispatchNode>(instanceName, const_cast<ComputeDispatchNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR
@@ -118,9 +115,7 @@ void ComputeDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     std::vector<VkCommandBuffer> cmdBuffers(cmdBufferCount);
     VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, cmdBuffers.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to allocate command buffers: " + std::to_string(result));
-    }
+    VK_CHECK_THROW(result, "[ComputeDispatchNode::CompileImpl] Failed to allocate command buffers: " + std::to_string(result));
 
     // Store command buffers in stateful container
     for (uint32_t i = 0; i < cmdBufferCount; ++i) {
@@ -455,9 +450,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
 
     VIXEN_FRAME_COUNT(CommandRecordings, 1);
     VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
-    }
+    VK_CHECK_THROW(result, "[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
 
     tiles_.OpenFirst(cmdBuffer);
 
@@ -561,9 +554,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
 
     // End command buffer
     result = vkEndCommandBuffer(cmdBuffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
-    }
+    VK_CHECK_THROW(result, "[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
 
     NODE_LOG_DEBUG("[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " + std::to_string(imageIndex));
     return tiles_.Commands();

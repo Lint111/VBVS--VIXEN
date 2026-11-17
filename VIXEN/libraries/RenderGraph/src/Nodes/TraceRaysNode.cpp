@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/Common/GpuDeviceClass.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/TraceRaysNode.h"
@@ -21,13 +23,6 @@ namespace Vixen::RenderGraph {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> TraceRaysNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::unique_ptr<NodeInstance>(
-        new TraceRaysNode(instanceName, const_cast<TraceRaysNodeType*>(this))
-    );
-}
 
 // ============================================================================
 // TRACE RAYS NODE IMPLEMENTATION
@@ -290,8 +285,7 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         allocation.commandPool = commandPool_;
         allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocation.commandBufferCount = static_cast<uint32_t>(allocated.size());
-        if (vkAllocateCommandBuffers(device, &allocation, allocated.data()) != VK_SUCCESS)
-            throw std::runtime_error("TraceRaysNode: tile command allocation failed");
+        VK_CHECK_THROW(vkAllocateCommandBuffers(device, &allocation, allocated.data()), "TraceRaysNode: tile command allocation failed");
         extra.insert(extra.end(), allocated.begin(), allocated.end());
     }
     std::vector<VkCommandBuffer> recorded{cmdBuffer};
@@ -317,9 +311,7 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     beginInfo.flags = 0;  // Match ComputeDispatchNode - no ONE_TIME_SUBMIT
 
     VkResult beginResult = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    if (beginResult != VK_SUCCESS) {
-        throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to begin command buffer: " + std::to_string(beginResult));
-    }
+    VK_CHECK_THROW(beginResult, "[TraceRaysNode::ExecuteImpl] Failed to begin command buffer: " + std::to_string(beginResult));
 
     query.ResetQueries(cmdBuffer, 0);
     query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
@@ -431,11 +423,9 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
                 query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, tile * 4 + 2);
                 if (++tile != count) {
                     query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, tile * 4 - 1);
-                    if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS)
-                        throw std::runtime_error("TraceRaysNode: ending tile commands failed");
+                    VK_CHECK_THROW(vkEndCommandBuffer(cmdBuffer), "TraceRaysNode: ending tile commands failed");
                     cmdBuffer = recorded[tile];
-                    if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
-                        throw std::runtime_error("TraceRaysNode: beginning tile commands failed");
+                    VK_CHECK_THROW(vkBeginCommandBuffer(cmdBuffer, &beginInfo), "TraceRaysNode: beginning tile commands failed");
                     query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, tile * 4);
                 }
             }
@@ -467,9 +457,7 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     swapchainInfo->SetImageLayout(imageIndex, barrier.newLayout);
     query.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, count * 4 - 1);
     VkResult endResult = vkEndCommandBuffer(cmdBuffer);
-    if (endResult != VK_SUCCESS) {
-        throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to end command buffer: " + std::to_string(endResult));
-    }
+    VK_CHECK_THROW(endResult, "[TraceRaysNode::ExecuteImpl] Failed to end command buffer: " + std::to_string(endResult));
 
     // Existing typed submit channel consumes acquire once and signals completion once.
     std::vector<VkCommandBufferSubmitInfo> commands;

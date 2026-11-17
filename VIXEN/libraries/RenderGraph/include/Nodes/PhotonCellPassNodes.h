@@ -23,12 +23,13 @@ struct PhotonCellMemberInfo {
     const char* const* features;
 };
 
-class PhotonCellDepositNodeType : public TypedNodeType<ComputeStageNodeConfig> {
+class PhotonCellDepositNode;
+
+class PhotonCellDepositNodeType : public TypedNodeType<ComputeStageNodeConfig, PhotonCellDepositNode> {
 public:
     explicit PhotonCellDepositNodeType(const std::string& typeName = "PhotonCellDeposit")
-        : TypedNodeType<ComputeStageNodeConfig>(typeName) {}
+        : TypedNodeType<ComputeStageNodeConfig, PhotonCellDepositNode>(typeName) {}
     ~PhotonCellDepositNodeType() override = default;
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 class PhotonCellDepositNode : public ComputeStageNode {
@@ -49,12 +50,13 @@ public:
     void RegisterShader(ShaderLibraryNode& shaderLibrary) const;
 };
 
-class PhotonCellFoldNodeType : public TypedNodeType<ComputeStageNodeConfig> {
+class PhotonCellFoldNode;
+
+class PhotonCellFoldNodeType : public TypedNodeType<ComputeStageNodeConfig, PhotonCellFoldNode> {
 public:
     explicit PhotonCellFoldNodeType(const std::string& typeName = "PhotonCellFold")
-        : TypedNodeType<ComputeStageNodeConfig>(typeName) {}
+        : TypedNodeType<ComputeStageNodeConfig, PhotonCellFoldNode>(typeName) {}
     ~PhotonCellFoldNodeType() override = default;
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 class PhotonCellFoldNode : public ComputeStageNode {
@@ -71,12 +73,13 @@ public:
     void RegisterShader(ShaderLibraryNode& shaderLibrary) const;
 };
 
-class PhotonCellClearNodeType : public TypedNodeType<ComputeStageNodeConfig> {
+class PhotonCellClearNode;
+
+class PhotonCellClearNodeType : public TypedNodeType<ComputeStageNodeConfig, PhotonCellClearNode> {
 public:
     explicit PhotonCellClearNodeType(const std::string& typeName = "PhotonCellClear")
-        : TypedNodeType<ComputeStageNodeConfig>(typeName) {}
+        : TypedNodeType<ComputeStageNodeConfig, PhotonCellClearNode>(typeName) {}
     ~PhotonCellClearNodeType() override = default;
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 class PhotonCellClearNode : public ComputeStageNode {

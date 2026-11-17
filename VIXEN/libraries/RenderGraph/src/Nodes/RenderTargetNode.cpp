@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/RenderTargetNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -37,9 +39,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== RenderTargetNodeType ======
 
-std::unique_ptr<NodeInstance> RenderTargetNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<RenderTargetNode>(n, const_cast<RenderTargetNodeType*>(this));
-}
 
 // ====== RenderTargetNode ======
 
@@ -180,9 +179,7 @@ void RenderTargetNode::CreateTarget(VulkanDevice* device) {
         imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
         imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        if (vkCreateImage(vkDevice, &imgInfo, nullptr, &b.image) != VK_SUCCESS) {
-            throw std::runtime_error("[RenderTargetNode] vkCreateImage failed");
-        }
+        VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &b.image), "[RenderTargetNode] vkCreateImage failed");
 
         // --- Allocate device-local memory via FindMemoryType (real, not a placeholder) ---
         VkMemoryRequirements req{};
@@ -221,9 +218,7 @@ void RenderTargetNode::CreateTarget(VulkanDevice* device) {
         viewInfo.format           = format_;
         viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-        if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &b.view) != VK_SUCCESS) {
-            throw std::runtime_error("[RenderTargetNode] vkCreateImageView failed");
-        }
+        VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &b.view), "[RenderTargetNode] vkCreateImageView failed");
     }
 
     NODE_LOG_INFO("[RenderTargetNode] Created " + std::to_string(imageCount_) +

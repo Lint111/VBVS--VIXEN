@@ -812,8 +812,22 @@ endif()
 # silently skipped where either is absent (a plain MSVC shell) — run it from WSL/CI there.
 option(VIXEN_NO_NEW_MUTEX_GATE "Check changed sources for undeclared mutex declarations" ON)
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-if(VIXEN_NO_NEW_MUTEX_GATE)
+# Windows installs a WSL `bash.exe` alias under WindowsApps before Git Bash on PATH.  That
+# alias cannot consume the native `C:/...` paths passed by Ninja, so prefer Git Bash for the
+# source-only gates when it is installed; WSL/CI keeps the ordinary PATH lookup.
+if(WIN32)
+    find_program(_VIXEN_GIT_BASH NAMES bash
+        PATHS "C:/Program Files/Git/bin" "C:/Program Files/Git/usr/bin"
+        NO_DEFAULT_PATH)
+    if(_VIXEN_GIT_BASH)
+        set(VIXEN_GATE_BASH "${_VIXEN_GIT_BASH}" CACHE FILEPATH "Bash launcher for source-only gates" FORCE)
+    else()
+        find_program(VIXEN_GATE_BASH NAMES bash)
+    endif()
+else()
     find_program(VIXEN_GATE_BASH NAMES bash)
+endif()
+if(VIXEN_NO_NEW_MUTEX_GATE)
     find_program(VIXEN_GATE_PYTHON3 NAMES python3)
     if(VIXEN_GATE_BASH AND VIXEN_GATE_PYTHON3)
         set(_mutex_inputs)
@@ -833,6 +847,22 @@ if(VIXEN_NO_NEW_MUTEX_GATE)
             VERBATIM)
     else()
         message(STATUS "no-new-mutex gate skipped: bash/python3 not found (run scripts/check-no-new-mutex.sh from WSL/CI)")
+    endif()
+endif()
+
+# Keep the tracked Python tooling surface on the R878 shrink ratchet.  This is a source-only
+# check, so it remains useful on the WSL/CI side even when native C++ targets are unavailable.
+option(VIXEN_PYTHON_LINES_GATE "Reject growth of tracked Python tooling" ON)
+if(VIXEN_PYTHON_LINES_GATE)
+    if(VIXEN_GATE_BASH AND EXISTS "${VIXEN_ROOT}/tools/check-python-lines.sh")
+        vixen_add_checked_target(python_lines_check ALL
+            COMMAND ${VIXEN_GATE_BASH} "${VIXEN_ROOT}/tools/check-python-lines.sh"
+                    --root "${CMAKE_CURRENT_SOURCE_DIR}/.."
+            DEPENDS "${VIXEN_ROOT}/tools/check-python-lines.sh"
+            COMMENT "tracked Python line ratchet (tools/check-python-lines.sh)"
+            VERBATIM)
+    else()
+        message(STATUS "Python line ratchet skipped: bash or tools/check-python-lines.sh not found")
     endif()
 endif()
 

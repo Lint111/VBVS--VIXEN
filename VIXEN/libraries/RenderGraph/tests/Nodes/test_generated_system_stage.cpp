@@ -106,6 +106,19 @@ TEST(GeneratedSystemStage, ManifestArgumentsCarrySchemaIdentityNotNames) {
     EXPECT_TRUE(system.arguments[2].write);
 }
 
+TEST(GeneratedSystemStage, GeneratedStorageInputsHaveAReadHazardGatherer) {
+    NodeTypeRegistry types;
+    RegisterAllNodes(types);
+    RenderGraph graph(&types);
+
+    GeneratedSystemStages systems;
+    systems.Instantiate(&graph, GpuSystemManifest::Parse(kManifest));
+
+    ASSERT_EQ(systems.Stages().size(), 1u);
+    EXPECT_EQ(systems.Stages()[0].bufferReadCount, 1u);
+    EXPECT_EQ(systems.Stages()[0].bufferWriteCount, 0u);
+}
+
 TEST(GeneratedSystemStage, AnArgumentWithoutSchemaIdentityIsRejected) {
     std::string manifest = kManifest;
     manifest.replace(manifest.find("\"Fixture.Meter\""), std::string("\"Fixture.Meter\"").size(), "\"\"");

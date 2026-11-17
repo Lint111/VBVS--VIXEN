@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "error/VulkanError.h"
 #include "PipelineLayoutCacher.h"
 #include "CacheKeyHasher.h"
 #include "VulkanDevice.h"
@@ -49,9 +50,7 @@ std::shared_ptr<PipelineLayoutWrapper> PipelineLayoutCacher::Create(const Pipeli
         &wrapper->layout
     );
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("PipelineLayoutCacher: Failed to create pipeline layout");
-    }
+    VK_CHECK_THROW(result, "PipelineLayoutCacher: Failed to create pipeline layout");
 
     LOG_DEBUG("Created VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->layout)));
 

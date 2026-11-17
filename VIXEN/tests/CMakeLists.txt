@@ -20,6 +20,20 @@ vixen_schedule_runtime_dlls_for_current_directory()
 # Include Google Test helpers (provided by FetchContent in the top-level CMake)
 include(GoogleTest OPTIONAL)
 
+# Keep platform-specific contract tests out of configurations that cannot provide the contract.
+# The declaration carries the reason for the scope; registration is derived by this one rule rather
+# than by a separate CTest exclusion list.
+function(vixen_add_test name)
+    cmake_parse_arguments(PARSE_ARGV 1 VAT "UNIX_ONLY" "" "COMMAND;LABELS")
+    if(VAT_UNIX_ONLY AND NOT UNIX)
+        return()
+    endif()
+    add_test(NAME "${name}" COMMAND ${VAT_COMMAND})
+    if(VAT_LABELS)
+        set_tests_properties("${name}" PROPERTIES LABELS "${VAT_LABELS}")
+    endif()
+endfunction()
+
 add_test(NAME Codegen.LauncherArguments
     COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_codegen_launcher_args.cmake")
 set_tests_properties(Codegen.LauncherArguments PROPERTIES LABELS "Codegen;cpu")
@@ -28,6 +42,11 @@ add_test(NAME Codegen.StageGpuSchemaSource
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_STAGE_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/stage-gpu-schema-source"
             -P "${VIXEN_ROOT}/cmake/tests/test_stage_gpu_schema_source.cmake")
 set_tests_properties(Codegen.StageGpuSchemaSource PROPERTIES LABELS "Codegen;cpu")
+
+add_test(NAME Native.NoReleaseDisabledAssertions
+    COMMAND "${CMAKE_COMMAND}" "-DVIXEN_ASSERT_SCAN_ROOT=${VIXEN_ROOT}"
+            -P "${VIXEN_ROOT}/cmake/tests/test_native_assertions.cmake")
+set_tests_properties(Native.NoReleaseDisabledAssertions PROPERTIES LABELS "cpu")
 
 add_test(NAME Native.WslDozenHostGate
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_DOZEN_GATE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/wsl-dozen-host-gate"
@@ -45,23 +64,23 @@ add_test(NAME Native.WindowsGitTrust
             -P "${VIXEN_ROOT}/cmake/tests/test_windows_git_trust.cmake")
 set_tests_properties(Native.WindowsGitTrust PROPERTIES LABELS "cpu")
 
-add_test(NAME Provision.GdbDependencyPackages
-    COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_gdb_dependency_packages.cmake")
-set_tests_properties(Provision.GdbDependencyPackages PROPERTIES LABELS "cpu")
+vixen_add_test(Provision.GdbDependencyPackages UNIX_ONLY
+    COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_gdb_dependency_packages.cmake"
+    LABELS "cpu")
 
-add_test(NAME Provision.GpuEnvironmentScript
+vixen_add_test(Provision.GpuEnvironmentScript UNIX_ONLY
     COMMAND "${CMAKE_COMMAND}" "-DCMAKE_CURRENT_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
-            -P "${VIXEN_ROOT}/cmake/tests/test_gpu_environment_script.cmake")
-set_tests_properties(Provision.GpuEnvironmentScript PROPERTIES LABELS "cpu")
+            -P "${VIXEN_ROOT}/cmake/tests/test_gpu_environment_script.cmake"
+    LABELS "cpu")
 add_test(NAME Provision.VulkanNotFoundMessage
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SMOKE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/vulkan-not-found"
             -P "${VIXEN_ROOT}/cmake/tests/test_vulkan_not_found_message.cmake")
 set_tests_properties(Provision.VulkanNotFoundMessage PROPERTIES LABELS "cpu")
-add_test(NAME Provision.WindowingFailure
+vixen_add_test(Provision.WindowingFailure UNIX_ONLY
     COMMAND "${CMAKE_COMMAND}"
             "-DVIXEN_WINDOWING_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/windowing-provisioning"
-            -P "${VIXEN_ROOT}/cmake/tests/test_windowing_provisioning.cmake")
-set_tests_properties(Provision.WindowingFailure PROPERTIES LABELS "cpu")
+            -P "${VIXEN_ROOT}/cmake/tests/test_windowing_provisioning.cmake"
+    LABELS "cpu")
 
 add_test(NAME Native.KernelPinOverride
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_PIN_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-pin-override"

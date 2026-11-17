@@ -24,15 +24,14 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 109
  */
-class GeometryRenderNodeType : public TypedNodeType<GeometryRenderNodeConfig> {
+class GeometryRenderNode;
+
+class GeometryRenderNodeType : public TypedNodeType<GeometryRenderNodeConfig, GeometryRenderNode> {
 public:
     GeometryRenderNodeType(const std::string& typeName = "GeometryRender")
-        : TypedNodeType<GeometryRenderNodeConfig>(typeName) {}
+        : TypedNodeType<GeometryRenderNodeConfig, GeometryRenderNode>(typeName) {}
     virtual ~GeometryRenderNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**
@@ -122,4 +121,3 @@ public:
 };
 
 } // namespace Vixen::RenderGraph
-

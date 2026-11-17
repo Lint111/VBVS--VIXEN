@@ -97,9 +97,6 @@ std::unordered_map<GLFWwindow*, Vixen::RenderGraph::InputNode*>& WindowToInputNo
 
 // ====== InputNodeType ======
 
-std::unique_ptr<NodeInstance> InputNodeType::CreateInstance(const std::string& instanceName) const {
-    return std::make_unique<InputNode>(instanceName, const_cast<InputNodeType*>(this));
-}
 
 // ====== InputNode ======
 

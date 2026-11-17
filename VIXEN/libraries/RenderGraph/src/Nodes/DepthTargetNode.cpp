@@ -1,3 +1,6 @@
+#include "error/VulkanError.h"
+#include "Nodes/Common/SwapchainBarriers.h"
+
 // Copyright (C) 2026 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Raster-proxy B1 M4: depth ping-pong pair for the occlusion probe — march writes
 // [frame&1], HiZ reduce reads [(frame+1)&1]; no sync edges by construction
@@ -35,9 +38,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== DepthTargetNodeType ======
 
-std::unique_ptr<NodeInstance> DepthTargetNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<DepthTargetNode>(n, const_cast<DepthTargetNodeType*>(this));
-}
 
 // ====== DepthTargetNode ======
 
@@ -122,9 +122,7 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
         imgInfo.usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
         imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        if (vkCreateImage(vkDevice, &imgInfo, nullptr, &images_[slot]) != VK_SUCCESS) {
-            throw std::runtime_error("[DepthTargetNode] vkCreateImage failed");
-        }
+        VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &images_[slot]), "[DepthTargetNode] vkCreateImage failed");
 
         VkMemoryRequirements req{};
         vkGetImageMemoryRequirements(vkDevice, images_[slot], &req);
@@ -147,71 +145,53 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
         viewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.format           = kFormat;
         viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &views_[slot]) != VK_SUCCESS) {
-            throw std::runtime_error("[DepthTargetNode] vkCreateImageView failed");
-        }
+        VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &views_[slot]), "[DepthTargetNode] vkCreateImageView failed");
     }
 
     // One-shot: UNDEFINED -> TRANSFER_DST, clear both slots to the miss sentinel,
     // then -> GENERAL (storage images stay GENERAL across dispatches). Frame-0
     // validity: the reduce sees "sky everywhere" and the cull skips nothing.
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool        = commandPool;
-    allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[DepthTargetNode] vkAllocateCommandBuffers (clear) failed");
-    }
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[DepthTargetNode] vkBeginCommandBuffer (clear) failed");
-    }
+    SwapchainBarriers::RecordAndSubmitOneShot(
+        vkDevice, commandPool,
+        [&](VkCommandBuffer cmd) {
+            VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            for (uint32_t slot = 0; slot < 2u; ++slot) {
+                VkImageMemoryBarrier toDst{};
+                toDst.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                toDst.srcAccessMask       = 0;
+                toDst.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+                toDst.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+                toDst.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                toDst.image               = images_[slot];
+                toDst.subresourceRange    = range;
+                vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     0, 0, nullptr, 0, nullptr, 1, &toDst);
 
-    VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    for (uint32_t slot = 0; slot < 2u; ++slot) {
-        VkImageMemoryBarrier toDst{};
-        toDst.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        toDst.srcAccessMask       = 0;
-        toDst.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-        toDst.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
-        toDst.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toDst.image               = images_[slot];
-        toDst.subresourceRange    = range;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &toDst);
+                VkClearColorValue sentinel{};
+                sentinel.float32[0] = kMissSentinel;
+                vkCmdClearColorImage(cmd, images_[slot], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                     &sentinel, 1, &range);
 
-        VkClearColorValue sentinel{};
-        sentinel.float32[0] = kMissSentinel;
-        vkCmdClearColorImage(cmd, images_[slot], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             &sentinel, 1, &range);
-
-        VkImageMemoryBarrier toGeneral = toDst;
-        toGeneral.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        toGeneral.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
-        toGeneral.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        toGeneral.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &toGeneral);
-    }
-
-    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[DepthTargetNode] vkEndCommandBuffer (clear) failed");
-    }
-
-    // R715: the one-shot rides the graph's submission stream (queue order and its barrier
-    // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
-    // so there is no submit-then-wait-idle here.
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[DepthTargetNode] queue-owner clear submit failed");
-    }
+                VkImageMemoryBarrier toGeneral = toDst;
+                toGeneral.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                toGeneral.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+                toGeneral.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                toGeneral.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+                vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     0, 0, nullptr, 0, nullptr, 1, &toGeneral);
+            }
+        },
+        [&](VkCommandBuffer cmd) {
+            // R715: the one-shot rides the graph's submission stream; queue order and its barrier
+            // order it before every later submit, with retirement handled by the graph owner.
+            return GetOwningGraph()->SubmitOneShot(this, commandPool, cmd);
+        },
+        "[DepthTargetNode] vkAllocateCommandBuffers (clear) failed",
+        "[DepthTargetNode] vkBeginCommandBuffer (clear) failed",
+        "[DepthTargetNode] vkEndCommandBuffer (clear) failed",
+        "[DepthTargetNode] queue-owner clear submit failed");
 
     NODE_LOG_INFO("[DepthTargetNode] Created R32_SFLOAT ping-pong pair at " +
                   std::to_string(width_) + "x" + std::to_string(height_) +

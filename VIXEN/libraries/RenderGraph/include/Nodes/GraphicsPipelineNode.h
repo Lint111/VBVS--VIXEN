@@ -27,15 +27,14 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 108
  */
-class GraphicsPipelineNodeType : public TypedNodeType<GraphicsPipelineNodeConfig> {
+class GraphicsPipelineNode;
+
+class GraphicsPipelineNodeType : public TypedNodeType<GraphicsPipelineNodeConfig, GraphicsPipelineNode> {
 public:
     GraphicsPipelineNodeType(const std::string& typeName = "GraphicsPipeline")
-        : TypedNodeType<GraphicsPipelineNodeConfig>(typeName) {}
+        : TypedNodeType<GraphicsPipelineNodeConfig, GraphicsPipelineNode>(typeName) {}
     virtual ~GraphicsPipelineNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

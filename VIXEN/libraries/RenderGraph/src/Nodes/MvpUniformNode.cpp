@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/MvpUniformNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -33,9 +35,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== MvpUniformNodeType ======
 
-std::unique_ptr<NodeInstance> MvpUniformNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<MvpUniformNode>(n, const_cast<MvpUniformNodeType*>(this));
-}
 
 // ====== MvpUniformNode ======
 
@@ -101,9 +100,7 @@ void MvpUniformNode::CreateBuffer(VulkanDevice* device) {
     bufferInfo.usage       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer_) != VK_SUCCESS) {
-        throw std::runtime_error("[MvpUniformNode] vkCreateBuffer failed");
-    }
+    VK_CHECK_THROW(vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer_), "[MvpUniformNode] vkCreateBuffer failed");
 
     // --- Allocate host-visible / host-coherent memory via real memory-type selection ---
     VkMemoryRequirements req{};
@@ -143,9 +140,7 @@ void MvpUniformNode::CreateBuffer(VulkanDevice* device) {
     glm::mat4 mvp  = proj * view;
 
     void* mapped = nullptr;
-    if (vkMapMemory(vkDevice, memory_, 0, bufferSize, 0, &mapped) != VK_SUCCESS) {
-        throw std::runtime_error("[MvpUniformNode] vkMapMemory failed");
-    }
+    VK_CHECK_THROW(vkMapMemory(vkDevice, memory_, 0, bufferSize, 0, &mapped), "[MvpUniformNode] vkMapMemory failed");
     std::memcpy(mapped, &mvp, sizeof(glm::mat4));
     vkUnmapMemory(vkDevice, memory_);
 

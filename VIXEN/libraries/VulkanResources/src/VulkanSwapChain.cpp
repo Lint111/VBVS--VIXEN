@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "VulkanSwapChain.h"
 
 #include <algorithm>  // std::clamp for the surface-capability extent clamp
@@ -470,9 +472,7 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device, VkSwapchainKHR
     // this succeeds, so a failed recreation doesn't leave us without any swapchain at all.
     VkSwapchainKHR newSwapchain = VK_NULL_HANDLE;
     result = fpCreateSwapchainKHR(device, &scInfo, nullptr, &newSwapchain);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpCreateSwapchainKHR failed: ") + std::to_string(static_cast<int>(result)));
-    }
+    VK_CHECK_THROW(result, std::string("VulkanSwapChain::CreateSwapChainColorImages - fpCreateSwapchainKHR failed: ") + std::to_string(static_cast<int>(result)));
 
     if (oldSwapchain != VK_NULL_HANDLE && fpDestroySwapchainKHR) {
         fpDestroySwapchainKHR(device, oldSwapchain, nullptr);
@@ -486,9 +486,7 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device, VkSwapchainKHR
 
     // Get the number of swapchain images
     result = fpGetSwapchainImagesKHR(device, scPublicVars.swapChain, &scPublicVars.swapChainImageCount, nullptr);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpGetSwapchainImagesKHR failed (count): ") + std::to_string(static_cast<int>(result)));
-    }
+    VK_CHECK_THROW(result, std::string("VulkanSwapChain::CreateSwapChainColorImages - fpGetSwapchainImagesKHR failed (count): ") + std::to_string(static_cast<int>(result)));
 
     scPrivateVars.swapChainImages.clear();
     scPrivateVars.swapChainImages.resize(scPublicVars.swapChainImageCount);
@@ -498,9 +496,7 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device, VkSwapchainKHR
 
     // Retrieve the swapchain image surfaces
     result = fpGetSwapchainImagesKHR(device, scPublicVars.swapChain, &scPublicVars.swapChainImageCount, scPrivateVars.swapChainImages.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpGetSwapchainImagesKHR failed: ") + std::to_string(static_cast<int>(result)));
-    }
+    VK_CHECK_THROW(result, std::string("VulkanSwapChain::CreateSwapChainColorImages - fpGetSwapchainImagesKHR failed: ") + std::to_string(static_cast<int>(result)));
 }
 
 void VulkanSwapChain::SetImageUsageFlags(VkImageUsageFlags flags) {

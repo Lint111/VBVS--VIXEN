@@ -8,11 +8,12 @@
 
 namespace Vixen::RenderGraph {
 
-class ProxyRasterStageNodeType : public TypedNodeType<ProxyRasterStageNodeConfig> {
+class ProxyRasterStageNode;
+
+class ProxyRasterStageNodeType : public TypedNodeType<ProxyRasterStageNodeConfig, ProxyRasterStageNode> {
 public:
     explicit ProxyRasterStageNodeType(const std::string& typeName = "ProxyRasterStage")
-        : TypedNodeType<ProxyRasterStageNodeConfig>(typeName) {}
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
+        : TypedNodeType<ProxyRasterStageNodeConfig, ProxyRasterStageNode>(typeName) {}
 };
 
 class ProxyRasterStageNode : public TypedNode<ProxyRasterStageNodeConfig> {

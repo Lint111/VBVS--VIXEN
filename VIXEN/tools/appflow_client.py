@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Small synchronous client for an editor-owned AppFlow JSON-lines session."""
+"""Thin compatibility adapter for the kernel CodegenTool AppFlow transport."""
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
-import socket
+import secrets
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -14,16 +16,49 @@ class AppFlowError(RuntimeError):
     pass
 
 
+def _kernel_root() -> Path:
+    configured = os.environ.get("YEROKET_KERNEL_ROOT") or os.environ.get("YEROKET_ROOT")
+    candidates = [Path(configured)] if configured else []
+    candidates.extend(Path.home() / path for path in ("projects/Yeroket-Fantasy", "Github/Yeroket-Fantasy"))
+    for candidate in candidates:
+        if candidate and (candidate / "Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj").is_file():
+            return candidate
+    raise AppFlowError("set YEROKET_KERNEL_ROOT or YEROKET_ROOT to a Yeroket checkout with CodegenTool~")
+
+
 class AppFlowClient:
+    """Preserve the Python API while the socket protocol lives in C#.
+
+    One C# process is kept for the lifetime of this client, so editor witnesses
+    do not pay a dotnet startup for every AppFlow request.
+    """
+
     def __init__(self, descriptor: str | os.PathLike[str], timeout: float = 45.0):
         self.descriptor_path = Path(descriptor)
         self.timeout = timeout
+        root = _kernel_root()
+        dotnet = os.environ.get("YEROKET_DOTNET", "dotnet")
+        dll = os.environ.get("YEROKET_CODEGEN_TOOL_DLL")
+        if dll and Path(dll).is_file():
+            command = [dotnet, "exec", dll]
+        else:
+            project = root / "Packages/com.yeroket.utility.kernel-framework/CodegenTool~/CodegenTool.csproj"
+            command = [dotnet, "run", "--project", str(project), "-c", "Release", "-v:q"]
+        command.extend(["--", "--appflow-client-stdio", "--descriptor", str(self.descriptor_path),
+                        "--timeout-ms", str(max(1, int(timeout * 1000)))])
         try:
-            self.descriptor = json.loads(self.descriptor_path.read_text(encoding="utf-8"))
+            self._process = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                bufsize=1,
+            )
         except OSError as exc:
-            raise AppFlowError(f"cannot read AppFlow descriptor {self.descriptor_path}: {exc}") from exc
-        if self.descriptor.get("protocol") != "vixen-appflow-jsonl/1":
-            raise AppFlowError("unsupported AppFlow channel descriptor")
+            raise AppFlowError(f"cannot start C# AppFlow transport: {exc}") from exc
+        atexit.register(self.close)
 
     @classmethod
     def from_environment(cls, timeout: float = 45.0) -> "AppFlowClient":
@@ -33,30 +68,27 @@ class AppFlowClient:
         return cls(path, timeout)
 
     def call(self, method: str, params: dict[str, Any] | None = None, *, request_id: Any = None) -> dict[str, Any]:
+        if self._process.stdin is None or self._process.stdout is None:
+            raise AppFlowError("C# AppFlow transport has no stdio channel")
         request = {
-            "id": request_id if request_id is not None else f"py-{id(self):x}-{os.urandom(4).hex()}",
-            "token": self.descriptor["token"],
+            "id": request_id if request_id is not None else f"py-{id(self):x}-{secrets.token_hex(4)}",
             "method": method,
             "params": params or {},
         }
-        payload = (json.dumps(request, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
-        with socket.create_connection(
-            (self.descriptor["host"], int(self.descriptor["port"])), timeout=self.timeout
-        ) as connection:
-            connection.settimeout(self.timeout)
-            connection.sendall(payload)
-            response = bytearray()
-            while b"\n" not in response:
-                chunk = connection.recv(1024 * 1024)
-                if not chunk:
-                    raise AppFlowError("editor closed the AppFlow channel before replying")
-                response.extend(chunk)
-                if len(response) > 128 * 1024 * 1024:
-                    raise AppFlowError("AppFlow response exceeds 128 MiB")
         try:
-            envelope = json.loads(bytes(response).split(b"\n", 1)[0])
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise AppFlowError(f"invalid AppFlow response: {exc}") from exc
+            self._process.stdin.write(json.dumps(request, separators=(",", ":"), ensure_ascii=False) + "\n")
+            self._process.stdin.flush()
+            while True:
+                line = self._process.stdout.readline()
+                if not line:
+                    raise AppFlowError(f"C# AppFlow transport exited with code {self._process.poll()}")
+                try:
+                    envelope = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                break
+        except (OSError, ValueError) as exc:
+            raise AppFlowError(f"AppFlow transport failed: {exc}") from exc
         if not envelope.get("ok"):
             raise AppFlowError(envelope.get("error", "unknown AppFlow error"))
         return envelope["result"]
@@ -74,11 +106,10 @@ class AppFlowClient:
         return self.call("appflow.subscribe", {"after": after})
 
     def await_frame(self, *, action_id: str | int | None = None, after_frame: int | None = None) -> dict[str, Any]:
-        params: dict[str, Any] = {}
         if action_id is not None:
-            params["actionId"] = action_id
+            params = {"actionId": action_id}
         elif after_frame is not None:
-            params["afterFrame"] = after_frame
+            params = {"afterFrame": after_frame}
         else:
             raise ValueError("provide action_id or after_frame")
         return self.call("appflow.await_frame", params)
@@ -86,16 +117,9 @@ class AppFlowClient:
     def wait_recipe_preview(self, serial: int, timeout_ms: int = 30000) -> dict[str, Any]:
         return self.call("appflow.wait_recipe_preview", {"serial": serial, "timeoutMs": timeout_ms})
 
-    def readback(
-        self,
-        selection: dict[str, Any],
-        *,
-        format: str = "png",
-        action_id: str | int | None = None,
-        frame: int | None = None,
-        recipe_preview_serial: int | None = None,
-        timeout_ms: int = 30000,
-    ) -> dict[str, Any]:
+    def readback(self, selection: dict[str, Any], *, format: str = "png", action_id: str | int | None = None,
+                 frame: int | None = None, recipe_preview_serial: int | None = None,
+                 timeout_ms: int = 30000) -> dict[str, Any]:
         params: dict[str, Any] = {"selection": selection, "format": format, "timeoutMs": timeout_ms}
         if action_id is not None:
             params["actionId"] = action_id
@@ -106,28 +130,16 @@ class AppFlowClient:
         return self.call("appflow.readback", params)
 
     def input(self, **event: Any) -> dict[str, Any]:
-        """Queue scripted input on the app's real input path (the one GLFW callbacks use).
-
-        input(kind="text", text="1.5"); input(kind="key", key="Enter", action="tap", mods=["Ctrl"]);
-        input(kind="pointer", x=120, y=80, action="click", button="left"). Takes effect on the next frame.
-        """
         return self.call("appflow.input", event)
 
     def ui_reload(self, panel: str | None = None, *, readback: dict[str, Any] | None = None,
                   request_id: Any = None) -> dict[str, Any]:
-        """Force the live reload of the UI documents now (R468); `panel` is a declared dock panel id, none = all.
-
-        Returns {ok, files: [{file, ok, error?: {line, column, message}}], frame}. The request id then works as an
-        `actionId` for await_frame / readback: the first presented frame that contains the reloaded document.
-        With `readback` (a {"selection": ...} spec) the reply also carries that frame's pixels, like dispatch.
-        """
         params: dict[str, Any] = {} if panel is None else {"panel": panel}
         if readback is not None:
             params["readback"] = readback
         return self.call("ui.reload", params, request_id=request_id)
 
     def appflow_reload(self) -> dict[str, Any]:
-        """Force the AppFlow artifact (.appflow data) reload the mtime poll would do; same result shape as ui_reload."""
         return self.call("appflow.reload")
 
     def quit(self) -> dict[str, Any]:
@@ -150,3 +162,12 @@ class AppFlowClient:
 
     def step(self, ticks: int = 1) -> dict[str, Any]:
         return self.call("appflow.step", {"ticks": ticks})
+
+    def close(self) -> None:
+        process = getattr(self, "_process", None)
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()

@@ -15,9 +15,6 @@ using namespace Vixen::Vulkan::Resources;
 
 const uint32_t MiningBeamBufferNode::kRingSize = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
-std::unique_ptr<NodeInstance> MiningBeamBufferNodeType::CreateInstance(const std::string& name) const {
-    return std::make_unique<MiningBeamBufferNode>(name, const_cast<MiningBeamBufferNodeType*>(this));
-}
 
 MiningBeamBufferNode::MiningBeamBufferNode(const std::string& name, NodeType* type)
     : TypedNode<MiningBeamBufferNodeConfig>(name, type) {}

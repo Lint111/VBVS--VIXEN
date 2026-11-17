@@ -20,12 +20,14 @@
 #include "Connection/ConnectionModifier.h"
 #include "Nodes/SdiStageSynthesis.h"
 #include "Nodes/ComputeStageNode.h"
+#include "Nodes/BufferSyncGathererNode.h"
 #include "Nodes/ImageSyncGathererNode.h"
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/AccumulationHistoryNode.h"
 #include "Nodes/RenderTargetNode.h"
 #include "Nodes/SamplerNode.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"
+#include "Data/Nodes/BufferSyncGathererNodeConfig.h"
 #include "Data/Nodes/ImageSyncGathererNodeConfig.h"
 
 #include <nlohmann/json.hpp>
@@ -272,7 +274,7 @@ public:
     /// A sub-graph's output view and render target for an identity the systems only read
     /// (the reconstruction motion module's motion vectors).
     void ProvideSubGraph(const SchemaIdentity& identity, const SubGraphHandle& group, uint32_t viewPort,
-                         uint32_t imagePort, SlotRole roles) {
+                         uint32_t imagePort, SlotRole roles, FrameSlot which = FrameSlot::Current) {
         const auto resolve = [&](uint32_t port) {
             const auto resolved = group.ResolveOutput(port);
             if (!resolved) {
@@ -283,11 +285,11 @@ public:
         };
         const auto [view, viewOutput] = resolve(viewPort);
         const auto [image, imageOutput] = resolve(imagePort);
-        descriptors_[{identity, FrameSlot::Current}] =
+        descriptors_[{identity, which}] =
             [view, viewOutput, roles](ConnectionBatch& batch, NodeHandle target, uint32_t binding, VkDescriptorType) {
                 batch.ConnectResolvedOutput(view, viewOutput, target, binding, roles);
             };
-        images_[{identity, FrameSlot::Current}] =
+        images_[{identity, which}] =
             [image, imageOutput](ConnectionBatch& batch, NodeHandle target, uint32_t binding) {
                 batch.ConnectResolvedOutput(image, imageOutput, target, binding,
                                             SlotRole::Dependency | SlotRole::Execute);
@@ -449,6 +451,10 @@ public:
         const GpuSystemEntry* entry = nullptr;
         NodeHandle shaderLib{};
         NodeHandle stage{};
+        NodeHandle bufferReads{};
+        size_t bufferReadCount = 0;
+        NodeHandle bufferWrites{};
+        size_t bufferWriteCount = 0;
         NodeHandle imageReads{};
         size_t imageReadCount = 0;
     };
@@ -468,6 +474,24 @@ public:
             stage.entry = &entry;
             stage.shaderLib = graph->AddNode<ShaderLibraryNodeType>(entry.className + "_shader_lib");
             stage.stage = graph->AddNode<ComputeStageNodeType>(entry.className);
+            stage.bufferReadCount = std::count_if(entry.arguments.begin(), entry.arguments.end(),
+                                                  [](const GpuSystemArgument& argument) {
+                                                      return argument.form == "storage" && argument.read;
+                                                  });
+            if (stage.bufferReadCount > 0) {
+                stage.bufferReads = graph->AddNode<BufferSyncGathererNodeType>(entry.className + "_buffer_reads");
+                static_cast<BufferSyncGathererNode*>(graph->GetInstance(stage.bufferReads))
+                    ->PreRegisterBufferSlots(stage.bufferReadCount);
+            }
+            stage.bufferWriteCount = std::count_if(entry.arguments.begin(), entry.arguments.end(),
+                                                   [](const GpuSystemArgument& argument) {
+                                                       return argument.form == "storage" && argument.write;
+                                                   });
+            if (stage.bufferWriteCount > 0) {
+                stage.bufferWrites = graph->AddNode<BufferSyncGathererNodeType>(entry.className + "_buffer_writes");
+                static_cast<BufferSyncGathererNode*>(graph->GetInstance(stage.bufferWrites))
+                    ->PreRegisterBufferSlots(stage.bufferWriteCount);
+            }
             stage.imageReadCount = GpuSystemImageReads(entry).size();
             if (stage.imageReadCount > 0) {
                 stage.imageReads = graph->AddNode<ImageSyncGathererNodeType>(entry.className + "_image_reads");
@@ -556,6 +580,36 @@ public:
                                   GeneratedSystemBinding{argument.samplerBinding, VK_DESCRIPTOR_TYPE_SAMPLER},
                                   SlotRoleModifier(SlotRole::Execute));
                 }
+            }
+            // Storage-buffer inputs are real GPU reads. Register every generated storage read
+            // with the same physical Resource* that the descriptor provider binds. This makes a
+            // declared producer-to-consumer edge (for example scatter -> sort) carry the Vulkan
+            // shader-write -> shader-read memory dependency; topology alone is not a barrier.
+            if (stage.bufferReadCount > 0) {
+                uint32_t readSlot = 0;
+                for (const auto& argument : entry.arguments) {
+                    if (argument.form != "storage" || !argument.read) continue;
+                    registry.ApplyDescriptor(argument.identity, entry.className, batch, stage.bufferReads,
+                                             readSlot++, argument.slot, VK_DESCRIPTOR_TYPE_MAX_ENUM);
+                }
+                batch.Connect(stage.bufferReads, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                              stage.stage, ComputeStageNodeConfig::BUFFER_READ_ARRAY,
+                              SlotRoleModifier(SlotRole::Execute));
+            }
+            // Storage-buffer refs are real GPU writes. Register their physical resources with
+            // the generated stage's sync bundle so a hand consumer can receive the same
+            // ComputeStorageWrite -> ComputeStorageRead edge as a hand-authored pass.
+            // Descriptor binding alone only supplies a handle and is intentionally untyped.
+            if (stage.bufferWriteCount > 0) {
+                uint32_t writeSlot = 0;
+                for (const auto& argument : entry.arguments) {
+                    if (argument.form != "storage" || !argument.write) continue;
+                    registry.ApplyDescriptor(argument.identity, entry.className, batch, stage.bufferWrites,
+                                             writeSlot++, argument.slot, VK_DESCRIPTOR_TYPE_MAX_ENUM);
+                }
+                batch.Connect(stage.bufferWrites, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                              stage.stage, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY,
+                              SlotRoleModifier(SlotRole::Execute));
             }
             std::array<uint32_t, 3> extent{1, 1, 1};
             uint32_t axis = 0;

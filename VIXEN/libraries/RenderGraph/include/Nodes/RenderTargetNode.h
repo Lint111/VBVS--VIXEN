@@ -11,10 +11,12 @@ namespace Vixen::RenderGraph {
  * @brief Node type for offscreen color render target allocation
  * Type ID: 115
  */
-class RenderTargetNodeType : public TypedNodeType<RenderTargetNodeConfig> {
+class RenderTargetNode;
+
+class RenderTargetNodeType : public TypedNodeType<RenderTargetNodeConfig, RenderTargetNode> {
 public:
     RenderTargetNodeType(const std::string& typeName = "RenderTarget")
-        : TypedNodeType<RenderTargetNodeConfig>(typeName) {}
+        : TypedNodeType<RenderTargetNodeConfig, RenderTargetNode>(typeName) {}
     virtual ~RenderTargetNodeType() = default;
 
     std::optional<PresentationTargetContract> GetPresentationTargetContract() const override {
@@ -25,7 +27,6 @@ public:
             std::nullopt};
     }
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

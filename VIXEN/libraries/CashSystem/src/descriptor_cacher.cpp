@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "error/VulkanError.h"
 #include "DescriptorCacher.h"
 #include "CacheKeyHasher.h"
 #include "VixenHash.h"
@@ -57,9 +58,7 @@ std::shared_ptr<DescriptorWrapper> DescriptorCacher::Create(const DescriptorCrea
         layoutInfo.pBindings = vkBindings.data();
         
         VkResult result = vkCreateDescriptorSetLayout(/* device */ nullptr, &layoutInfo, nullptr, &wrapper->layout);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create descriptor set layout");
-        }
+        VK_CHECK_THROW(result, "Failed to create descriptor set layout");
     }
     
     // Create descriptor pool
@@ -71,9 +70,7 @@ std::shared_ptr<DescriptorWrapper> DescriptorCacher::Create(const DescriptorCrea
         poolInfo.maxSets = ci.maxSets;
         
         VkResult result = vkCreateDescriptorPool(/* device */ nullptr, &poolInfo, nullptr, &wrapper->pool);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create descriptor pool");
-        }
+        VK_CHECK_THROW(result, "Failed to create descriptor pool");
     }
     
     // Allocate descriptor sets
@@ -87,9 +84,7 @@ std::shared_ptr<DescriptorWrapper> DescriptorCacher::Create(const DescriptorCrea
         
         wrapper->sets.resize(ci.maxSets);
         VkResult result = vkAllocateDescriptorSets(/* device */ nullptr, &allocInfo, wrapper->sets.data());
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("Failed to allocate descriptor sets");
-        }
+        VK_CHECK_THROW(result, "Failed to allocate descriptor sets");
     }
     
     return wrapper;

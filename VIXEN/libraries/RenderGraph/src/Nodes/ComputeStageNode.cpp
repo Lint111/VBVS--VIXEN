@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "FrameTrace.h"
 #include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
@@ -42,10 +44,6 @@ static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
 // NODETYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> ComputeStageNodeType::CreateInstance(
-    const std::string& instanceName) const {
-    return std::make_unique<ComputeStageNode>(instanceName, const_cast<ComputeStageNodeType*>(this));
-}
 
 // ============================================================================
 // CONSTRUCTOR / SETUP
@@ -91,10 +89,8 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     std::vector<VkCommandBuffer> cmdBuffers(cmdBufferCount);
     VkResult result = vkAllocateCommandBuffers(GetDevice()->device, &allocInfo, cmdBuffers.data());
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeStageNode::CompileImpl] vkAllocateCommandBuffers failed: " +
+    VK_CHECK_THROW(result, "[ComputeStageNode::CompileImpl] vkAllocateCommandBuffers failed: " +
                                  std::to_string(result));
-    }
     for (uint32_t i = 0; i < cmdBufferCount; ++i) {
         commandBuffers_[i] = cmdBuffers[i];
         commandBuffers_.MarkDirty(i);

@@ -16,11 +16,6 @@ namespace Vixen::RenderGraph {
 // NODE TYPE FACTORY
 // ============================================================================
 
-std::unique_ptr<NodeInstance> CameraNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<CameraNode>(instanceName, const_cast<CameraNodeType*>(this));
-}
 
 // ============================================================================
 // CAMERA NODE IMPLEMENTATION

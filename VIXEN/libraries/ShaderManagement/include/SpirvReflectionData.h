@@ -3,6 +3,7 @@
 #include "ShaderStage.h"
 #include "DescriptorLayoutSpec.h"
 #include <string>
+#include <map>
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
@@ -183,7 +184,9 @@ struct SpirvReflectionData {
     std::vector<ShaderStage> stages;
 
     // Descriptor bindings (organized by set)
-    std::unordered_map<uint32_t, std::vector<SpirvDescriptorBinding>> descriptorSets;
+    // Descriptor-set order is part of the generated SDI ABI. Keep it ordered so reflection
+    // cache restore has the same iteration order on libstdc++ and MSVC.
+    std::map<uint32_t, std::vector<SpirvDescriptorBinding>> descriptorSets;
 
     // Push constants
     std::vector<SpirvPushConstantRange> pushConstants;

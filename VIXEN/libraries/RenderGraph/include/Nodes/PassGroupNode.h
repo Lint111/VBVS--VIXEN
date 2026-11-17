@@ -17,13 +17,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for PassGroupNode (auto-sync P4 M3)
  */
-class PassGroupNodeType : public TypedNodeType<PassGroupNodeConfig> {
+class PassGroupNode;
+
+class PassGroupNodeType : public TypedNodeType<PassGroupNodeConfig, PassGroupNode> {
 public:
     PassGroupNodeType(const std::string& typeName = "PassGroup")
-        : TypedNodeType<PassGroupNodeConfig>(typeName) {}
+        : TypedNodeType<PassGroupNodeConfig, PassGroupNode>(typeName) {}
     virtual ~PassGroupNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

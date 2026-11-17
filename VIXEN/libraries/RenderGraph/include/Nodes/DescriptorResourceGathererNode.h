@@ -19,18 +19,17 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 114
  */
-class DescriptorResourceGathererNodeType : public TypedNodeType<DescriptorResourceGathererNodeConfig> {
+class DescriptorResourceGathererNode;
+
+class DescriptorResourceGathererNodeType : public TypedNodeType<DescriptorResourceGathererNodeConfig, DescriptorResourceGathererNode> {
 public:
     DescriptorResourceGathererNodeType(const std::string& typeName = "DescriptorResourceGatherer")
-        : TypedNodeType<DescriptorResourceGathererNodeConfig>(typeName)
+        : TypedNodeType<DescriptorResourceGathererNodeConfig, DescriptorResourceGathererNode>(typeName)
         , defaultMinVariadicInputs(0)
         , defaultMaxVariadicInputs(SIZE_MAX)  // No artificial limit - Vulkan supports many bindings
     {}
     virtual ~DescriptorResourceGathererNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 
     // Variadic input constraints (for validation)
     size_t GetDefaultMinVariadicInputs() const { return defaultMinVariadicInputs; }

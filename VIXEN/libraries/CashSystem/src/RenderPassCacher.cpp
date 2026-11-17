@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "error/VulkanError.h"
 #include "RenderPassCacher.h"
 #include "CacheKeyHasher.h"
 #include "MainCacher.h"
@@ -134,10 +135,8 @@ std::shared_ptr<RenderPassWrapper> RenderPassCacher::Create(const RenderPassCrea
     renderPassInfo.pDependencies = &dependency;
 
     VkResult result = vkCreateRenderPass(GetDevice()->device, &renderPassInfo, nullptr, &wrapper->renderPass);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("RenderPassCacher: Failed to create render pass (VkResult: " +
+    VK_CHECK_THROW(result, "RenderPassCacher: Failed to create render pass (VkResult: " +
                                  std::to_string(result) + ")");
-    }
 
     LOG_DEBUG("VkRenderPass created: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->renderPass)));
 

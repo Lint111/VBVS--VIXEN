@@ -15,18 +15,17 @@ namespace Vixen::RenderGraph {
  * See ImageSyncGathererNodeConfig.h for the full "why this exists" — the image-typed
  * sibling of BufferSyncGathererNode, mirroring its variadic-gatherer shape exactly.
  */
-class ImageSyncGathererNodeType : public TypedNodeType<ImageSyncGathererNodeConfig> {
+class ImageSyncGathererNode;
+
+class ImageSyncGathererNodeType : public TypedNodeType<ImageSyncGathererNodeConfig, ImageSyncGathererNode> {
 public:
     ImageSyncGathererNodeType(const std::string& typeName = "ImageSyncGatherer")
-        : TypedNodeType<ImageSyncGathererNodeConfig>(typeName)
+        : TypedNodeType<ImageSyncGathererNodeConfig, ImageSyncGathererNode>(typeName)
         , defaultMinVariadicInputs(0)
         , defaultMaxVariadicInputs(SIZE_MAX)
     {}
     virtual ~ImageSyncGathererNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 
     size_t GetDefaultMinVariadicInputs() const { return defaultMinVariadicInputs; }
     size_t GetDefaultMaxVariadicInputs() const { return defaultMaxVariadicInputs; }

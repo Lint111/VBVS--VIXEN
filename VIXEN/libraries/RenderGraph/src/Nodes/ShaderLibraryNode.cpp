@@ -19,14 +19,6 @@ namespace Vixen::RenderGraph {
 
 // ====== ShaderLibraryNodeType ======
 
-std::unique_ptr<NodeInstance> ShaderLibraryNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<ShaderLibraryNode>(
-        instanceName,
-        const_cast<ShaderLibraryNodeType*>(this)
-    );
-}
 
 // ====== ShaderLibraryNode ======
 

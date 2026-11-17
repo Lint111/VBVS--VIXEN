@@ -1,3 +1,5 @@
+#include "error/VulkanError.h"
+
 #include "Nodes/InstanceBufferNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -34,9 +36,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== InstanceBufferNodeType ======
 
-std::unique_ptr<NodeInstance> InstanceBufferNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<InstanceBufferNode>(n, const_cast<InstanceBufferNodeType*>(this));
-}
 
 // ====== InstanceBufferNode ======
 
@@ -104,9 +103,7 @@ void InstanceBufferNode::CreateBuffer(VulkanDevice* device) {
     bufferInfo.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer_) != VK_SUCCESS) {
-        throw std::runtime_error("[InstanceBufferNode] vkCreateBuffer failed");
-    }
+    VK_CHECK_THROW(vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer_), "[InstanceBufferNode] vkCreateBuffer failed");
 
     // --- Allocate host-visible / host-coherent memory via real memory-type selection ---
     VkMemoryRequirements req{};
@@ -154,9 +151,7 @@ void InstanceBufferNode::CreateBuffer(VulkanDevice* device) {
     }
 
     void* mapped = nullptr;
-    if (vkMapMemory(vkDevice, memory_, 0, bufferSize, 0, &mapped) != VK_SUCCESS) {
-        throw std::runtime_error("[InstanceBufferNode] vkMapMemory failed");
-    }
+    VK_CHECK_THROW(vkMapMemory(vkDevice, memory_, 0, bufferSize, 0, &mapped), "[InstanceBufferNode] vkMapMemory failed");
     std::memcpy(mapped, transforms.data(), static_cast<size_t>(bufferSize));
     vkUnmapMemory(vkDevice, memory_);
 

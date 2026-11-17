@@ -10,13 +10,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for the temporal-accumulation history target (persistent storage image).
  */
-class AccumulationHistoryNodeType : public TypedNodeType<AccumulationHistoryNodeConfig> {
+class AccumulationHistoryNode;
+
+class AccumulationHistoryNodeType : public TypedNodeType<AccumulationHistoryNodeConfig, AccumulationHistoryNode> {
 public:
     AccumulationHistoryNodeType(const std::string& typeName = "AccumulationHistory")
-        : TypedNodeType<AccumulationHistoryNodeConfig>(typeName) {}
+        : TypedNodeType<AccumulationHistoryNodeConfig, AccumulationHistoryNode>(typeName) {}
     virtual ~AccumulationHistoryNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

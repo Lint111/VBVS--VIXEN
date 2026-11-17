@@ -20,11 +20,6 @@ namespace Vixen::RenderGraph {
 // NodeType
 // ============================================================================
 
-std::unique_ptr<NodeInstance> DebugBufferReaderNodeType::CreateInstance(
-    const std::string& instanceName
-) const {
-    return std::make_unique<DebugBufferReaderNode>(instanceName, const_cast<DebugBufferReaderNodeType*>(this));
-}
 
 // ============================================================================
 // DebugBufferReaderNode

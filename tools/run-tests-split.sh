@@ -20,7 +20,7 @@
 #   --regex RE        ctest -R selection (default: everything)
 #   --agent ID        queue fairness identity (default: worktree name)
 #   --cpu-jobs N      ctest -j for the cpu part (default: node width capped by available memory, R847.4)
-#   --gpu-jobs N      concurrent queued GPU shards (default 6; capped at the shared GPU limit)
+#   --gpu-jobs N      concurrent queued GPU shards (default 6; queue admission applies measured headroom)
 #   --out DIR         logs and junit land here (default <build-dir>/split-run)
 #   --witness         record GPU actions during the run (VIXEN_GPU_WITNESS_DIR=<out>/witness) so
 #                     tools/classify-tests-gpu.py can narrow or relabel from the same run
@@ -141,10 +141,7 @@ select_args=("${exclude_args[@]}")
 queue() {
   local resource="$1" label="$2" cpu_tokens="$3"; shift 3
   if (( use_queue )); then
-    local token_args=()
-    (( cpu_tokens > 0 )) && token_args=(--cpu-tokens "$cpu_tokens")
-    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" \
-      ${token_args[@]+"${token_args[@]}"} -- "$@"
+    bash "$queue_wrapper" --agent "$agent" --resource "$resource" --label "$agent:$label" -- "$@"
   else
     "$@"
   fi
@@ -187,7 +184,7 @@ if ((${#build_targets[@]})); then
   echo "[run-tests-split] building selected test targets: ${build_targets[*]}"
   build_log="$out_dir/build-selected-tests.log"
   queue build build-selected-tests 0 \
-    cmake --build "$build_dir" --target "${build_targets[@]}" --parallel "$cpu_jobs" \
+    cmake --build "$build_dir" --target "${build_targets[@]}" \
     >"$build_log" 2>&1
   build_status=$?
   if (( build_status != 0 )); then
@@ -253,8 +250,8 @@ witness_env=()
 (( witness )) && witness_env=(VIXEN_GPU_WITNESS_DIR="$out_dir/witness")
 
 # CPU pair-tokens (two CPUs each) the largest PROCESSORS declaration among the part's selected tests needs;
-# 0 when none declares one. The queue reserves them via --cpu-tokens, so a suite that needs concurrent
-# CPUs is not admitted with fewer.
+# 0 when none declares one. Keep this as diagnostic metadata; queue admission owns CPU width and
+# PROCESSORS is enforced by CTest inside the admitted payload.
 declared_cpu_tokens() {
   local part="$1"
   ctest --test-dir "$build_dir" --show-only=json-v1 -L "^${part}\$" "${select_args[@]}" | python3 -c '
@@ -315,19 +312,17 @@ run_gpu_shards() {
     (
       shard_started=$SECONDS
       if (( use_queue )); then
-        local token_args=()
-        (( cpu_tokens > 0 )) && token_args=(--cpu-tokens "$cpu_tokens")
         bash "$queue_wrapper" --agent "${agent}-gpu${index}" --resource gpu \
-          --label "$agent:split-gpu-$index" "${token_args[@]}" -- \
+          --label "$agent:split-gpu-$index" -- \
           env "${witness_env[@]}" "${shard_env[@]}" \
-          "${gpu_guard[@]}" ctest --test-dir "$build_dir" --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
             --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
           >"$shard_dir/shard-$index.log" 2>&1
       else
         env "${witness_env[@]}" "${shard_env[@]}" \
-          "${gpu_guard[@]}" ctest --test-dir "$build_dir" --parallel "${UT_QUEUE_GRANTED_CPUS:-$(nproc)}" -L '^gpu$' "${exclude_args[@]}" \
+          "${gpu_guard[@]}" ctest --test-dir "$build_dir" -L '^gpu$' "${exclude_args[@]}" \
             --timeout "$gpu_case_timeout" \
             --tests-from-file "$shard_tests" --no-tests=error --output-on-failure \
             --output-junit "$shard_dir/shard-$index.xml" "${extra[@]}" \
@@ -382,7 +377,7 @@ run_part() {
   fi
   queue "$resource" "split-$part" "$cpu_tokens" \
     env "${witness_env[@]}" "$@" \
-    ${part_guard[@]+"${part_guard[@]}"} ctest --test-dir "$build_dir" -j "$jobs" -L "^${part}\$" "${select_args[@]}" \
+    ${part_guard[@]+"${part_guard[@]}"} ctest --test-dir "$build_dir" -L "^${part}\$" "${select_args[@]}" \
           ${part_timeout[@]+"${part_timeout[@]}"} --no-tests=error --output-on-failure --output-junit "$out_dir/$part.xml" "${extra[@]}" \
     >"$out_dir/$part.log" 2>&1
   local status=$?

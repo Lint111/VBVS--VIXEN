@@ -16,15 +16,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for voxel AABB conversion
  */
-class VoxelAABBConverterNodeType : public TypedNodeType<VoxelAABBConverterNodeConfig> {
+class VoxelAABBConverterNode;
+
+class VoxelAABBConverterNodeType : public TypedNodeType<VoxelAABBConverterNodeConfig, VoxelAABBConverterNode> {
 public:
     VoxelAABBConverterNodeType(const std::string& typeName = "VoxelAABBConverter")
-        : TypedNodeType<VoxelAABBConverterNodeConfig>(typeName) {}
+        : TypedNodeType<VoxelAABBConverterNodeConfig, VoxelAABBConverterNode>(typeName) {}
     virtual ~VoxelAABBConverterNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

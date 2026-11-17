@@ -11,13 +11,14 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Node type for a generic, arbitrary-sized storage buffer (SSBO).
  */
-class StorageBufferNodeType : public TypedNodeType<StorageBufferNodeConfig> {
+class StorageBufferNode;
+
+class StorageBufferNodeType : public TypedNodeType<StorageBufferNodeConfig, StorageBufferNode> {
 public:
     StorageBufferNodeType(const std::string& typeName = "StorageBuffer")
-        : TypedNodeType<StorageBufferNodeConfig>(typeName) {}
+        : TypedNodeType<StorageBufferNodeConfig, StorageBufferNode>(typeName) {}
     virtual ~StorageBufferNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**

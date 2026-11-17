@@ -304,6 +304,10 @@ inline SdfInstruction typedValueOp(SdfOpCode opcode) {
 // supplies the dynamic value.
 inline SdfInstruction declarePositionOp() {
     SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::DeclarePosition; return in; }
+inline SdfInstruction materialRefOp(float material) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MaterialRef; in.data[0]=material; return in; }
+inline SdfInstruction attachOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Attach; return in; }
 
 // ────────────────────────────────────────────────────────────────────────────
 // One function per TEST case, building the SAME prog[] sequence (verbatim
@@ -881,6 +885,18 @@ inline std::vector<SdfInstruction> Make_M2_ReadParamFloat3_MatchesIndexedRead() 
     };
 }
 
+// Material metadata is a value-stack payload, not a document/port input. Keep it in the
+// shared corpus so MaterialRef and Attach retain numerical CPU/GLSL parity coverage while the
+// coverage gate can exempt only the generated opcodes whose declared arguments require a host
+// document or set/field port.
+inline std::vector<SdfInstruction> Make_M5_MaterialRefAttach_MatchesField() {
+    return {
+        sphere(glm::vec3(0.25f, -0.5f, 1.0f), 0.75f),
+        materialRefOp(7.0f),
+        attachOp(),
+    };
+}
+
 // Typed recipe-value opcode coverage for the shared CPU/GLSL parity loop. The dedicated
 // TypedRecipeValueGoldenVectorsMatchCpuAndGpu test owns the per-op expected values and edge
 // cases; this stack program ensures every typed opcode also passes through the common corpus
@@ -1025,6 +1041,7 @@ inline std::vector<CorpusProgram> GetAll() {
         { "M5_CompositionAll_IndependentOracle", Make_M5_CompositionAll_IndependentOracle() },
         { "M2_ReadParam_MatchesIndexedRead", Make_M2_ReadParam_MatchesIndexedRead() },
         { "M2_ReadParamFloat3_MatchesIndexedRead", Make_M2_ReadParamFloat3_MatchesIndexedRead() },
+        { "M5_MaterialRefAttach_MatchesField", Make_M5_MaterialRefAttach_MatchesField() },
         { "TypedRecipeValues_OpcodeCoverage", Make_TypedRecipeValues_OpcodeCoverage() },
     };
 }

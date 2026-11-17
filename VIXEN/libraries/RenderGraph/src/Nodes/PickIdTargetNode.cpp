@@ -1,3 +1,6 @@
+#include "error/VulkanError.h"
+#include "Nodes/Common/SwapchainBarriers.h"
+
 #include "Nodes/PickIdTargetNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -35,9 +38,6 @@ using namespace Vixen::Vulkan::Resources;
 
 // ====== PickIdTargetNodeType ======
 
-std::unique_ptr<NodeInstance> PickIdTargetNodeType::CreateInstance(const std::string& n) const {
-    return std::make_unique<PickIdTargetNode>(n, const_cast<PickIdTargetNodeType*>(this));
-}
 
 // ====== PickIdTargetNode ======
 
@@ -151,9 +151,7 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
         imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
         imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        if (vkCreateImage(vkDevice, &imgInfo, nullptr, &img.image) != VK_SUCCESS) {
-            throw std::runtime_error("[PickIdTargetNode] vkCreateImage failed");
-        }
+        VK_CHECK_THROW(vkCreateImage(vkDevice, &imgInfo, nullptr, &img.image), "[PickIdTargetNode] vkCreateImage failed");
 
         // --- Allocate device-local memory via real memory-type selection ---
         VkMemoryRequirements req{};
@@ -185,9 +183,7 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
         viewInfo.format           = kFormat;
         viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-        if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &img.view) != VK_SUCCESS) {
-            throw std::runtime_error("[PickIdTargetNode] vkCreateImageView failed");
-        }
+        VK_CHECK_THROW(vkCreateImageView(vkDevice, &viewInfo, nullptr, &img.view), "[PickIdTargetNode] vkCreateImageView failed");
     }
 
     // One-time UNDEFINED -> GENERAL transition for every ring image. Storage images stay GENERAL
@@ -203,64 +199,44 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
 void PickIdTargetNode::TransitionAllToGeneral(VkCommandPool commandPool) {
     VkDevice vkDevice = GetDevice()->device;
 
-    // One-shot command buffer for the layout transitions.
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool        = commandPool;
-    allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
+    SwapchainBarriers::RecordAndSubmitOneShot(
+        vkDevice, commandPool,
+        [&](VkCommandBuffer cmd) {
+            std::vector<VkImageMemoryBarrier> barriers;
+            barriers.reserve(images_.size());
+            for (const auto& img : images_) {
+                VkImageMemoryBarrier barrier{};
+                barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                barrier.srcAccessMask       = 0;
+                barrier.dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+                barrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+                barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.image               = img.image;
+                barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                barriers.push_back(barrier);
+            }
 
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &allocInfo, &cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[PickIdTargetNode] vkAllocateCommandBuffers (transition) failed");
-    }
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[PickIdTargetNode] vkBeginCommandBuffer (transition) failed");
-    }
-
-    std::vector<VkImageMemoryBarrier> barriers;
-    barriers.reserve(images_.size());
-    for (const auto& img : images_) {
-        VkImageMemoryBarrier barrier{};
-        barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask       = 0;
-        barrier.dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
-        barrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
-        barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image               = img.image;
-        barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        barriers.push_back(barrier);
-    }
-
-    vkCmdPipelineBarrier(
-        cmd,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        static_cast<uint32_t>(barriers.size()), barriers.data()
-    );
-
-    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
-        vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
-        throw std::runtime_error("[PickIdTargetNode] vkEndCommandBuffer (transition) failed");
-    }
-
-    // R715: the one-shot rides the graph's submission stream (queue order and its barrier
-    // order it before every later submit); `cmd` is freed once the queue timeline reaches it,
-    // so there is no submit-then-wait-idle here.
-    if (GetOwningGraph()->SubmitOneShot(this, commandPool, cmd) != VK_SUCCESS) {
-        throw std::runtime_error("[PickIdTargetNode] queue-owner transition submit failed");
-    }
-
+            vkCmdPipelineBarrier(
+                cmd,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0,
+                0, nullptr,
+                0, nullptr,
+                static_cast<uint32_t>(barriers.size()), barriers.data()
+            );
+        },
+        [&](VkCommandBuffer cmd) {
+            // R715: the one-shot rides the graph's submission stream; queue order and its barrier
+            // order it before every later submit, with retirement handled by the graph owner.
+            return GetOwningGraph()->SubmitOneShot(this, commandPool, cmd);
+        },
+        "[PickIdTargetNode] vkAllocateCommandBuffers (transition) failed",
+        "[PickIdTargetNode] vkBeginCommandBuffer (transition) failed",
+        "[PickIdTargetNode] vkEndCommandBuffer (transition) failed",
+        "[PickIdTargetNode] queue-owner transition submit failed");
 }
 
 void PickIdTargetNode::DestroyImages() {

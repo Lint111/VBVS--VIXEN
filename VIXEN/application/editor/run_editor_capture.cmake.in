@@ -11,6 +11,18 @@ if(DEFINED ENV{VIXEN_EDITOR_CAPTURE_DIR} AND NOT "$ENV{VIXEN_EDITOR_CAPTURE_DIR}
     set(_editor_capture_dir "$ENV{VIXEN_EDITOR_CAPTURE_DIR}")
 endif()
 file(MAKE_DIRECTORY "${_editor_capture_dir}")
+# Native CMake already resolved the path-compatible .NET launcher for codegen.  The
+# Python AppFlow adapter consumes the launcher through YEROKET_DOTNET; export the
+# resolved path here so native CTest does not depend on dotnet.exe being on PATH.
+if(NOT DEFINED ENV{YEROKET_DOTNET} OR "$ENV{YEROKET_DOTNET}" STREQUAL "")
+    set(ENV{YEROKET_DOTNET} "@VIXEN_DOTNET@")
+endif()
+if(NOT DEFINED ENV{YEROKET_CODEGEN_TOOL_DLL} OR "$ENV{YEROKET_CODEGEN_TOOL_DLL}" STREQUAL "")
+    set(_native_codegen_tool_dll "@CMAKE_BINARY_DIR@/codegen/tool/CodegenTool.dll")
+    if(EXISTS "${_native_codegen_tool_dll}")
+        set(ENV{YEROKET_CODEGEN_TOOL_DLL} "${_native_codegen_tool_dll}")
+    endif()
+endif()
 execute_process(
     COMMAND "@Python3_EXECUTABLE@" "${_editor_producer}" --editor "${_editor_exe}"
         --document "${_editor_document}" --capture-dir "${_editor_capture_dir}"

@@ -41,15 +41,14 @@ class SimpleTaskProfile;
  * Generic dispatcher for ANY compute shader, separating dispatch logic
  * from pipeline creation (ComputePipelineNode).
  */
-class ComputeDispatchNodeType : public TypedNodeType<ComputeDispatchNodeConfig> {
+class ComputeDispatchNode;
+
+class ComputeDispatchNodeType : public TypedNodeType<ComputeDispatchNodeConfig, ComputeDispatchNode> {
 public:
     ComputeDispatchNodeType(const std::string& typeName = "ComputeDispatch")
-        : TypedNodeType<ComputeDispatchNodeConfig>(typeName) {}
+        : TypedNodeType<ComputeDispatchNodeConfig, ComputeDispatchNode>(typeName) {}
     virtual ~ComputeDispatchNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName
-    ) const override;
 };
 
 /**

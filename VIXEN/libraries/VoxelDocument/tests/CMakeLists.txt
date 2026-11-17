@@ -4,14 +4,18 @@ add_executable(test_editor_document_model_preview
 target_compile_features(test_editor_document_model_preview PRIVATE cxx_std_23)
 target_link_libraries(test_editor_document_model_preview PRIVATE VoxelDocument AppFlow GTest::gtest_main)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/VoxelDocument-tests")
+file(TO_CMAKE_PATH "$ENV{UNDERTOW_ROOT}" _vixen_undertow_root)
 target_compile_definitions(test_editor_document_model_preview PRIVATE
     VXD_GOLDEN_PATH="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
-    VXD_ASTEROID_PATH="/home/liory/projects/undertow/core/content/core/recipes/asteroid.vxd"
-    VXD_BOULDER_PATH="/home/liory/projects/undertow/modpacks/_templates/render_recipe/boulder.vxd"
-    UNDERTOW_CONTENT_IDS_PATH="$ENV{UNDERTOW_ROOT}/core/content/content-ids.g.json"
-    UNDERTOW_CORE_MATERIALS_PATH="$ENV{UNDERTOW_ROOT}/core/content/core/materials.utdl"
+    VXD_ASTEROID_PATH="${_vixen_undertow_root}/core/content/core/recipes/asteroid.vxd"
+    VXD_BOULDER_PATH="${_vixen_undertow_root}/modpacks/_templates/render_recipe/boulder.vxd"
+    UNDERTOW_CONTENT_IDS_PATH="${_vixen_undertow_root}/core/content/content-ids.g.json"
+    UNDERTOW_CORE_MATERIALS_PATH="${_vixen_undertow_root}/core/content/core/materials.utdl"
     VXD_TEST_TEMP_DIR="${CMAKE_BINARY_DIR}/VoxelDocument-tests"
 )
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(test_editor_document_model_preview PRIVATE VIXEN_LINUX_EVIDENCE_FIXTURE=1)
+endif()
 set_target_properties(test_editor_document_model_preview PROPERTIES FOLDER "Tests/VoxelDocument Tests")
 
 # This CPU-only module test deliberately uses ordinary GoogleTest discovery so CTest does not

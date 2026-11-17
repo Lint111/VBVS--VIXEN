@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "error/VulkanError.h"
 #include "ComputePipelineCacher.h"
 #include "CacheKeyHasher.h"
 #include "PipelineLayoutCacher.h"
@@ -240,9 +241,7 @@ void ComputePipelineCacher::CreateComputePipeline(
     }
 #endif
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputePipelineCacher::CreateComputePipeline] Failed to create compute pipeline: " + std::to_string(result));
-    }
+    VK_CHECK_THROW(result, "[ComputePipelineCacher::CreateComputePipeline] Failed to create compute pipeline: " + std::to_string(result));
 
     wrapper.cache = cacheToUse;
 
