@@ -62,7 +62,9 @@ public struct TileBinStats
     public uint listed;
     public uint behindCamera;
     public uint offScreen;
-    public uint occluded;
+    // Scatter slices (ScatterLanes invocations per instance) whose tiles all lie behind
+    // last frame's depth; one instance spans several slices.
+    public uint occludedSlices;
     public uint overflowed;
 }
 

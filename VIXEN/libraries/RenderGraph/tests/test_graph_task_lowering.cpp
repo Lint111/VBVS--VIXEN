@@ -1,5 +1,6 @@
 #include "ScopedEnvironment.h"
 #include "Nodes/Common/GpuChunkCost.h"
+#include "Core/TiledDispatch.h"
 #include "Nodes/Common/GpuDeviceClass.h"
 #include <gtest/gtest.h>
 
@@ -1009,6 +1010,227 @@ TEST(GpuChunkCost, ColdFrameSeedFromAnotherExtentUntilesAtFirstFrame) {
     EXPECT_EQ(seeded.Edge(2'000'000, 240, 7, &window), 240u);
     GpuChunkCost cold;
     EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window), 7u);
+}
+
+TEST(GpuChunkCost, UnmeasuredPassLaunchesAtItsColdSplitThenFollowsItsMeasuredCost) {
+    // R861: a stage pass at 1080p (240x135 workgroups) with the default budgets.
+    const TiledDispatch::Capacity capacity{16'666'666, 2'000'000};
+    const uint32_t launch = TiledDispatch::ColdSplitEdge({240, 135, 1}, capacity, true);
+    EXPECT_EQ(launch, 20u);                                                        // 81 cuts by area: 12 x 7 tiles
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge({480, 270, 1}, capacity, true), 40u);   // 4K: the same tile count
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge({32400, 1, 1}, capacity, true), 400u);  // a list: 81 tiles too
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge({20, 20, 1}, capacity, true), TiledDispatch::kLaunchFloor);
+    EXPECT_EQ(TiledDispatch::ColdSplitEdge({240, 135, 1}, capacity, false), 240u);  // translated: one dispatch
+
+    const GpuChunkCost::WholePass window{135ull * 240, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    GpuChunkCost cold;
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, launch), 20u);
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, 3), 7u);      // never below the floor
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window, 999), 240u);  // never above the pass
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7, &window), 7u);         // no launch: the floor, as before
+
+    // Measured cheap (20 us per cold tile, under 2 ms whole): one dispatch from the next plan on.
+    GpuChunkCost cheap;
+    cheap.Observe(20 * 20, 20 * 20, 20'000);
+    EXPECT_EQ(cheap.Edge(2'000'000, 240, 7, &window, launch), 240u);
+
+    // Measured far over the window (row 106 before its fix: about 2.2 s whole): tiles shrink
+    // below the launch, bounded by the floor.
+    GpuChunkCost heavy;
+    heavy.Observe(20 * 20, 20 * 20, 27'200'000);
+    const uint32_t edge = heavy.Edge(2'000'000, 240, 7, &window, launch);
+    EXPECT_LT(edge, launch);
+    EXPECT_GE(edge, 7u);
+}
+
+TEST(GpuChunkCost, StripsAndListsGetTheSameWorkPerTile) {
+    // A 1080p screen pass: a square tile below the short side is a square.
+    EXPECT_EQ(TiledDispatch::TileEdge({240, 135, 1}, 14 * 14), 14u);
+    // Above the short side the tile is a full-height strip holding the same workgroups.
+    EXPECT_EQ(TiledDispatch::TileEdge({240, 135, 1}, 180 * 180), 240u);
+    EXPECT_EQ(TiledDispatch::TileEdge({240, 135, 1}, 150 * 150), 167u);  // 22,500 groups in 135-high strips
+    // A list dispatched along one axis (the shadow wave: 32,400 x 1): the rule's edge 14 means
+    // 196 groups a tile, not 14 (which cut one 0.3 s pass into 2,700 commands).
+    EXPECT_EQ(TiledDispatch::TileEdge({32400, 1, 1}, 14 * 14), 196u);
+    EXPECT_EQ(TiledDispatch::TileEdge({32400, 1, 1}, 7 * 7), 49u);          // the floor, in workgroups
+    EXPECT_EQ(TiledDispatch::TileEdge({32400, 1, 1}, 240 * 240), 32400u);   // whole stays whole
+}
+
+TEST(GpuChunkCost, RefinementStepsUntilTheLaunchLatencyIsMeasured) {
+    // Latency unknown: a refinement is at most 4x and at least 2x the tiles just read back.
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(196, 3600, false), 900u);
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(196, 400, false), 196u);
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(300, 400, false), 200u);
+    // Coarsening, a first plan and a known latency are not constrained.
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(32400, 400, false), 32400u);
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(196, 0, false), 196u);
+    EXPECT_EQ(TiledDispatch::RefinedTileGroups(196, 3600, true), 196u);
+
+    // The shadow wave as measured on ws (RTL scene, 1080p): 81 launch tiles of 400 groups took
+    // 4.34 ms each, 166 tiles of 196 groups took 3.0 ms each. Keeping the larger point gives the
+    // per-command latency (about 1.7 ms) after one refinement, and the budget follows it.
+    GpuChunkCost descending;
+    descending.ObserveScale(400, 4'340'000);
+    EXPECT_EQ(descending.LaunchLatencyNs(), 0.0);
+    descending.ObserveScale(196, 3'000'000);
+    EXPECT_GT(descending.LaunchLatencyNs(), 1'500'000.0);
+    EXPECT_LT(descending.LaunchLatencyNs(), 1'900'000.0);
+    EXPECT_GT(descending.SubmissionBudgetNs(2'000'000), 20'000'000u);
+}
+
+// R892.2: the march learns its launch latency as stages do. Its numbers are the RTL scene's at 1080p
+// (stock shaders, ws 8060S, fable-rtlrt1 H3): one dispatch 340 ms; 180 tiles of 196 workgroups
+// averaged 6.4 ms with the slowest 110 ms.
+TEST(GpuChunkCost, MarchKeepsTheOnePassPointWhenItRefines) {
+    // Before: a smaller scale replaced the only point, so the march probed edge 14 for ever.
+    GpuChunkCost warm;
+    warm.Observe(32400, 32400, 340'000'000);
+    warm.ObserveScale(32400, 340'000'000);
+    EXPECT_FALSE(warm.ScalesMeasured());
+    const uint32_t refined = warm.Edge(2'000'000, 240, 7);  // the 2 ms rule refines to about edge 12
+    EXPECT_GT(refined, 7u);
+    EXPECT_LE(refined, 14u);
+    const uint64_t tile = uint64_t{refined} * refined;
+    warm.Observe(tile, tile, 110'000'000);
+    warm.ObserveScale(tile, 6'400'000.0 * double(tile) / 196.0, 110'000'000);
+    ASSERT_TRUE(warm.ScalesMeasured());
+    EXPECT_GT(warm.LaunchLatencyNs(), 12'500'000.0);              // 16x is over the cap
+    EXPECT_EQ(warm.SubmissionBudgetNs(2'000'000), 200'000'000u);
+    EXPECT_GT(warm.Edge(2'000'000, 240, 7), 14u);
+}
+
+TEST(GpuChunkCost, MarchProbesUpFromTheFloorThenGrowsByMeasuredSteps) {
+    // Cold (R888.1 cache miss): the floor launch, then one probe up gives the pair.
+    GpuChunkCost cold;
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7), 7u);
+    cold.Observe(49, 49, 86'000'000);
+    cold.Observe(49, 49, 2'600'000);
+    cold.ObserveScale(49, 2'600'000, 86'000'000);
+    EXPECT_EQ(cold.Edge(2'000'000, 240, 7), 14u);
+    cold.Observe(196, 196, 110'000'000);
+    cold.Observe(196, 196, 6'400'000);
+    cold.ObserveScale(196, 6'400'000, 110'000'000);
+    ASSERT_TRUE(cold.ScalesMeasured());
+    // The slowest tile barely shrinks with its size: that is latency, not throughput.
+    EXPECT_GT(cold.LaunchLatencyNs(), 70'000'000.0);
+    EXPECT_EQ(cold.SubmissionBudgetNs(2'000'000), 200'000'000u);
+    // Growth toward the raised budget is bounded by 4x the largest edge measured.
+    const uint32_t step = cold.Edge(2'000'000, 240, 7);
+    EXPECT_GT(step, 14u);
+    EXPECT_LE(step, 56u);
+    // The mean latency alone (6.4 ms tiles against 2.6 ms ones) would keep a 22 ms budget.
+    GpuChunkCost meanOnly;
+    meanOnly.ObserveScale(49, 2'600'000);
+    meanOnly.ObserveScale(196, 6'400'000);
+    EXPECT_LT(meanOnly.SubmissionBudgetNs(2'000'000), 30'000'000u);
+}
+
+TEST(GpuChunkCost, ScalePairFollowsThePassAndIgnoresNearbyNoise) {
+    GpuChunkCost cost;
+    cost.ObserveScale(49, 2'600'000, 86'000'000);
+    cost.ObserveScale(196, 6'400'000, 110'000'000);
+    cost.ObserveScale(3136, 60'000'000, 150'000'000);  // 56x56, >= 2x from 196: 196 becomes the reference
+    EXPECT_EQ(cost.CurrentScale().units, 3136u);
+    EXPECT_EQ(cost.ReferenceScale().units, 196u);
+    cost.ObserveScale(3600, 66'000'000, 160'000'000);  // within 2x of the last: replaces it, keeps 196
+    EXPECT_EQ(cost.CurrentScale().units, 3600u);
+    EXPECT_EQ(cost.ReferenceScale().units, 196u);
+    cost.ObserveScale(3600, 70'000'000, 170'000'000);  // the same scale again: blended
+    EXPECT_NEAR(cost.CurrentScale().meanNs, 67'200'000.0, 1.0);
+    EXPECT_TRUE(cost.ScalesMeasured());
+}
+
+TEST(GpuChunkCost, OneDispatchProjectionCountsTheLatencyOnce) {
+    const GpuChunkCost::WholePass window{32400, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    GpuChunkCost cost;
+    // 180 tiles of 196 at 6.4 ms sum to 1.15 s; the line through two scales projects one dispatch.
+    for (int i = 0; i < 180; ++i) cost.Observe(196, 196, 6'400'000);
+    cost.ObserveScale(196, 6'400'000, 6'600'000);
+    EXPECT_GT(cost.WholePassNs(32400), 1.0e9);  // the old projection: the sum of tile times
+    cost.ObserveScale(784, 9'000'000, 9'500'000);
+    const double projected = cost.OneDispatchNs(32400);
+    EXPECT_GT(projected, 100'000'000.0);
+    EXPECT_LT(projected, 160'000'000.0);
+    EXPECT_TRUE(cost.FitsWindow(window));
+    // A measured one dispatch is its own projection.
+    cost.ObserveScale(32400, 230'000'000);
+    EXPECT_DOUBLE_EQ(cost.OneDispatchNs(32400), 230'000'000.0);
+}
+
+TEST(GpuChunkCost, WindowHysteresisKeepsAPassNearTheWindowInOneShape) {
+    // RTL at 4K after the glyph-walk skip (fable-rtlrt1 r6): about 200 to 280 ms as one dispatch
+    // against the 240 ms window, which flipped 1, 1, 700, 1, 60, 60, 1 submissions frame to frame.
+    using Shape = GpuChunkCost::WholePass::Shape;
+    const uint64_t units = 480ull * 270;
+    const uint64_t windowNs = NativeWholePassWindowNs(2'000'000, 16'666'666);
+    const auto measuredWhole = [&](double ns) {
+        GpuChunkCost cost;
+        cost.Observe(units, units, ns);
+        cost.ObserveScale(units, ns);
+        return cost;
+    };
+    // One dispatch stays one dispatch until it measures over the window by 25%.
+    EXPECT_TRUE(measuredWhole(280e6).FitsWindow({units, windowNs, Shape::Whole}));
+    EXPECT_FALSE(measuredWhole(310e6).FitsWindow({units, windowNs, Shape::Whole}));
+    const GpuChunkCost::WholePass stays{units, windowNs, Shape::Whole};
+    EXPECT_EQ(measuredWhole(280e6).Edge(2'000'000, 480, 7, &stays), 480u);
+    const GpuChunkCost::WholePass plain{units, windowNs};
+    EXPECT_LT(measuredWhole(280e6).Edge(2'000'000, 480, 7, &plain), 480u);
+    // A tiled pass returns only when its projection is under the window by 25%.
+    EXPECT_FALSE(measuredWhole(200e6).FitsWindow({units, windowNs, Shape::Tiled}));
+    EXPECT_TRUE(measuredWhole(170e6).FitsWindow({units, windowNs, Shape::Tiled}));
+    // With no previous shape (a cold launch, or a caller without state): the plain window.
+    EXPECT_TRUE(measuredWhole(235e6).FitsWindow({units, windowNs}));
+    EXPECT_FALSE(measuredWhole(245e6).FitsWindow({units, windowNs}));
+}
+
+TEST(GpuChunkCost, SlowestTileStaysWithinTheOneDispatchAllowance) {
+    // RTL at 4K, stock shaders, mean-sized tiles (opus-marchrule1 dev run): 45 tiles of 3,136
+    // workgroups had a 214 ms slowest tile; 15 tiles of about 9,600 had 350 to 460 ms, and the shadow
+    // wave's slowest crossed the 500 ms guard. On a native device the slowest tile is bounded by the
+    // window plus its margin (300 ms with the default budgets).
+    const GpuChunkCost::WholePass window{480ull * 270, NativeWholePassWindowNs(2'000'000, 16'666'666)};
+    GpuChunkCost cost;
+    for (int i = 0; i < 64; ++i) cost.Observe(9600, 9600, 116'000'000);
+    cost.ObserveScale(3136, 51'000'000, 214'000'000);
+    cost.ObserveScale(9600, 116'000'000, 350'000'000);
+    ASSERT_TRUE(cost.ScalesMeasured());
+    const uint32_t bounded = cost.Edge(2'000'000, 480, 7, &window);
+    const uint32_t unbounded = cost.Edge(2'000'000, 480, 7);
+    EXPECT_LT(bounded, unbounded);
+    const double slope = (350e6 - 214e6) / (9600.0 - 3136.0);
+    EXPECT_LE(cost.LaunchLatencyNs() + slope * double(bounded) * bounded, 300e6);
+    EXPECT_GT(bounded, 56u);  // still well above the 45-tile scale it measured at
+}
+
+TEST(GpuChunkCost, MeasuredTiledPlanHoldsItsEdgeWithinTheMargin) {
+    EXPECT_EQ(TiledDispatch::HeldEdge(108, 113), 108u);  // 9% more area: held
+    EXPECT_EQ(TiledDispatch::HeldEdge(108, 100), 108u);  // 14% less area: held
+    EXPECT_EQ(TiledDispatch::HeldEdge(108, 125), 125u);  // 34% more: the rule's edge
+    EXPECT_EQ(TiledDispatch::HeldEdge(108, 90), 90u);
+    EXPECT_EQ(TiledDispatch::HeldEdge(0, 90), 90u);       // no previous plan
+}
+
+TEST(GpuChunkCost, PersistedScalesStartWarmWithTheLearnedTile) {
+    GpuChunkCost learned;
+    learned.Observe(196, 196, 110'000'000);
+    learned.Observe(196, 196, 6'400'000);
+    learned.ObserveScale(49, 2'600'000, 86'000'000);
+    learned.ObserveScale(196, 6'400'000, 110'000'000);
+    GpuChunkCost warm;
+    warm.Import(learned.AnchorUnits(), learned.UnitNs(), learned.FixedNs(), learned.MeanUnitNs(),
+                learned.MeanFixedNs());
+    EXPECT_FALSE(warm.ScalesMeasured());
+    warm.ImportScales(learned.CurrentScale(), learned.ReferenceScale());
+    EXPECT_TRUE(warm.ScalesMeasured());
+    EXPECT_EQ(warm.SubmissionBudgetNs(2'000'000), learned.SubmissionBudgetNs(2'000'000));
+    EXPECT_EQ(warm.Edge(2'000'000, 240, 7), learned.Edge(2'000'000, 240, 7));
+    // A partial or inconsistent record is not a pair.
+    GpuChunkCost partial;
+    partial.ImportScales({196, 6'400'000, 110'000'000}, {});
+    EXPECT_FALSE(partial.ScalesMeasured());
+    partial.ImportScales({196, 6'400'000, 110'000'000}, {300, 7'000'000, 120'000'000});
+    EXPECT_FALSE(partial.ScalesMeasured());
 }
 
 TEST(GpuChunkCost, PersistedMeanLetsAKnownDeviceUntileFromFrameOne) {

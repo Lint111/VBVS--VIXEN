@@ -62,7 +62,7 @@ struct TileBinStats {
     uint listed;
     uint behindCamera;
     uint offScreen;
-    uint occluded;
+    uint occludedSlices;
     uint overflowed;
 };
 #endif // TILEBINSTATS_GLSL
@@ -105,6 +105,20 @@ layout(push_constant, std430) uniform TileBinScatterSystemPushConstants
     uint _ExtentX;
     uint _ExtentY;
 } pc;
+
+int ScatterLanes(TileBinView view) {
+    int available = (view.tilesX - 1) * (view.tilesY - 1) * 64;
+    if (view.instanceCount <= 0)
+    {
+        return 256;
+    }
+    int lanes = available / view.instanceCount;
+    if (lanes > 256)
+    {
+        return 256;
+    }
+    return (lanes < 1 ? 1 : lanes);
+}
 
 TileRect ProjectBound(float centerX, float centerY, float centerZ, float radius, TileBinView view) {
     float vx = view.viewXx * centerX + view.viewXy * centerY + view.viewXz * centerZ + view.viewXw;
@@ -152,52 +166,63 @@ bool IsBehindTileDepth(float nearDepth, float tileFarDepth) {
 }
 
 
-void TileBinScatterSystem_Body(in InstanceBound bounds, in TileBinView view, int i) {
-    if (i >= view.instanceCount)
+void TileBinScatterSystem_Body(in TileBinView view, int i) {
+    int lanes = ScatterLanes(view);
+    if (i >= view.instanceCount * lanes)
     {
         return;
     }
-    TileRect rect = ProjectBound(bounds.centerX, bounds.centerY, bounds.centerZ, bounds.radius, view);
+    int instance = i / lanes;
+    int lane = i - instance * lanes;
+    TileRect rect = ProjectBound(bounds.values[instance].centerX, bounds.values[instance].centerY, bounds.values[instance].centerZ, bounds.values[instance].radius, view);
     if (rect.cull == 1)
     {
-        atomicAdd(stats.values[0].behindCamera, 1u);
+        if (lane == 0)
+        {
+            atomicAdd(stats.values[0].behindCamera, 1u);
+        }
         return;
     }
     if (rect.cull == 2)
     {
-        atomicAdd(stats.values[0].offScreen, 1u);
+        if (lane == 0)
+        {
+            atomicAdd(stats.values[0].offScreen, 1u);
+        }
         return;
     }
     int capacity = 1 << view.listCapacityLog2;
+    int width = rect.maxX - rect.minX + 1;
+    int area = width * (rect.maxY - rect.minY + 1);
     uint visible = 0u;
     uint listed = 0u;
-    for (int tileY = rect.minY; tileY <= rect.maxY; tileY++)
+    for (int offset = lane; offset < area; offset += lanes)
     {
-        for (int tileX = rect.minX; tileX <= rect.maxX; tileX++)
+        int row = offset / width;
+        int tileY = rect.minY + row;
+        int tileX = rect.minX + (offset - row * width);
+        int tile = tileY * view.tilesX + tileX;
+        if (IsBehindTileDepth(rect.nearDepth, imageLoad(viewDepth_previous, ivec2(int(tile) % imageSize(viewDepth_previous).x, int(tile) / imageSize(viewDepth_previous).x)).x))
         {
-            int tile = tileY * view.tilesX + tileX;
-            if (IsBehindTileDepth(rect.nearDepth, imageLoad(viewDepth_previous, ivec2(int(tile) % imageSize(viewDepth_previous).x, int(tile) / imageSize(viewDepth_previous).x)).x))
-            {
-                continue;
-            }
-            visible++;
-            int slot = (atomicAdd(counters.values[tile].count, 1) + 1) - 1;
-            if (slot >= capacity)
-            {
-                atomicAdd(stats.values[0].overflowed, 1u);
-                continue;
-            }
-            int entry = (tile << view.listCapacityLog2) + slot;
-            candidates.values[entry].nearDepth = rect.nearDepth;
-            candidates.values[entry].instance = uint(i);
-            listed++;
+            continue;
         }
+        visible++;
+        int slot = (atomicAdd(counters.values[tile].count, 1) + 1) - 1;
+        if (slot >= capacity)
+        {
+            atomicAdd(stats.values[0].overflowed, 1u);
+            continue;
+        }
+        int entry = (tile << view.listCapacityLog2) + slot;
+        candidates.values[entry].nearDepth = rect.nearDepth;
+        candidates.values[entry].instance = uint(instance);
+        listed++;
     }
-    if (visible == 0u)
+    if (lane < area && visible == 0u)
     {
-        atomicAdd(stats.values[0].occluded, 1u);
+        atomicAdd(stats.values[0].occludedSlices, 1u);
     }
-    else
+    if (listed > 0u)
     {
         atomicAdd(stats.values[0].listed, listed);
     }
@@ -209,6 +234,5 @@ void main()
     if (axisX >= pc._ExtentX) return;
     if (axisY >= pc._ExtentY) return;
     uint linearId = (axisX + axisY * pc._ExtentX);
-    if (int(linearId) >= view.values[0].instanceCount) return;
-    TileBinScatterSystem_Body(bounds.values[linearId], view.values[0], int(linearId));
+    TileBinScatterSystem_Body(view.values[0], int(linearId));
 }

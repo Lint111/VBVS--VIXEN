@@ -686,6 +686,11 @@ vixen_gtest_discover_tests(SVO test_recipe_parity_fixture_export)
 # parity fixture only; the fixture SetUp() GTEST_SKIPs otherwise. See file
 # header for the Windows-native hand-off command.)
 # ===========================================================================
+# Baked fonts of the build (cmake/VixenGlyphBake.cmake), for the baked glyph walk tests.
+vixen_glyph_bake_file(_glyph_bake_lato_image LatoLatin-Regular 0.03 glyphimage)
+vixen_glyph_bake_file(_glyph_bake_lato_samples LatoLatin-Regular 0.03 glyphsamples)
+vixen_glyph_bake_file(_glyph_bake_noto_image NotoSansArabic-VF 0.03 glyphimage)
+vixen_glyph_bake_file(_glyph_bake_noto_samples NotoSansArabic-VF 0.03 glyphsamples)
 add_executable(test_recipe_glsl_numerical_parity test_recipe_glsl_numerical_parity.cpp)
 if(TARGET SVO AND TARGET ShaderManagement AND TARGET VulkanResources)
     target_link_libraries(test_recipe_glsl_numerical_parity PRIVATE
@@ -699,7 +704,11 @@ endif()
 target_compile_definitions(test_recipe_glsl_numerical_parity PRIVATE
     SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
     GLYPH_OUTLINE_INSTANCE_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/GlyphOutlineInstance.g.glsl"
+    VIXEN_RECIPE_GLYPH_BINDINGS_GLSL_PATH="${CMAKE_SOURCE_DIR}/shaders/RecipeGlyphBindings.glsl"
+    GLYPH_BAKE_LATO_IMAGE="${_glyph_bake_lato_image}"
+    GLYPH_BAKE_NOTO_IMAGE="${_glyph_bake_noto_image}"
 )
+add_dependencies(test_recipe_glsl_numerical_parity vixen_glyph_bake)
 set_target_properties(test_recipe_glsl_numerical_parity PROPERTIES FOLDER "Tests/SVO Tests")
 
 vixen_gtest_discover_tests(SVO test_recipe_glsl_numerical_parity
@@ -795,6 +804,20 @@ target_compile_definitions(test_recipe_declared_position_render PRIVATE
 set_target_properties(test_recipe_declared_position_render PROPERTIES FOLDER "Tests/SVO Tests")
 
 vixen_gtest_discover_tests(SVO test_recipe_declared_position_render GPU)
+
+# Baked glyph rows (R892.14): image reader, packed stream, and the CPU face of the walk against
+# the walk results the kernel tool wrote beside each baked font (bit for bit). CPU only.
+add_executable(test_glyph_bake_stream test_glyph_bake_stream.cpp)
+target_link_libraries(test_glyph_bake_stream PRIVATE GTest::gtest_main SVO)
+add_dependencies(test_glyph_bake_stream vixen_glyph_bake)
+target_compile_definitions(test_glyph_bake_stream PRIVATE
+    GLYPH_BAKE_LATO_IMAGE="${_glyph_bake_lato_image}"
+    GLYPH_BAKE_LATO_SAMPLES="${_glyph_bake_lato_samples}"
+    GLYPH_BAKE_NOTO_IMAGE="${_glyph_bake_noto_image}"
+    GLYPH_BAKE_NOTO_SAMPLES="${_glyph_bake_noto_samples}"
+    GLYPH_BAKE_MANIFEST="${VIXEN_GLYPH_BAKE_MANIFEST}")
+set_target_properties(test_glyph_bake_stream PROPERTIES FOLDER "Tests/SVO Tests")
+vixen_gtest_discover_tests(SVO test_glyph_bake_stream)
 
 # ===========================================================================
 # Uber-Shader Splice Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11 —

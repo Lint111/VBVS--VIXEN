@@ -18,7 +18,9 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     target_link_libraries(vixen_lookdev_capture PRIVATE GTest::gtest_main Text stb VoxelDocument)
     target_compile_definitions(vixen_lookdev_capture PRIVATE
         TEXT_LATO_FONT_PATH="${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/LatoLatin-Regular.ttf"
-        TEXT_NOTO_ARABIC_FONT_PATH="${VIXEN_ROOT}/libraries/Text/tests/data/NotoSansArabic-VF.ttf")
+        TEXT_NOTO_ARABIC_FONT_PATH="${VIXEN_ROOT}/libraries/Text/tests/data/NotoSansArabic-VF.ttf"
+        TEXT_GLYPH_BAKE_MANIFEST="${VIXEN_GLYPH_BAKE_MANIFEST}")
+    add_dependencies(vixen_lookdev_capture vixen_glyph_bake)
     set_target_properties(vixen_lookdev_capture PROPERTIES FOLDER "Tests/Application")
     set(_lookdev_test_environment
         ${VIXEN_CTEST_GPU_ENVIRONMENT}

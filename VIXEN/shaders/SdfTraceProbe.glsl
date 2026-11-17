@@ -5,10 +5,11 @@
 //
 // Opt-in: a test or debug harness defines VIXEN_SDF_TRACE_PROBE (e.g. right after the
 // #version line) and binds a storage buffer of width*height*SDF_TRACE_PROBE_WORDS uint32
-// at SDF_TRACE_PROBE_BINDING. Without the define this file compiles to nothing and the
-// production shaders carry no probe code or binding.
+// at the includer's generated VXB_SdfTraceProbeBuffer binding (R896; C++ reads it from
+// ShaderInterface::<Program>::Bindings::SdfTraceProbeBuffer). Without the define this file
+// compiles to nothing and the production shaders carry no probe code or binding.
 //
-// Requires imageSize(outputImage) in scope (BodyInstanceRayMarch.comp binding 0); it is
+// Requires imageSize(outputImage) in scope (BodyInstanceRayMarch.comp's outputImage); it is
 // included from SdfRecipes.glsl, which that shader pulls in after declaring outputImage.
 //
 // Record (16 words per pixel, row-major):
@@ -30,7 +31,6 @@
 
 #ifdef VIXEN_SDF_TRACE_PROBE
 
-#define SDF_TRACE_PROBE_BINDING 48
 #define SDF_TRACE_PROBE_WORDS   16u
 
 #define SDF_TRACE_TERM_BOUND_MISS 0u  // ray misses the recipe bound
@@ -38,7 +38,7 @@
 #define SDF_TRACE_TERM_BUDGET     2u  // step budget exhausted
 #define SDF_TRACE_TERM_EXIT       3u  // marched past tFar
 
-layout(std430, binding = SDF_TRACE_PROBE_BINDING) buffer SdfTraceProbeBuffer {
+layout(std430, binding = VXB_SdfTraceProbeBuffer) buffer SdfTraceProbeBuffer {
     uint sdfTraceProbeWords[];
 };
 

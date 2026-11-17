@@ -73,6 +73,8 @@
  *     a follow-up if this proves too tight (or too loose to catch real bugs).
  */
 
+#include "Recipe/GlyphBakeStream.h"
+#include <cstdio>
 #include <gtest/gtest.h>
 
 #include "Recipe/RecipeParityCorpus.h"
@@ -520,7 +522,8 @@ protected:
                               const std::vector<glm::vec3>& points,
                               std::vector<float>& outValues,
                               const std::array<float, 6>& params = {},
-                              std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {}) {
+                              std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
+                              std::span<const std::uint32_t> binding3Words = {}) {
         ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed GPU target; refusing vkQueueSubmit.";
         ASSERT_FALSE(spirv.empty());
 
@@ -565,14 +568,18 @@ protected:
             glyphInstances.empty()
                 ? std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance>(&emptyGlyph, 1)
                 : glyphInstances;
-        const VkDeviceSize glyphSize = static_cast<VkDeviceSize>(glyphRows.size_bytes());
+        // binding3Words, when given, is the whole payload of binding 3 (the packed baked rows).
+        const void* glyphData = binding3Words.empty() ? static_cast<const void*>(glyphRows.data())
+                                                      : static_cast<const void*>(binding3Words.data());
+        const VkDeviceSize glyphSize = static_cast<VkDeviceSize>(
+            binding3Words.empty() ? glyphRows.size_bytes() : binding3Words.size_bytes());
         VkBuffer glyphBuf = VK_NULL_HANDLE; VkDeviceMemory glyphMem = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(glyphSize,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, glyphBuf, glyphMem));
         {
             void* mapped = nullptr;
             ASSERT_EQ(vkMapMemory(logicalDevice_, glyphMem, 0, glyphSize, 0, &mapped), VK_SUCCESS);
-            std::memcpy(mapped, glyphRows.data(), static_cast<size_t>(glyphSize));
+            std::memcpy(mapped, glyphData, static_cast<size_t>(glyphSize));
             vkUnmapMemory(logicalDevice_, glyphMem);
         }
 
@@ -1087,6 +1094,120 @@ TEST_F(RecipeGlslNumericalParityTest, GlyphOutlineBucketMatchesCpu) {
                 << " cpu=" << cpuValues[i] << " |diff|=" << std::fabs(gpuValues[i] - cpuValues[i]);
         }
     }
+}
+
+// R892.14 / R619.1: the shader walk over baked glyph rows against its CPU face, on the packed
+// words both read. The shader text is the production walk, cut out of RecipeGlyphBindings.glsl.
+// The sign must agree at every sample that is not on the outline. The distance may differ by the
+// rounding the GPU is allowed in a division and a square root: the projection onto a chord
+// subtracts numbers of the size of the sample coordinates, so the bound is two units in the
+// last place of the larger coordinate. The test prints how many samples are bit-equal.
+TEST_F(RecipeGlslNumericalParityTest, BakedGlyphRowsMatchTheCpuFace) {
+    using namespace Vixen::SVO::Recipe;
+    std::ifstream bindingsFile(VIXEN_RECIPE_GLYPH_BINDINGS_GLSL_PATH);
+    ASSERT_TRUE(bindingsFile.good()) << VIXEN_RECIPE_GLYPH_BINDINGS_GLSL_PATH;
+    std::ostringstream bindings;
+    bindings << bindingsFile.rdbuf();
+    const std::string bindingsText = bindings.str();
+    const size_t walkBegin = bindingsText.find("float VixenGlyphBakeBlock(");
+    const size_t walkEnd = bindingsText.find("// Rename the fixed-capacity generated helper below.");
+    ASSERT_NE(walkBegin, std::string::npos);
+    ASSERT_NE(walkEnd, std::string::npos);
+    const std::string shaderSource = std::string("#version 450\n#extension GL_EXT_control_flow_attributes : enable\n") +
+        "layout(set = 0, binding = 3, std430) readonly buffer GlyphOutlineFlatBuffer { uint glyphOutlineWords[]; };\n" +
+        bindingsText.substr(walkBegin, walkEnd - walkBegin) + R"GLSL(
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };
+layout(set = 0, binding = 1, std430) writeonly buffer OutValues { float values[]; };
+layout(set = 0, binding = 2, std430) readonly buffer InParams { float params[6]; };
+void main() {
+    if (gl_GlobalInvocationID.x >= points.length()) return;
+    values[gl_GlobalInvocationID.x] = SdfCore_GlyphOutlineBounded(points[gl_GlobalInvocationID.x].xyz, uint(params[0]));
+}
+)GLSL";
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions options;
+    options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+    auto compiled = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSource, "main", options);
+    ASSERT_TRUE(compiled.success) << compiled.GetFullLog();
+
+    struct Font { const char* name; const char* image; float fontPerRow; };
+    const Font fonts[] = {{"Lato", GLYPH_BAKE_LATO_IMAGE, 2000.0f / 1536.0f},
+                          {"NotoSansArabic", GLYPH_BAKE_NOTO_IMAGE, 1000.0f / 1536.0f}};
+    std::vector<GlyphBakedRow> rows;
+    std::vector<std::shared_ptr<const GlyphBakeImage>> images;
+    for (const Font& font : fonts) {
+        std::string error;
+        auto image = GlyphBakeImage::Load(font.image, &error);
+        ASSERT_NE(image, nullptr) << error;
+        images.push_back(image);
+        auto face = std::make_shared<GlyphBakeFace>();
+        face->name = font.name;
+        face->images.push_back(image);
+        std::vector<std::uint32_t> ids;
+        for (std::uint32_t glyphId = 0; glyphId < image->GlyphCount(); ++glyphId)
+            if (!image->Block(glyphId).empty()) ids.push_back(glyphId);
+        ASSERT_GT(ids.size(), 400u);
+        // Forty glyphs spread over the font, each alone in a row, then one row of four.
+        for (std::size_t pick = 0; pick < 40; ++pick)
+            rows.push_back({face, font.fontPerRow, {{ids[pick * ids.size() / 40], 0.0f, 0.0f}}});
+        rows.push_back({face, font.fontPerRow, {{ids[ids.size() / 7], -1400.0f, 30.0f}, {ids[ids.size() / 5], 0.0f, 0.0f},
+                                                {ids[ids.size() / 3], 1500.0f, -50.0f}, {ids[ids.size() / 2], 3100.0f, 0.0f}}});
+    }
+    std::vector<std::uint32_t> stream;
+    std::string error;
+    ASSERT_TRUE(BuildGlyphBakeStream(rows, {}, stream, &error)) << error;
+
+    std::uint64_t samples = 0, bitEqual = 0, signMismatches = 0, beyondTolerance = 0, inside = 0, chords = 0;
+    float worstDifference = 0.0f, worstAllowed = 0.0f;
+    std::uint32_t state = 2026u;
+    for (std::uint32_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+        const GlyphBakeImage& image = *images[rowIndex < 41 ? 0 : 1];
+        float minX, minY, maxX, maxY;
+        ASSERT_TRUE(rows[rowIndex].Bounds(image, minX, minY, maxX, maxY));
+        const float margin = 0.2f * std::max(maxX - minX, maxY - minY);
+        std::vector<glm::vec3> points(4096);
+        for (glm::vec3& point : points) {
+            auto next = [&state]() { state = state * 1664525u + 1013904223u; return static_cast<float>(state >> 8) / 16777216.0f; };
+            point = {minX - margin + next() * (maxX - minX + 2.0f * margin),
+                     minY - margin + next() * (maxY - minY + 2.0f * margin), 0.0f};
+        }
+        std::vector<float> gpuValues;
+        std::array<float, 6> params{};
+        params[0] = static_cast<float>(rowIndex);
+        ASSERT_NO_FATAL_FAILURE(DispatchAndReadback(compiled.spirv, points, gpuValues, params, {}, stream));
+        ASSERT_EQ(gpuValues.size(), points.size());
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            const float cpu = EvaluateGlyphBakeRow(stream, rowIndex, points[i].x, points[i].y, &chords);
+            const float gpu = gpuValues[i];
+            ++samples;
+            inside += cpu < 0.0f ? 1u : 0u;
+            const std::uint32_t cpuBits = std::bit_cast<std::uint32_t>(cpu), gpuBits = std::bit_cast<std::uint32_t>(gpu);
+            if (cpuBits == gpuBits) { ++bitEqual; continue; }
+            const bool onOutline = std::fabs(cpu) <= 1e-3f && std::fabs(gpu) <= 1e-3f;
+            if (std::signbit(cpu) != std::signbit(gpu)) {
+                if (!onOutline && ++signMismatches <= 5)
+                    ADD_FAILURE() << "sign differs in row " << rowIndex << " at (" << points[i].x << ", " << points[i].y
+                                  << "): cpu " << cpu << " gpu " << gpu;
+                continue;
+            }
+            const float coordinate = std::max(1.0f, std::max(std::fabs(points[i].x), std::fabs(points[i].y)));
+            const float allowed = 2.0f * coordinate * std::numeric_limits<float>::epsilon() + 1e-6f * std::fabs(cpu);
+            if (std::fabs(cpu - gpu) > worstDifference) { worstDifference = std::fabs(cpu - gpu); worstAllowed = allowed; }
+            if (std::fabs(cpu - gpu) > allowed && ++beyondTolerance <= 5)
+                ADD_FAILURE() << "distance differs in row " << rowIndex << " at (" << points[i].x << ", " << points[i].y
+                              << "): cpu " << cpu << " gpu " << gpu;
+        }
+    }
+    std::printf("[GLYPH_BAKE_GPU] rows=%zu samples=%llu bit_equal=%llu sign_mismatches=%llu beyond_tolerance=%llu "
+                "worst_difference=%.3g (allowed there %.3g, row units) inside=%llu chords_per_sample=%.2f\n",
+                rows.size(), static_cast<unsigned long long>(samples), static_cast<unsigned long long>(bitEqual),
+                static_cast<unsigned long long>(signMismatches), static_cast<unsigned long long>(beyondTolerance),
+                static_cast<double>(worstDifference), static_cast<double>(worstAllowed),
+                static_cast<unsigned long long>(inside), static_cast<double>(chords) / static_cast<double>(samples));
+    EXPECT_EQ(signMismatches, 0u);
+    EXPECT_EQ(beyondTolerance, 0u);
+    EXPECT_GT(inside, samples / 20u);
 }
 
 TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) {

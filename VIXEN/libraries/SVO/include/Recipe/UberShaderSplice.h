@@ -132,11 +132,6 @@ inline std::string SpliceProceduralRecipesIntoSource(
 
     std::ostringstream out;
     out << "\n#define VIXEN_UBER_RECIPE_SPLICED 1\n";
-    if (materialVariant) {
-        out << "#define VIXEN_UBER_RECIPE_MATERIAL 1\n"
-               "struct RecipeTapeInstruction { uint opCode; float data[32]; };\n"
-               "layout(std430, binding = 53) readonly buffer RecipeTapeBuffer { RecipeTapeInstruction recipeTape[]; };\n";
-    }
 
     // Recipe-Diversity-Stress-Scene Inc6 M2: a recipe containing DeclarePosition (M1's
     // spatial-contract opcode) MUST be emitted with emitDeclaredPositionOutParam=true —
@@ -267,7 +262,20 @@ inline std::string SpliceProceduralRecipesIntoSource(
            "  }\n"
            "}\n";
 
-    return rawSource.substr(0, insertPos) + out.str() + rawSource.substr(insertPos);
+    std::string spliced = rawSource.substr(0, insertPos) + out.str() + rawSource.substr(insertPos);
+    if (materialVariant) {
+        // R896: the tape binding is declared statically (RecipeEditBindings.glsl, included
+        // before the marker) and allocated by the generator; the splice only selects the
+        // material-capable variant, ahead of that include.
+        const size_t versionPos = spliced.find("#version");
+        const size_t lineEnd = versionPos == std::string::npos ? std::string::npos
+                                                               : spliced.find('\n', versionPos);
+        if (lineEnd == std::string::npos) {
+            throw std::runtime_error("SpliceProceduralRecipesIntoSource: material variant needs a #version line");
+        }
+        spliced.insert(lineEnd + 1, "#define VIXEN_UBER_RECIPE_MATERIAL 1\n");
+    }
+    return spliced;
 }
 
 } // namespace Vixen::SVO::Recipe

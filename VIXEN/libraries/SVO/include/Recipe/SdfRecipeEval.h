@@ -45,13 +45,41 @@ namespace Vixen::SVO::Recipe {
 // registry (Recipe-Nested-Invocation M1): backs InvokeRecipe's callee lookup — required
 // (asserted) only if `prog` actually contains an InvokeRecipe instruction; every pre-M1 call
 // site (no InvokeRecipe in its program) compiles and runs unchanged with the nullptr default.
+// One glyph row as evalRecipe sees it: the baked row of the packed stream when the stream has
+// one (the same words the GPU walk reads, R892.14 / R619.1), else the segment row.
+struct GlyphRowRef {
+    const Yeroket::Sdf::Kernels::GlyphOutlineInstance* segments = nullptr;
+    std::span<const std::uint32_t> bakeStream;
+    std::uint32_t row = 0;
+};
+
+struct GlyphRowSet {
+    std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> segmentRows;
+    std::span<const std::uint32_t> bakeStream;
+
+    [[nodiscard]] GlyphRowRef operator[](std::uint32_t row) const noexcept {
+        return {row < segmentRows.size() ? &segmentRows[row] : nullptr, bakeStream, row};
+    }
+};
+
+// The generated dispatch calls SdfCore_GlyphOutline(pos, glyphInstances[row]); inside evalRecipe
+// that name resolves here, so a baked row is evaluated by the baked walk.
+[[nodiscard]] inline float SdfCore_GlyphOutline(glm::vec3 p, const GlyphRowRef& row) noexcept {
+    if (GlyphBakeStreamHasRow(row.bakeStream, row.row))
+        return EvaluateGlyphBakeRow(row.bakeStream, row.row, p.x, p.y);
+    if (row.segments) return Yeroket::Sdf::Kernels::SdfCore_GlyphOutline(p, *row.segments);
+    return std::bit_cast<float>(kGlyphBakeEmptyRowDistanceBits);
+}
+
 inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                          std::span<const float> params = {}, glm::vec3* outDeclaredPos = nullptr,
                          const RecipeRegistry* registry = nullptr,
-                         std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
+                         std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphSegmentRows = {},
                          std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
                          const void* elementRow = nullptr, uint32_t elementStride = 0u,
-                         const uint32_t* planSlots = nullptr, uint32_t planSlotCount = 0u) {
+                         const uint32_t* planSlots = nullptr, uint32_t planSlotCount = 0u,
+                         std::span<const std::uint32_t> glyphBakeStream = {}) {
+    const GlyphRowSet glyphInstances{glyphSegmentRows, glyphBakeStream};
     float stack[64]; int sp = 0;
     // The generated kernel dispatch carries MaterialId as a categorical sidecar even though this
     // legacy scalar API returns distance only. Keep the sidecar state local so generated cases

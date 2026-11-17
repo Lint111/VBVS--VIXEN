@@ -66,6 +66,11 @@ inline constexpr ShaderFeature kFeatureReconstructionInputs{"VIXEN_RECONSTRUCTIO
 // Interface-invariant: uses only the resources declared by reconstruction inputs.
 inline constexpr ShaderFeature kFeaturePrimaryJitter{"VIXEN_PRIMARY_JITTER"};
 inline constexpr ShaderFeature kFeatureB1OcclusionCull{"VIXEN_B1_OCCLUSION_CULL"};
+// R896: the material-capable recipe variant. UberShaderSplice defines it when the registry (or
+// the editor override, march only) needs the recipe tape; RecipeEditBindings.glsl declares
+// RecipeTapeBuffer under it and sdi-variants.json lists the axis, so the tape member is in the
+// merged SDI and wires by name from the scene providers. Every splice consumer carries it.
+inline constexpr ShaderFeature kFeatureRecipeMaterial{"VIXEN_UBER_RECIPE_MATERIAL"};
 // Raster-proxy B2: same-frame graphics pre-pass emits a compact union interval
 // plus ordered 192-bit candidate mask consumed only by the primary march.
 inline constexpr ShaderFeature kFeatureB2ProxyPrepass{"VIXEN_B2_PROXY_PREPASS"};

@@ -36,6 +36,8 @@ set(_vixen_kernel_codegen_paths
     Packages/com.yeroket.utility.kernel-framework/RoslynVersions.g.props
     Packages/com.yeroket.utility.kernel-framework/CodegenTool~
     Packages/com.yeroket.utility.kernel-framework/SourceGenerator~
+    # Font import for the glyph walk (R892.18): codegen builds glyph-bake from the same pin.
+    Packages/com.yeroket.utility.kernel-framework/GlyphBake~
     Packages/com.yeroket.utility.kernel-framework/Editor/KernelArtifactHeader.cs
     Packages/com.yeroket.utility.kernel-framework/Editor/HlslSourceFieldNames.cs
     Packages/com.yeroket.utility.kernel-framework/Attributes~

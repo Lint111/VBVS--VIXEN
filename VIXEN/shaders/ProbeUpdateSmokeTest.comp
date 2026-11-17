@@ -1,5 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#include "Generated/ProbeUpdateSmokeTest.bindings.g.glsl"  // R896: generated descriptor binding numbers
 
 // ============================================================================
 // ProbeUpdateSmokeTest.comp - Sampled Lighting Inc4 M1 reusability proof
@@ -16,7 +17,7 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-layout(binding = 0) uniform writeonly image2D outputImage;
+layout(binding = VXB_outputImage) uniform writeonly image2D outputImage;
 
 #include "SceneBindings.glsl"
 

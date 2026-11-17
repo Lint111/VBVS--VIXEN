@@ -141,6 +141,10 @@ public:
      */
     uint64_t GetRawTimestampTicks(uint32_t frameIndex, uint32_t queryIndex) const;
 
+    /// True when the last ReadResults found every query in [first, first + count) available, i.e. the
+    /// commands that write them have all retired. Lets a caller read a frame early without waiting.
+    [[nodiscard]] bool AllAvailable(uint32_t frameIndex, uint32_t first, uint32_t count) const;
+
 private:
     struct PerFrameData {
         VkQueryPool timestampPool = VK_NULL_HANDLE;

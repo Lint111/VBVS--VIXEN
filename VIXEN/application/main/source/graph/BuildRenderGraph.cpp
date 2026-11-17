@@ -205,6 +205,7 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "Generated/TileHeader.g.h"
 #include "Generated/TileSortedCandidate.g.h"
 #include "Nodes/MultiDispatchNode.h"  // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
+#include "Nodes/TileBinViewProjection.h"  // GB1 list capacity (kTileListCapacityLog2)
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/UIRenderNode.h"  // S0: composite-HUD render node (RmlUi) — AFTER BodyOctreeSceneNode.h
@@ -252,6 +253,40 @@ std::string_view RuntimeOperatingSystem() noexcept {
 #else
     return "unknown";
 #endif
+}
+
+std::string SceneCostIdentity() {
+    const char* scene = std::getenv("VIXEN_SCENE");
+    std::string identity = scene && *scene ? scene : "cornell";
+    const auto appendEnv = [&identity](const char* name) {
+        if (const char* value = std::getenv(name); value && *value) {
+            identity += '|';
+            identity += name;
+            identity += '=';
+            identity += value;
+        }
+    };
+    // GlyphSDF is selected by independent capture flags rather than VIXEN_SCENE. Include the
+    // variant and proof/text inputs that change the march workload, fixing the RTL order hazard.
+    appendEnv("VIXEN_GLYPHSDF_SCENE");
+    appendEnv("VIXEN_GLYPHSDF_VARIANT");
+    appendEnv("VIXEN_GLYPHSDF_RTL_PROOF");
+    appendEnv("VIXEN_GLYPHSDF_TEXT_INVARIANT");
+    appendEnv("VIXEN_GLYPHSDF_BAKE_RESOLUTION");
+    appendEnv("VIXEN_UI_DEMO");
+    appendEnv("VIXEN_INSTANCING_DEMO");
+    appendEnv("VIXEN_AUTOSYNC_DEMO");
+    appendEnv("VIXEN_FANIN_DEMO");
+    return identity;
+}
+
+std::string SceneCostQualityProfile(const VulkanGraphApplication::RenderPathConfig& config) {
+    return "scale=" + std::to_string(config.renderScale) +
+        ";upscaler=" + std::to_string(static_cast<int>(config.upscaler)) +
+        ";aa=" + std::string(config.antiAliasing) +
+        ";history=" + std::to_string(config.antiAliasingHistoryWeight) +
+        ";jitter=" + std::to_string(config.temporalJitter ? 1 : 0) +
+        ";sampling=" + std::to_string(static_cast<int>(config.samplingPath));
 }
 
 // Dynamic exposure config: the built-in scenes are the default SceneLook, so they contribute it as the
@@ -483,6 +518,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
         return;
     }
+    renderGraph->SetSceneCostConfiguration({SceneCostIdentity(), SceneCostQualityProfile(renderPathConfig)});
 
     // S0: opt into the UI-only RmlUi demo graph via env var, leaving the voxel path untouched.
     if (Vixen::Core::Env::Enabled("VIXEN_UI_DEMO")) {
@@ -1623,11 +1659,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
 
     // GB1: the generated tile passes use one header/counter per 8x8 tile and a
-    // fixed 512-entry candidate slab per tile. The list capacity is independent
-    // of the scene's instance count, so the old 192-instance storage shape is
-    // not part of this allocation contract.
+    // fixed candidate slab per tile (kTileListCapacityLog2, shared with the view
+    // record). The list capacity is independent of the scene's instance count.
     constexpr uint32_t kTileSize = 8u;
-    constexpr uint32_t kTileListCapacityLog2 = 9u;
+    using Vixen::RenderGraph::kTileListCapacityLog2;
     const uint32_t tileCount = ((renderExtent.width + kTileSize - 1u) / kTileSize) *
                                 ((renderExtent.height + kTileSize - 1u) / kTileSize);
     const uint32_t tileListCapacity = 1u << kTileListCapacityLog2;
@@ -1684,7 +1719,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     instanceSkipMaskInst->SetParameter(StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE,
                                        FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
 
-    // E11-T1: PolicyStencilTileBuffer (binding 41) -- fixed-size, not extent-driven
+    // E11-T1: PolicyStencilTileBuffer (generated binding) -- fixed-size, not extent-driven
     // (same convention as instanceSkipMaskBuffer/ddgiLeakGateDebugBuffer above).
     // ponytail: sized for the 500x500 established test resolution's 63x63=3,969
     // 8x8-workgroup tile grid, not derived from the live swapchain extent (the
@@ -2086,7 +2121,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetRecipeChunkBoxes(Vixen::Core::Env::Enabled("VIXEN_RECIPE_CHUNK_CULL")
                     ? Vixen::SVO::Recipe::DeriveRecipeChunkBoxes(proceduralRecipes_)
                     : std::vector<Vixen::SVO::Recipe::RecipeChunkAabb>{});
-                bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob));
+                // R892.14: the walk reads baked rows only. A row registered without an imported
+                // font, or a band no bake covers, stops the shader build with the reason.
+                std::vector<std::uint32_t> glyphBakeStream;
+                std::string glyphBakeError;
+                const std::vector<std::uint32_t> unbakedGlyphRows = proceduralRecipes_.UnbakedGlyphRows();
+                if (!unbakedGlyphRows.empty())
+                    glyphBakeError = std::to_string(unbakedGlyphRows.size()) + " GlyphOutline row(s) were registered "
+                        "without a baked glyph (first: row " + std::to_string(unbakedGlyphRows.front()) +
+                        "). Fix: give the recipe entry glyphBakedRows from a font imported by glyph-bake";
+                if (!glyphBakeError.empty() || !proceduralRecipes_.BuildGlyphBakeStream(glyphBakeStream, &glyphBakeError)) {
+                    if (mainLogger && mainLogger->IsEnabled())
+                        mainLogger->Error("[BuildRenderGraph] glyph rows cannot be rendered: " + glyphBakeError);
+                    throw std::runtime_error("glyph rows cannot be rendered: " + glyphBakeError);
+                }
+                bodyScene->SetGlyphOutlineInstances(std::move(glyphOutlineBlob), std::move(glyphBakeStream));
                 bodyScene->SetRecipeTape(std::move(recipeTapeBlob));
                 bodyScene->SetRecipeEmitterShapes(Vixen::SVO::BuildRecipeEmitterShapes(proceduralRecipes_));
                 // GB1: the tile scatter bins each body by the bound sphere this splice bakes.
@@ -4538,7 +4587,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER, kSceneRoles);
     sceneProviders.Provide("TierRefTableBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, kSceneRoles);
-    // W-RTQUERY Slice A: TLAS for the ray_query traversal backend (binding 40,
+    // W-RTQUERY Slice A: TLAS for the ray_query traversal backend (generated binding,
     // RayQueryTraversal.glsl). Provider name MUST match the GLSL identifier exactly
     // (same convention as "depthDistanceImage" below matching its own GLSL name) --
     // the SDI reflector keys members by the shader-side identifier, not an arbitrary
@@ -4702,7 +4751,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (Vixen::Core::Env::Enabled("VIXEN_RECIPE_CHUNK_CULL")) {
         marchFeatures.Enable(kFeatureRecipeChunkCull);
     }
-    // W-RTQUERY Slice A: gate the rtQueryTlas member (binding 40) the SAME way
+    // W-RTQUERY Slice A: gate the rtQueryTlas member (generated binding) the SAME way
     // B1's depthDistanceImage gates binding 36 above -- the merged-SDI MEMBERS table
     // is feature-filtered, so marchFeatures must carry this flag or the plan silently
     // omits the member (RtQueryTLAS's provider registration above then goes unused,
@@ -4717,7 +4766,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (Vixen::Core::Env::Enabled("VIXEN_RTQUERY_TRAVERSAL") || composedTraversalRequested) {
         marchFeatures.Enable(kFeatureRtQueryTraversal);
     }
-    // E11-T1: gates the PolicyStencilTileBuffer member (binding 41) the same
+    // E11-T1: gates the PolicyStencilTileBuffer member (generated binding) the same
     // way B1's depthDistanceImage gates binding 36 above -- marchShaderFeatures
     // (shader compile) and marchFeatures (SDI wire plan) must both carry this
     // flag or the compiled variant and the wire plan disagree.
@@ -4726,22 +4775,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
         marchFeatures.Enable(kFeaturePolicyStencilTiles);
     }
 
+    // R896: the material-capable recipe tape is a declared, generated member
+    // (RecipeEditBindings.glsl, sdi-variants axis VIXEN_UBER_RECIPE_MATERIAL), wired by name
+    // from the RecipeTapeBuffer provider above. Same condition as the march splice: the editor
+    // override or a registered MaterialId output selects the variant from the initial build.
+    if (ForceProceduralMaterialVariant() ||
+        Vixen::SVO::Recipe::RegistryRequiresMaterialVariant(proceduralRecipes_)) {
+        marchFeatures.Enable(kFeatureRecipeMaterial);
+    }
+
     WireStageFromSdi<MarchSdi::Metadata, MarchSdi::MEMBERS>(
         batch, sceneProviders, descriptorGatherer,
         /*pushGatherer (unused in this scope)*/ descriptorGatherer,
         marchFeatures, SdiWireSet::DescriptorsOnly);
-
-    // The material-capable recipe tape is injected after static SDI generation, so binding 53
-    // is not present in MarchSdi::MEMBERS. Keep the provider declarative through the gatherer's
-    // variadic binding seam; either the editor override or a registered MaterialId output makes
-    // this binding present from the initial graph build onward.
-    if (ForceProceduralMaterialVariant() ||
-        Vixen::SVO::Recipe::RegistryRequiresMaterialVariant(proceduralRecipes_)) {
-        constexpr uint32_t kRecipeTapeBinding = 53u;
-        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::RECIPE_TAPE_BUFFER,
-                      descriptorGatherer, kRecipeTapeBinding,
-                      ConnectionMeta{}.With<SlotRoleModifier>(kSceneRoles));
-    }
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] March descriptors wired from merged SDI (sceneProviders registry)");
@@ -4951,9 +4997,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // providing a real buffer is the capture path's own future slice.
     const SdiStageCommon lightingCommon{deviceNode, commandPoolNode,
                                         presentationTargetNode, frameSyncNode};
+    // R896: every lighting splice consumer compiles the material-capable recipe variant when
+    // the registry needs it (its splice has no editor override), and then declares the
+    // RecipeTapeBuffer member; the wire plan carries the same axis so the tape is bound.
+    SdiFeatureSet lightingRecipeFeatures;
+    const bool lightingRecipeMaterial =
+        Vixen::SVO::Recipe::RegistryRequiresMaterialVariant(proceduralRecipes_);
+    if (lightingRecipeMaterial) lightingRecipeFeatures.Enable(kFeatureRecipeMaterial);
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info(std::string("[BuildRenderGraph] R896 recipe material variant: march=") +
+                         (ForceProceduralMaterialVariant() || lightingRecipeMaterial ? "on" : "off") +
+                         " lighting=" + (lightingRecipeMaterial ? "on" : "off"));
+    }
     const auto dlSynth = SynthesizeComputeStage<DirectSdi::Metadata, DirectSdi::MEMBERS>(
         renderGraph, batch, "direct_lighting", directLightingShaderLib,
-        directLightingNode, lightingCommon, sceneProviders, {},
+        directLightingNode, lightingCommon, sceneProviders, lightingRecipeFeatures,
         SdiWireSet::DescriptorsOnly);
     directLightingPushConstantGatherer = dlSynth.pushGatherer;
 
@@ -4969,7 +5027,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         {"RayTraceBuffer", "trace-plumbing: define-gated writes"},
     };
     CensusStageFromSdi<DirectSdi::Metadata, DirectSdi::MEMBERS>(
-        sdiHazardCensus_, directLightingNode, sceneProviders, sdiNoFeatures,
+        sdiHazardCensus_, directLightingNode, sceneProviders, lightingRecipeFeatures,
         &sdiCensusExclusions);
 
     // DirectLighting's own push-constant gatherer (synthesized above): SAME field sources as the
@@ -5075,6 +5133,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the providers-before-synthesis rule, third application.
     SdiFeatureSet srsSdiFeatures;
     srsSdiFeatures.Enable(kFeatureMiningBeam);
+    if (lightingRecipeMaterial) srsSdiFeatures.Enable(kFeatureRecipeMaterial);
     if (testIndirectLightingProvider.group.IsValid()) {
         batch.Connect(testIndirectLightingProvider.group,
                       testIndirectLightingProvider.outputPort,
@@ -5875,19 +5934,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // early-out); the first zero-push synthesized stage, by design.
     const auto gatherSynth = SynthesizeComputeStage<GatherSdi::Metadata, GatherSdi::MEMBERS>(
         renderGraph, batch, "probe_gather", probeGatherShaderLib,
-        probeGatherNode, lightingCommon, sceneProviders, {},
+        probeGatherNode, lightingCommon, sceneProviders, lightingRecipeFeatures,
         SdiWireSet::DescriptorsOnly);
     probeGatherPushConstantGatherer = gatherSynth.pushGatherer;
     CensusStageFromSdi<GatherSdi::Metadata, GatherSdi::MEMBERS>(
-        sdiHazardCensus_, probeGatherNode, sceneProviders, sdiNoFeatures,
+        sdiHazardCensus_, probeGatherNode, sceneProviders, lightingRecipeFeatures,
         &sdiCensusExclusions);
     const auto shadowSynth = SynthesizeComputeStage<ShadowSdi::Metadata, ShadowSdi::MEMBERS>(
         renderGraph, batch, "shadow_ray_trace", shadowRayTraceShaderLib,
-        shadowRayTraceNode, lightingCommon, sceneProviders, {},
+        shadowRayTraceNode, lightingCommon, sceneProviders, lightingRecipeFeatures,
         SdiWireSet::DescriptorsOnly);
     shadowRayTracePushConstantGatherer = shadowSynth.pushGatherer;
     CensusStageFromSdi<ShadowSdi::Metadata, ShadowSdi::MEMBERS>(
-        sdiHazardCensus_, shadowRayTraceNode, sceneProviders, sdiNoFeatures,
+        sdiHazardCensus_, shadowRayTraceNode, sceneProviders, lightingRecipeFeatures,
         &sdiCensusExclusions);
     const auto applySynth = SynthesizeComputeStage<ApplySdi::Metadata, ApplySdi::MEMBERS>(
         renderGraph, batch, "probe_apply", probeApplyShaderLib,
@@ -5979,11 +6038,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // SceneBindings push block is hand-wired below like every tracing stage.
     // W-SPLIT: unconditionally plain now — VIXEN_HIT_ACCUM_FUSED retired, the
     // table write moved to the accumulate pass's own gatherers above.
-    // E11-T1: gates the PolicyStencilTileBuffer member (binding 41), same
+    // E11-T1: gates the PolicyStencilTileBuffer member (generated binding), same
     // rule as marchFeatures above -- must mirror lightingShaderFeatures'
     // VIXEN_POLICY_STENCIL_TILES define or the compiled variant and the wire
     // plan disagree.
     SdiFeatureSet waveSdiFeatures;
+    if (lightingRecipeMaterial) waveSdiFeatures.Enable(kFeatureRecipeMaterial);
     if (rtLightingMode != RtLightingMode::Off) {
         waveSdiFeatures.Enable(kFeatureRayQueryLighting);
     }
@@ -6076,6 +6136,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
         SdiFeatureSet waveReservoirSdiFeatures;
         waveReservoirSdiFeatures.Enable(kFeatureWaveReservoirPhase);
+        if (lightingRecipeMaterial) waveReservoirSdiFeatures.Enable(kFeatureRecipeMaterial);
         if (rtLightingMode != RtLightingMode::Off) {
             waveReservoirSdiFeatures.Enable(kFeatureRayQueryLighting);
         }
@@ -6147,10 +6208,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // (HitAccumCellRadiance provided at the SRS synthesis site above.)
         const auto cellShadeSynth = SynthesizeComputeStage<CellShadeSdi::Metadata, CellShadeSdi::MEMBERS>(
             renderGraph, batch, "hit_accum_cell_shade", hitAccumCellShadeShaderLib,
-            hitAccumCellShadeNode, lightingCommon, sceneProviders, {},
+            hitAccumCellShadeNode, lightingCommon, sceneProviders, lightingRecipeFeatures,
             SdiWireSet::DescriptorsOnly);
         CensusStageFromSdi<CellShadeSdi::Metadata, CellShadeSdi::MEMBERS>(
-            sdiHazardCensus_, hitAccumCellShadeNode, sceneProviders, sdiNoFeatures,
+            sdiHazardCensus_, hitAccumCellShadeNode, sceneProviders, lightingRecipeFeatures,
             &sdiCensusExclusions);
 
         // The cell shade traces (TraceWorldShadow) — the same three live

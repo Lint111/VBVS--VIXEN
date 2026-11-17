@@ -25,6 +25,9 @@
 #include "ShaderDataBundle.h"
 #include "IRenderTarget.h"
 #include "Core/NodeLogging.h"
+#include "SpirvReflector.h"
+#include <algorithm>
+#include <cstdio>
 #include <set>
 #include <stdexcept>
 
@@ -122,6 +125,10 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
             gpuPerfLogger_->SetEnabled(true);
             gpuPerfLogger_->SetLogFrequency(120);  // ~2s at 60fps, matches ComputeDispatchNode
             gpuPerfLogger_->SetPrintToTerminal(false);
+            // Standard stages report each queued tile submission through TiledDispatch::Collect.
+            // An external recorder remains one opaque submission and uses the logger's normal
+            // whole-dispatch path.
+            gpuPerfLogger_->SetSpansSeveralSubmissions(!externalRecorder_);
             if (auto* nodeLogger = GetLogger()) {
                 nodeLogger->AddChild(gpuPerfLogger_);
             }
@@ -135,6 +142,11 @@ void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
             NODE_LOG_WARNING("[ComputeStageNode] GPUQueryManager not available from VulkanDevice");
         }
     }
+
+    const auto& sceneCost = GetOwningGraph()->GetSceneCostConfiguration();
+    tiles_.Configure(GetDevice(), commandPool_, GetInstanceName(), TiledDispatch::Prior::Unknown,
+                     &GetOwningGraph()->GetMainCacher(), sceneCost.sceneIdentity,
+                     sceneCost.qualityProfile, nullptr);
 }
 
 // ============================================================================
@@ -172,6 +184,7 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         VIXEN_FRAME_TRACE_SCOPE("perf", GetInstanceName());
         gpuPerfLogger_->CollectResults(currentFrameIndex);
     }
+    tiles_.Collect(currentFrameIndex, gpuPerfLogger_.get());
 
     // Re-record on input change (always re-record to refresh push constants each frame).
     VkPipeline currentPipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
@@ -179,6 +192,17 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     std::vector<VkDescriptorSet> currentSets = ctx.In(ComputeStageNodeConfig::DESCRIPTOR_SETS);
     if (currentPipeline != lastPipeline_ || currentLayout != lastPipelineLayout_ ||
         currentSets != lastDescriptorSets_) {
+        const auto bundle = ctx.In(ComputeStageNodeConfig::SHADER_DATA_BUNDLE);
+        tiles_.SetPipeline(bundle && ShaderManagement::SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled(
+            bundle->GetSpirv(ShaderManagement::ShaderStage::Compute)),
+            /*forgetEnvelope: another shader, not a re-bound set*/ currentPipeline != lastPipeline_);
+        if (!tiles_.Tileable() && !externalRecorder_) {
+            NODE_LOG_WARNING("[GPUYIELD_UNBOUNDED] missing shader bundle or NumWorkgroups dependency: " +
+                             GetInstanceName());
+            // stdout too: capture executables print only the application logger.
+            std::printf("[GPUYIELD_UNBOUNDED] pass=%s\n", GetInstanceName().c_str());
+            std::fflush(stdout);
+        }
         commandBuffers_.MarkAllDirty();
         lastPipeline_ = currentPipeline;
         lastPipelineLayout_ = currentLayout;
@@ -202,8 +226,13 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     VkSemaphore timelineSem = ctx.In(ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN);
     uint64_t frameBase = ctx.In(ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    VkCommandBufferSubmitInfo cmdInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-    cmdInfo.commandBuffer = cmd;
+    std::vector<VkCommandBufferSubmitInfo> commandInfos;
+    commandInfos.reserve(tiles_.Commands().size());
+    for (VkCommandBuffer tileCommand : tiles_.Commands()) {
+        VkCommandBufferSubmitInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        info.commandBuffer = tileCommand;
+        commandInfos.push_back(info);
+    }
 
     std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
@@ -272,15 +301,18 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
     si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
     si.pWaitSemaphoreInfos      = waits.data();
-    si.commandBufferInfoCount   = 1;
-    si.pCommandBufferInfos      = &cmdInfo;
+    si.commandBufferInfoCount   = static_cast<uint32_t>(commandInfos.size());
+    si.pCommandBufferInfos      = commandInfos.data();
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
     // R715: the graph's single submission point (published on the lowered executor, issued by the
     // owner at once on the sequential one).
     auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
-    if (gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
+    tiles_.Describe(currentFrameIndex, record);
+    // An opaque command (external recorder) has no tile costs: its own whole-pass interval is the
+    // estimate, as before tiling.
+    if (record.commandCostMeanNs.empty() && gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
         const uint64_t expectedNs = static_cast<uint64_t>(gpuPerfLogger_->GetLastDispatchMs() * 1'000'000.0f);
         record.commandCostMeanNs.push_back(expectedNs);
         record.commandCostUpperBoundsNs.push_back(expectedNs + expectedNs / 10 + 1);
@@ -307,6 +339,101 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
 bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
                                              uint32_t imageIndex, uint32_t frameIndex, bool isConsumer) {
+    const auto& capacityConfig = GetOwningGraph()->GetCapacityTracker().GetConfig();
+    const TiledDispatch::Capacity capacity{capacityConfig.gpuTimeBudgetNs, capacityConfig.gpuSubmissionBudgetNs};
+    // Until a tile plan exists the plan is this one command (external recorder, disabled dispatch).
+    tiles_.PlanOpaque(frameIndex, cmd, capacity);
+
+    // R213: a per-frame record failure is reported as a GPU fault (what/where/why in the site string)
+    // instead of thrown.
+    const auto reportFault = [&](const std::string& site) {
+        GetOwningGraph()->ReportGpuFault("ComputeStageNode::RecordComputeCommands " + site, VK_ERROR_UNKNOWN);
+        return false;
+    };
+
+    // A standard stage resolves its dispatch and tile plan before the command buffer is begun:
+    // growing the plan may reset this flight's command buffers.
+    const bool standardDispatch = !externalRecorder_ &&
+        GetParameterValue<bool>(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED, true);
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    uint32_t dispatchX = 0, dispatchY = 0, dispatchZ = 1;
+    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = nullptr;
+    Vixen::Vulkan::Resources::IRenderTarget* imageWriteTarget = nullptr;
+    std::vector<Vixen::Vulkan::Resources::IRenderTarget*> imageWriteArrayTargets;
+    if (standardDispatch) {
+        pipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
+        layout = ctx.In(ComputeStageNodeConfig::PIPELINE_LAYOUT);
+        std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeStageNodeConfig::DESCRIPTOR_SETS);
+        if (pipeline == VK_NULL_HANDLE || layout == VK_NULL_HANDLE) {
+            throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] stage '" + GetInstanceName() +
+                                     "' has no compute pipeline/layout wired and no external command recorder; "
+                                     "wire it through SynthesizeComputeStage or call SetExternalCommandRecorder");
+        }
+
+        // Descriptor SET OBJECTS are frame-indexed by DescriptorSetNode (set ring at flight depth,
+        // set[frameIndex]) whenever its CURRENT_FRAME_INDEX is wired, else set[imageIndex]. Bind the
+        // SAME index it was written into: frameIndex when THIS node's CURRENT_FRAME_INDEX is wired
+        // (main graph: both wired together), else imageIndex (demo graphs: neither wired). The producer/
+        // consumer pair is always wired as a set, so the two choices agree.
+        const uint32_t currentFrameIndex = ctx.In(ComputeStageNodeConfig::CURRENT_FRAME_INDEX);
+        const bool frameIndexWired =
+            NodeInstance::GetInput(ComputeStageNodeConfig::CURRENT_FRAME_INDEX_Slot::index, 0) != nullptr;
+        const uint32_t setIndex = frameIndexWired ? currentFrameIndex : imageIndex;
+        if (descriptorSets.empty() || setIndex >= descriptorSets.size()) {
+            return reportFault("invalid descriptor sets for set index " + std::to_string(setIndex) +
+                               " (have " + std::to_string(descriptorSets.size()) +
+                               "; check the DESCRIPTOR_SETS input is wired and sized to the frame ring)");
+        }
+        // Frame-indexed SET OBJECT; the swapchain image VALUES this pass transitions/writes stay
+        // imageIndex-selected.
+        descriptorSet = descriptorSets[setIndex];
+
+        // Dispatch dims: explicit params, falling back to the swapchain extent (consumer),
+        // then to the IMAGE_WRITE target's extent (Sampled Lighting Inc3 M1: an image-producer
+        // middle pass with no SWAPCHAIN_INFO, e.g. DirectLightingNode) — re-derived live every
+        // Execute (not cached from graph-build time) so a VIXEN_RENDER_SCALE-driven resize of
+        // the render target is picked up the same frame, mirroring ComputeDispatchNode's own
+        // dispatchTarget->GetExtent() pattern for the identical reason.
+        dispatchX = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
+        dispatchY = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
+        dispatchZ = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+        swapchainInfo = ctx.In(ComputeStageNodeConfig::SWAPCHAIN_INFO);
+        // Non-swapchain intermediate image this stage writes (e.g. a shading pass's own
+        // render target). Fetched once, used both for dispatch-dim fallback (below) and the
+        // entry barrier (further below).
+        imageWriteTarget = ctx.In(ComputeStageNodeConfig::IMAGE_WRITE);
+        // Sampled Lighting Inc4 M1: N simultaneous image-write targets (e.g. DDGI's
+        // irradiance + Chebyshev-visibility atlases), additive alongside imageWriteTarget
+        // above — a pass may use either, both, or neither depending on its own output shape.
+        imageWriteArrayTargets = ctx.In(ComputeStageNodeConfig::IMAGE_WRITE_ARRAY);
+        if ((dispatchX == 0 || dispatchY == 0) && swapchainInfo) {
+            VkExtent2D extent = swapchainInfo->GetExtent();
+            dispatchX = (extent.width + 7) / 8;
+            dispatchY = (extent.height + 7) / 8;
+        } else if ((dispatchX == 0 || dispatchY == 0) && imageWriteTarget) {
+            VkExtent2D extent = imageWriteTarget->GetExtent();
+            dispatchX = (extent.width + 7) / 8;
+            dispatchY = (extent.height + 7) / 8;
+        } else if ((dispatchX == 0 || dispatchY == 0) && !imageWriteArrayTargets.empty() && imageWriteArrayTargets[0]) {
+            VkExtent2D extent = imageWriteArrayTargets[0]->GetExtent();
+            dispatchX = (extent.width + 7) / 8;
+            dispatchY = (extent.height + 7) / 8;
+        }
+        if (dispatchX == 0 || dispatchY == 0 || dispatchZ == 0) {
+            return reportFault("dispatch dims unresolved (set dispatchX/Y/Z or connect SWAPCHAIN_INFO/IMAGE_WRITE)");
+        }
+
+        // R861: tile count and submission budget come from this pass's measured cost.
+        std::string tileFailure;
+        if (!tiles_.Plan(frameIndex, cmd, {dispatchX, dispatchY, dispatchZ}, capacity, tileFailure)) {
+            tiles_.PlanOpaque(frameIndex, cmd, capacity);
+            return reportFault(tileFailure);
+        }
+    }
+
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     VIXEN_FRAME_COUNT(CommandRecordings, 1);
     if (const VkResult beginResult = vkBeginCommandBuffer(cmd, &beginInfo); beginResult != VK_SUCCESS) {
@@ -315,13 +442,6 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         return false;
     }
 
-    // R213: a per-frame record failure is reported as a GPU fault (what/where/why in the site string)
-    // instead of thrown; the half-recorded buffer is closed so the next frame can begin it again.
-    const auto abortRecording = [&](const std::string& site) {
-        vkEndCommandBuffer(cmd);
-        GetOwningGraph()->ReportGpuFault("ComputeStageNode::RecordComputeCommands " + site, VK_ERROR_UNKNOWN);
-        return false;
-    };
     const auto endRecording = [&](const char* site) {
         const VkResult endResult = vkEndCommandBuffer(cmd);
         if (endResult != VK_SUCCESS) {
@@ -386,7 +506,7 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // (as a genuine, near-zero-duration pair around nothing) so this pass's own GPU-
     // timing column reads a real ~0ms rather than a stale/never-collected value, and
     // the shared query pool's per-frame reset invariant above stays satisfied.
-    if (!GetParameterValue<bool>(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED, true)) {
+    if (!standardDispatch) {
         if (gpuPerfLogger_) {
             gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
             gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, 0, 0);
@@ -394,68 +514,7 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
         return endRecording("dispatch-disabled vkEndCommandBuffer");
     }
 
-    VkPipeline pipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
-    VkPipelineLayout layout = ctx.In(ComputeStageNodeConfig::PIPELINE_LAYOUT);
-    std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeStageNodeConfig::DESCRIPTOR_SETS);
-    if (pipeline == VK_NULL_HANDLE || layout == VK_NULL_HANDLE) {
-        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] stage '" + GetInstanceName() +
-                                 "' has no compute pipeline/layout wired and no external command recorder; "
-                                 "wire it through SynthesizeComputeStage or call SetExternalCommandRecorder");
-    }
-
-    // Descriptor SET OBJECTS are frame-indexed by DescriptorSetNode (set ring at flight depth,
-    // set[frameIndex]) whenever its CURRENT_FRAME_INDEX is wired, else set[imageIndex]. Bind the
-    // SAME index it was written into: frameIndex when THIS node's CURRENT_FRAME_INDEX is wired
-    // (main graph: both wired together), else imageIndex (demo graphs: neither wired). The producer/
-    // consumer pair is always wired as a set, so the two choices agree.
-    const uint32_t currentFrameIndex = ctx.In(ComputeStageNodeConfig::CURRENT_FRAME_INDEX);
-    const bool frameIndexWired =
-        NodeInstance::GetInput(ComputeStageNodeConfig::CURRENT_FRAME_INDEX_Slot::index, 0) != nullptr;
-    const uint32_t setIndex = frameIndexWired ? currentFrameIndex : imageIndex;
-    if (descriptorSets.empty() || setIndex >= descriptorSets.size()) {
-        return abortRecording("invalid descriptor sets for set index " + std::to_string(setIndex) +
-                              " (have " + std::to_string(descriptorSets.size()) +
-                              "; check the DESCRIPTOR_SETS input is wired and sized to the frame ring)");
-    }
-
-    // Dispatch dims: explicit params, falling back to the swapchain extent (consumer),
-    // then to the IMAGE_WRITE target's extent (Sampled Lighting Inc3 M1: an image-producer
-    // middle pass with no SWAPCHAIN_INFO, e.g. DirectLightingNode) — re-derived live every
-    // Execute (not cached from graph-build time) so a VIXEN_RENDER_SCALE-driven resize of
-    // the render target is picked up the same frame, mirroring ComputeDispatchNode's own
-    // dispatchTarget->GetExtent() pattern for the identical reason.
-    uint32_t dispatchX = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
-    uint32_t dispatchY = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
-    uint32_t dispatchZ = GetParameterValue<uint32_t>(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
-
-    Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo =
-        ctx.In(ComputeStageNodeConfig::SWAPCHAIN_INFO);
-    // Non-swapchain intermediate image this stage writes (e.g. a shading pass's own
-    // render target). Fetched once, used both for dispatch-dim fallback (below) and the
-    // entry barrier (further below).
-    Vixen::Vulkan::Resources::IRenderTarget* imageWriteTarget =
-        ctx.In(ComputeStageNodeConfig::IMAGE_WRITE);
-    // Sampled Lighting Inc4 M1: N simultaneous image-write targets (e.g. DDGI's
-    // irradiance + Chebyshev-visibility atlases), additive alongside imageWriteTarget
-    // above — a pass may use either, both, or neither depending on its own output shape.
-    std::vector<Vixen::Vulkan::Resources::IRenderTarget*> imageWriteArrayTargets =
-        ctx.In(ComputeStageNodeConfig::IMAGE_WRITE_ARRAY);
-    if ((dispatchX == 0 || dispatchY == 0) && swapchainInfo) {
-        VkExtent2D extent = swapchainInfo->GetExtent();
-        dispatchX = (extent.width + 7) / 8;
-        dispatchY = (extent.height + 7) / 8;
-    } else if ((dispatchX == 0 || dispatchY == 0) && imageWriteTarget) {
-        VkExtent2D extent = imageWriteTarget->GetExtent();
-        dispatchX = (extent.width + 7) / 8;
-        dispatchY = (extent.height + 7) / 8;
-    } else if ((dispatchX == 0 || dispatchY == 0) && !imageWriteArrayTargets.empty() && imageWriteArrayTargets[0]) {
-        VkExtent2D extent = imageWriteArrayTargets[0]->GetExtent();
-        dispatchX = (extent.width + 7) / 8;
-        dispatchY = (extent.height + 7) / 8;
-    }
-    if (dispatchX == 0 || dispatchY == 0 || dispatchZ == 0) {
-        return abortRecording("dispatch dims unresolved (set dispatchX/Y/Z or connect SWAPCHAIN_INFO/IMAGE_WRITE)");
-    }
+    tiles_.OpenFirst(cmd);
 
     // Consumer: acquire-side transition of the swapchain image into GENERAL for the
     // storage write (WSI lifecycle — node-managed in Tier-1).
@@ -497,15 +556,21 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // read of the same image needs no further layout transition either. See the slot's own
     // doc comment on ComputeStageNodeConfig::IMAGE_READ_ARRAY.
 
-    // Frame-indexed SET OBJECT (see setIndex derivation above); the swapchain image VALUES this
-    // pass transitions/writes stay imageIndex-selected.
-    BindComputePipeline(cmd, pipeline, layout, descriptorSets[setIndex]);
+    BindComputePipeline(cmd, pipeline, layout, descriptorSet);
     SetPushConstants(ctx, cmd, layout);
 
     if (gpuPerfLogger_) {
         gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
     }
-    vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);
+    // Every tile is the same pipeline, sets and push constants launched from its own base
+    // workgroup; `cmd` leaves as the last tile's command buffer.
+    std::string tileFailure;
+    if (!tiles_.Dispatch(cmd, [&](VkCommandBuffer tile) {
+            BindComputePipeline(tile, pipeline, layout, descriptorSet);
+            SetPushConstants(ctx, tile, layout);
+        }, tileFailure)) {
+        return reportFault(tileFailure);
+    }
     if (gpuPerfLogger_) {
         gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, dispatchX * 8, dispatchY * 8);
     }
@@ -524,6 +589,7 @@ bool ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // presentation-only blit node reading it via TRANSFER_SRC) owns whatever comes
     // next — this pass's job ends at GENERAL.
 
+    tiles_.CloseLast(cmd);
     return endRecording("vkEndCommandBuffer");
 }
 
@@ -577,6 +643,8 @@ void ComputeStageNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
         externalCleanup_();
     }
     if (GetDevice() && GetDevice()->device != VK_NULL_HANDLE) {
+        tiles_.Release(gpuPerfLogger_.get());
+
         if (!commandBuffers_.empty() && commandPool_ != VK_NULL_HANDLE) {
             std::vector<VkCommandBuffer> rawHandles;
             rawHandles.reserve(commandBuffers_.size());

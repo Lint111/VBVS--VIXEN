@@ -1,10 +1,12 @@
 {
   "_comment": "Semantic Shader Wiring S0 \u2014 enumerated feature-variant sets per program. Axes listed here are boolean, interface-affecting defines. VIXEN_PRIMARY_JITTER uses the reconstruction-input bindings without changing their interface and is deliberately excluded. Value-defines (VIXEN_SHADOW_DBG_PX/_PY) and interface-invariant toggles (VIXEN_SHADOW_NO_MIP_ANYHIT) are deliberately excluded. VIXEN_COMPOSED_TRAVERSAL and the capability-selected VIXEN_COMPOSED_DDA_FALLBACK are internal branches inside SceneBindings.glsl/RayQueryTraversal.glsl (the W-COMPOSED far-field tier and DDA fallback) and add no bindings/interface to any .comp entrypoint -- confirmed no 'layout(set' inside either branch -- so they are not variant axes here. Regenerate: sdi_tool merge-variants shaders/sdi-variants.json ; verify: ... --check",
+  "_comment_bindings": "R896: descriptor bindings are generated. A program that #includes Generated/<Program>.bindings.g.glsl declares each resource as binding = VXB_<Name>; merge-variants allocates the names densely in ordinal order and writes Generated/<Program>.bindings.g.glsl and <sdiDir>/<Program>-Bindings.g.h. bindingLiteralRatchet counts hand-picked `binding = <digit>` sites reachable from these programs and may only go down. VIXEN_UBER_RECIPE_MATERIAL is the material-capable recipe variant (RecipeEditBindings.glsl).",
   "sdiDir": "../generated/sdi/merged",
   "includePaths": [
     ".",
     "../libraries/SVO/shaders"
   ],
+  "bindingLiteralRatchet": 55,
   "programs": [
     {
       "name": "ReconstructionHistory",
@@ -112,6 +114,9 @@
           "VIXEN_POLICY_STENCIL",
           "VIXEN_POLICY_STENCIL_TILES",
           "VIXEN_RECONSTRUCTION_INPUTS"
+        ],
+        [
+          "VIXEN_UBER_RECIPE_MATERIAL"
         ]
       ]
     },
@@ -125,6 +130,9 @@
         ],
         [
           "VIXEN_GPU_TRACE_HOOKS"
+        ],
+        [
+          "VIXEN_UBER_RECIPE_MATERIAL"
         ]
       ]
     },
@@ -203,6 +211,9 @@
           "VIXEN_GPU_TRACE_HOOKS",
           "VIXEN_MINING_BEAM",
           "VIXEN_SRS_CELL_RESOLVE"
+        ],
+        [
+          "VIXEN_UBER_RECIPE_MATERIAL"
         ]
       ]
     },
@@ -319,6 +330,9 @@
           "VIXEN_WAVE_RESERVOIR_PHASE",
           "VIXEN_RTQUERY_TRAVERSAL",
           "VIXEN_WAVE_SLOT_SWIZZLE"
+        ],
+        [
+          "VIXEN_UBER_RECIPE_MATERIAL"
         ]
       ]
     },
@@ -350,6 +364,9 @@
         [],
         [
           "VIXEN_GPU_TRACE_HOOKS"
+        ],
+        [
+          "VIXEN_UBER_RECIPE_MATERIAL"
         ]
       ]
     },
@@ -388,6 +405,9 @@
         [],
         [
           "VIXEN_GPU_TRACE_HOOKS"
+        ],
+        [
+          "VIXEN_UBER_RECIPE_MATERIAL"
         ]
       ]
     },
@@ -398,12 +418,22 @@
         [],
         [
           "VIXEN_GPU_TRACE_HOOKS"
+        ],
+        [
+          "VIXEN_UBER_RECIPE_MATERIAL"
         ]
       ]
     },
     {
       "name": "SkySphereAccumulate",
       "source": "SkySphereAccumulate.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
+      "name": "ProbeUpdateSmokeTest",
+      "source": "ProbeUpdateSmokeTest.comp",
       "variants": [
         []
       ]

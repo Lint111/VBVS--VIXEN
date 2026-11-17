@@ -323,6 +323,7 @@ include(cmake/ProvisionGdb.cmake)
 include(cmake/VixenAssets.cmake)
 include(cmake/VixenCaptureRoot.cmake)
 include(cmake/VixenTesting.cmake)
+include(cmake/VixenGlyphBake.cmake)
 
 # Configure-time AddNode<T>-call-site scan (vixen_generate_node_manifest) — drives scoped
 # per-app RenderGraph node linkage (Graph-Derived-Node-Linkage-Spec-2026-07).

@@ -69,7 +69,7 @@ bool recipeChunkRayInterval(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax,
 // EnsureRtQueryTlasBuilt, round-3 hoist redesign) -- NOT the octree index. The
 // octree is derived from it exactly like TraceWorld's loop does:
 // oi = bodyInstances[ci].octreeIndex.
-layout(set = 0, binding = 40) uniform accelerationStructureEXT rtQueryTlas;
+layout(set = 0, binding = VXB_rtQueryTlas) uniform accelerationStructureEXT rtQueryTlas;
 
 // ----------------------------------------------------------------------------
 // traverseRayQueryWorld -- closest-hit search over the per-brick-AABB TLAS,
@@ -631,7 +631,7 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
             getRecipeBoundSphere(candidateInst.recipeId, boundCenter, boundRadius, relaxation);
             float recipeParams[6];
             for (int p = 0; p < 6; ++p) recipeParams[p] = candidateInst.recipeParams[p];
-            vec3 candidateNormal; float candidateT; uint candidateSteps;
+            float candidateT; uint candidateSteps;
             if (ci < 192u) {
                 const uint recipeMarchWord = ci >> 5u;
                 const uint recipeMarchBit = 1u << (ci & 31u);
@@ -643,13 +643,12 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
                 recordRecipeMarch();
             }
             recordRecipeChunkMarch();
-            g_recipeProvenStepOnly = true;
-            bool recipeHit = traceUberRecipeBody(candidateInst.recipeId, boundCenter, boundRadius, relaxation,
-                                                 objOrigin, gridDirN, 1.0, VIXEN_QUERY_RAY_SIZE_COEF,
-                                                 recipeParams, chunkEntry, min(chunkExit, tmax * dirLen),
-                                                 candidateNormal, candidateT, candidateSteps);
+            bool recipeHit = traceUberRecipeBodyAnyHit(candidateInst.recipeId, boundCenter, boundRadius,
+                                                       relaxation, objOrigin, gridDirN, 1.0,
+                                                       VIXEN_QUERY_RAY_SIZE_COEF, recipeParams,
+                                                       chunkEntry, min(chunkExit, tmax * dirLen),
+                                                       candidateT, candidateSteps);
             recordRecipeSteps(candidateSteps);
-            g_recipeProvenStepOnly = false;
             const float worldT = candidateT / dirLen;
             if (recipeHit && worldT >= tmin && worldT <= tmax) {
                 g_octreeIdx = savedOctreeIdx;

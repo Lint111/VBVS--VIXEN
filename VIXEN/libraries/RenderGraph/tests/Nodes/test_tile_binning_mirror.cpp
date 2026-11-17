@@ -202,3 +202,75 @@ TEST(TileBinningMirror, ViewRecordProjectsPrimaryRayPixelsIntoTheirTiles) {
         EXPECT_LE(rect.maxY - rect.minY, 1);
     }
 }
+
+TEST(TileBinningMirror, ScreenSizedInstanceIsWalkedByManyLanes) {
+    // RTL: a plaque that covers the whole 1080p frame is 240 x 135 = 32,400 tiles. One
+    // invocation per instance walked them alone (8 to 17 ms measured on the 8060S); the
+    // lanes bound the serial chain to ceil(32,400 / 256) tiles and the lists stay exact.
+    constexpr int width = 1920;
+    constexpr int height = 1080;
+    Vixen::RenderGraph::CameraData camera{};
+    camera.cameraPos = glm::vec3(0.0f, 0.0f, -10.0f);
+    camera.fov = 45.0f;
+    camera.aspect = static_cast<float>(width) / static_cast<float>(height);
+    camera.cameraDir = glm::vec3(0.0f, 0.0f, 1.0f);
+    camera.cameraRight = glm::vec3(1.0f, 0.0f, 0.0f);
+    camera.cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+    TileBinView view = Vixen::RenderGraph::MakeTileBinView(camera, width, height, 3);
+    view.listCapacityLog2 = 4;
+    const std::vector<InstanceBound> bounds = {
+        {0.0f, 0.0f, 0.0f, 24.0f},   // covers the frame
+        {2.0f, 1.0f, 3.0f, 1.0f},    // a small body in front of it
+        {-3.0f, -1.0f, 1.0f, 0.5f},
+    };
+    const std::vector<float> previousDepth(static_cast<size_t>(width) * height, 0.0f);
+    const auto result = RunTileBinMirror(view, bounds, previousDepth, width, height);
+    EXPECT_EQ(Vixen::RenderGraph::Mirror::MirrorScatterLanes(view), 256);
+    EXPECT_EQ(result.metrics.overflowed, 0u);
+    EXPECT_GE(result.metrics.scatterTileIterations, 32400u);
+    EXPECT_LE(result.metrics.scatterLongestLaneIterations, (32400u + 255u) / 256u);
+    std::cout << "GB1 CPU mirror 1080p: scatterTiles=" << result.metrics.scatterTileIterations
+              << " longestLane=" << result.metrics.scatterLongestLaneIterations << '\n';
+}
+
+TEST(TileBinningMirror, LanesShrinkWhenTheDispatchCannotHoldThem) {
+    TileBinView view{};
+    view.tilesX = 63;
+    view.tilesY = 63;
+    view.instanceCount = 2197;  // the load scenario's tier-3 field at 500x500
+    EXPECT_EQ(Vixen::RenderGraph::Mirror::MirrorScatterLanes(view), (62 * 62 * 64) / 2197);
+    view.instanceCount = 1;
+    EXPECT_EQ(Vixen::RenderGraph::Mirror::MirrorScatterLanes(view), 256);
+    view.instanceCount = 1000000;
+    EXPECT_EQ(Vixen::RenderGraph::Mirror::MirrorScatterLanes(view), 1);
+}
+
+TEST(TileBinningMirror, OverflowingTilesFallBackInsteadOfSortingUnbounded) {
+    // base-reds #119: the 2,197-instance field offered hundreds of candidates to dense tiles
+    // and the per-tile serial sort lost the device. The list capacity bounds the sort; a tile
+    // offered more keeps an incomplete list that the march must not read (R861.1).
+    TileBinView view = LookdevTier3View();
+    view.listCapacityLog2 = 2;  // four entries: the dense overview tiles overflow
+    const auto bounds = LookdevTier3Bounds();
+    const std::vector<float> previousDepth(static_cast<size_t>(kWidth) * kHeight, 0.0f);
+    const auto result = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight);
+    EXPECT_GT(result.metrics.overflowed, 0u);
+    EXPECT_GT(result.metrics.consumerFallbackPixels, 0u);
+    for (const auto& header : result.headers) {
+        EXPECT_LE(header.count, 4);
+        if (header.demand <= 4) EXPECT_EQ(header.count, header.demand);
+    }
+}
+
+TEST(TileBinningMirror, ProductionCapacityKeepsTheLookdevListsComplete) {
+    // The capacity the node uploads (kTileListCapacityLog2) holds every look-dev tile list, so
+    // the RTL and look-dev captures keep their exact lists and no tile falls back.
+    TileBinView view = LookdevTier3View();
+    view.instanceCount = 13;
+    view.listCapacityLog2 = static_cast<int>(Vixen::RenderGraph::kTileListCapacityLog2);
+    const auto bounds = LookdevTier3Bounds();
+    const std::vector<float> previousDepth(static_cast<size_t>(kWidth) * kHeight, 0.0f);
+    const auto result = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight);
+    EXPECT_EQ(result.metrics.overflowed, 0u);
+    EXPECT_EQ(result.metrics.consumerFallbackPixels, 0u);
+}

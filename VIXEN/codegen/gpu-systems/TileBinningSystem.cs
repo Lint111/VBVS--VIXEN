@@ -62,6 +62,22 @@ public static class TileBinOps
     public static bool CandidateBefore(float depth, uint instance, float otherDepth, uint otherInstance)
         => depth < otherDepth || (depth == otherDepth && instance < otherInstance);
 
+    // Scatter invocations per instance (R857.3): up to four 8x8 workgroups' worth, fewer when
+    // the view-depth dispatch cannot hold instanceCount of them. The dispatch has at least
+    // (tilesX - 1) * (tilesY - 1) * TilePixels invocations, since a tile is 8x8 pixels.
+    public const int ScatterLaneCount = 256;
+    public const int TilePixels = 64;
+
+    [KernelCallable]
+    public static int ScatterLanes(TileBinView view)
+    {
+        int available = (view.tilesX - 1) * (view.tilesY - 1) * TilePixels;
+        if (view.instanceCount <= 0) return ScatterLaneCount;
+        int lanes = available / view.instanceCount;
+        if (lanes > ScatterLaneCount) return ScatterLaneCount;
+        return lanes < 1 ? 1 : lanes;
+    }
+
     [KernelCallable]
     public static int StoredCount(int offered, int listCapacityLog2)
     {
@@ -84,48 +100,57 @@ public static class TileBinScatterSystem
         ref TileCandidate[] candidates,
         ref TileBinStats[] stats, int i)
     {
-        if (i >= view[0].instanceCount) return;
-        TileRect rect = TileBinOps.ProjectBound(bounds[i].centerX, bounds[i].centerY,
-            bounds[i].centerZ, bounds[i].radius, view[0]);
+        // Every instance gets ScatterLanes invocations that walk its tile rectangle in
+        // stride (R857.3 binning budget). One invocation per instance walked a screen-sized
+        // rectangle alone, one atomic per tile: 8 to 17 ms at 1080p for three instances.
+        // The append order changes; the sort orders each list by (depth, instance), so the
+        // lists are the same whenever no tile overflows.
+        // The lane count is computed before the bound check: a callable inside the leading
+        // guard is hoisted into main() with its block argument unindexed (generator gap).
+        int lanes = TileBinOps.ScatterLanes(view[0]);
+        if (i >= view[0].instanceCount * lanes) return;
+        int instance = i / lanes;
+        int lane = i - instance * lanes;
+        TileRect rect = TileBinOps.ProjectBound(bounds[instance].centerX, bounds[instance].centerY,
+            bounds[instance].centerZ, bounds[instance].radius, view[0]);
         if (rect.cull == TileBinOps.CullBehindCamera)
         {
-            Interlocked.Increment(ref stats[0].behindCamera);
+            if (lane == 0) Interlocked.Increment(ref stats[0].behindCamera);
             return;
         }
         if (rect.cull == TileBinOps.CullOffScreen)
         {
-            Interlocked.Increment(ref stats[0].offScreen);
+            if (lane == 0) Interlocked.Increment(ref stats[0].offScreen);
             return;
         }
         int capacity = 1 << view[0].listCapacityLog2;
+        int width = rect.maxX - rect.minX + 1;
+        int area = width * (rect.maxY - rect.minY + 1);
         uint visible = 0u;
         uint listed = 0u;
-        for (int tileY = rect.minY; tileY <= rect.maxY; tileY++)
+        for (int offset = lane; offset < area; offset += lanes)
         {
-            for (int tileX = rect.minX; tileX <= rect.maxX; tileX++)
+            int row = offset / width;
+            int tileY = rect.minY + row;
+            int tileX = rect.minX + (offset - row * width);
+            int tile = tileY * view[0].tilesX + tileX;
+            if (TileBinOps.IsBehindTileDepth(rect.nearDepth, viewDepth.Previous[tile].x)) continue;
+            visible++;
+            // Wait-free append: one atomic per (instance, tile); no invocation waits on
+            // another. TileBinSortSystem consumes and zeroes every tile count, so the
+            // counters start each frame at zero.
+            int slot = Interlocked.Increment(ref counters[tile].count) - 1;
+            if (slot >= capacity)
             {
-                int tile = tileY * view[0].tilesX + tileX;
-                if (TileBinOps.IsBehindTileDepth(rect.nearDepth, viewDepth.Previous[tile].x)) continue;
-                visible++;
-                // Wait-free append: one atomic per (instance, tile); no invocation waits on
-                // another. TileBinSortSystem consumes and zeroes every tile count, so the
-                // counters start each frame at zero. The earlier per-tile generation acquire
-                // spun on a plain re-read of counters[tile].generation; a GPU load without
-                // coherence need not observe another invocation's atomic publish, so
-                // instances sharing a tile spun forever and the device was lost.
-                int slot = Interlocked.Increment(ref counters[tile].count) - 1;
-                if (slot >= capacity)
-                {
-                    Interlocked.Increment(ref stats[0].overflowed);
-                    continue;
-                }
-                int entry = (tile << view[0].listCapacityLog2) + slot;
-                candidates[entry].nearDepth = rect.nearDepth;
-                candidates[entry].instance = (uint)i;
-                listed++;
+                Interlocked.Increment(ref stats[0].overflowed);
+                continue;
             }
+            int entry = (tile << view[0].listCapacityLog2) + slot;
+            candidates[entry].nearDepth = rect.nearDepth;
+            candidates[entry].instance = (uint)instance;
+            listed++;
         }
-        if (visible == 0u) Interlocked.Increment(ref stats[0].occluded);
-        else Interlocked.Add(ref stats[0].listed, listed);
+        if (lane < area && visible == 0u) Interlocked.Increment(ref stats[0].occludedSlices);
+        if (listed > 0u) Interlocked.Add(ref stats[0].listed, listed);
     }
 }

@@ -140,6 +140,9 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "merged/BodyInstanceRayMarch-Bindings.g.h"  // R896: generated binding numbers
+
+namespace MarchBinding = ::ShaderInterface::BodyInstanceRayMarch::Bindings;
 
 #ifndef BODY_INSTANCE_RAYMARCH_COMP_PATH
 #  error "BODY_INSTANCE_RAYMARCH_COMP_PATH must be defined via CMake compile_definitions"
@@ -946,29 +949,29 @@ protected:
         // as a boot-recompile descriptor-staleness bug in KI-028; that issue is real but
         // unrelated to this test's symmetric bakedHits=0/virtualHits=0 failure).
         const std::array<VkDescriptorSetLayoutBinding,23> bindings = {
-            bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bindL(10,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(11,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(12,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(13,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(16,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // M6 Task 13: OccupancyGridBuffer
-            bindL(17,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc0 M3: LightingConfigSSBO
-            bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M3: HitRecordBuffer
-            bindL(19,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M4: ShadowConfigSSBO
-            bindL(20,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
-            bindL(21,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
-            bindL(22,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
-            bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
-            bindL(47,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
-            bindL(48,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R464 test-only procedural SDF trace
+            bindL(MarchBinding::outputImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bindL(MarchBinding::ESVOBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::BrickBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::MaterialBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::RayTraceBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::OctreeConfigsSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::idOutputImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bindL(MarchBinding::BodyInstanceBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::ChannelPoolBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::BrickLookupBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::MipPoolBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::InstanceIterDebugBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::TierRefTableBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::OccupancyGridBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // M6 Task 13: OccupancyGridBuffer
+            bindL(MarchBinding::LightingConfigSSBO,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc0 M3: LightingConfigSSBO
+            bindL(MarchBinding::HitRecordBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M3: HitRecordBuffer
+            bindL(MarchBinding::ShadowConfigSSBO,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M4: ShadowConfigSSBO
+            bindL(MarchBinding::AccumulationConfigSSBO,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
+            bindL(MarchBinding::historyImage,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
+            bindL(MarchBinding::PrevCameraConfigSSBO,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
+            bindL(MarchBinding::InstanceSkipMaskBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bindL(MarchBinding::BodyInstanceTransformBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
+            bindL(MarchBinding::SdfTraceProbeBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R464 test-only procedural SDF trace
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -1027,14 +1030,14 @@ protected:
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
         const std::array<VkWriteDescriptorSet,23> writes = {
-            wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
-            wB(5,&cfgI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
-            wB(14,&iterI), wB(15,&tierRefI), wB(16,&occGridI),
-            wB(17,&lightingI), wB(18,&hitRecordI), wB(19,&shadowI), wB(20,&accumI),
-            wI(21,&historyImgI), wB(22,&prevCamI),
-            wB(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
-            wB(47,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
-            wB(Vixen::SVO::kSdfTraceProbeBinding,&rimleakTraceI),
+            wI(MarchBinding::outputImage,&colImg), wB(MarchBinding::ESVOBuffer,&nodesI), wB(MarchBinding::BrickBuffer,&bricksI), wB(MarchBinding::MaterialBuffer,&matsI), wB(MarchBinding::RayTraceBuffer,&traceI),
+            wB(MarchBinding::OctreeConfigsSSBO,&cfgI), wI(MarchBinding::idOutputImage,&idImgI), wB(MarchBinding::BodyInstanceBuffer,&instI), wB(MarchBinding::ChannelPoolBuffer,&sdfI), wB(MarchBinding::BrickLookupBuffer,&lookupI), wB(MarchBinding::MipPoolBuffer,&mipI),
+            wB(MarchBinding::InstanceIterDebugBuffer,&iterI), wB(MarchBinding::TierRefTableBuffer,&tierRefI), wB(MarchBinding::OccupancyGridBuffer,&occGridI),
+            wB(MarchBinding::LightingConfigSSBO,&lightingI), wB(MarchBinding::HitRecordBuffer,&hitRecordI), wB(MarchBinding::ShadowConfigSSBO,&shadowI), wB(MarchBinding::AccumulationConfigSSBO,&accumI),
+            wI(MarchBinding::historyImage,&historyImgI), wB(MarchBinding::PrevCameraConfigSSBO,&prevCamI),
+            wB(MarchBinding::InstanceSkipMaskBuffer,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wB(MarchBinding::BodyInstanceTransformBuffer,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
+            wB(MarchBinding::SdfTraceProbeBuffer,&rimleakTraceI),
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 

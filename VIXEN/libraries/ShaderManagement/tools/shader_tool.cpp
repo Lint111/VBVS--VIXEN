@@ -28,6 +28,7 @@
 #include "SpirvInterfaceGenerator.h"
 #include "ShaderPreprocessor.h"
 #include "ShaderPipelineUtils.h"
+#include "BindingAllocator.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -1470,6 +1471,38 @@ Register-ArgumentCompleter -CommandName sdi_tool -Native -ScriptBlock {
  * --check: writes nothing; exits DriftDetected(6) listing every header whose
  * committed bytes differ from the regenerated ones (or which is missing).
  */
+namespace {
+// merge-variants: write `content` to `path`, or in --check mode record drift.
+bool WriteOrCheckGenerated(const fs::path& path, const std::string& content, bool checkMode,
+                           bool print, std::vector<std::string>& drifted) {
+    if (checkMode) {
+        std::string committed;
+        if (fs::exists(path)) {
+            std::ifstream in(path, std::ios::binary);
+            std::stringstream buf;
+            buf << in.rdbuf();
+            committed = buf.str();
+        }
+        if (committed != content) {
+            drifted.push_back(path.string());
+            if (print) {
+                std::cerr << "DRIFT: " << path << (committed.empty() ? " (missing)" : " (stale)") << "\n";
+            }
+            return false;
+        }
+        return true;
+    }
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        std::cerr << "Error: cannot write " << path << "\n";
+        return false;
+    }
+    out << content;
+    return true;
+}
+} // namespace
+
 int CommandMergeVariants(const ToolOptions& options) {
     if (options.inputFiles.empty()) {
         std::cerr << "Error: merge-variants requires a manifest JSON file\n";
@@ -1509,6 +1542,15 @@ int CommandMergeVariants(const ToolOptions& options) {
         }
     }
 
+    // R896: generated binding namespace. GLSL defines land beside the shaders (the
+    // programs #include them, also at runtime); C++ constants land beside the merged SDI.
+    const fs::path bindingsGlslDir =
+        baseDir / manifest.value("bindingsGlslDir", std::string("Generated"));
+    // Ratchet on hand-picked `binding = <digit>` literals reachable from manifest programs:
+    // the count may only go down (lower the manifest value when it does).
+    const long literalRatchet = manifest.value("bindingLiteralRatchet", -1L);
+    std::set<std::string> literalSites;
+
     std::vector<std::string> drifted;
     uint32_t written = 0;
 
@@ -1525,6 +1567,32 @@ int CommandMergeVariants(const ToolOptions& options) {
             std::cerr << "Error: shader source not found: " << srcPath
                       << " (program " << name << ")\n";
             return ExitCode::InputError;
+        }
+
+        std::vector<fs::path> bindingIncludePaths{srcPath.parent_path()};
+        bindingIncludePaths.insert(bindingIncludePaths.end(), manifestIncludePaths.begin(),
+                                   manifestIncludePaths.end());
+        const BindingAllocationResult bindingAlloc =
+            AllocateProgramBindings(name, srcPath, bindingIncludePaths);
+        if (!bindingAlloc.success) {
+            std::cerr << "Error: " << bindingAlloc.errorMessage;
+            return ExitCode::CompileError;
+        }
+        for (const auto& lit : bindingAlloc.allocation.literals) {
+            literalSites.insert(lit.file + ":" + std::to_string(lit.line));
+        }
+        bool bindingsCurrent = true;
+        if (bindingAlloc.allocation.migrated) {
+            const bool glslOk = WriteOrCheckGenerated(
+                bindingsGlslDir / ProgramBindingsGlslFileName(name),
+                EmitProgramBindingsGlsl(bindingAlloc.allocation), options.checkMode,
+                options.shouldPrint(), drifted);
+            const bool cppOk = WriteOrCheckGenerated(
+                sdiDir / ProgramBindingsCppFileName(name),
+                EmitProgramBindingsCpp(bindingAlloc.allocation), options.checkMode,
+                options.shouldPrint(), drifted);
+            if (!options.checkMode && (!glslOk || !cppOk)) return ExitCode::IOError;
+            bindingsCurrent = glslOk && cppOk;
         }
 
         std::ifstream srcIn(srcPath);
@@ -1582,6 +1650,17 @@ int CommandMergeVariants(const ToolOptions& options) {
         if (!mergeResult.success) {
             std::cerr << "Error: " << mergeResult.errorMessage << "\n";
             return ExitCode::CompileError;
+        }
+
+        // R896: the compiled interface must match the allocation (a stale bindings file is
+        // already reported as drift above, so its reflection is not judged).
+        if (bindingsCurrent) {
+            const std::string bindingErrors =
+                CheckReflectionAgainstAllocation(bindingAlloc.allocation, mergeResult.merged);
+            if (!bindingErrors.empty()) {
+                std::cerr << "Error: " << bindingErrors;
+                return ExitCode::CompileError;
+            }
         }
 
         SpirvInterfaceGenerator generator(options.sdiConfig);
@@ -1657,6 +1736,21 @@ int CommandMergeVariants(const ToolOptions& options) {
                           << ", bindings=" << mergeResult.merged.bindings.size()
                           << ", gated=" << gated << ")\n";
             }
+        }
+    }
+
+    if (literalRatchet >= 0) {
+        const long count = static_cast<long>(literalSites.size());
+        if (count > literalRatchet) {
+            std::cerr << "Error: R896 binding-literal ratchet: " << count
+                      << " hand-picked `binding = <digit>` sites reachable from manifest programs"
+                      << " exceed bindingLiteralRatchet=" << literalRatchet
+                      << " in " << manifestPath << " (declare new resources as binding = VXB_<Name>)\n";
+            return ExitCode::CompileError;
+        }
+        if (count < literalRatchet && options.shouldPrint()) {
+            std::cout << "Note: R896 binding-literal ratchet can drop to " << count
+                      << " (bindingLiteralRatchet=" << literalRatchet << ")\n";
         }
     }
 

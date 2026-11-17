@@ -61,8 +61,8 @@ TEST(SdfTraceProbe, DecodesRowMajorProbeBufferAndSummarizesSteps) {
 TEST(SdfTraceProbe, ShaderIncludeMatchesCppLayout) {
     const std::string glsl = ReadShader("SdfTraceProbe.glsl");
     ASSERT_FALSE(glsl.empty());
-    EXPECT_NE(glsl.find("#define SDF_TRACE_PROBE_BINDING " + std::to_string(kSdfTraceProbeBinding)),
-              std::string::npos);
+    // R896: the binding number is the includer's generated allocation, never hand-picked.
+    EXPECT_NE(glsl.find("binding = VXB_SdfTraceProbeBuffer"), std::string::npos);
     EXPECT_NE(glsl.find("#define SDF_TRACE_PROBE_WORDS   " + std::to_string(kSdfTraceProbeWords) + "u"),
               std::string::npos);
     EXPECT_NE(glsl.find("SDF_TRACE_TERM_HIT        " + std::to_string(uint32_t(SdfTraceTermination::Hit)) + "u"),

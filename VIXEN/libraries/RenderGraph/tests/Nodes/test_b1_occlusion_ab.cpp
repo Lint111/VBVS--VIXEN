@@ -68,6 +68,11 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include "merged/BodyInstanceRayMarch-Bindings.g.h"  // R896: generated binding numbers
+#include "merged/ShadowRayTrace-Bindings.g.h"  // R896: generated binding numbers
+
+namespace MarchBinding = ::ShaderInterface::BodyInstanceRayMarch::Bindings;
+namespace ShadowTraceBinding = ::ShaderInterface::ShadowRayTrace::Bindings;
 
 using namespace Vixen::RenderGraph;
 using Vixen::Vulkan::Resources::VulkanDevice;
@@ -485,33 +490,33 @@ protected:
             return lb;
         };
         std::vector<VkDescriptorSetLayoutBinding> bindings = {
-            bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(9,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(19, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(21, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(36, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::outputImage,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bind(MarchBinding::ESVOBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::BrickBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::MaterialBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::RayTraceBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::OctreeConfigsSSBO,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::ShaderCountersBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::idOutputImage,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bind(MarchBinding::BodyInstanceBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::ChannelPoolBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::BrickLookupBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::MipPoolBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::InstanceIterDebugBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::TierRefTableBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::OccupancyGridBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::LightingConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::HitRecordBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::ShadowConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::AccumulationConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::historyImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bind(MarchBinding::PrevCameraConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::InstanceSkipMaskBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::depthDistanceImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bind(MarchBinding::BodyInstanceTransformBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         if (b2Enabled) {
-            bindings.push_back(bind(42, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
+            bindings.push_back(bind(MarchBinding::ProxyIntervalBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
         }
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -595,33 +600,33 @@ protected:
             return w2;
         };
         std::vector<VkWriteDescriptorSet> writes = {
-            wImg(0, &colorInfo),
-            wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
-            wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
-            wBuf(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
-            wBuf(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &traceInfo),
-            wBuf(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &configInfo),
-            wBuf(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &counterInfo),
-            wImg(9, &idInfo),
-            wBuf(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
-            wBuf(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
-            wBuf(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
-            wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
-            wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
-            wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
-            wBuf(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &occGridInfo),
-            wBuf(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lightingInfo),
-            wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
-            wBuf(19, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),
-            wBuf(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &accumInfo),
-            wImg(21, &historyInfo),
-            wBuf(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),
-            wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
-            wImg(36, &depthInfo),
-            wBuf(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instTransformInfo),
+            wImg(MarchBinding::outputImage, &colorInfo),
+            wBuf(MarchBinding::ESVOBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
+            wBuf(MarchBinding::BrickBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
+            wBuf(MarchBinding::MaterialBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
+            wBuf(MarchBinding::RayTraceBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &traceInfo),
+            wBuf(MarchBinding::OctreeConfigsSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &configInfo),
+            wBuf(MarchBinding::ShaderCountersBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &counterInfo),
+            wImg(MarchBinding::idOutputImage, &idInfo),
+            wBuf(MarchBinding::BodyInstanceBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
+            wBuf(MarchBinding::ChannelPoolBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
+            wBuf(MarchBinding::BrickLookupBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
+            wBuf(MarchBinding::MipPoolBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
+            wBuf(MarchBinding::InstanceIterDebugBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
+            wBuf(MarchBinding::TierRefTableBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
+            wBuf(MarchBinding::OccupancyGridBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &occGridInfo),
+            wBuf(MarchBinding::LightingConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lightingInfo),
+            wBuf(MarchBinding::HitRecordBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
+            wBuf(MarchBinding::ShadowConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),
+            wBuf(MarchBinding::AccumulationConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &accumInfo),
+            wImg(MarchBinding::historyImage, &historyInfo),
+            wBuf(MarchBinding::PrevCameraConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),
+            wBuf(MarchBinding::InstanceSkipMaskBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
+            wImg(MarchBinding::depthDistanceImage, &depthInfo),
+            wBuf(MarchBinding::BodyInstanceTransformBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instTransformInfo),
         };
         if (b2Enabled) {
-            writes.push_back(wBuf(42, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            writes.push_back(wBuf(MarchBinding::ProxyIntervalBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                                   &proxyIntervalInfo));
         }
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
@@ -1000,8 +1005,8 @@ protected:
             return out;
         };
         const std::array<VkDescriptorSetLayoutBinding, 17> bindings = {{
-            bind(1), bind(2), bind(3), bind(4), bind(5), bind(10), bind(11),
-            bind(12), bind(13), bind(15), bind(35), bind(37), bind(38), bind(47), bind(48), bind(51), bind(52),
+            bind(ShadowTraceBinding::ESVOBuffer), bind(ShadowTraceBinding::BrickBuffer), bind(ShadowTraceBinding::MaterialBuffer), bind(ShadowTraceBinding::RayTraceBuffer), bind(ShadowTraceBinding::OctreeConfigsSSBO), bind(ShadowTraceBinding::BodyInstanceBuffer), bind(ShadowTraceBinding::ChannelPoolBuffer),
+            bind(ShadowTraceBinding::BrickLookupBuffer), bind(ShadowTraceBinding::MipPoolBuffer), bind(ShadowTraceBinding::TierRefTableBuffer), bind(ShadowTraceBinding::InstanceSkipMaskBuffer), bind(ShadowTraceBinding::ShadowRayRequestBuffer), bind(ShadowTraceBinding::ShadowRayResultBuffer), bind(ShadowTraceBinding::BodyInstanceTransformBuffer), bind(ShadowTraceBinding::OccupancyGridBuffer), bind(ShadowTraceBinding::GlyphOutlineBuffer), bind(ShadowTraceBinding::GlyphOutlineFlatBuffer),
         }};
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;

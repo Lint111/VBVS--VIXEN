@@ -227,7 +227,8 @@ public:
      * the occupancy-grid blob that follows the same shader-recompile seam.
      */
     void SetGlyphOutlineInstances(
-        std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances);
+        std::vector<Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances,
+        std::vector<std::uint32_t> glyphBakeStream);
 
     // Runtime operand tape for material-capable procedural fields. A material-only edit refreshes
     // this SSBO and leaves the generated shader/pipeline untouched.

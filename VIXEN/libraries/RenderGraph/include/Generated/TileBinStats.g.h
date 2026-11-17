@@ -7,13 +7,13 @@ struct TileBinStats {
     uint32_t listed;
     uint32_t behindCamera;
     uint32_t offScreen;
-    uint32_t occluded;
+    uint32_t occludedSlices;
     uint32_t overflowed;
 };
 static_assert(sizeof(TileBinStats) == 20, "TileBinStats std430 size");
 static_assert(offsetof(TileBinStats, listed) == 0, "listed@0");
 static_assert(offsetof(TileBinStats, behindCamera) == 4, "behindCamera@4");
 static_assert(offsetof(TileBinStats, offScreen) == 8, "offScreen@8");
-static_assert(offsetof(TileBinStats, occluded) == 12, "occluded@12");
+static_assert(offsetof(TileBinStats, occludedSlices) == 12, "occludedSlices@12");
 static_assert(offsetof(TileBinStats, overflowed) == 16, "overflowed@16");
 } // namespace Vixen::Codegen::Gpu

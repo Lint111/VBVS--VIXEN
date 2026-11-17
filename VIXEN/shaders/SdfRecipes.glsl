@@ -193,14 +193,9 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
 // larger than any real bound-sphere diameter this engine ever uses, so min(1e30, x) always
 // picks the real per-step distance x, functionally identical to +infinity for this formula.
 const float kNoGridSentinel = 1.0e30;
-// Shadow any-hit rays set this so the relaxed-step boost applies only to a real per-cell bound,
-// never to the no-grid sentinel; an unproven boost overshoots distant occluders.
-bool g_recipeProvenStepOnly = false;
 #ifdef VIXEN_UBER_RECIPE_MATERIAL
-// Set by the last successful procedural field evaluation. TraceWorld and the ray-query twin
-// read it only after a certified hit, so the material id follows the winning surface sample.
-uint g_lastRecipeMaterialId = 0u;
-
+// g_lastRecipeMaterialId (RecipeEditBindings.glsl) is set by the last successful procedural
+// field evaluation; TraceWorld and the ray-query twin read it only after a certified hit.
 uint recipeMaterialAt(uint recipeId, vec3 p, float params[6]) {
     uint materialId = 0u;
     float unusedDistance = evalRecipeField(recipeId, p, params, materialId);
@@ -230,10 +225,47 @@ vec3 recipeFieldGradient(uint recipeId, vec3 p, float params[6]) {
         evalRecipeField(recipeId, p + e.yyx, params) - evalRecipeField(recipeId, p - e.yyx, params));
 }
 
-bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
-                         vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
-                         float params[6], float tMinWorld, float tMaxWorld,
-                         out vec3 hitNormal, out float hitT, out uint stepsUsed) {
+// occlusionOnly (any-hit rays: shadow and visibility queries) marches the same step sequence
+// and certifies the same first hit, so hitT and the hit/miss answer are those of the nearest-hit
+// form; it skips the surface payload nobody reads on those rays (the six-evaluation gradient
+// and the material evaluation, R892 B6). It also limits the relaxed-step boost to a real
+// per-cell bound, never the no-grid sentinel: an unproven boost overshoots distant occluders.
+// Entry-face normal (SPT 906733a50217). A first hit's normal faces the ray, and central
+// differences over a smooth field of unit slope have length 2h. Two cases break that at a
+// convex edge and showed as isolated lit/dark pixels along glyph and body edges:
+//  - the refined hit lies inside the solid; where the ray clips the edge the chord is shorter
+//    than that error, so the sample is nearer the face the ray LEAVES through and the
+//    differences return that face's normal (it faces away from the ray);
+//  - the sample is on the entry face but within one tap of the edge, the taps straddle it and
+//    the result blends in the hidden face (a short difference vector).
+// In both the ray came through the entry face, so a point a few taps back along the ray from
+// the last sample known to be outside (outsideT) has that face as its nearest surface: the
+// normal is taken there. Every other hit keeps the gradient at the hit point unchanged.
+// One gradient call site, two passes at most.
+vec3 recipeEntryFaceGradient(uint recipeId, vec3 ro, vec3 rd, float hitT, float outsideT,
+                             float params[6]) {
+    const float kTap = 1e-3;                       // recipeFieldGradient's h
+    const float kCreaseLengthSquared = (0.9 * 2.0 * kTap) * (0.9 * 2.0 * kTap);
+    const float kRetreat = 4.0 * kTap;
+    vec3 samplePoint = ro + rd * hitT;
+    vec3 gradient = vec3(0.0);
+    [[dont_unroll]] for (int pass = 0; pass < 2; ++pass) {
+        vec3 candidate = recipeFieldGradient(recipeId, samplePoint, params);
+        if (pass == 0) {
+            gradient = candidate;
+            if (dot(candidate, rd) < 0.0 && dot(candidate, candidate) >= kCreaseLengthSquared) break;
+            samplePoint = ro + rd * (min(outsideT, hitT) - kRetreat);
+        } else if (dot(candidate, rd) < 0.0) {
+            gradient = candidate;
+        }
+    }
+    return gradient;
+}
+
+bool traceUberRecipeBodyImpl(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
+                             vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
+                             float params[6], float tMinWorld, float tMaxWorld, bool occlusionOnly,
+                             out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
     stepsUsed = 0u;
@@ -283,6 +315,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     // below 1024 iterations; unusually long bounds receive a proportionally larger cap.
     int stepBudget = clamp(32 + int(ceil(raySpan * 160.0)), 32, 2048);
     float lastRefinementT = -1e30;
+    bool leftStartSurface = !occlusionOnly;
 #ifdef VIXEN_SDF_TRACE_PROBE
     float traceLastD = 1e30;
     float traceLastT = tNear;
@@ -301,12 +334,30 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
 #endif
         float hitEpsilon = max(EPS_MIN, max(t, 0.0) * max(pixelAngle, 0.0) *
                                           CONE_EPSILON_SCALE);
+        if (!leftStartSurface) {
+            // A visibility ray starts on the surface it leaves. Until one sample is outside
+            // (d > EPS_MIN) the field it reads is that surface, not an occluder: march out of
+            // it (|d| is the distance back to the surface; the t term doubles the step so a
+            // tangent start exits in a bounded number of steps) instead of certifying a hit
+            // at the origin, which the caller rejects and which hid every occluder of the same
+            // recipe further along the ray (R892.8 shadow speckle).
+            if (d > EPS_MIN) {
+                leftStartSurface = true;
+            } else {
+                t += max(-d, max(4.0 * EPS_MIN, t));
+                if (t > tEnd) return false;
+                continue;
+            }
+        }
         if (d <= EPS_MIN) {
-            vec3 gradient = recipeFieldGradient(recipeId, p, params);
-            hitNormal = normalize(gradient);
+            vec3 gradient = vec3(0.0);
+            if (!occlusionOnly) {
+                gradient = recipeEntryFaceGradient(recipeId, ro, rd, t, t, params);
+                hitNormal = normalize(gradient);
+            }
             hitT      = t;
 #ifdef VIXEN_UBER_RECIPE_MATERIAL
-            g_lastRecipeMaterialId = recipeMaterialAt(recipeId, p, params);
+            if (!occlusionOnly) g_lastRecipeMaterialId = recipeMaterialAt(recipeId, p, params);
 #endif
 #ifdef VIXEN_SDF_TRACE_PROBE
             sdfTraceProbeRecord(ivec2(gl_GlobalInvocationID.xy), stepsUsed, SDF_TRACE_TERM_HIT, recipeId,
@@ -389,11 +440,14 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
                     float rootFraction = clamp(loD / (loD - hiD), 0.0, 1.0);
                     t = mix(loT, hiT, rootFraction);
                     p = ro + rd * t;
-                    vec3 gradient = recipeFieldGradient(recipeId, p, params);
-                    hitNormal = normalize(gradient);
+                    vec3 gradient = vec3(0.0);
+                    if (!occlusionOnly) {
+                        gradient = recipeEntryFaceGradient(recipeId, ro, rd, t, loT, params);
+                        hitNormal = normalize(gradient);
+                    }
                     hitT = t;
 #ifdef VIXEN_UBER_RECIPE_MATERIAL
-                    g_lastRecipeMaterialId = recipeMaterialAt(recipeId, p, params);
+                    if (!occlusionOnly) g_lastRecipeMaterialId = recipeMaterialAt(recipeId, p, params);
 #endif
 #ifdef VIXEN_SDF_TRACE_PROBE
                     traceLastT = t;
@@ -431,7 +485,7 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         // downstream of it dominated. Gate the boost on gridDim != 0u so an ungridded recipe
         // gets the plain relaxed step (no boost, no regression for gridded recipes' proof above).
         float gridBound = sampleRecipeOccupancy(gridOffset, gridDim, gridAabbMin, gridCellSize, p);
-        const bool gridBoundIsReal = !g_recipeProvenStepOnly || gridBound < kNoGridSentinel;
+        const bool gridBoundIsReal = !occlusionOnly || gridBound < kNoGridSentinel;
         float step = (gridDim != 0u && gridBoundIsReal)
             ? max(d * relaxation, min(gridBound, d * relaxation * 8.0))
             : d * relaxation;
@@ -461,6 +515,27 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
 #endif
     g_recipeTraceExhaustedRays += 1u;  // R716: exhausted before min(tFar,tMaxWorld), never silent
     return false;
+}
+
+// Nearest-hit form: the camera and probe rays, which read the hit normal and material.
+bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
+                         vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
+                         float params[6], float tMinWorld, float tMaxWorld,
+                         out vec3 hitNormal, out float hitT, out uint stepsUsed) {
+    return traceUberRecipeBodyImpl(recipeId, boundCenter, boundRadius, relaxation, ro, rd,
+                                   conservativeStepScale, pixelAngle, params, tMinWorld, tMaxWorld,
+                                   false, hitNormal, hitT, stepsUsed);
+}
+
+// Any-hit form: visibility rays only ask whether, and where, the first certified hit is.
+bool traceUberRecipeBodyAnyHit(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
+                               vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
+                               float params[6], float tMinWorld, float tMaxWorld,
+                               out float hitT, out uint stepsUsed) {
+    vec3 unreadNormal;
+    return traceUberRecipeBodyImpl(recipeId, boundCenter, boundRadius, relaxation, ro, rd,
+                                   conservativeStepScale, pixelAngle, params, tMinWorld, tMaxWorld,
+                                   true, unreadNormal, hitT, stepsUsed);
 }
 #endif // VIXEN_UBER_RECIPE_SPLICED
 

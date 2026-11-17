@@ -1,5 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#include "Generated/DirectLighting.bindings.g.glsl"  // R896: generated descriptor binding numbers
 
 // ============================================================================
 // DirectLighting.comp - RIS + temporal reservoir pass (Sampled Lighting Inc3 M1/M4/M5)
@@ -45,11 +46,12 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // own binding-0 already established pre-M5 (see that shader's MAIN comment) —
 // so this pass's dispatch extent always matches the real render target under
 // VIXEN_RENDER_SCALE with no new push-constant field needed.
-layout(rgba8, binding = 0) uniform readonly image2D outputImage;
+layout(rgba8, binding = VXB_outputImage) uniform readonly image2D outputImage;
 
-layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 #include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
+#include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)
@@ -61,7 +63,7 @@ layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupan
 // ============================================================================
 #include "Generated/LightingConfig.glsl"
 
-layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+layout(std430, binding = VXB_LightingConfigSSBO) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
 
@@ -70,7 +72,7 @@ layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
 // ============================================================================
 #include "HitRecord.glsl"
 
-layout(std430, binding = 17) readonly buffer HitRecordBuffer {
+layout(std430, binding = VXB_HitRecordBuffer) readonly buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
 
@@ -79,7 +81,7 @@ layout(std430, binding = 17) readonly buffer HitRecordBuffer {
 // ============================================================================
 #include "Generated/ShadowConfig.glsl"
 
-layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+layout(std430, binding = VXB_ShadowConfigSSBO) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
@@ -92,7 +94,7 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
 // ============================================================================
 #include "Generated/AccumulationConfig.glsl"
 
-layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+layout(std430, binding = VXB_AccumulationConfigSSBO) readonly buffer AccumulationConfigSSBO {
     AccumulationConfig accumulationConfig;
 };
 
@@ -101,7 +103,7 @@ layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
 // ============================================================================
 #include "Generated/PrevCameraConfig.glsl"
 
-layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
+layout(std430, binding = VXB_PrevCameraConfigSSBO) readonly buffer PrevCameraConfigSSBO {
     PrevCameraConfig prevCameraConfig;
 };
 
@@ -112,14 +114,14 @@ layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
 // reject reused for temporal reservoir reuse) — SpatialReuseShade.comp now owns
 // the WRITE of this image (moved there alongside the accumulate seam's own
 // historyImage write, M5).
-layout(rgba32f, binding = 22) uniform readonly image2D worldPosHistoryImage;
+layout(rgba32f, binding = VXB_worldPosHistoryImage) uniform readonly image2D worldPosHistoryImage;
 
 // ============================================================================
 // RESERVOIR CONFIG (binding 23)
 // ============================================================================
 #include "Generated/ReservoirConfig.glsl"
 
-layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
+layout(std430, binding = VXB_ReservoirConfigSSBO) readonly buffer ReservoirConfigSSBO {
     ReservoirConfig reservoirConfig;
 };
 
@@ -128,7 +130,7 @@ layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
 // ============================================================================
 #include "Generated/LightTreeBuffer.glsl"
 
-layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
+layout(std430, binding = VXB_LightTreeBufferSSBO) readonly buffer LightTreeBufferSSBO {
     LightTreeBuffer lightTreeBuffer;
 };
 
@@ -143,10 +145,10 @@ layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
 // neighbor sampling) — see BuildRenderGraph.cpp's array-hazard wiring.
 #include "Generated/ReservoirRecord.glsl"
 
-layout(std430, binding = 25) buffer ReservoirBufferA {
+layout(std430, binding = VXB_ReservoirBufferA) buffer ReservoirBufferA {
     ReservoirRecord reservoirRecordsA[];
 };
-layout(std430, binding = 26) buffer ReservoirBufferB {
+layout(std430, binding = VXB_ReservoirBufferB) buffer ReservoirBufferB {
     ReservoirRecord reservoirRecordsB[];
 };
 

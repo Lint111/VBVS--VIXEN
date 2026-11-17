@@ -100,6 +100,19 @@ endif()
 set_target_properties(test_voxel_scene_key PROPERTIES FOLDER "Tests/CashSystem Tests")
 vixen_gtest_discover_tests(CashSystem test_voxel_scene_key)
 
+# Per-scene GPU dispatch-envelope cache-key and persistence tests (R888.1)
+add_executable(test_gpu_chunk_cost_cacher
+    test_gpu_chunk_cost_cacher.cpp
+)
+target_compile_features(test_gpu_chunk_cost_cacher PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_gpu_chunk_cost_cacher PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_gpu_chunk_cost_cacher PRIVATE GTest::gtest_main Logger)
+endif()
+set_target_properties(test_gpu_chunk_cost_cacher PROPERTIES FOLDER "Tests/CashSystem Tests")
+vixen_gtest_discover_tests(CashSystem test_gpu_chunk_cost_cacher)
+
 # Shared voxel-scene store tests (T-5199): CPU-only, no device
 add_executable(test_voxel_scene_store
     test_voxel_scene_store.cpp

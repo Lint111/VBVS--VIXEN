@@ -510,14 +510,15 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstructi
                                                       std::span<const Yeroket::Sdf::Kernels::GlyphOutlineInstance> glyphInstances = {},
                                                       std::span<const Yeroket::Sdf::Kernels::PathInstance> pathInstances = {},
                                                       const RecipeRegistry* recipeRegistry = nullptr,
-                                                      float recipeUnitsPerVoxel = 1.0f) {
+                                                      float recipeUnitsPerVoxel = 1.0f,
+                                                      std::span<const std::uint32_t> glyphBakeStream = {}) {
     if (!(recipeUnitsPerVoxel > 0.0f) || !std::isfinite(recipeUnitsPerVoxel))
         throw std::invalid_argument("recipe instruction bake scale must be finite and positive");
     return BakeSdfWorld(
         [&](const glm::vec3& p) {
             return Recipe::evalRecipe(prog, count, (p - center) * recipeUnitsPerVoxel,
                                       params, nullptr, recipeRegistry, glyphInstances,
-                                      pathInstances) / recipeUnitsPerVoxel;
+                                      pathInstances, nullptr, 0u, nullptr, 0u, glyphBakeStream) / recipeUnitsPerVoxel;
         },
         center, n, bandVoxels, brickDepth);
 }

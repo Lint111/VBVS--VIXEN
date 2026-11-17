@@ -207,7 +207,9 @@ TEST(UberShaderSplice, NeutralRecipeKeepsPreMaterialShaderDigest) {
     // The neutral source has no hand-written HitRecord material side-channel. The editor
     // deliberately forces the material-capable variant for every document; this digest guards
     // the neutral, non-active-variant text while the active macro remains absent here.
-    EXPECT_EQ(Fnv1a(spliced), 0x281cc9dcb1ae9f95ull)
+    // R896 re-pinned: the source now spells bindings VXB_<Name> and includes the generated
+    // bindings file and RecipeEditBindings.glsl (a text change only; the neutral variant is unchanged).
+    EXPECT_EQ(Fnv1a(spliced), 0x8f9f0e9d66fa4363ull)
         << "digest=" << std::hex << Fnv1a(spliced);
     EXPECT_EQ(spliced.find("#define VIXEN_UBER_RECIPE_MATERIAL 1"), std::string::npos);
 }
@@ -224,13 +226,32 @@ TEST(UberShaderSplice, MaterialRecipeCarriesTapeAndCompiles) {
     std::vector<YkRecipeGpuTapeInstruction> tape;
     const std::string spliced = SpliceProceduralRecipesIntoSource(raw, registry,
                                                                     nullptr, nullptr, &tape);
-    EXPECT_NE(spliced.find("VIXEN_UBER_RECIPE_MATERIAL"), std::string::npos);
-    EXPECT_NE(spliced.find("RecipeTapeBuffer"), std::string::npos);
+    // R896: the splice only selects the variant (ahead of the static RecipeEditBindings.glsl
+    // include); it never prints a binding line of its own.
+    const size_t definePos = spliced.find("#define VIXEN_UBER_RECIPE_MATERIAL 1");
+    EXPECT_NE(definePos, std::string::npos);
+    EXPECT_LT(definePos, spliced.find("#include \"RecipeEditBindings.glsl\""));
+    EXPECT_EQ(spliced.find("binding = 53"), std::string::npos);
     ASSERT_EQ(tape.size(), entry.bytecode.size());
     EXPECT_EQ(tape[1].opCode & 0xffu, static_cast<std::uint32_t>(SdfOpCode::MaterialRef));
 
     const auto result = CompileSource(spliced);
-    EXPECT_TRUE(result.success) << result.errorMessage;
+    ASSERT_TRUE(result.success) << result.errorMessage;
+    // The tape is a reflected member at its generated binding, and no other resource shares it.
+    ASSERT_TRUE(result.bundle && result.bundle->reflectionData);
+    const auto& bindings = result.bundle->reflectionData->descriptorSets;
+    uint32_t tapeBinding = UINT32_MAX;
+    for (const auto& [set, list] : bindings) {
+        for (const auto& b : list) {
+            if (b.name == "RecipeTapeBuffer") tapeBinding = b.binding;
+        }
+    }
+    ASSERT_NE(tapeBinding, UINT32_MAX) << "RecipeTapeBuffer missing from the material variant";
+    for (const auto& [set, list] : bindings) {
+        for (const auto& b : list) {
+            if (b.name != "RecipeTapeBuffer") EXPECT_NE(b.binding, tapeBinding) << b.name << " aliases the recipe tape";
+        }
+    }
 }
 
 TEST(UberShaderSplice, MaterialOutputSemanticSelectsMaterialVariant) {

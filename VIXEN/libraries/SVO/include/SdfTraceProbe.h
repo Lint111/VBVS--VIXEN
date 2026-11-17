@@ -4,8 +4,9 @@
 // identical. Header-only, no Vulkan dependency, so the decode is unit-testable on any machine.
 //
 // A harness defines VIXEN_SDF_TRACE_PROBE in the shader source, binds a storage buffer of
-// SdfTraceProbeBufferBytes(w, h) at kSdfTraceProbeBinding, and decodes the mapped words with
-// DecodeSdfTraceProbe.
+// SdfTraceProbeBufferBytes(w, h) at the program's generated binding
+// (ShaderInterface::<Program>::Bindings::SdfTraceProbeBuffer, R896), and decodes the mapped
+// words with DecodeSdfTraceProbe.
 
 #include <algorithm>
 #include <bit>
@@ -15,7 +16,6 @@
 
 namespace Vixen::SVO {
 
-constexpr uint32_t kSdfTraceProbeBinding = 48;
 constexpr uint32_t kSdfTraceProbeWords = 16;
 
 enum class SdfTraceTermination : uint32_t {

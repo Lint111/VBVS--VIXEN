@@ -2,15 +2,19 @@
 // auto-sync FrameGraph P5b M2: generic single-compute-pass submit node.
 #pragma once
 
+#include <functional>
+#include <string>
+#include <vector>
+
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "State/StatefulContainer.h"
 #include "Core/GPUPerformanceLogger.h"
+#include "Core/TiledDispatch.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
 #include "Nodes/Common/SwapchainBarriers.h"
-#include <functional>
 
 namespace Vixen::RenderGraph {
 
@@ -68,6 +72,10 @@ private:
     // Per-swapchain-image command buffers with dirty-state tracking.
     StatefulContainer<VkCommandBuffer> commandBuffers_;
 
+    // R861: every stage is dispatched in tiles sized from its own measured cost, by the same
+    // rule as the primary pass (TiledDispatch). An external recorder stays one opaque command.
+    TiledDispatch tiles_;
+
     // Previous-frame inputs for dirty detection.
     VkPipeline lastPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout lastPipelineLayout_ = VK_NULL_HANDLE;
@@ -91,6 +99,7 @@ public:
         externalRecorder_ = std::move(recorder);
         externalInitialize_ = std::move(initialize);
         externalCleanup_ = std::move(cleanup);
+        if (gpuPerfLogger_) gpuPerfLogger_->SetSpansSeveralSubmissions(!externalRecorder_);
     }
     // Capture diagnostics may snapshot a pass's output before a later pipelined
     // writer replaces it. Install before the first command-buffer recording.

@@ -731,20 +731,16 @@ bool HasRuntimeParameters(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) 
     });
 }
 
-bool DerivedBoundsEnabled() {
-    return std::getenv("VIXEN_RECIPE_DERIVED_BOUNDS") != nullptr ||
-           std::getenv("VIXEN_RECIPE_CHUNK_CULL") != nullptr;
-}
-
-// The flag is intentionally opt-in until the native owner re-golden. Runtime-parameter recipes
-// remain on their authored/default bound because a zero-parameter derivation is not valid over
-// their parameter range, and never receive an occupancy grid: the grid samples one parameter
-// value, so its cells could incorrectly cull a changed field.
+// A bound the kernel analysis derives replaces the authored one (R892.3: on by default, no
+// switch). Runtime-parameter recipes remain on their authored/default bound because a
+// zero-parameter derivation is not valid over their parameter range, and never receive an
+// occupancy grid: the grid samples one parameter value, so its cells could incorrectly cull a
+// changed field.
 Vixen::SVO::Recipe::RecipeRegistrationOptions RegistrationOptionsFor(
     const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
     const bool hasRuntimeParameters = HasRuntimeParameters(entry);
     Vixen::SVO::Recipe::RecipeRegistrationOptions options;
-    options.preferDerivedBound = DerivedBoundsEnabled() && entry.boundRadius > 0.0f && !hasRuntimeParameters;
+    options.preferDerivedBound = entry.boundRadius > 0.0f && !hasRuntimeParameters;
     options.occupancy = !hasRuntimeParameters;
     return options;
 }
@@ -871,12 +867,25 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
                          std::to_string(recipeId) + " boundRadius=" + std::to_string(entry.boundRadius) +
                          " (" + sourceName(analysis.boundSource) + ") stepRelaxation=" +
                          std::to_string(entry.stepRelaxation) + " (service-analysis)" +
-                         " derivedBounds=" + (DerivedBoundsEnabled() ? "on" : "off") +
                          (HasRuntimeParameters(entry) ? " runtimeParameters=range-bound-required" : ""));
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
                          std::to_string(recipeId) + " occupancyGrid=" +
                          (analysis.occupancyAvailable ? (std::to_string(entry.occupancyGridDim) + "^3") :
                           std::string("none (unavailable from the kernel analysis service)")));
+    }
+    // A glyph or path leaf that the generated field cannot guard is walked at every field sample.
+    // That is a cost the author can remove (intersect the leaf with a box that bounds it), so it is
+    // reported with the recipe and the instruction, never silently paid.
+    const auto rowLeaves = Vixen::SVO::Recipe::RecipeGpuRowWalkingLeaves(entry.bytecode, entry.pathInstances);
+    if (rowLeaves.count != 0u && mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                         std::to_string(recipeId) + " rowWalkingLeaves=" + std::to_string(rowLeaves.count) +
+                         " exactSkip=" + std::to_string(rowLeaves.guarded));
+        for (const std::uint32_t instruction : rowLeaves.unguardedInstructions)
+            mainLogger->Warning("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                                std::to_string(recipeId) + " instruction " + std::to_string(instruction) +
+                                ": this glyph/path leaf is evaluated at every field sample; intersect it with a " +
+                                "bounding box and merge it with Subtract or Union so the field can skip it exactly");
     }
     const auto result = proceduralRecipes_.Register(recipeId, entry);
     if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {

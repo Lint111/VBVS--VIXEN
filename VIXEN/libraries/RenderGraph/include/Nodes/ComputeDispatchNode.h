@@ -1,8 +1,5 @@
 #pragma once
-#include <array>
-#include "Core/SubmitChannel.h"
-#include "GPUTimestampQuery.h"
-#include "Nodes/Common/GpuChunkCost.h"
+#include "Core/TiledDispatch.h"
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
@@ -97,8 +94,6 @@ protected:
 private:
     std::vector<VkCommandBuffer> RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral, bool writesNoImage);
 
-    void CollectTileTiming(uint32_t frameIndex);
-
     // Extracted helper methods for RecordComputeCommands
     void ReplayEntryBarriers(VkCommandBuffer cmd, const SubmitGroup& group,
                              uint32_t imageIndex,
@@ -119,23 +114,8 @@ private:
 
     // Per-swapchain-image command buffers with state tracking
     StatefulContainer<VkCommandBuffer> commandBuffers;
-    std::array<std::vector<VkCommandBuffer>, 4> tileCommandBuffers_;
-    std::array<std::unique_ptr<Vixen::Vulkan::Resources::GPUTimestampQuery>, 4> tileQueries_;
-    std::array<uint32_t, 4> tileCounts_{};
-    static constexpr uint32_t kReportedTileReads = 16;  // first reads of the march submissions are logged
-    uint32_t reportedTileReads_ = 0;
-    std::array<uint64_t, 4> tileBudgets_{};
-    std::array<std::vector<uint32_t>, 4> tileWorkGroupCounts_;
-    std::array<std::vector<SubmitRecord::Batch>, 4> submissionBatches_;
-    FrameCommandTimingLedger frameCommandTimings_;
-    std::array<uint32_t, 4> tileNominalWorkGroupCounts_{};
-    std::array<uint32_t, 4> tileQueryCapacities_{};
-    std::array<std::string, 4> tileExtentKeys_;
-    GpuChunkCost chunkCost_;
-    std::string chunkCalibrationKey_;   ///< R503: "WxH" workgroup extent the envelope was learned for.
-    SimpleTaskProfile* chunkProfile_ = nullptr;  ///< R503: persisted through CalibrationStore.
-    bool canTile_ = false;
-
+    // R861: tile plan, cost envelope and per-submission timing shared with every dispatch node.
+    TiledDispatch tiles_;
 
     // Previous frame inputs (for dirty detection)
     VkPipeline lastPipeline = VK_NULL_HANDLE;

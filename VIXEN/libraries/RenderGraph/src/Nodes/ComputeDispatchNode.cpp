@@ -10,7 +10,6 @@
 #include "Core/ComputePerformanceLogger.h"
 #include "Core/GPUPerformanceLogger.h"
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
-#include "Nodes/Common/GpuDeviceClass.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderDataBundle.h"
 #include "SpirvReflector.h"
@@ -157,8 +156,10 @@ void ComputeDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Sprint 6.5: Register GPU task profile for cost estimation and learning
     std::string profileId = GetInstanceName() + "_gpu_dispatch";
     gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "compute");
-    chunkProfile_ = dynamic_cast<SimpleTaskProfile*>(gpuProfile_);
-    chunkCalibrationKey_.clear();
+    const auto& sceneCost = GetOwningGraph()->GetSceneCostConfiguration();
+    tiles_.Configure(vulkanDevice, commandPool, GetInstanceName(), TiledDispatch::Prior::Heaviest,
+                     &GetOwningGraph()->GetMainCacher(), sceneCost.sceneIdentity,
+                     sceneCost.qualityProfile, GetLogger());
     if (gpuProfile_) {
         RegisterPhaseProfile(TaskProfilePhase::Execute, gpuProfile_);
         NODE_LOG_INFO("[ComputeDispatchNode] Registered GPU profile: " + profileId);
@@ -237,7 +238,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
-    CollectTileTiming(currentFrameIndex);
+    tiles_.Collect(currentFrameIndex, gpuPerfLogger_.get());
 
     // Detect if inputs changed (mark all command buffers dirty if so)
     VkPipeline currentPipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
@@ -248,9 +249,9 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         currentPipelineLayout != lastPipelineLayout ||
         currentDescriptorSets != lastDescriptorSets) {
         const auto bundle = ctx.In(ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE);
-        canTile_ = bundle && ShaderManagement::SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled(
-            bundle->GetSpirv(ShaderManagement::ShaderStage::Compute));
-        if (!canTile_)
+        tiles_.SetPipeline(bundle && ShaderManagement::SpirvReflector::CanPreserveWorkgroupBuiltinsWhenTiled(
+            bundle->GetSpirv(ShaderManagement::ShaderStage::Compute)), true);
+        if (!tiles_.Tileable())
             NODE_LOG_WARNING("[GPUYIELD_UNBOUNDED] missing shader bundle or NumWorkgroups dependency: " + GetInstanceName());
 
         // Inputs changed - mark all command buffers dirty
@@ -259,8 +260,6 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         lastPipeline = currentPipeline;
         lastPipelineLayout = currentPipelineLayout;
         lastDescriptorSets = currentDescriptorSets;
-        chunkCost_ = {};
-        chunkCalibrationKey_.clear();  // re-enter from the persisted envelope (R503)
     }
 
     // Calculate push constants (time updates every frame)
@@ -373,14 +372,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; owner drains in canonical
     // order after the wave (a fault there surfaces device-loss). Inactive channel -> guarded submit.
     auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
-    record.submissionBudgetNs = tileBudgets_[currentFrameIndex];
-    for (std::size_t command = 0; command < tileWorkGroupCounts_[currentFrameIndex].size(); ++command) {
-        const uint32_t groups = tileWorkGroupCounts_[currentFrameIndex][command];
-        record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(groups));
-        const uint64_t lastFrame = frameCommandTimings_.Last(currentFrameIndex, command, groups);
-        record.commandCostMeanNs.push_back(lastFrame ? lastFrame : chunkCost_.MeanEstimate(groups));
-    }
-    submissionBatches_[currentFrameIndex] = record.SubmissionBatches();
+    tiles_.Describe(currentFrameIndex, record);
     if (const VkResult result = GetOwningGraph()->SubmitNodeWork(this, std::move(record));
         result != VK_SUCCESS) {
         NODE_LOG_ERROR("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
@@ -406,100 +398,6 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 // ============================================================================
 // RECORD COMPUTE COMMANDS
 // ============================================================================
-
-void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
-    if (auto& query = tileQueries_[frameIndex]; query && query->ReadResults(0)) {
-        frameCommandTimings_.Begin(frameIndex);
-#if UNDERSET_NATIVE_BENCHMARK
-        double totalMs = 0, maximumMs = 0;
-#endif
-        // The full-tile mean feeds the yield rule (not a measurement hook), so it is never gated.
-        double fullTileMs = 0;
-        uint32_t fullTiles = 0;
-        for (uint32_t i = 0; i < tileCounts_[frameIndex]; ++i) {
-            const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
-#if UNDERSET_NATIVE_BENCHMARK
-            if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
-                NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() +
-                    " flight=" + std::to_string(frameIndex) + " chunk=" + std::to_string(i) +
-                    " start_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4)) +
-                    " end_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 3)) +
-                    " dispatch_start_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 1)) +
-                    " dispatch_end_ticks=" + std::to_string(query->GetRawTimestampTicks(0, i * 4 + 2)) +
-                    " dispatch_gpu_ms=" + std::to_string(query->GetElapsedMs(0, i * 4 + 1, i * 4 + 2)) +
-                    " elapsed_gpu_ms=" + std::to_string(ms));
-            }
-#endif
-#if UNDERSET_NATIVE_BENCHMARK
-            totalMs += ms;
-#endif
-            if (i < tileWorkGroupCounts_[frameIndex].size() && tileWorkGroupCounts_[frameIndex][i]) {
-                frameCommandTimings_.Record(frameIndex, i,
-                    tileWorkGroupCounts_[frameIndex][i],
-                    query->GetElapsedNs(0, i * 4, i * 4 + 3));
-                if (tileWorkGroupCounts_[frameIndex][i] == tileNominalWorkGroupCounts_[frameIndex]) {
-                    fullTileMs += ms;
-                    ++fullTiles;
-                }
-                chunkCost_.Observe(tileWorkGroupCounts_[frameIndex][i],
-                    tileNominalWorkGroupCounts_[frameIndex], ms * 1.0e6);
-            }
-        }
-        if (fullTiles)
-            chunkCost_.ObserveScale(tileNominalWorkGroupCounts_[frameIndex], fullTileMs * 1.0e6 / fullTiles);
-        // R503: publish the learned envelope to the task profile; CalibrationStore
-        // persists it per device at shutdown, keyed by this flight's extent.
-        if (chunkProfile_ && chunkCost_.Calibrated() && tileExtentKeys_[frameIndex] == chunkCalibrationKey_)
-            chunkProfile_->SetChunkCalibration(tileExtentKeys_[frameIndex],
-                {chunkCost_.AnchorUnits(), chunkCost_.UnitNs(), chunkCost_.FixedNs(),
-                 chunkCost_.MeanUnitNs(), chunkCost_.MeanFixedNs()});
-#if UNDERSET_NATIVE_BENCHMARK
-        totalMs = 0;
-#endif
-        double worstSubmissionMs = 0;
-        for (const auto& batch : submissionBatches_[frameIndex]) {
-            const double elapsed = query->GetElapsedMs(0, batch.first * 4,
-                (batch.first + batch.count) * 4 - 1);
-            worstSubmissionMs = std::max(worstSubmissionMs, elapsed);
-            if (gpuPerfLogger_)
-                GPUPerformanceLogger::RecordSubmission(*gpuPerfLogger_, GetInstanceName(), elapsed);
-#if UNDERSET_NATIVE_BENCHMARK
-            maximumMs = std::max(maximumMs, elapsed);
-            totalMs += elapsed;
-#endif
-            uint64_t groups = 0;
-            for (std::size_t i = batch.first; i < batch.first + batch.count; ++i)
-                groups += tileWorkGroupCounts_[frameIndex][i];
-            if (groups) chunkCost_.ObserveBatch(groups, batch.count, elapsed * 1.0e6);
-#if UNDERSET_NATIVE_BENCHMARK
-            if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
-                NODE_LOG_INFO("[GPUYIELD_SUBMISSION] node=" + GetInstanceName() +
-                    " first_chunk=" + std::to_string(batch.first) +
-                    " chunks=" + std::to_string(batch.count) +
-                    " elapsed_gpu_ms=" + std::to_string(elapsed));
-            }
-#endif
-        }
-        if (reportedTileReads_ < kReportedTileReads) {
-            ++reportedTileReads_;
-            std::printf("[GPU_SUBMIT_TIME] pass=%s submissions=%zu chunks=%u gpu_ms=%.3f\n",
-                GetInstanceName().c_str(), submissionBatches_[frameIndex].size(), tileCounts_[frameIndex],
-                worstSubmissionMs);
-            std::fflush(stdout);
-        }
-#if UNDERSET_NATIVE_BENCHMARK
-        NODE_LOG_INFO("[GPUYIELD] node=" + GetInstanceName() +
-            " submissions=" + std::to_string(submissionBatches_[frameIndex].size()) +
-            " chunks=" + std::to_string(tileCounts_[frameIndex]) +
-            " total_gpu_ms=" + std::to_string(totalMs) +
-            " max_submission_ms=" + std::to_string(maximumMs) +
-            " budget_ms=" + std::to_string(tileBudgets_[frameIndex] / 1.0e6) +
-            " launch_latency_ms=" + std::to_string(chunkCost_.LaunchLatencyNs() / 1.0e6) +
-            " device_class=" + GpuDeviceClassName(*vulkanDevice));
-#endif
-    }
-
-}
 
 std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral, bool writesNoImage) {
     // Get inputs
@@ -539,99 +437,12 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     uint32_t dispatchY = (dispatchExtent.height + 7) / 8;
     uint32_t dispatchZ = 1;
 
-    // Cold-start below the observed Dozen 64px peak; calibrated devices grow the
-    // tile to the largest square fitting the existing submission budget. Keep
-    // the frame budget separate: smaller chunks do not make an expensive pass cheap.
+    // R861: tile count and submission budget come from this pass's measured cost (TiledDispatch).
     const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
-    const uint64_t budgetNs = std::max(uint64_t{1},
-        std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
-    // R503: the envelope is learned per extent and persisted per device through the
-    // task profile, so a known resolution starts warm; a new one starts cold.
-    const std::string extentKey = std::to_string(dispatchX) + "x" + std::to_string(dispatchY);
-    if (extentKey != chunkCalibrationKey_) {
-        chunkCalibrationKey_ = extentKey;
-        // Seed order: this extent's persisted envelope, then this process's envelope from the previous
-        // extent, then the nearest persisted extent. Per-workgroup cost belongs to the device, so a
-        // known device never restarts from the cold floor (frames before the first ring readback).
-        const GpuChunkCost previous = chunkCost_;
-        chunkCost_ = {};
-        std::string seed = "cold";
-        if (chunkProfile_) {
-            if (const auto restored = chunkProfile_->GetChunkCalibration(extentKey)) {
-                chunkCost_.Import(restored->anchorUnits, restored->unitNs, restored->fixedNs,
-                                  restored->meanUnitNs, restored->meanFixedNs);
-                seed = "persisted";
-            }
-        }
-        if (!chunkCost_.Calibrated() && previous.Calibrated()) {
-            chunkCost_.Import(previous.AnchorUnits(), previous.UnitNs(), previous.FixedNs(),
-                              previous.MeanUnitNs(), previous.MeanFixedNs());
-            seed = "previous-extent";
-        }
-        if (!chunkCost_.Calibrated() && chunkProfile_) {
-            if (const auto neighbour = chunkProfile_->NearestChunkCalibration(extentKey)) {
-                chunkCost_.Import(neighbour->anchorUnits, neighbour->unitNs, neighbour->fixedNs,
-                                  neighbour->meanUnitNs, neighbour->meanFixedNs);
-                seed = "nearest-persisted";
-            }
-        }
-#if UNDERSET_NATIVE_BENCHMARK
-        NODE_LOG_INFO("[GPUYIELD_CALIBRATION] node=" + GetInstanceName() + " extent=" + extentKey +
-            (chunkCost_.Calibrated() ? " start=warm seed=" + seed + " anchor_units=" + std::to_string(chunkCost_.AnchorUnits()) +
-                " unit_ns=" + std::to_string(chunkCost_.UnitNs()) + " fixed_ns=" + std::to_string(chunkCost_.FixedNs())
-                : std::string(" start=cold")));
-#endif
-    }
-    tileExtentKeys_[frameIndex] = extentKey;
-    // VIXEN_GPUYIELD_EDGE=<n> pins the tile edge in workgroups (0 = one untiled dispatch); a
-    // diagnostic for separating tiling cost from shader cost, not a production control.
-    static const long edgeOverride = [] {
-        const char* value = std::getenv("VIXEN_GPUYIELD_EDGE");
-        return value && *value ? std::strtol(value, nullptr, 10) : -1L;
-    }();
-    const uint32_t wholeEdge = std::max(1u, std::max(dispatchX, dispatchY));
-    // Native devices untile a pass whose projected whole time is far below the watchdog window;
-    // translated devices keep the submission-budget tiling. Same rule for every dispatch node.
-    const GpuChunkCost::WholePass whole{uint64_t(dispatchX) * dispatchY,
-        NativeWholePassWindowNs(capacity.gpuSubmissionBudgetNs, capacity.gpuTimeBudgetNs)};
-    const GpuChunkCost::WholePass* wholePass =
-        GpuDeviceClassIsNative(GpuDeviceClassName(*vulkanDevice)) ? &whole : nullptr;
-    const uint32_t edge = !canTile_ || edgeOverride == 0
-        ? wholeEdge
-        : edgeOverride > 0
-            ? static_cast<uint32_t>(edgeOverride)
-            : chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7, wholePass);
-    tileNominalWorkGroupCounts_[frameIndex] = std::min(edge, dispatchX) * std::min(edge, dispatchY);
-    const uint32_t count = std::max(1u, ((dispatchX + edge - 1) / edge) * ((dispatchY + edge - 1) / edge));
-    auto& extraBuffers = tileCommandBuffers_[frameIndex];
-    if (extraBuffers.size() + 1 < count) {
-        const uint32_t needed = count - 1 - static_cast<uint32_t>(extraBuffers.size());
-        std::vector<VkCommandBuffer> allocated(needed);
-        VkCommandBufferAllocateInfo allocation{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-        allocation.commandPool = commandPool;
-        allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocation.commandBufferCount = needed;
-        VK_CHECK_THROW(vkAllocateCommandBuffers(vulkanDevice->device, &allocation, allocated.data()), "ComputeDispatchNode: failed to allocate tile commands");
-        extraBuffers.insert(extraBuffers.end(), allocated.begin(), allocated.end());
-    }
-    std::vector<VkCommandBuffer> recordedBuffers{cmdBuffer};
-    if (count > 1)
-        recordedBuffers.insert(recordedBuffers.end(), extraBuffers.begin(), extraBuffers.begin() + (count - 1));
-    if (tileQueryCapacities_[frameIndex] < count) {
-        if (tileQueries_[frameIndex]) {
-            // Release recorded pool references before replacing their backing storage.
-            VK_CHECK_THROW(vkResetCommandBuffer(cmdBuffer, 0), "ComputeDispatchNode: query-growth command reset failed");
-            for (VkCommandBuffer buffer : extraBuffers)
-                VK_CHECK_THROW(vkResetCommandBuffer(buffer, 0), "ComputeDispatchNode: query-growth tile reset failed");
-        }
-        tileQueryCapacities_[frameIndex] = std::max(count, tileQueryCapacities_[frameIndex] * 2u);
-        tileQueries_[frameIndex] = std::make_unique<GPUTimestampQuery>(
-            vulkanDevice, 1, tileQueryCapacities_[frameIndex] * 4);
-    }
-    tileCounts_[frameIndex] = count;
-    tileBudgets_[frameIndex] = chunkCost_.SubmissionBudgetNs(budgetNs);
-    tileWorkGroupCounts_[frameIndex].clear();
-    auto& tileQuery = *tileQueries_[frameIndex];
+    std::string tileFailure;
+    if (!tiles_.Plan(frameIndex, cmdBuffer, {dispatchX, dispatchY, dispatchZ},
+                     {capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs}, tileFailure))
+        throw std::runtime_error("ComputeDispatchNode: " + tileFailure);
     // Begin command buffer recording
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -641,8 +452,7 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
     VK_CHECK_THROW(result, "[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
 
-    tileQuery.ResetQueryRange(cmdBuffer, 0, 0, 4);
-    tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+    tiles_.OpenFirst(cmdBuffer);
 
 
     static int logCount = 0;
@@ -709,40 +519,11 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         gpuPerfLogger_->RecordDispatchStart(cmdBuffer, frameIndex);
     }
 
-    uint32_t tileIndex = 0;
-    for (uint32_t baseY = 0; baseY < dispatchY; baseY += edge) {
-        for (uint32_t baseX = 0; baseX < dispatchX; baseX += edge) {
-            tileWorkGroupCounts_[frameIndex].push_back(canTile_
-                ? std::min(edge, dispatchX - baseX) * std::min(edge, dispatchY - baseY)
-                : dispatchX * dispatchY);
-            tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                     tileIndex * 4 + 1);
-            if (canTile_) {
-                vkCmdDispatchBase(cmdBuffer, baseX, baseY, 0,
-                                  std::min(edge, dispatchX - baseX),
-                                  std::min(edge, dispatchY - baseY), dispatchZ);
-            } else {
-                vkCmdDispatch(cmdBuffer, dispatchX, dispatchY, dispatchZ);
-            }
-            tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                     tileIndex * 4 + 2);
-            if (++tileIndex != count) {
-                tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                         tileIndex * 4 - 1);
-                VK_CHECK_THROW(vkEndCommandBuffer(cmdBuffer), "ComputeDispatchNode: failed to end tile commands");
-                cmdBuffer = recordedBuffers[tileIndex];
-                VIXEN_FRAME_COUNT(CommandRecordings, 1);
-                VK_CHECK_THROW(vkBeginCommandBuffer(cmdBuffer, &beginInfo), "ComputeDispatchNode: failed to begin tile commands");
-                // Each retired command owns four queries. Resetting the entire
-                // capacity in chunk zero makes instrumentation grow with tile count.
-                tileQuery.ResetQueryRange(cmdBuffer, 0, tileIndex * 4, 4);
-                tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                         tileIndex * 4);
-                BindComputePipeline(cmdBuffer, pipeline, pipelineLayout, descriptorSet);
-                SetPushConstants(ctx, cmdBuffer, pipelineLayout, pushConstantData);
-            }
-        }
-    }
+    if (!tiles_.Dispatch(cmdBuffer, [&](VkCommandBuffer tile) {
+            BindComputePipeline(tile, pipeline, pipelineLayout, descriptorSet);
+            SetPushConstants(ctx, tile, pipelineLayout, pushConstantData);
+        }, tileFailure))
+        throw std::runtime_error("ComputeDispatchNode: " + tileFailure);
 
     // End GPU timing
     if (gpuPerfLogger_) {
@@ -769,14 +550,14 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
         swapchainInfo->SetImageLayout(imageIndex, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     }
 
-    tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, count * 4 - 1);
+    tiles_.CloseLast(cmdBuffer);
 
     // End command buffer
     result = vkEndCommandBuffer(cmdBuffer);
     VK_CHECK_THROW(result, "[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
 
     NODE_LOG_DEBUG("[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " + std::to_string(imageIndex));
-    return recordedBuffers;
+    return tiles_.Commands();
 }
 
 // ============================================================================
@@ -922,18 +703,7 @@ void ComputeDispatchNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // when the node is destroyed. Logger object stays alive for parent log extraction.
 
     if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {
-        for (uint32_t i = 0; i < tileQueries_.size(); ++i) CollectTileTiming(i);
-        for (auto& buffers : tileCommandBuffers_) {
-            if (!buffers.empty() && commandPool != VK_NULL_HANDLE)
-                vkFreeCommandBuffers(vulkanDevice->device, commandPool,
-                                     static_cast<uint32_t>(buffers.size()), buffers.data());
-            buffers.clear();
-        }
-        for (auto& query : tileQueries_) query.reset();
-        tileCounts_.fill(0);
-        tileQueryCapacities_.fill(0);
-        chunkCost_ = {};
-        tileBudgets_.fill(0);
+        tiles_.Release(gpuPerfLogger_.get());
 
         // Free command buffers
         if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE) {

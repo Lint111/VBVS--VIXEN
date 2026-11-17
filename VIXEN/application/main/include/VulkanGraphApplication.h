@@ -823,6 +823,9 @@ public:
     // pipeline. Returns the registry's own RegisterResult (Ok / DuplicateId / BadOpCode / ...).
     Vixen::SVO::RecipeRegistry::RegisterResult RegisterProceduralRecipe(
         uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry);
+    // The registry the shader builders read: the entries as registered (bounds, occupancy grid,
+    // glyph rows). Read-only; diagnostics replay a ray on the CPU against the same data.
+    const Vixen::SVO::RecipeRegistry& ProceduralRecipes() const { return proceduralRecipes_; }
     // Replaces a registered program under the same id; callers must recompile the procedural
     // shader after a successful bytecode change. Runtime parameter edits stay in recipeParams.
     Vixen::SVO::RecipeRegistry::RegisterResult ReplaceProceduralRecipe(

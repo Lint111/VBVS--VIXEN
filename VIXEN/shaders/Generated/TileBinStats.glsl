@@ -5,7 +5,7 @@ struct TileBinStats {
     uint listed;
     uint behindCamera;
     uint offScreen;
-    uint occluded;
+    uint occludedSlices;
     uint overflowed;
 };
 #endif // TILEBINSTATS_GLSL

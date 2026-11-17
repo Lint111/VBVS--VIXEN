@@ -2,6 +2,8 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDeviceFwd.h"
 
+#include <iterator>
+
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
@@ -16,7 +18,9 @@ namespace BodyOctreeSceneNodeCounts {
     // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
     // + raster-proxy AABB buffer and its exact live element count (Slice B2 binder seam).
     // + flattened runtime glyph-outline buffer (R631) + packed glyph words (R768).
-    static constexpr size_t OUTPUTS = 22;
+    // + recipe chunk boxes, recipe tape, GB1 instance bound spheres (own slot 22: it shared
+    //   slot 21 with the recipe tape, so whichever Out ran last fed both consumers).
+    static constexpr size_t OUTPUTS = 23;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -184,7 +188,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotMutability::WriteOnly);
 
     // GB1 (R857): lean world-space sphere stream consumed by generated tile scatter.
-    OUTPUT_SLOT(INSTANCE_BOUND_BUFFER, VkBuffer, 21,
+    OUTPUT_SLOT(INSTANCE_BOUND_BUFFER, VkBuffer, 22,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -345,6 +349,31 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(GLYPH_OUTLINE_FLAT_BUFFER_Slot::index == 19, "GLYPH_OUTLINE_FLAT_BUFFER must be at index 19");
     static_assert(RECIPE_CHUNK_BUFFER_Slot::index == 20, "RECIPE_CHUNK_BUFFER must be at index 20");
     static_assert(RECIPE_TAPE_BUFFER_Slot::index == 21, "RECIPE_TAPE_BUFFER must be at index 21");
+    static_assert(INSTANCE_BOUND_BUFFER_Slot::index == 22, "INSTANCE_BOUND_BUFFER must be at index 22");
+    // Output slot indices are positions in one storage array: two outputs on one index alias
+    // (RECIPE_TAPE_BUFFER and INSTANCE_BOUND_BUFFER both sat at 21 until R896 found it).
+    static_assert([] {
+        constexpr size_t indices[] = {
+            OCTREE_NODES_BUFFER_Slot::index, OCTREE_BRICKS_BUFFER_Slot::index,
+            OCTREE_MATERIALS_BUFFER_Slot::index, OCTREE_CONFIG_BUFFER_Slot::index,
+            INSTANCE_BUFFER_Slot::index, INSTANCE_COUNT_Slot::index, OCTREE_SDF_BUFFER_Slot::index,
+            OCTREE_BRICKLOOKUP_BUFFER_Slot::index, OCTREE_MIPPOOL_BUFFER_Slot::index,
+            SHELL_DATA_BUFFER_Slot::index, SHELL_LOOKUP_BUFFER_Slot::index,
+            OCTREE_TIERREFTABLE_BUFFER_Slot::index, OCTREE_OCCUPANCYGRID_BUFFER_Slot::index,
+            RTQUERY_TLAS_Slot::index, PROXY_AABB_BUFFER_Slot::index, PROXY_AABB_COUNT_Slot::index,
+            INSTANCE_TRANSFORM_BUFFER_Slot::index, INSTANCE_MOTION_BUFFER_Slot::index,
+            GLYPH_OUTLINE_BUFFER_Slot::index, GLYPH_OUTLINE_FLAT_BUFFER_Slot::index,
+            RECIPE_CHUNK_BUFFER_Slot::index, RECIPE_TAPE_BUFFER_Slot::index,
+            INSTANCE_BOUND_BUFFER_Slot::index};
+        static_assert(std::size(indices) == BodyOctreeSceneNodeCounts::OUTPUTS,
+                      "list every output slot here");
+        bool seen[BodyOctreeSceneNodeCounts::OUTPUTS] = {};
+        for (size_t index : indices) {
+            if (index >= BodyOctreeSceneNodeCounts::OUTPUTS || seen[index]) return false;
+            seen[index] = true;
+        }
+        return true;
+    }(), "BodyOctreeSceneNode output slot indices must be unique and dense");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);

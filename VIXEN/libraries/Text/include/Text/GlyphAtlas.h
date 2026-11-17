@@ -2,6 +2,7 @@
 
 #include "Text/GlyphCellStore.h"
 #include "Text/GlyphOutline.h"
+#include "Recipe/GlyphBakeStream.h"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -65,6 +66,14 @@ public:
         FT_Face face, std::uint32_t glyphIndex,
         GlyphOutlineBakeDiagnostic* diagnostic = nullptr);
     [[nodiscard]] std::span<const GlyphOutlineInstance> OutlineBlob() const noexcept;
+    // R892.14: name the imported (baked) form of a face. Outline rows added for the face
+    // afterwards carry a baked row: the glyph at the row origin, scaled from font units to the
+    // 26.6 units of the face's current pixel size (unhinted). Their bounds are widened to hold
+    // both the hinted segments and the baked outline. Call before the first outline of the face.
+    void AttachGlyphBake(FT_Face face, std::shared_ptr<const Vixen::SVO::Recipe::GlyphBakeFace> bake);
+    // The baked rows, parallel to OutlineBlob(). A row of a face without a bake, or of a glyph
+    // without an outline, is not Baked().
+    [[nodiscard]] std::span<const Vixen::SVO::Recipe::GlyphBakedRow> BakedBlob() const noexcept;
     [[nodiscard]] std::uint64_t OutlineBlobBytes() const noexcept;
     [[nodiscard]] const AtlasGlyph* FindGlyph(std::uint32_t glyphIndex) const;
     // Preserve RmlUi's small outlined replacement glyph when no bundled face

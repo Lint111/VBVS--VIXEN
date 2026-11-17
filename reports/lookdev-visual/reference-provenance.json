@@ -1,8 +1,8 @@
 {
   "schema": "vixen-lookdev-reference/v1",
   "reference_set": "R432 look-dev turntable",
-  "source_commit": "3c08624c36e93ea71ebf2cd033be5aece78aa30a",
-  "captured_at": "2026-11-09",
+  "source_commit": "b70c04c1caec2ae3e4c693604e5fa959abb5a998",
+  "captured_at": "2026-11-17",
   "machine": "ws",
   "driver": {
     "device": "AMD Radeon(TM) 8060S Graphics",
@@ -29,7 +29,7 @@
     "overcast",
     "night-service"
   ],
-  "capture_mode": "Release (vixen-ninja-release), native Windows Vulkan, one fresh process per state plus one repeat; recorded by cl-regold1 (all four states re-recorded after the shadow-origin offset fix) with VIXEN_PIXEL_GOLDEN_RECORD=1",
+  "capture_mode": "Release (vixen-ninja-release), native Windows Vulkan; native CTest Application.LookdevCapture.State.* (first and .repeat captures byte-identical, 16/16) on opus-rt7 build b70c04c1c (lane-rt6: guard+scatter 6d0f8a23d + glyph sliver fix 6131e8d82); owner accepted R892.15 (re-record on the vx10-merged tree) and R892.16 (hit normal from the entry face at convex edges)",
   "known_visual_changes": [
     {
       "commit": "bff5507184efcfb6bbbcaf6a079d1e28b741f2fc",
@@ -66,11 +66,27 @@
     {
       "commit": "3c08624c36e93ea71ebf2cd033be5aece78aa30a",
       "title": "contact shadow offset is four certified widths, not sixteen (shadow-edge changes in all four states, night-service seam removed)"
+    },
+    {
+      "commit": "15f0832af9b04dbe08ca67991ced52a986112a91",
+      "title": "derived recipe bounds by default, env switch removed (R892.3/R892.6)"
+    },
+    {
+      "commit": "11b45cde15e6cc1a66284b95031977e9f57164f1",
+      "title": "shadow rays keep occluders closer than 1 mm (R892.8/R892.9 speckle)"
+    },
+    {
+      "commit": "72a527a39ba8",
+      "title": "vx10 merge: GB1 depth-ordered tile lists change the march visit order (5 captures differ by <=3 levels in 2-24 px; R892.15)"
+    },
+    {
+      "commit": "6131e8d8247a94d749e1a7700280b201b8295c68",
+      "title": "hit normal comes from the face the ray enters at convex edges, primary rays only (R892.16)"
     }
   ],
   "witness": {
-    "source": "cl-regold1",
-    "evidence": "/home/liory/codeman-cases/undertow/reports/cl-regold1.md",
+    "source": "opus-rt7",
+    "evidence": "/home/liory/codeman-cases/undertow/reports/opus-rt7.md",
     "repeat_pairs": 16,
     "byte_identical": true
   },
