@@ -232,6 +232,38 @@ vec3 recipeFieldGradient(uint recipeId, vec3 p, float params[6]) {
 // form; it skips the surface payload nobody reads on those rays (the six-evaluation gradient
 // and the material evaluation, R892 B6). It also limits the relaxed-step boost to a real
 // per-cell bound, never the no-grid sentinel: an unproven boost overshoots distant occluders.
+// Entry-face normal (SPT 906733a50217). A first hit's normal faces the ray, and central
+// differences over a smooth field of unit slope have length 2h. Two cases break that at a
+// convex edge and showed as isolated lit/dark pixels along glyph and body edges:
+//  - the refined hit lies inside the solid; where the ray clips the edge the chord is shorter
+//    than that error, so the sample is nearer the face the ray LEAVES through and the
+//    differences return that face's normal (it faces away from the ray);
+//  - the sample is on the entry face but within one tap of the edge, the taps straddle it and
+//    the result blends in the hidden face (a short difference vector).
+// In both the ray came through the entry face, so a point a few taps back along the ray from
+// the last sample known to be outside (outsideT) has that face as its nearest surface: the
+// normal is taken there. Every other hit keeps the gradient at the hit point unchanged.
+// One gradient call site, two passes at most.
+vec3 recipeEntryFaceGradient(uint recipeId, vec3 ro, vec3 rd, float hitT, float outsideT,
+                             float params[6]) {
+    const float kTap = 1e-3;                       // recipeFieldGradient's h
+    const float kCreaseLengthSquared = (0.9 * 2.0 * kTap) * (0.9 * 2.0 * kTap);
+    const float kRetreat = 4.0 * kTap;
+    vec3 samplePoint = ro + rd * hitT;
+    vec3 gradient = vec3(0.0);
+    [[dont_unroll]] for (int pass = 0; pass < 2; ++pass) {
+        vec3 candidate = recipeFieldGradient(recipeId, samplePoint, params);
+        if (pass == 0) {
+            gradient = candidate;
+            if (dot(candidate, rd) < 0.0 && dot(candidate, candidate) >= kCreaseLengthSquared) break;
+            samplePoint = ro + rd * (min(outsideT, hitT) - kRetreat);
+        } else if (dot(candidate, rd) < 0.0) {
+            gradient = candidate;
+        }
+    }
+    return gradient;
+}
+
 bool traceUberRecipeBodyImpl(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
                              vec3 ro, vec3 rd, float conservativeStepScale, float pixelAngle,
                              float params[6], float tMinWorld, float tMaxWorld, bool occlusionOnly,
@@ -322,7 +354,7 @@ bool traceUberRecipeBodyImpl(uint recipeId, vec3 boundCenter, float boundRadius,
         if (d <= EPS_MIN) {
             vec3 gradient = vec3(0.0);
             if (!occlusionOnly) {
-                gradient = recipeFieldGradient(recipeId, p, params);
+                gradient = recipeEntryFaceGradient(recipeId, ro, rd, t, t, params);
                 hitNormal = normalize(gradient);
             }
             hitT      = t;
@@ -412,7 +444,7 @@ bool traceUberRecipeBodyImpl(uint recipeId, vec3 boundCenter, float boundRadius,
                     p = ro + rd * t;
                     vec3 gradient = vec3(0.0);
                     if (!occlusionOnly) {
-                        gradient = recipeFieldGradient(recipeId, p, params);
+                        gradient = recipeEntryFaceGradient(recipeId, ro, rd, t, loT, params);
                         hitNormal = normalize(gradient);
                     }
                     hitT = t;
