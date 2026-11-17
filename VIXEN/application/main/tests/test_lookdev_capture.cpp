@@ -36,6 +36,8 @@
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/RecipeBounds.h"
 #include "Recipe/RecipeIngest.h"
+#include "Recipe/RecipeMarchReplay.h"
+#include "Recipe/SdfRecipeEval.h"
 
 #include <gtest/gtest.h>
 #include <stb_image.h>
@@ -1925,7 +1927,7 @@ public:
             }
             SetBodyInstances(std::move(instances));
         }
-        if (std::getenv("VIXEN_LOOKDEV_READBACK")) {
+        if (std::getenv("VIXEN_LOOKDEV_READBACK") || std::getenv("VIXEN_LOOKDEV_REPLAY_PIXELS")) {
             auto* records = dynamic_cast<Vixen::RenderGraph::StorageBufferNode*>(
                 graph->GetInstanceByName("hit_record_buffer"));
             if (!records) throw std::runtime_error("missing shadow snapshot source");
@@ -2136,6 +2138,7 @@ public:
         captureWallMs_ += MsBetween(captureStart, CaptureClock::now());
 #endif
         if (std::getenv("VIXEN_LOOKDEV_READBACK") && !ExportLightingReadback(scenario)) return false;
+        if (std::getenv("VIXEN_LOOKDEV_REPLAY_PIXELS") && !ReplayPixels(scenario)) return false;
         if (std::getenv("VIXEN_LOOKDEV_DEPTH_READBACK") && !ExportDepthReadback(scenario)) return false;
         ++capturedCount_;
 
@@ -2648,6 +2651,323 @@ private:
         scene << "]}\n";
         if (!scene) {
             captureError_ = "could not export look-dev scene metadata";
+            return false;
+        }
+        return true;
+    }
+
+    // VIXEN_LOOKDEV_REPLAY_PIXELS="x:y+x:y": replays the camera ray and the analytic shadow rays of
+    // each listed pixel on the CPU (Recipe/RecipeMarchReplay.h, the field the GPU walks) and writes
+    // <capture>.replay.txt beside the image: the pixel's HitRecord, the replayed march, a dense
+    // scan of the field along each shadow ray, and the agreement of the replay with the HitRecords
+    // of the surrounding pixels. Registry recipes on axis-aligned, uniformly scaled instances.
+    bool ReplayPixels(const CaptureScenario& scenario) {
+        using Vixen::SVO::Recipe::RecipeMarchExit;
+        using Vixen::SVO::Recipe::RecipeMarchReplay;
+        using Vixen::SVO::Recipe::RecipeMarchReplayInput;
+        auto* graph = GetRenderGraph();
+        auto* deviceNode = dynamic_cast<Vixen::RenderGraph::DeviceNode*>(graph->GetInstanceByName("main_device"));
+        const auto* bodyScene = dynamic_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+            graph->GetInstanceByName("body_octree_scene"));
+        auto* device = deviceNode ? deviceNode->GetVulkanDevice() : nullptr;
+        if (!device || !bodyScene || !snapshotMemory_ || vkDeviceWaitIdle(device->device) != VK_SUCCESS) {
+            captureError_ = "pixel replay needs the device, the body scene and the HitRecord snapshot";
+            return false;
+        }
+        struct Record {
+            glm::vec3 albedo; float roughness;
+            glm::vec3 worldNormal; float hitT;
+            glm::vec3 worldPos; std::uint32_t flags;
+            std::uint32_t pad0[3]; float primaryFootprint;
+        };
+        static_assert(sizeof(Record) == 64, "HitRecord.glsl stride");
+        std::vector<Record> records(static_cast<std::size_t>(snapshotSize_ / sizeof(Record)));
+        void* mapped = nullptr;
+        if (vkMapMemory(device->device, snapshotMemory_, 0, snapshotSize_, 0, &mapped) != VK_SUCCESS) {
+            captureError_ = "could not map the HitRecord snapshot for the pixel replay";
+            return false;
+        }
+        std::memcpy(records.data(), mapped, records.size() * sizeof(Record));
+        vkUnmapMemory(device->device, snapshotMemory_);
+
+        std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)> lightingBytes{};
+        if (!Vixen::RenderGraph::LightingConfigNodeTestAccess::ReadMappedBytes(*lighting_, 0, lightingBytes)) {
+            captureError_ = "could not read LightingConfig for the pixel replay";
+            return false;
+        }
+        Vixen::Gpu::LightingConfig lighting{};
+        std::memcpy(&lighting, lightingBytes.data(), sizeof(lighting));
+
+        const auto& camera = camera_->GetCurrentCameraData();
+        const int height = static_cast<int>(std::lround(std::sqrt(static_cast<double>(records.size()) / camera.aspect)));
+        const int width = height > 0 ? static_cast<int>(records.size() / static_cast<std::size_t>(height)) : 0;
+        if (width <= 0 || static_cast<std::size_t>(width) * static_cast<std::size_t>(height) != records.size()) {
+            captureError_ = "the HitRecord count does not match the camera aspect";
+            return false;
+        }
+        // ShadowConfigNode defaults and BuildRenderGraph's secondary cone; printed with the result.
+        const float kBiasEpsilon = 0.01f;
+        const float kMaxShadowDistance = 1000.0f;
+        float secondaryCone = 0.05f;
+        if (const char* text = std::getenv("VIXEN_SECONDARY_RAY_SIZE_COEF")) secondaryCone = std::strtof(text, nullptr);
+        const float primaryCone = 2.0f * std::tan((glm::radians(camera.fov) / static_cast<float>(height)) * 0.5f);
+
+        const Vixen::SVO::RecipeRegistry& registry = ProceduralRecipes();
+        std::vector<std::uint32_t> glyphStream;
+        std::string streamError;
+        if (!registry.BuildGlyphBakeStream(glyphStream, &streamError)) {
+            captureError_ = "pixel replay could not pack the glyph rows: " + streamError;
+            return false;
+        }
+        const auto& instances = bodyScene->GetInstances();
+
+        struct Body {
+            const Vixen::SVO::RecipeRegistry::RecipeEntry* entry = nullptr;
+            glm::vec3 translation{0.0f};
+            float scale = 1.0f;
+            std::array<float, 6> params{};
+        };
+        auto bodyOf = [&](std::uint32_t index, Body& body) {
+            if (index >= instances.size()) return false;
+            const auto& instance = instances[index];
+            const auto& rows = instance.transform.localToWorld.rows;
+            if (instance.material.providerKind != 1U || instance.material.recipeId < 2U) return false;
+            if (rows[0][1] != 0.0f || rows[0][2] != 0.0f || rows[1][0] != 0.0f || rows[1][2] != 0.0f ||
+                rows[2][0] != 0.0f || rows[2][1] != 0.0f || rows[0][0] != rows[1][1] || rows[0][0] != rows[2][2])
+                return false;
+            body.entry = registry.Get(instance.material.recipeId);
+            body.translation = {rows[0][3], rows[1][3], rows[2][3]};
+            body.scale = rows[0][0];
+            std::copy(std::begin(instance.material.recipeParams), std::begin(instance.material.recipeParams) + 6,
+                      body.params.begin());
+            return body.entry != nullptr;
+        };
+        auto fieldOf = [&](const Body& body) {
+            return [&registry, &glyphStream, body](glm::vec3 p) {
+                return Vixen::SVO::Recipe::evalRecipe(
+                    body.entry->bytecode.data(), static_cast<std::uint32_t>(body.entry->bytecode.size()), p,
+                    body.params, nullptr, &registry, registry.GlyphOutlineBlob(), {}, nullptr, 0u, nullptr, 0u,
+                    glyphStream);
+            };
+        };
+        auto marchInput = [](const Body& body) {
+            RecipeMarchReplayInput in;
+            in.boundCenter = body.entry->boundCenter;
+            in.boundRadius = body.entry->boundRadius;
+            in.relaxation = body.entry->stepRelaxation;
+            in.gridDim = body.entry->occupancyGridValues.empty() ? 0u : body.entry->occupancyGridDim;
+            in.gridAabbMin = body.entry->occupancyGridAabbMin;
+            in.gridCellSize = body.entry->occupancyGridCellSize;
+            in.grid = body.entry->occupancyGridValues;
+            return in;
+        };
+        auto cameraRay = [&](int x, int y) {
+            const float tanHalfFov = std::tan(glm::radians(camera.fov * 0.5f));
+            glm::vec2 ndc = (glm::vec2(static_cast<float>(x), static_cast<float>(y)) + 0.5f) /
+                glm::vec2(static_cast<float>(width), static_cast<float>(height)) * 2.0f - 1.0f;
+            ndc.y = -ndc.y;
+            return glm::normalize(camera.cameraDir + camera.cameraRight * ndc.x * tanHalfFov * camera.aspect +
+                                  camera.cameraUp * ndc.y * tanHalfFov);
+        };
+        // The camera march of TraceWorld for one registry instance (one instance wins every pixel
+        // of these scenes; the replay marches the instance the HitRecord names).
+        auto replayPrimary = [&](const Body& body, int x, int y) {
+            RecipeMarchReplayInput in = marchInput(body);
+            in.ro = (camera.cameraPos - body.translation) / body.scale;
+            in.rd = cameraRay(x, y);
+            in.pixelAngle = primaryCone;
+            return Vixen::SVO::Recipe::ReplayRecipeMarch(in, fieldOf(body));
+        };
+        struct ShadowRay {
+            bool traced = false;
+            float nDotL = 0.0f;
+            float bias = 0.0f;
+            glm::vec3 originLocal{0.0f};
+            glm::vec3 direction{0.0f};
+            RecipeMarchReplay march;
+            bool occluded = false;
+        };
+        // ShadowVisibilityWave's analytic phase for one light, from the pixel's own HitRecord.
+        auto replayShadow = [&](const Body& body, const Record& record, const Vixen::Gpu::Light& light) {
+            ShadowRay ray;
+            const glm::vec3 lightVector(light.direction_or_positionX, light.direction_or_positionY,
+                                        light.direction_or_positionZ);
+            float distanceToLight = 0.0f;
+            if (light.kind == 1U) {
+                const glm::vec3 toLight = lightVector - record.worldPos;
+                distanceToLight = glm::length(toLight);
+                ray.direction = distanceToLight > 1e-6f ? toLight / distanceToLight : glm::vec3(0.0f);
+            } else {
+                ray.direction = glm::normalize(lightVector);
+            }
+            ray.nDotL = std::max(glm::dot(record.worldNormal, ray.direction), 0.0f);
+            if (ray.nDotL <= 0.0f) return ray;
+            ray.traced = true;
+            ray.bias = std::max(kBiasEpsilon, 4.0f * 0.25f * std::max(record.primaryFootprint, 0.0f));
+            const glm::vec3 origin = record.worldPos + record.worldNormal * ray.bias;
+            float tmax = kMaxShadowDistance;
+            if (light.kind == 1U) tmax = std::min(tmax, distanceToLight);
+            RecipeMarchReplayInput in = marchInput(body);
+            ray.originLocal = (origin - body.translation) / body.scale;
+            in.ro = ray.originLocal;
+            in.rd = ray.direction;
+            in.pixelAngle = secondaryCone;
+            in.tMin = 0.0f;
+            in.tMax = tmax / body.scale;
+            in.occlusionOnly = true;
+            ray.march = Vixen::SVO::Recipe::ReplayRecipeMarch(in, fieldOf(body));
+            const float worldT = ray.march.hitT * body.scale;
+            ray.occluded = ray.march.hit && worldT >= 0.0f && worldT <= tmax;
+            return ray;
+        };
+        auto exitName = [](RecipeMarchExit exit) {
+            switch (exit) {
+                case RecipeMarchExit::BoundMiss: return "bound-miss";
+                case RecipeMarchExit::Hit: return "hit";
+                case RecipeMarchExit::RefinedHit: return "refined-hit";
+                case RecipeMarchExit::LeftInterval: return "left-interval";
+                case RecipeMarchExit::StartInside: return "start-inside";
+                case RecipeMarchExit::Budget: return "budget";
+            }
+            return "?";
+        };
+
+        const auto stem = outputDir_ / std::filesystem::path(scenario.filename).stem();
+        std::ofstream out(stem.string() + ".replay.txt", std::ios::trunc);
+        out << std::setprecision(9);
+        out << "image " << width << "x" << height << " camera pos=(" << camera.cameraPos.x << ',' << camera.cameraPos.y
+            << ',' << camera.cameraPos.z << ") dir=(" << camera.cameraDir.x << ',' << camera.cameraDir.y << ','
+            << camera.cameraDir.z << ") fov=" << camera.fov << " primaryCone=" << primaryCone
+            << " secondaryCone=" << secondaryCone << " bias=" << kBiasEpsilon << " lights=" << lighting.lightCount << '\n';
+        for (std::uint32_t i = 0; i < lighting.lightCount && i < 4U; ++i) {
+            const auto& light = lighting.lights[i];
+            out << "light " << i << " kind=" << light.kind << " dir_or_pos=(" << light.direction_or_positionX << ','
+                << light.direction_or_positionY << ',' << light.direction_or_positionZ << ")\n";
+        }
+
+        const char* cursor = std::getenv("VIXEN_LOOKDEV_REPLAY_PIXELS");
+        while (cursor && *cursor) {
+            char* end = nullptr;
+            const int px = static_cast<int>(std::strtol(cursor, &end, 10));
+            if (end == cursor || *end != ':') break;
+            cursor = end + 1;
+            const int py = static_cast<int>(std::strtol(cursor, &end, 10));
+            if (end == cursor) break;
+            cursor = *end == '+' ? end + 1 : end;
+            if (px < 0 || py < 0 || px >= width || py >= height) {
+                out << "\n=== pixel (" << px << ',' << py << ") outside the image\n";
+                continue;
+            }
+            const Record& record = records[static_cast<std::size_t>(py) * width + px];
+            out << "\n=== pixel (" << px << ',' << py << ") flags=0x" << std::hex << record.flags << " word2=0x"
+                << record.pad0[2] << std::dec << " instance=" << record.pad0[0] << " hitT=" << record.hitT
+                << " footprint=" << record.primaryFootprint << "\n  gpu worldPos=(" << record.worldPos.x << ','
+                << record.worldPos.y << ',' << record.worldPos.z << ") normal=(" << record.worldNormal.x << ','
+                << record.worldNormal.y << ',' << record.worldNormal.z << ")\n";
+            Body body;
+            if ((record.flags & 1U) == 0U || !bodyOf(record.pad0[0], body)) {
+                out << "  not a registry recipe hit on an axis-aligned uniform instance: no replay\n";
+                continue;
+            }
+            auto field = fieldOf(body);
+            const glm::vec3 hitLocal = (record.worldPos - body.translation) / body.scale;
+            const glm::vec3 gradientAtHit = Vixen::SVO::Recipe::MarchReplayDetail::FieldGradient(field, hitLocal);
+            out << "  local hit=(" << hitLocal.x << ',' << hitLocal.y << ',' << hitLocal.z << ") field there="
+                << field(hitLocal) << " gradient there=(" << gradientAtHit.x << ',' << gradientAtHit.y << ','
+                << gradientAtHit.z << ") length/2h=" << glm::length(gradientAtHit) / 2e-3f << '\n';
+
+            const RecipeMarchReplay primary = replayPrimary(body, px, py);
+            const glm::vec3 primaryNormal = glm::length(primary.gradient) > 0.0f
+                ? glm::normalize(primary.gradient) : glm::vec3(0.0f);
+            out << "  cpu primary: " << exitName(primary.exit) << " steps=" << primary.samples.size() << " hitT(world)="
+                << primary.hitT * body.scale << " outsideT(world)=" << primary.outsideT * body.scale << " normal=("
+                << primaryNormal.x << ',' << primaryNormal.y << ',' << primaryNormal.z << ") gradient length/2h="
+                << glm::length(primary.gradient) / 2e-3f << " retreated=" << primary.gradientRetreated
+                << " normal.gpu=" << glm::dot(primaryNormal, record.worldNormal) << '\n';
+            const std::size_t tail = primary.samples.size() > 6 ? primary.samples.size() - 6 : 0;
+            for (std::size_t i = tail; i < primary.samples.size(); ++i)
+                out << "    primary sample " << i << " t(local)=" << primary.samples[i].t << " d=" << primary.samples[i].d
+                    << " step=" << primary.samples[i].step << '\n';
+
+            for (std::uint32_t lightIndex = 0; lightIndex < lighting.lightCount && lightIndex < 4U; ++lightIndex) {
+                const ShadowRay ray = replayShadow(body, record, lighting.lights[lightIndex]);
+                const bool gpuVisible = (record.pad0[2] >> lightIndex) & 1U;
+                out << "  light " << lightIndex << ": gpu " << (gpuVisible ? "visible" : "occluded") << ", NdotL=" << ray.nDotL;
+                if (!ray.traced) {
+                    out << ", not traced (faces away)\n";
+                    continue;
+                }
+                out << ", cpu " << (ray.occluded ? "occluded" : "visible") << " (" << exitName(ray.march.exit)
+                    << ", steps=" << ray.march.samples.size() << ", hitT(local)=" << ray.march.hitT << ") bias(world)="
+                    << ray.bias << " origin(local)=(" << ray.originLocal.x << ',' << ray.originLocal.y << ','
+                    << ray.originLocal.z << ") dir=(" << ray.direction.x << ',' << ray.direction.y << ','
+                    << ray.direction.z << ")\n";
+                for (std::size_t i = 0; i < ray.march.samples.size() && i < 40; ++i)
+                    out << "    shadow sample " << i << " t=" << ray.march.samples[i].t << " d=" << ray.march.samples[i].d
+                        << " step=" << ray.march.samples[i].step
+                        << (ray.march.samples[i].startSurface ? " start-surface" : "") << '\n';
+                // The field along the ray, independent of the march: every stretch below zero.
+                const double scanStep = 2.5e-4;
+                const double scanEnd = std::min<double>(ray.march.tEnd, 40.0);
+                double minimum = 1e30, minimumT = 0.0, runStart = -1.0, runMinimum = 0.0;
+                int runs = 0;
+                for (double t = 0.0; t <= scanEnd; t += scanStep) {
+                    const float d = field(ray.originLocal + ray.direction * static_cast<float>(t));
+                    if (t > 4.0 * scanStep && d < minimum) { minimum = d; minimumT = t; }
+                    if (d <= 0.0f) {
+                        if (runStart < 0.0) { runStart = t; runMinimum = d; }
+                        runMinimum = std::min<double>(runMinimum, d);
+                    } else if (runStart >= 0.0) {
+                        if (runs++ < 12)
+                            out << "    scan: inside from t=" << runStart << " to " << t << " (length " << t - runStart
+                                << ", deepest " << runMinimum << ")\n";
+                        runStart = -1.0;
+                    }
+                }
+                if (runStart >= 0.0)
+                    out << "    scan: inside from t=" << runStart << " to the end of the scan (deepest " << runMinimum << ")\n";
+                out << "    scan: " << runs << " stretches inside up to t=" << scanEnd << "; least field value after the start "
+                    << minimum << " at t=" << minimumT << '\n';
+            }
+
+            // Agreement of the replay with the capture around the pixel.
+            const int radius = 4;
+            int compared = 0, hitAgree = 0, shadowCompared = 0, shadowAgree = 0;
+            float worstT = 0.0f, worstNormal = 1.0f;
+            out << "  neighbourhood (gpu visibility bit of light 0 | cpu; '.' = no hit, '-' = not traced):\n";
+            for (int y = py - radius; y <= py + radius; ++y) {
+                out << "    ";
+                for (int x = px - radius; x <= px + radius; ++x) {
+                    if (x < 0 || y < 0 || x >= width || y >= height) { out << " .. "; continue; }
+                    const Record& other = records[static_cast<std::size_t>(y) * width + x];
+                    Body otherBody;
+                    if ((other.flags & 1U) == 0U || !bodyOf(other.pad0[0], otherBody)) { out << " .. "; continue; }
+                    const RecipeMarchReplay otherPrimary = replayPrimary(otherBody, x, y);
+                    ++compared;
+                    if (otherPrimary.hit) {
+                        const float dt = std::abs(otherPrimary.hitT * otherBody.scale - other.hitT);
+                        const float nn = glm::dot(glm::normalize(otherPrimary.gradient), other.worldNormal);
+                        if (dt < 1e-3f && nn > 0.999f) ++hitAgree;
+                        worstT = std::max(worstT, dt);
+                        worstNormal = std::min(worstNormal, nn);
+                    }
+                    const ShadowRay otherRay = lighting.lightCount > 0U
+                        ? replayShadow(otherBody, other, lighting.lights[0]) : ShadowRay{};
+                    const char gpuBit = (other.pad0[2] & 1U) ? 'V' : 'O';
+                    if (!otherRay.traced) { out << ' ' << gpuBit << "- "; continue; }
+                    ++shadowCompared;
+                    const char cpuBit = otherRay.occluded ? 'O' : 'V';
+                    if (cpuBit == gpuBit) ++shadowAgree;
+                    out << ' ' << gpuBit << cpuBit << (cpuBit == gpuBit ? ' ' : '!');
+                }
+                out << '\n';
+            }
+            out << "  neighbourhood: primary replay within 1e-3 world and 0.999 normal on " << hitAgree << " of " << compared
+                << " (worst dt " << worstT << ", worst normal dot " << worstNormal << "); shadow answer equal on "
+                << shadowAgree << " of " << shadowCompared << '\n';
+        }
+        if (!out) {
+            captureError_ = "could not write the pixel replay";
             return false;
         }
         return true;
