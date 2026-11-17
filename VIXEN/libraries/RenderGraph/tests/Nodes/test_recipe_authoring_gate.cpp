@@ -73,6 +73,9 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "merged/BodyInstanceRayMarch-Bindings.g.h"  // R896: generated binding numbers
+
+namespace MarchBinding = ::ShaderInterface::BodyInstanceRayMarch::Bindings;
 
 #ifndef GLSL_RAYMARCH_SPV
 #error "GLSL_RAYMARCH_SPV (path to compiled BodyInstanceRayMarch.spv) must be defined by CMake"
@@ -365,23 +368,23 @@ protected:
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
         const std::array<VkDescriptorSetLayoutBinding,17> bindings = {
-            bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // I3.2: SSBO
-            bindL(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bindL(10,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(11,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(12,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(13,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
-            bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
-            bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
-            bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
-            bindL(47,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
+            bindL(MarchBinding::outputImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bindL(MarchBinding::ESVOBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::BrickBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::MaterialBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::RayTraceBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::OctreeConfigsSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // I3.2: SSBO
+            bindL(MarchBinding::ShaderCountersBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::idOutputImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bindL(MarchBinding::BodyInstanceBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::ChannelPoolBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::BrickLookupBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::MipPoolBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bindL(MarchBinding::InstanceIterDebugBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
+            bindL(MarchBinding::TierRefTableBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
+            bindL(MarchBinding::HitRecordBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
+            bindL(MarchBinding::InstanceSkipMaskBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bindL(MarchBinding::BodyInstanceTransformBuffer,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount=uint32_t(bindings.size()); dslci.pBindings=bindings.data();
@@ -436,12 +439,12 @@ protected:
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
         const std::array<VkWriteDescriptorSet,17> writes = {
-            wI2(0,&colI), wB2(1,&nI), wB2(2,&brI), wB2(3,&mI), wB2(4,&trI),
-            wB2(5,&cI), wB2(8,&ctI), wI2(9,&idI), wB2(10,&inI), wB2(11,&sdI), wB2(12,&lkI), wB2(13,&mpI),
-            wB2(14,&itI),  // Inc1 M4b: per-instance iteration debug
-            wB2(15,&tierRefI), wB2(18,&hitRecordI),
-            wB2(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
-            wB2(47,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
+            wI2(MarchBinding::outputImage,&colI), wB2(MarchBinding::ESVOBuffer,&nI), wB2(MarchBinding::BrickBuffer,&brI), wB2(MarchBinding::MaterialBuffer,&mI), wB2(MarchBinding::RayTraceBuffer,&trI),
+            wB2(MarchBinding::OctreeConfigsSSBO,&cI), wB2(MarchBinding::ShaderCountersBuffer,&ctI), wI2(MarchBinding::idOutputImage,&idI), wB2(MarchBinding::BodyInstanceBuffer,&inI), wB2(MarchBinding::ChannelPoolBuffer,&sdI), wB2(MarchBinding::BrickLookupBuffer,&lkI), wB2(MarchBinding::MipPoolBuffer,&mpI),
+            wB2(MarchBinding::InstanceIterDebugBuffer,&itI),  // Inc1 M4b: per-instance iteration debug
+            wB2(MarchBinding::TierRefTableBuffer,&tierRefI), wB2(MarchBinding::HitRecordBuffer,&hitRecordI),
+            wB2(MarchBinding::InstanceSkipMaskBuffer,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wB2(MarchBinding::BodyInstanceTransformBuffer,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 

@@ -99,6 +99,7 @@ vixen_gtest_discover_tests(ShaderManagement test_async_shader_bundle_builder WOR
 # executable, pure data-level, no Vulkan device / no glslang compile.
 add_executable(test_sdi_variant_merge
     test_sdi_variant_merge.cpp
+    test_binding_allocator.cpp  # R896 generated bindings (pure data, temp-dir sources)
 )
 target_link_libraries(test_sdi_variant_merge
     PRIVATE

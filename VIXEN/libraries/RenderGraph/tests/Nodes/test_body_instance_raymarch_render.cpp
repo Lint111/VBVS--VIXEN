@@ -81,6 +81,9 @@
                                           // black shaded output -> this test's render assertions
                                           // would see an empty/near-black image)
 #include <vector>
+#include "merged/BodyInstanceRayMarch-Bindings.g.h"  // R896: generated binding numbers
+
+namespace MarchBinding = ::ShaderInterface::BodyInstanceRayMarch::Bindings;
 
 using namespace Vixen::RenderGraph;
 using Vixen::Vulkan::Resources::VulkanDevice;
@@ -658,30 +661,30 @@ protected:
             return lb;
         };
         const std::array<VkDescriptorSetLayoutBinding, 24> bindings = {
-            bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // I3.2: configs UBO→SSBO (runtime-sized)
-            bind(8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(9,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: SoA-SDF brick data
-            bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: brick-grid lookup
-            bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M3: sparse-mip pool
-            bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
-            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Tiered-ESVO Inc2 M3: tier-ref table
-            bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Lazy-Procedural-Delta-Baseline Inc0 M6: occupancy grid
-            bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc0 M3: LightingConfigSSBO
-            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M3: HitRecordBuffer
-            bind(19, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M4: ShadowConfigSSBO
-            bind(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
-            bind(21, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
-            bind(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
-            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
-            bind(36, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Raster-proxy B1 M1: depthDistanceImage
-            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424: hot localToWorld/worldToLocal stream
+            bind(MarchBinding::outputImage,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bind(MarchBinding::ESVOBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::BrickBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::MaterialBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::RayTraceBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::OctreeConfigsSSBO,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // I3.2: configs UBO→SSBO (runtime-sized)
+            bind(MarchBinding::ShaderCountersBuffer,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::idOutputImage,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bind(MarchBinding::BodyInstanceBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(MarchBinding::ChannelPoolBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: SoA-SDF brick data
+            bind(MarchBinding::BrickLookupBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc2: brick-grid lookup
+            bind(MarchBinding::MipPoolBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M3: sparse-mip pool
+            bind(MarchBinding::InstanceIterDebugBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
+            bind(MarchBinding::TierRefTableBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Tiered-ESVO Inc2 M3: tier-ref table
+            bind(MarchBinding::OccupancyGridBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Lazy-Procedural-Delta-Baseline Inc0 M6: occupancy grid
+            bind(MarchBinding::LightingConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc0 M3: LightingConfigSSBO
+            bind(MarchBinding::HitRecordBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M3: HitRecordBuffer
+            bind(MarchBinding::ShadowConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc1 M4: ShadowConfigSSBO
+            bind(MarchBinding::AccumulationConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
+            bind(MarchBinding::historyImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
+            bind(MarchBinding::PrevCameraConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
+            bind(MarchBinding::InstanceSkipMaskBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bind(MarchBinding::depthDistanceImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Raster-proxy B1 M1: depthDistanceImage
+            bind(MarchBinding::BodyInstanceTransformBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424: hot localToWorld/worldToLocal stream
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -768,30 +771,30 @@ protected:
             return w2;
         };
         const std::array<VkWriteDescriptorSet, 24> writes = {
-            wImg(0, &colorInfo),
-            wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
-            wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
-            wBuf(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
-            wBuf(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &traceInfo),
-            wBuf(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &configInfo),  // I3.2: SSBO
-            wBuf(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &counterInfo),
-            wImg(9, &idInfo),
-            wBuf(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
-            wBuf(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
-            wBuf(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
-            wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
-            wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),  // Inc1 M4b
-            wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),   // Tiered-ESVO Inc2 M3
-            wBuf(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &occGridInfo),   // Lazy-Procedural-Delta-Baseline Inc0 M6
-            wBuf(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lightingInfo),  // Sampled Lighting Inc0 M3
-            wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo), // Sampled Lighting Inc1 M3
-            wBuf(19, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),    // Sampled Lighting Inc1 M4
-            wBuf(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &accumInfo),     // Sampled Lighting Inc2 M1
-            wImg(21, &historyInfo),                                     // Sampled Lighting Inc2 M1
-            wBuf(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),   // Sampled Lighting Inc2 M3
-            wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
-            wImg(36, &depthInfo),                                        // Raster-proxy B1 M1
-            wBuf(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instTransformInfo), // R424 hot transform stream
+            wImg(MarchBinding::outputImage, &colorInfo),
+            wBuf(MarchBinding::ESVOBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
+            wBuf(MarchBinding::BrickBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
+            wBuf(MarchBinding::MaterialBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
+            wBuf(MarchBinding::RayTraceBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &traceInfo),
+            wBuf(MarchBinding::OctreeConfigsSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &configInfo),  // I3.2: SSBO
+            wBuf(MarchBinding::ShaderCountersBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &counterInfo),
+            wImg(MarchBinding::idOutputImage, &idInfo),
+            wBuf(MarchBinding::BodyInstanceBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
+            wBuf(MarchBinding::ChannelPoolBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
+            wBuf(MarchBinding::BrickLookupBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
+            wBuf(MarchBinding::MipPoolBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
+            wBuf(MarchBinding::InstanceIterDebugBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),  // Inc1 M4b
+            wBuf(MarchBinding::TierRefTableBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),   // Tiered-ESVO Inc2 M3
+            wBuf(MarchBinding::OccupancyGridBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &occGridInfo),   // Lazy-Procedural-Delta-Baseline Inc0 M6
+            wBuf(MarchBinding::LightingConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lightingInfo),  // Sampled Lighting Inc0 M3
+            wBuf(MarchBinding::HitRecordBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo), // Sampled Lighting Inc1 M3
+            wBuf(MarchBinding::ShadowConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),    // Sampled Lighting Inc1 M4
+            wBuf(MarchBinding::AccumulationConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &accumInfo),     // Sampled Lighting Inc2 M1
+            wImg(MarchBinding::historyImage, &historyInfo),                                     // Sampled Lighting Inc2 M1
+            wBuf(MarchBinding::PrevCameraConfigSSBO, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),   // Sampled Lighting Inc2 M3
+            wBuf(MarchBinding::InstanceSkipMaskBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wImg(MarchBinding::depthDistanceImage, &depthInfo),                                        // Raster-proxy B1 M1
+            wBuf(MarchBinding::BodyInstanceTransformBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instTransformInfo), // R424 hot transform stream
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);

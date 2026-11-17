@@ -1,5 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#include "Generated/ShadowVisibilityWave.bindings.g.glsl"  // R896: generated descriptor binding numbers
 #ifdef VIXEN_LEAF_SHADER_CLOCK
 #extension GL_EXT_shader_realtime_clock : require
 #endif
@@ -59,9 +60,10 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 // The generated recipe fields and occupancy data must precede SceneBindings:
 // TraceWorld.glsl resolves registered SDF instances through these declarations.
-layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 #include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
+#include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"
@@ -69,7 +71,7 @@ layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupan
 #include "Generated/LightingConfig.glsl"
 #include "LightEvaluation.glsl"
 
-layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+layout(std430, binding = VXB_LightingConfigSSBO) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
 
@@ -77,13 +79,13 @@ layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
 
 // NON-readonly by design: this wave is the bitmask writer (RMW of _pad0[2]
 // only — every other field is the march's, preserved untouched).
-layout(std430, binding = 17) buffer HitRecordBuffer {
+layout(std430, binding = VXB_HitRecordBuffer) buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
 
 #include "Generated/ShadowConfig.glsl"
 
-layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+layout(std430, binding = VXB_ShadowConfigSSBO) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
@@ -120,13 +122,13 @@ uint waveSlot() { return gl_GlobalInvocationID.x; }
 // ============================================================================
 #include "Generated/ReservoirRecord.glsl"
 
-layout(std430, binding = 19) readonly buffer SpatialReservoirDebugBuffer {
+layout(std430, binding = VXB_SpatialReservoirDebugBuffer) readonly buffer SpatialReservoirDebugBuffer {
     ReservoirRecord combinedReservoirs[];
 };
 
 #include "Generated/LightTreeBuffer.glsl"
 
-layout(std430, binding = 20) readonly buffer LightTreeBufferSSBO {
+layout(std430, binding = VXB_LightTreeBufferSSBO) readonly buffer LightTreeBufferSSBO {
     LightTreeBuffer lightTreeBuffer;
 };
 

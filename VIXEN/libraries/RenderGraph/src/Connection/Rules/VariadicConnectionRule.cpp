@@ -3,6 +3,9 @@
 #include "Core/RenderGraph.h"
 #include "Core/GraphTopology.h"
 #include "Core/VariadicTypedNode.h"
+#include "Nodes/DescriptorResourceGathererNode.h"
+
+#include <string>
 
 namespace Vixen::RenderGraph {
 
@@ -140,6 +143,24 @@ ConnectionResult VariadicConnectionRule::Resolve(ConnectionContext& ctx) const {
     // Update/create the variadic slot (bundleIndex = 0 for now)
     uint32_t bindingIndex = ctx.targetSlot.binding;
     size_t bundleIndex = 0;
+
+    // R896: one provider per descriptor binding. The slot index IS the binding number, so a
+    // second provider would silently replace the first (the 53/54 recipe-tape vs GB1 tile
+    // aliasing). Re-connecting the same source output stays legal.
+    if (dynamic_cast<DescriptorResourceGathererNode*>(ctx.targetNode) != nullptr) {
+        const VariadicSlotInfo* existing = variadicNode->GetVariadicSlotInfo(bindingIndex, bundleIndex);
+        if (existing && existing->binding != UINT32_MAX && existing->sourceNode.IsValid() &&
+            (existing->sourceNode != slotInfo.sourceNode ||
+             existing->sourceOutput != slotInfo.sourceOutput)) {
+            return ConnectionResult::Error(
+                "R896: descriptor binding " + std::to_string(bindingIndex) + " of '" +
+                ctx.targetNode->GetInstanceName() + "' already has a provider ('" +
+                existing->slotName + "' from node " + std::to_string(existing->sourceNode.index) +
+                " output " + std::to_string(existing->sourceOutput) + "); '" + slotInfo.slotName +
+                "' from '" + ctx.sourceNode->GetInstanceName() +
+                "' would alias it. Bindings are generated; declare the resource as VXB_<Name>.");
+        }
+    }
     variadicNode->UpdateVariadicSlot(bindingIndex, slotInfo, bundleIndex);
 
     // Register dependency if slot has Dependency role

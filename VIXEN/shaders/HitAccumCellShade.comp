@@ -1,5 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#include "Generated/HitAccumCellShade.bindings.g.glsl"  // R896: generated descriptor binding numbers
 
 // ============================================================================
 // HitAccumCellShade.comp — wavefront W3c-2: per-CELL shading of the hit-
@@ -46,22 +47,23 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 // SceneBindings.glsl (its SdfRecipes/TraceWorld includes reference the spliced
 // symbols under VIXEN_UBER_RECIPE_SPLICED — BodyInstanceRayMarch.comp's own
 // ordering rule, preserved verbatim).
-layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 
 #include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
+#include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"   // scene SSBOs + TraceWorldShadow (the wave's own set)
 
 #include "Generated/LightingConfig.glsl"
 #include "LightEvaluation.glsl"
-layout(std430, binding = 17) readonly buffer LightingConfigSSBO {
+layout(std430, binding = VXB_LightingConfigSSBO) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
 
 #include "Generated/ShadowConfig.glsl"
-layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+layout(std430, binding = VXB_ShadowConfigSSBO) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
@@ -69,15 +71,15 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
 // (Brdf.glsl carries no include guard — a second include would redefine it).
 #include "HitAccumulationCommon.glsl"
 
-layout(std430, binding = 21) buffer HitAccumTable {
+layout(std430, binding = VXB_HitAccumTable) buffer HitAccumTable {
     HitAccumEntryGpu accumEntries[];
 };
 
-layout(std430, binding = 22) readonly buffer HitAccumParamsSSBO {
+layout(std430, binding = VXB_HitAccumParamsSSBO) readonly buffer HitAccumParamsSSBO {
     HitAccumParams hitAccumParams;
 };
 
-layout(std430, binding = 23) buffer HitAccumCellRadiance {
+layout(std430, binding = VXB_HitAccumCellRadiance) buffer HitAccumCellRadiance {
     vec4 cellRadiance[];
 };
 

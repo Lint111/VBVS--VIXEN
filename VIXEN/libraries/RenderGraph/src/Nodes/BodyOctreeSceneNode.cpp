@@ -940,7 +940,7 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, occupancyGridBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_CHUNK_BUFFER,       recipeChunkBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_TAPE_BUFFER,        recipeTapeBuffer_);
-    // R631: runtime glyph-outline SSBO (binding 51), always emitted with a descriptor-valid
+    // R631: runtime glyph-outline SSBO (GlyphOutlineBuffer), always emitted with a descriptor-valid
     // one-byte placeholder when the active recipe set contains no glyph data.
     ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_BUFFER, glyphOutlineBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::GLYPH_OUTLINE_FLAT_BUFFER, glyphOutlineFlatBuffer_);
@@ -2898,7 +2898,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     }
 
     // No Stored-SDF instance (an empty or all-procedural scene) still gets a TLAS:
-    // binding 40 is statically used by the ray-query shaders, and a null handle is an
+    // rtQueryTlas is statically used by the ray-query shaders, and a null handle is an
     // invalid descriptor without nullDescriptor. Zero primitives means no ray-query hits.
     CreateDeviceAddressBuffer(device,
         static_cast<VkDeviceSize>(std::max<size_t>(vkInstances.size(), 1u) *

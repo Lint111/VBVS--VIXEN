@@ -194,10 +194,8 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
 // picks the real per-step distance x, functionally identical to +infinity for this formula.
 const float kNoGridSentinel = 1.0e30;
 #ifdef VIXEN_UBER_RECIPE_MATERIAL
-// Set by the last successful procedural field evaluation. TraceWorld and the ray-query twin
-// read it only after a certified hit, so the material id follows the winning surface sample.
-uint g_lastRecipeMaterialId = 0u;
-
+// g_lastRecipeMaterialId (RecipeEditBindings.glsl) is set by the last successful procedural
+// field evaluation; TraceWorld and the ray-query twin read it only after a certified hit.
 uint recipeMaterialAt(uint recipeId, vec3 p, float params[6]) {
     uint materialId = 0u;
     float unusedDistance = evalRecipeField(recipeId, p, params, materialId);

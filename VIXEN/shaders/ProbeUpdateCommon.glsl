@@ -27,7 +27,7 @@
 
 #include "Generated/ProbeGridConfig.glsl"
 
-layout(std430, binding = 28) readonly buffer ProbeGridConfigSSBO {
+layout(std430, binding = VXB_ProbeGridConfigSSBO) readonly buffer ProbeGridConfigSSBO {
     ProbeGridConfig probeGridConfig;
 };
 

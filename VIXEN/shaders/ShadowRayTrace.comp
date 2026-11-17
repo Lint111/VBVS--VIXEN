@@ -1,5 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#include "Generated/ShadowRayTrace.bindings.g.glsl"  // R896: generated descriptor binding numbers
 // ============================================================================
 // W1a (wavefront epoch): the shadow-ray traversal WAVE.
 // (undertow docs/plans/2026-08-04-wavefront-recipe-shading.md, slice W1)
@@ -26,20 +27,21 @@
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 #include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
+#include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"
 
 #include "ShadowRayQueue.glsl"   // the shared request layout (producer/consumer anti-drift)
 
-layout(std430, binding = 37) readonly buffer ShadowRayRequestBuffer {
+layout(std430, binding = VXB_ShadowRayRequestBuffer) readonly buffer ShadowRayRequestBuffer {
     ShadowRayRequest shadowRayRequests[];
 };
 // 1 = visible (unoccluded, or invalid slot), 0 = occluded.
-layout(std430, binding = 38) writeonly buffer ShadowRayResultBuffer {
+layout(std430, binding = VXB_ShadowRayResultBuffer) writeonly buffer ShadowRayResultBuffer {
     uint shadowRayResults[];
 };
 

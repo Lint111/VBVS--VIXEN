@@ -42,17 +42,17 @@
 #include "VoxelChannelFormat.glsl"   // Inc3 M3: SEM_* and FK_* defines
 // Concatenated ESVO node descriptors for ALL octrees (≤3), with per-octree
 // nodeArrayBase offsets stored in configs[i].nodeArrayBase.
-layout(std430, binding = 1) readonly buffer ESVOBuffer {
+layout(std430, binding = VXB_ESVOBuffer) readonly buffer ESVOBuffer {
     uvec2 esvoNodes[];
 };
 
 // Concatenated brick voxel data for ALL octrees; per-octree brickArrayBase
 // stored in configs[i].brickArrayBase.
-layout(std430, binding = 2) readonly buffer BrickBuffer {
+layout(std430, binding = VXB_BrickBuffer) readonly buffer BrickBuffer {
     uint brickData[];
 };
 
-layout(std430, binding = 3) readonly buffer MaterialBuffer {
+layout(std430, binding = VXB_MaterialBuffer) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
@@ -62,8 +62,8 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
 // Bound as placeholders (1-byte SSBOs) for binary/Procedural bodies. The shader
 // only accesses these when OctreeConfig.formatId == FORMAT_STORED_SDF (1u).
 // Inc3 M3: binding 11 renamed sdfData → channelPool (generic multi-channel SoA pool).
-layout(std430, binding = 11) readonly buffer ChannelPoolBuffer { float channelPool[]; };
-layout(std430, binding = 12) readonly buffer BrickLookupBuffer { uint  brickLookup[]; };
+layout(std430, binding = VXB_ChannelPoolBuffer) readonly buffer ChannelPoolBuffer { float channelPool[]; };
+layout(std430, binding = VXB_BrickLookupBuffer) readonly buffer BrickLookupBuffer { uint  brickLookup[]; };
 
 // ============================================================================
 // SPARSE-MIP ESVO LOD BUFFERS (Inc1 M3 — binding 13)
@@ -74,7 +74,7 @@ layout(std430, binding = 12) readonly buffer BrickLookupBuffer { uint  brickLook
 // when a tree was never mip-baked (concatenated_.mipPool empty); the shader
 // only reads it when a leaf's brick is not resident (Task 7) or the LOD
 // cutoff says stop (Task 8) — dead code otherwise.
-layout(std430, binding = 13) readonly buffer MipPoolBuffer { float mipPool[]; };
+layout(std430, binding = VXB_MipPoolBuffer) readonly buffer MipPoolBuffer { float mipPool[]; };
 
 // ============================================================================
 // PER-INSTANCE ITERATION DEBUG BUFFER (Inc1 M4b — binding 14)
@@ -109,7 +109,7 @@ layout(std430, binding = 13) readonly buffer MipPoolBuffer { float mipPool[]; };
 // feature-shaped interface is the CONTRACT now, not a drift hazard. Default
 // builds drop the 1-byte placeholder binding (and its UB guard) entirely.
 #ifdef VIXEN_GPU_TRACE_HOOKS
-layout(std430, binding = 14) writeonly buffer InstanceIterDebugBuffer { uint instanceIterCount[]; };
+layout(std430, binding = VXB_InstanceIterDebugBuffer) writeonly buffer InstanceIterDebugBuffer { uint instanceIterCount[]; };
 #endif
 
 // ============================================================================
@@ -133,7 +133,7 @@ struct TierRef {
     float childOriginLocal[3];
     float childScale;
 };
-layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRefTable[]; };
+layout(std430, binding = VXB_TierRefTableBuffer) readonly buffer TierRefTableBuffer { TierRef tierRefTable[]; };
 
 // ============================================================================
 // PER-INSTANCE SKIP BITMASK (Recipe-Live-App-Bucketed-Dispatch Inc4 M1 — binding 35)
@@ -174,7 +174,7 @@ layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRe
 // moment this file's declaration and that shader's own declaration are both in scope.
 // Confirmed via grep across every shaders/*.comp: 23-34 are all taken by at least one
 // SceneBindings.glsl includer; 35 is free everywhere as of this milestone.
-layout(std430, binding = 35) readonly buffer InstanceSkipMaskBuffer { uint skipMask[]; };
+layout(std430, binding = VXB_InstanceSkipMaskBuffer) readonly buffer InstanceSkipMaskBuffer { uint skipMask[]; };
 
 const uint kInstanceMaskWordCount = 6u;
 const uint kCameraVisibilityMaskWordBase = kInstanceMaskWordCount;
@@ -248,7 +248,7 @@ bool isInstanceSkippedForPrimary(int instIdx) {
 // completes, with its own pipeline barrier, before the wave pass begins --
 // same march-writes-then-wave-reads ordering HitRecordBuffer itself relies
 // on) to recover width, then converts its linear pixel slot to a tile index.
-layout(std430, binding = 41) buffer PolicyStencilTileBuffer { uint tileWords[]; };
+layout(std430, binding = VXB_PolicyStencilTileBuffer) buffer PolicyStencilTileBuffer { uint tileWords[]; };
 
 // Tile grid width in tiles, matching BuildRenderGraph.cpp's
 // kPolicyStencilMaxTilesPerAxis (the buffer's fixed allocation, NOT the
@@ -326,7 +326,7 @@ bool anyInstanceSkipped() {
 // S3 hazard census would misread as an all-pairs cross-stage writer; the
 // census excludes it by explicit annotation instead (see the lighting census
 // sites in BuildRenderGraph.cpp).
-layout(std430, binding = 4) buffer RayTraceBuffer {
+layout(std430, binding = VXB_RayTraceBuffer) buffer RayTraceBuffer {
     uint traceWriteIndex;
     uint traceCapacity;
     // W-COMPOSED round-3 far-field-cutoff counter (mirrors C++
@@ -1157,7 +1157,7 @@ void incrFarFieldColorFallback() {
 // ============================================================================
 #include "Generated/OctreeConfig.glsl"   // generated single-source struct (Phase C); was an inline copy
 
-layout(std430, binding = 5) readonly buffer OctreeConfigsSSBO {
+layout(std430, binding = VXB_OctreeConfigsSSBO) readonly buffer OctreeConfigsSSBO {
     OctreeConfig configs[];
 };
 
@@ -1167,7 +1167,7 @@ layout(std430, binding = 5) readonly buffer OctreeConfigsSSBO {
 #include "BodyInstanceRecord.glsl"
 // std430 SSBO record, 48 bytes — byte-for-byte identical to BodyInstanceMaterialGpu.
 
-layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
+layout(std430, binding = VXB_BodyInstanceBuffer) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };
 
@@ -1177,7 +1177,7 @@ struct BodyInstanceTransform {
     vec4 localToWorldRows[3];
     vec4 worldToLocalRows[3];
 };
-layout(std430, binding = 47) readonly buffer BodyInstanceTransformBuffer {
+layout(std430, binding = VXB_BodyInstanceTransformBuffer) readonly buffer BodyInstanceTransformBuffer {
     BodyInstanceTransform bodyInstanceTransforms[];
 };
 
@@ -1188,10 +1188,10 @@ layout(std430, binding = 47) readonly buffer BodyInstanceTransformBuffer {
 // VIXEN_RECONSTRUCTION_INPUTS (BodyInstanceRayMarch.comp), 50-52 are taken too.
 #include "Generated/TileHeader.glsl"
 #include "Generated/TileSortedCandidate.glsl"
-layout(std430, binding = 53) readonly buffer TileHeaderBuffer {
+layout(std430, binding = VXB_TileHeaderBuffer) readonly buffer TileHeaderBuffer {
     TileHeader tileHeaders[];
 };
-layout(std430, binding = 54) readonly buffer TileSortedCandidateBuffer {
+layout(std430, binding = VXB_TileSortedCandidateBuffer) readonly buffer TileSortedCandidateBuffer {
     TileSortedCandidate tileCandidates[];
 };
 #endif
@@ -1323,7 +1323,7 @@ struct ShellProxyAabb {
     vec3 maxLocal;
     uint octreeIndex;
 };
-layout(std430, set = 0, binding = 43) readonly buffer RtQueryProxyAabbBuffer {
+layout(std430, set = 0, binding = VXB_RtQueryProxyAabbBuffer) readonly buffer RtQueryProxyAabbBuffer {
     ShellProxyAabb rtQueryProxyAabbs[];
 };
 #endif
@@ -1339,7 +1339,7 @@ struct RecipeChunkAabb {
     vec3 maxLocal;
     uint flags;
 };
-layout(std430, set = 0, binding = 44) readonly buffer RecipeChunkAabbBuffer {
+layout(std430, set = 0, binding = VXB_RecipeChunkAabbBuffer) readonly buffer RecipeChunkAabbBuffer {
     RecipeChunkAabb recipeChunkAabbs[];
 };
 
@@ -1374,12 +1374,13 @@ bool intersectRecipeChunkSet(uint recipeId, vec3 ro, vec3 rd, float tMin, float 
 // SHADER COUNTERS (Performance Metrics)
 // ============================================================================
 // The live app compiles this shader WITHOUT ENABLE_SHADER_COUNTERS, so the
-// calls below resolve to the no-op stubs in ShaderCounters.glsl and binding 8
-// does not exist in the reflected interface. There is NO runtime opt-in:
+// calls below resolve to the no-op stubs in ShaderCounters.glsl and the counter
+// binding does not exist in the reflected interface. There is NO runtime opt-in:
 // ShaderBundleBuilder::SetStageDefines does token substitution, not #define
 // injection (see BuildRenderGraph.cpp), so re-enabling counters means
-// hand-adding `#define ENABLE_SHADER_COUNTERS` here (and re-wiring binding 8).
-#define SHADER_COUNTERS_BINDING 8
+// hand-adding `#define ENABLE_SHADER_COUNTERS` here (and wiring ShaderCountersBuffer).
+// R896: the number is the includer's generated VXB_ allocation, never hand-picked.
+#define SHADER_COUNTERS_BINDING VXB_ShaderCountersBuffer
 #include "ShaderCounters.glsl"
 
 // ============================================================================

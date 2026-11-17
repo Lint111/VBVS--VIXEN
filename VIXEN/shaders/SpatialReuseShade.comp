@@ -1,5 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#include "Generated/SpatialReuseShade.bindings.g.glsl"  // R896: generated descriptor binding numbers
 #ifdef VIXEN_LEAF_SHADER_CLOCK
 #extension GL_EXT_shader_realtime_clock : require
 #endif
@@ -37,7 +38,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // Binding 0 (outputImage): THIS pass owns the write (moved from DirectLighting.comp,
 // M5 — see that shader's own binding-0 comment for why it keeps a read-only copy).
 
-layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
+layout(binding = VXB_sceneRadianceImage) uniform writeonly image2D sceneRadianceImage;
 
 #include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
@@ -49,7 +50,8 @@ layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
 // getRayDir via SceneCommon.glsl); the VIXEN_SHADOW_DBG variant keeps the full
 // traversal seam for its own dedicated diagnostic ray (:431 arm).
 #ifdef VIXEN_SHADOW_DBG
-layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+#include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 #include "SceneBindings.glsl"   // scene SSBOs + traversal (KI-018) — debug arm traces inline
 #else
@@ -62,7 +64,7 @@ layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupan
 #include "Generated/LightingConfig.glsl"
 #include "LightEvaluation.glsl"
 
-layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+layout(std430, binding = VXB_LightingConfigSSBO) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
 
@@ -84,11 +86,11 @@ layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
 // M10 shadow diagnostic: needs write access to stash the per-pixel shadow-trace
 // result into the target pixel's HitRecord._pad0[] (read back by CornellDiag).
 // Off-by-default; the production build keeps this buffer readonly.
-layout(std430, binding = 17) buffer HitRecordBuffer {
+layout(std430, binding = VXB_HitRecordBuffer) buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
 #else
-layout(std430, binding = 17) readonly buffer HitRecordBuffer {
+layout(std430, binding = VXB_HitRecordBuffer) readonly buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
 #endif
@@ -98,7 +100,7 @@ layout(std430, binding = 17) readonly buffer HitRecordBuffer {
 // production shade variant intentionally has no traversal include, so expose
 // only the existing binding-4 clock words here.
 #ifndef VIXEN_SHADOW_DBG
-layout(std430, binding = 4) buffer RayTraceBuffer {
+layout(std430, binding = VXB_RayTraceBuffer) buffer RayTraceBuffer {
     uint leafClockWords[];
 };
 #endif
@@ -121,7 +123,7 @@ void recordLeafShaderClockShade(uint startTick, uint endTick) {
 // ============================================================================
 #include "Generated/ShadowConfig.glsl"
 
-layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+layout(std430, binding = VXB_ShadowConfigSSBO) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
@@ -131,19 +133,19 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
 // ============================================================================
 #include "Generated/AccumulationConfig.glsl"
 
-layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+layout(std430, binding = VXB_AccumulationConfigSSBO) readonly buffer AccumulationConfigSSBO {
     AccumulationConfig accumulationConfig;
 };
 
-layout(rgba16f, binding = 20) uniform readonly image2D sceneRadianceHistory;
-layout(rgba16f, binding = 48) uniform writeonly image2D sceneRadianceHistoryOutput;
+layout(rgba16f, binding = VXB_sceneRadianceHistory) uniform readonly image2D sceneRadianceHistory;
+layout(rgba16f, binding = VXB_sceneRadianceHistoryOutput) uniform writeonly image2D sceneRadianceHistoryOutput;
 
 // ============================================================================
 // PREV-FRAME CAMERA MATRIX (binding 21)
 // ============================================================================
 #include "Generated/PrevCameraConfig.glsl"
 
-layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
+layout(std430, binding = VXB_PrevCameraConfigSSBO) readonly buffer PrevCameraConfigSSBO {
     PrevCameraConfig prevCameraConfig;
 };
 
@@ -154,15 +156,15 @@ layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
 // AND the write (moved from DirectLighting.comp, M5 — this pass is now the sole
 // producer of a pixel's worldPos/hitT each frame, matching its sole ownership of
 // historyImage/outputImage).
-layout(rgba32f, binding = 22) uniform readonly image2D worldPosHistoryImage;
-layout(rgba32f, binding = 49) uniform writeonly image2D worldPosHistoryOutput;
+layout(rgba32f, binding = VXB_worldPosHistoryImage) uniform readonly image2D worldPosHistoryImage;
+layout(rgba32f, binding = VXB_worldPosHistoryOutput) uniform writeonly image2D worldPosHistoryOutput;
 
 // ============================================================================
 // RESERVOIR CONFIG (binding 23)
 // ============================================================================
 #include "Generated/ReservoirConfig.glsl"
 
-layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
+layout(std430, binding = VXB_ReservoirConfigSSBO) readonly buffer ReservoirConfigSSBO {
     ReservoirConfig reservoirConfig;
 };
 
@@ -171,7 +173,7 @@ layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
 // ============================================================================
 #include "Generated/LightTreeBuffer.glsl"
 
-layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
+layout(std430, binding = VXB_LightTreeBufferSSBO) readonly buffer LightTreeBufferSSBO {
     LightTreeBuffer lightTreeBuffer;
 };
 
@@ -191,7 +193,7 @@ layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
 // Same block name, same 16-B ReservoirRecord layout — Inc3 M6's unbiasedness
 // readback gate keeps reading the data it always verified; the buffer just
 // grew a production job. READONLY here now: the sole writer is the gather.
-layout(std430, binding = 27) readonly buffer SpatialReservoirDebugBuffer {
+layout(std430, binding = VXB_SpatialReservoirDebugBuffer) readonly buffer SpatialReservoirDebugBuffer {
     ReservoirRecord combinedReservoirs[];
 };
 
@@ -202,14 +204,14 @@ layout(std430, binding = 27) readonly buffer SpatialReservoirDebugBuffer {
 // see BuildRenderGraph.cpp's IMAGE_READ_ARRAY/IMAGE_WRITE_ARRAY wiring for the
 // cross-dispatch hazard declaration). Same rgba16f/rg16f formats ProbeAtlasNode was
 // configured with (BuildRenderGraph.cpp PHASE 2).
-layout(rgba16f, binding = 32) uniform readonly image2D probeIrradianceAtlasRead;
-layout(rg16f,   binding = 33) uniform readonly image2D probeVisibilityAtlasRead;
+layout(rgba16f, binding = VXB_probeIrradianceAtlasRead) uniform readonly image2D probeIrradianceAtlasRead;
+layout(rg16f,   binding = VXB_probeVisibilityAtlasRead) uniform readonly image2D probeVisibilityAtlasRead;
 // T-1138: persistent octahedral procedural sky, synchronized through the third image-array slot.
-layout(rgba16f, binding = 35) uniform readonly image2D skySphereImage;
+layout(rgba16f, binding = VXB_skySphereImage) uniform readonly image2D skySphereImage;
 
 #include "Generated/ProbeGridConfig.glsl"
 
-layout(std430, binding = 34) readonly buffer ProbeGridConfigReadSSBO {
+layout(std430, binding = VXB_ProbeGridConfigReadSSBO) readonly buffer ProbeGridConfigReadSSBO {
     ProbeGridConfig probeGridConfig;
 };
 
@@ -235,7 +237,7 @@ struct DDGILeakGateDebugShade {
     uint  diagShadeAnyHitCount;     // DIAG (temporary, M5 debugging): atomicAdd count of anyHitRT pixels
 };
 
-layout(std430, binding = 31) buffer DDGILeakGateDebugShadeSSBO {
+layout(std430, binding = VXB_DDGILeakGateDebugShadeSSBO) buffer DDGILeakGateDebugShadeSSBO {
     DDGILeakGateDebugShade ddgiLeakGateDebugShade;
 };
 
@@ -247,7 +249,7 @@ layout(std430, binding = 31) buffer DDGILeakGateDebugShadeSSBO {
 
 #ifdef VIXEN_SRS_CELL_RESOLVE
 #ifndef VIXEN_SHADOW_DBG
-layout(std430, binding = 39) readonly buffer BodyInstanceBuffer {
+layout(std430, binding = VXB_BodyInstanceBuffer) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };
 #endif
@@ -256,15 +258,15 @@ layout(std430, binding = 39) readonly buffer BodyInstanceBuffer {
 #ifdef VIXEN_MINING_BEAM
 #ifndef VIXEN_SHADOW_DBG
 #include "Generated/OctreeConfig.glsl"
-layout(std430, binding = 5) readonly buffer OctreeConfigsSSBO {
+layout(std430, binding = VXB_OctreeConfigsSSBO) readonly buffer OctreeConfigsSSBO {
     OctreeConfig configs[];
 };
 #endif
 #include "Generated/MiningBeamBuffer.glsl"
-layout(std430, binding = 44) readonly buffer MiningBeamBufferSSBO {
+layout(std430, binding = VXB_MiningBeamBufferSSBO) readonly buffer MiningBeamBufferSSBO {
     MiningBeamBuffer miningBeamBuffer;
 };
-layout(std430, binding = 45) readonly buffer MiningBeamBodyInstanceBuffer {
+layout(std430, binding = VXB_MiningBeamBodyInstanceBuffer) readonly buffer MiningBeamBodyInstanceBuffer {
     BodyInstance miningBeamInstances[];
 };
 #ifndef VIXEN_SHADOW_DBG
@@ -272,7 +274,7 @@ struct MiningBeamInstanceTransform {
     vec4 localToWorldRows[3];
     vec4 worldToLocalRows[3];
 };
-layout(std430, binding = 46) readonly buffer MiningBeamInstanceTransformBuffer {
+layout(std430, binding = VXB_MiningBeamInstanceTransformBuffer) readonly buffer MiningBeamInstanceTransformBuffer {
     MiningBeamInstanceTransform miningBeamInstanceTransforms[];
 };
 #endif
@@ -290,13 +292,13 @@ layout(std430, binding = 46) readonly buffer MiningBeamInstanceTransformBuffer {
 // ============================================================================
 #ifdef VIXEN_SRS_CELL_RESOLVE
 #include "HitAccumulationCommon.glsl"
-layout(std430, binding = 36) readonly buffer HitAccumTable {
+layout(std430, binding = VXB_HitAccumTable) readonly buffer HitAccumTable {
     HitAccumEntryGpu accumEntries[];
 };
-layout(std430, binding = 37) readonly buffer HitAccumParamsSSBO {
+layout(std430, binding = VXB_HitAccumParamsSSBO) readonly buffer HitAccumParamsSSBO {
     HitAccumParams hitAccumParams;
 };
-layout(std430, binding = 38) readonly buffer HitAccumCellRadiance {
+layout(std430, binding = VXB_HitAccumCellRadiance) readonly buffer HitAccumCellRadiance {
     vec4 cellRadiance[];
 };
 

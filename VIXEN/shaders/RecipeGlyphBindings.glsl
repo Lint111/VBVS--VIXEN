@@ -11,14 +11,14 @@
 // glyph walk below uses the packed binding and never reads this typed aggregate.
 #include "recipe/GlyphOutlineInstance.g.glsl"
 
-layout(std430, binding = 51) readonly buffer GlyphOutlineBuffer {
+layout(std430, binding = VXB_GlyphOutlineBuffer) readonly buffer GlyphOutlineBuffer {
     GlyphOutlineInstance glyphOutlineInstances[];
 };
 
 // R768: production recipes use a compact row/segment stream instead of exposing the fixed
 // 3,616-byte aggregate to every glyph call site. One row has ten words (offset/count/fill/
 // bounds); each segment has fourteen words (four float3 control points plus two uints).
-layout(std430, binding = 52) readonly buffer GlyphOutlineFlatBuffer {
+layout(std430, binding = VXB_GlyphOutlineFlatBuffer) readonly buffer GlyphOutlineFlatBuffer {
     uint glyphOutlineWords[];
 };
 

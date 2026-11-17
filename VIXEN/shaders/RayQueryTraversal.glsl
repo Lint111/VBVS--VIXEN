@@ -69,7 +69,7 @@ bool recipeChunkRayInterval(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax,
 // EnsureRtQueryTlasBuilt, round-3 hoist redesign) -- NOT the octree index. The
 // octree is derived from it exactly like TraceWorld's loop does:
 // oi = bodyInstances[ci].octreeIndex.
-layout(set = 0, binding = 40) uniform accelerationStructureEXT rtQueryTlas;
+layout(set = 0, binding = VXB_rtQueryTlas) uniform accelerationStructureEXT rtQueryTlas;
 
 // ----------------------------------------------------------------------------
 // traverseRayQueryWorld -- closest-hit search over the per-brick-AABB TLAS,

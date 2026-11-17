@@ -1,5 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#include "Generated/BodyInstanceRayMarch.bindings.g.glsl"  // R896: generated descriptor binding numbers
 
 // ============================================================================
 // BodyInstanceRayMarch.comp - Instanced Multi-Octree Ray Marching
@@ -56,11 +57,11 @@ float reconstructionRaySizeCoef;
 // SceneBindings.glsl (Sampled Lighting Inc3 M1, KI-018) so DirectLighting.comp
 // can #include the SAME declarations instead of a hand-synced copy.
 
-layout(binding = 0) uniform writeonly image2D outputImage;
+layout(binding = VXB_outputImage) uniform writeonly image2D outputImage;
 
 // Per-pixel pick result: x = packed (brickIndex<<10)|voxelLinearIdx,
 // y = winning body-instance loop index; both are 0xFFFFFFFF on a miss.
-layout(rg32ui, binding = 9) uniform writeonly uimage2D idOutputImage;
+layout(rg32ui, binding = VXB_idOutputImage) uniform writeonly uimage2D idOutputImage;
 // Raster-proxy B1 M1: per-pixel euclidean hit distance (merged nearest hitT across
 // both writer regimes; miss = 1e30) as a real R32F image — the HiZ reduce and the
 // per-instance occlusion cull consume an image, not the HitRecord SSBO.
@@ -68,13 +69,13 @@ layout(rg32ui, binding = 9) uniform writeonly uimage2D idOutputImage;
 // VIXEN_B1_OCCLUSION_CULL is set, like VIXEN_GPU_TRACE_HOOKS) — an unbound
 // declared storage image would break the flag-off app's descriptor set.
 #ifdef VIXEN_B1_OCCLUSION_CULL
-layout(r32f, binding = 36) uniform writeonly image2D depthDistanceImage;
+layout(r32f, binding = VXB_depthDistanceImage) uniform writeonly image2D depthDistanceImage;
 #endif
 
 // Raster-proxy B2: 8 uints/pixel = reversed-min entry key, max exit bits,
 // then six candidate-mask words indexing the front-to-back instance array.
 #ifdef VIXEN_B2_PROXY_PREPASS
-layout(std430, binding = 42) readonly buffer ProxyIntervalBuffer {
+layout(std430, binding = VXB_ProxyIntervalBuffer) readonly buffer ProxyIntervalBuffer {
     uint proxyIntervalWords[];
 };
 uint  g_b2CandidateMask[6];
@@ -107,7 +108,7 @@ float g_b2UnionExit;
 // occupancyGrid symbol MUST already be declared, by the time SceneBindings.glsl processes those
 // includes. Placing SceneBindings.glsl before the splice would silently compile the uber-recipe
 // path OUT (macro undefined at that point) — the feature would vanish at runtime, not fail loudly.
-layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 
 // ============================================================================
 // UBER-SHADER RECIPE SPLICE POINT (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11)
@@ -137,6 +138,7 @@ layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupan
 #include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
 #undef SdfCore_GlyphOutline
+#include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)
@@ -156,7 +158,7 @@ layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupan
 // keeps the shader's reflected binding set aligned with the CPU wiring.
 #include "Generated/LightingConfig.glsl"
 
-layout(std430, binding = 17) readonly buffer LightingConfigSSBO {
+layout(std430, binding = VXB_LightingConfigSSBO) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
 
@@ -173,7 +175,7 @@ layout(std430, binding = 17) readonly buffer LightingConfigSSBO {
 // match (see BuildRenderGraph.cpp M3).
 #include "HitRecord.glsl"
 
-layout(std430, binding = 18) buffer HitRecordBuffer {
+layout(std430, binding = VXB_HitRecordBuffer) buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
 
@@ -189,7 +191,7 @@ layout(std430, binding = 18) buffer HitRecordBuffer {
 // shadow test it fed moved to DirectLighting.comp with the rest of shading (KI-018).
 #include "Generated/ShadowConfig.glsl"
 
-layout(std430, binding = 19) readonly buffer ShadowConfigSSBO {
+layout(std430, binding = VXB_ShadowConfigSSBO) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
@@ -205,13 +207,13 @@ layout(std430, binding = 19) readonly buffer ShadowConfigSSBO {
 // 20/21 — the accumulate seam that consumed them moved to DirectLighting.comp (KI-018).
 #include "Generated/AccumulationConfig.glsl"
 
-layout(std430, binding = 20) readonly buffer AccumulationConfigSSBO {
+layout(std430, binding = VXB_AccumulationConfigSSBO) readonly buffer AccumulationConfigSSBO {
     AccumulationConfig accumulationConfig;
 };
 
 // Format matches outputImage (R8G8B8A8_UNORM — AccumulationHistoryNode's own default,
 // confirmed from RenderTargetNode's format). Declared but not read/written here.
-layout(rgba8, binding = 21) uniform image2D historyImage;
+layout(rgba8, binding = VXB_historyImage) uniform image2D historyImage;
 
 // ============================================================================
 // PREV-FRAME CAMERA MATRIX (Sampled Lighting Inc2 M3 — binding 22)
@@ -225,15 +227,15 @@ layout(rgba8, binding = 21) uniform image2D historyImage;
 // reprojection that consumes it lives in DirectLighting.comp (KI-018).
 #include "Generated/PrevCameraConfig.glsl"
 
-layout(std430, binding = 22) readonly buffer PrevCameraConfigSSBO {
+layout(std430, binding = VXB_PrevCameraConfigSSBO) readonly buffer PrevCameraConfigSSBO {
     PrevCameraConfig prevCameraConfig;
 };
 
 #ifdef VIXEN_RECONSTRUCTION_INPUTS
 #include "Generated/BodyInstanceMotion.glsl"
-layout(std430, binding = 50) readonly buffer BodyInstanceMotionBuffer { BodyInstanceMotion instanceMotions[]; };
-layout(rg32f, binding = 48) uniform writeonly image2D motionVectorImage;
-layout(r32f, binding = 49) uniform writeonly image2D motionValidityImage;
+layout(std430, binding = VXB_BodyInstanceMotionBuffer) readonly buffer BodyInstanceMotionBuffer { BodyInstanceMotion instanceMotions[]; };
+layout(rg32f, binding = VXB_motionVectorImage) uniform writeonly image2D motionVectorImage;
+layout(r32f, binding = VXB_motionValidityImage) uniform writeonly image2D motionValidityImage;
 #include "ReconstructionMotion.glsl"
 #endif
 

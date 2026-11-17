@@ -1,5 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
+#include "Generated/ProbeGather.bindings.g.glsl"  // R896: generated descriptor binding numbers
 
 // ============================================================================
 // ProbeGather.comp - DDGI probe update, GATHER half (wavefront epoch W1a)
@@ -38,26 +39,27 @@
 
 layout(local_size_x = PROBE_UPDATE_MAX_RAYS_PER_PROBE, local_size_y = 1, local_size_z = 1) in;
 
-layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 #include "RecipeGlyphBindings.glsl"
 #include "recipe/SdfCoreKernels.g.glsl"
+#include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"          // scene SSBOs + TraceWorld (KI-018 precedent); shadow rays go to the wave instead
 
 #include "Generated/LightTreeBuffer.glsl"
 
-layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
+layout(std430, binding = VXB_LightTreeBufferSSBO) readonly buffer LightTreeBufferSSBO {
     LightTreeBuffer lightTreeBuffer;
 };
 
 #include "ShadowRayQueue.glsl"
 
-layout(std430, binding = 37) writeonly buffer ShadowRayRequestBuffer {
+layout(std430, binding = VXB_ShadowRayRequestBuffer) writeonly buffer ShadowRayRequestBuffer {
     ShadowRayRequest shadowRayRequests[];
 };
 
-layout(std430, binding = 39) writeonly buffer ProbeRayPayloadBuffer {
+layout(std430, binding = VXB_ProbeRayPayloadBuffer) writeonly buffer ProbeRayPayloadBuffer {
     ProbeRayPayload probeRayPayloads[];
 };
 
