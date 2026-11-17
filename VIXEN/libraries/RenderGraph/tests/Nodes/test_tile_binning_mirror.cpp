@@ -202,3 +202,33 @@ TEST(TileBinningMirror, ViewRecordProjectsPrimaryRayPixelsIntoTheirTiles) {
         EXPECT_LE(rect.maxY - rect.minY, 1);
     }
 }
+
+TEST(TileBinningMirror, OverflowingTilesFallBackInsteadOfSortingUnbounded) {
+    // base-reds #119: the 2,197-instance field offered hundreds of candidates to dense tiles
+    // and the per-tile serial sort lost the device. The list capacity bounds the sort; a tile
+    // offered more keeps an incomplete list that the march must not read (R861.1).
+    TileBinView view = LookdevTier3View();
+    view.listCapacityLog2 = 2;  // four entries: the dense overview tiles overflow
+    const auto bounds = LookdevTier3Bounds();
+    const std::vector<float> previousDepth(static_cast<size_t>(kWidth) * kHeight, 0.0f);
+    const auto result = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight);
+    EXPECT_GT(result.metrics.overflowed, 0u);
+    EXPECT_GT(result.metrics.consumerFallbackPixels, 0u);
+    for (const auto& header : result.headers) {
+        EXPECT_LE(header.count, 4);
+        if (header.demand <= 4) EXPECT_EQ(header.count, header.demand);
+    }
+}
+
+TEST(TileBinningMirror, ProductionCapacityKeepsTheLookdevListsComplete) {
+    // The capacity the node uploads (kTileListCapacityLog2) holds every look-dev tile list, so
+    // the RTL and look-dev captures keep their exact lists and no tile falls back.
+    TileBinView view = LookdevTier3View();
+    view.instanceCount = 13;
+    view.listCapacityLog2 = static_cast<int>(Vixen::RenderGraph::kTileListCapacityLog2);
+    const auto bounds = LookdevTier3Bounds();
+    const std::vector<float> previousDepth(static_cast<size_t>(kWidth) * kHeight, 0.0f);
+    const auto result = RunTileBinMirror(view, bounds, previousDepth, kWidth, kHeight);
+    EXPECT_EQ(result.metrics.overflowed, 0u);
+    EXPECT_EQ(result.metrics.consumerFallbackPixels, 0u);
+}

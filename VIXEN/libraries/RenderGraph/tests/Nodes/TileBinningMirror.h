@@ -50,6 +50,7 @@ struct TileBinMirrorMetrics {
     uint64_t consumerCandidateIterations = 0;
     uint32_t maximumOffered = 0;
     uint32_t overflowed = 0;
+    uint64_t consumerFallbackPixels = 0;
     uint64_t legacyFullSlabCompareIterations = 0;
 };
 
@@ -238,9 +239,9 @@ inline TileBinMirrorResult RunTileBinMirror(
         MirrorRequire(offered >= 0, "negative offered candidate count");
         result.metrics.maximumOffered = std::max(result.metrics.maximumOffered,
                                                   static_cast<uint32_t>(offered));
-        MirrorRequire(offered <= capacity,
-                      "candidate count exceeded the declared tile capacity");
-        const int stored = offered;
+        // TileBinOps.StoredCount: an overflowing tile keeps its first `capacity` appends;
+        // its header reports demand > count and the march falls back for it (R861.1).
+        const int stored = std::min(offered, capacity);
         const size_t first = static_cast<size_t>(tile) * capacity;
         MirrorRequire(first + static_cast<size_t>(capacity) <= result.candidates.size(),
                       "sort slab outside candidate buffer");
@@ -293,6 +294,7 @@ inline TileBinMirrorResult RunTileBinMirror(
             return a.nearDepth < b.nearDepth ||
                    (a.nearDepth == b.nearDepth && a.instance < b.instance);
         });
+        if (offered > capacity) continue;  // incomplete by design; the march does not read it
         MirrorRequire(expectedTile.size() == static_cast<size_t>(stored),
                       "CPU candidate output was truncated");
         for (size_t slot = 0; slot < expectedTile.size(); ++slot) {
@@ -313,6 +315,11 @@ inline TileBinMirrorResult RunTileBinMirror(
             const TileHeader& header = result.headers[static_cast<size_t>(tile)];
             MirrorRequire(header.count >= 0 && header.count <= capacity,
                           "consumer count outside tile capacity");
+            if (header.demand > header.count) {
+                // TraceWorld: an overflowing tile marches the bounded instance loop.
+                ++result.metrics.consumerFallbackPixels;
+                continue;
+            }
             const size_t base = static_cast<size_t>(header.index) * capacity;
             MirrorRequire(base + static_cast<size_t>(header.count) <= result.sortedCandidates.size(),
                           "consumer candidate base/count outside sorted buffer");
