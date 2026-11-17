@@ -604,9 +604,12 @@ TEST_P(GlyphBakeShellSign, TheCoarsestShellHasNoGlyphRowAndStaysWithinItsCertifi
     EXPECT_EQ(shell.bytecode.size(), 1u) << "the plaque alone";
     EXPECT_NE(shell.rules & YK_RECIPE_ANALYSIS_RULE_DROP_VANISHING_ROW, 0u);
     EXPECT_EQ(shell.certificate, static_cast<std::uint32_t>(YK_RECIPE_ANALYSIS_CERTIFICATE_RULE_BOUNDS));
-    // The error is the depth of the row in the plaque (plus the round and the search margin).
+    // The error is the larger of the depth of the row in the plaque and the glyph's inside distance
+    // (each with the row's round), plus the search margin.
+    const float insideWorld = full.bytecode[2].data[1] * sign.rowScale + 0.02f;
+    EXPECT_GT(full.bytecode[2].data[1], 0.0f) << "registration stamped the row";
     EXPECT_GE(shell.certifiedError, depth);
-    EXPECT_LE(shell.certifiedError, (depth + 0.02f) * 1.25f);
+    EXPECT_LE(shell.certifiedError, std::max(depth + 0.02f, insideWorld) * 1.15f);
     std::printf("[GLYPH_SHELL] %s depth=%.4f certified_error=%.6f bound_radius=%.4f records=%zu of %zu\n",
                 carved ? "carved" : "embossed", depth, shell.certifiedError, full.derivedShellBoundRadius,
                 shell.bytecode.size(), full.bytecode.size());
