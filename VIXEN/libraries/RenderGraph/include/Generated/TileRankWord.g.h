@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <cstddef>
 namespace Vixen::Codegen::Gpu {
-struct TileBinCounter {
-    int32_t count;
+struct TileRankWord {
+    uint32_t bits;
 };
-static_assert(sizeof(TileBinCounter) == 4, "TileBinCounter std430 size");
-static_assert(offsetof(TileBinCounter, count) == 0, "count@0");
+static_assert(sizeof(TileRankWord) == 4, "TileRankWord std430 size");
+static_assert(offsetof(TileRankWord, bits) == 0, "bits@0");
 } // namespace Vixen::Codegen::Gpu

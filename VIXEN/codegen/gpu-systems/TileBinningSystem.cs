@@ -1,6 +1,7 @@
-// GB1 (R857.4/R857.5): generated camera-ray tile candidate lists.
-// The scatter pass consumes a lean bound stream and the previous frame's Hi-Z tile depth;
-// the march consumes the depth-ordered list, so no CPU ordering or fixed instance cap is needed.
+// GB1 (R857.4/R857.5): generated camera-ray tile candidate sets, z-bin form (fable-research1 B-A).
+// One pass ranks the instances front to back (near depth, then instance id) and clears the tile
+// rank sets; the scatter sets one bit per (instance, tile) at the instance's rank. The march visits a tile's set bits in rank order, so it sees the
+// candidates in the same order a per-tile sort by (near depth, instance) produced, without one.
 using System;
 using System.Threading;
 using Undertow.Modding.Schema;
@@ -14,6 +15,7 @@ public static class TileBinOps
     public const int CullNone = 0;
     public const int CullBehindCamera = 1;
     public const int CullOffScreen = 2;
+    public const int RankBits = 32;
 
     [KernelCallable]
     public static TileRect ProjectBound(float centerX, float centerY, float centerZ, float radius, TileBinView view)
@@ -50,6 +52,17 @@ public static class TileBinOps
         return new TileRect(minX, minY, maxX, maxY, nearDepth, CullNone);
     }
 
+    // The rank key: ProjectBound's near depth (the near plane for a bound that crosses it).
+    // A bound behind the camera is never binned; it ranks last.
+    [KernelCallable]
+    public static float RankDepth(float centerX, float centerY, float centerZ, float radius, TileBinView view)
+    {
+        float vz = view.viewZx * centerX + view.viewZy * centerY + view.viewZz * centerZ + view.viewZw;
+        float nearDepth = vz - radius;
+        if (vz + radius <= view.nearPlane) return 3.402823e38f;
+        return nearDepth <= view.nearPlane ? view.nearPlane : nearDepth;
+    }
+
     // Zero is the ViewDepth history clear value: nothing has written depth yet (the
     // first frame) or this configuration has no ViewDepth producer (no reconstruction
     // module, e.g. the look-dev captures). Such a tile occludes nothing; comparing
@@ -78,11 +91,63 @@ public static class TileBinOps
         return lanes < 1 ? 1 : lanes;
     }
 
+    // Invocations of a view-depth-extent pass that are certain to exist (see ScatterLanes).
     [KernelCallable]
-    public static int StoredCount(int offered, int listCapacityLog2)
+    public static int GuaranteedInvocations(TileBinView view)
     {
-        int capacity = 1 << listCapacityLog2;
-        return offered < capacity ? offered : capacity;
+        int available = (view.tilesX - 1) * (view.tilesY - 1) * TilePixels;
+        return available < 1 ? 1 : available;
+    }
+
+    // Rank words in use per tile this frame.
+    [KernelCallable]
+    public static int TileWords(TileBinView view)
+    {
+        int words = (view.instanceCount + RankBits - 1) / RankBits;
+        return words < view.wordCapacity ? words : view.wordCapacity;
+    }
+}
+
+[KernelSystem]
+public static class TileBinPrepareSystem
+{
+    [GaiaQuery]
+    public static QuerySpec Instances() => Gaia.Query()
+        .All<InstanceBound>()
+        .All<FrameTargetsRef, R32f>(row => row.ViewDepth);
+
+    [Update]
+    public static void Run(in InstanceBound[] bounds, in TileBinView[] view,
+        in Texture2D<R32f> viewDepth, ref InstanceOrder[] order, ref TileRankWord[] words, int i)
+    {
+        // Clear this frame's tile rank sets, word-parallel across the dispatch.
+        int clearLanes = TileBinOps.GuaranteedInvocations(view[0]);
+        int wordCount = view[0].tilesX * view[0].tilesY * TileBinOps.TileWords(view[0]);
+        if (i < clearLanes)
+        {
+            for (int word = i; word < wordCount; word += clearLanes) words[word].bits = 0u;
+        }
+        if (i >= view[0].instanceCount) return;
+        // More instances than the rank words hold: nothing is ranked (the order buffer holds
+        // wordCapacity * 32 entries) and the march falls back for every tile (R861.1).
+        if (view[0].instanceCount > view[0].wordCapacity * TileBinOps.RankBits) return;
+        // The query binds ViewDepth for the dispatch extent; the generator refuses a texture view
+        // that is never read (YK_KF_4020), so read one texel (no history value is below -FLT_MAX).
+        if (viewDepth.Previous[0].x < -3.402823e38f) return;
+        // Rank = number of instances ordered before this one. Every invocation counts over the
+        // same keys, so the ranks are a permutation and need no sort.
+        float depth = TileBinOps.RankDepth(bounds[i].centerX, bounds[i].centerY, bounds[i].centerZ,
+            bounds[i].radius, view[0]);
+        int rank = 0;
+        for (int other = 0; other < view[0].instanceCount; other++)
+        {
+            float otherDepth = TileBinOps.RankDepth(bounds[other].centerX, bounds[other].centerY,
+                bounds[other].centerZ, bounds[other].radius, view[0]);
+            if (TileBinOps.CandidateBefore(otherDepth, (uint)other, depth, (uint)i)) rank++;
+        }
+        order[rank].instance = (uint)i;
+        order[rank].depth = depth;
+        order[i].rank = (uint)rank;
     }
 }
 
@@ -96,15 +161,12 @@ public static class TileBinScatterSystem
 
     [Update]
     public static void Run(in InstanceBound[] bounds, in TileBinView[] view,
-        in Texture2D<R32f> viewDepth, ref TileBinCounter[] counters,
-        ref TileCandidate[] candidates,
+        in Texture2D<R32f> viewDepth, in InstanceOrder[] order, ref TileRankWord[] words,
         ref TileBinStats[] stats, int i)
     {
         // Every instance gets ScatterLanes invocations that walk its tile rectangle in
-        // stride (R857.3 binning budget). One invocation per instance walked a screen-sized
-        // rectangle alone, one atomic per tile: 8 to 17 ms at 1080p for three instances.
-        // The append order changes; the sort orders each list by (depth, instance), so the
-        // lists are the same whenever no tile overflows.
+        // stride (R857.3 binning budget); each sets the instance's rank bit in every tile it
+        // covers. The bit's position, not the write order, carries the front-to-back order.
         // The lane count is computed before the bound check: a callable inside the leading
         // guard is hoisted into main() with its block argument unindexed (generator gap).
         int lanes = TileBinOps.ScatterLanes(view[0]);
@@ -123,11 +185,24 @@ public static class TileBinScatterSystem
             if (lane == 0) Interlocked.Increment(ref stats[0].offScreen);
             return;
         }
-        int capacity = 1 << view[0].listCapacityLog2;
+        if (view[0].instanceCount > view[0].wordCapacity * TileBinOps.RankBits)
+        {
+            if (lane == 0) Interlocked.Increment(ref stats[0].overflowed);
+            return;
+        }
+        uint rank = order[instance].rank;
+        int rankWord = (int)(rank / 32u);
+        if (rankWord >= TileBinOps.TileWords(view[0]))
+        {
+            if (lane == 0) Interlocked.Increment(ref stats[0].overflowed);
+            return;
+        }
+        uint rankBit = 1u << (int)(rank % 32u);
+        int tileCount = view[0].tilesX * view[0].tilesY;
+        int wordBase = rankWord * tileCount;
         int width = rect.maxX - rect.minX + 1;
         int area = width * (rect.maxY - rect.minY + 1);
         uint visible = 0u;
-        uint listed = 0u;
         for (int offset = lane; offset < area; offset += lanes)
         {
             int row = offset / width;
@@ -136,21 +211,9 @@ public static class TileBinScatterSystem
             int tile = tileY * view[0].tilesX + tileX;
             if (TileBinOps.IsBehindTileDepth(rect.nearDepth, viewDepth.Previous[tile].x)) continue;
             visible++;
-            // Wait-free append: one atomic per (instance, tile); no invocation waits on
-            // another. TileBinSortSystem consumes and zeroes every tile count, so the
-            // counters start each frame at zero.
-            int slot = Interlocked.Increment(ref counters[tile].count) - 1;
-            if (slot >= capacity)
-            {
-                Interlocked.Increment(ref stats[0].overflowed);
-                continue;
-            }
-            int entry = (tile << view[0].listCapacityLog2) + slot;
-            candidates[entry].nearDepth = rect.nearDepth;
-            candidates[entry].instance = (uint)instance;
-            listed++;
+            Interlocked.Or(ref words[wordBase + tile].bits, rankBit);
         }
         if (lane < area && visible == 0u) Interlocked.Increment(ref stats[0].occludedSlices);
-        if (listed > 0u) Interlocked.Add(ref stats[0].listed, listed);
+        if (visible > 0u) Interlocked.Add(ref stats[0].listed, visible);
     }
 }

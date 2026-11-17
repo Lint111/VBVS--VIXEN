@@ -1186,7 +1186,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
     # four POD headers drift-guarded beside the other config structs; the GLSL
     # headers are also included by the primary march's generated list bindings.
     set(_tile_binning_struct_regen)
-    foreach(_tile_struct IN ITEMS InstanceBound TileBinView TileBinCounter TileCandidate TileHeader TileSortedCandidate TileBinStats)
+    foreach(_tile_struct IN ITEMS InstanceBound TileBinView TileRankWord InstanceOrder TileBinStats)
         set(_tile_struct_args
             "${_yk_dll_run}"
             --schema "${_schema_config_run}" --struct "${_tile_struct}"

@@ -73,17 +73,8 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding7 {
-        static constexpr const char* NAME = "InstanceSkipMaskBuffer";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 7;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
     struct Binding8 {
-        static constexpr const char* NAME = "MaterialBuffer";
+        static constexpr const char* NAME = "InstanceSkipMaskBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 8;
         static constexpr uint32_t COUNT = 1;
@@ -92,7 +83,7 @@ namespace Set0 {
     };
 
     struct Binding9 {
-        static constexpr const char* NAME = "MipPoolBuffer";
+        static constexpr const char* NAME = "MaterialBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 9;
         static constexpr uint32_t COUNT = 1;
@@ -101,7 +92,7 @@ namespace Set0 {
     };
 
     struct Binding10 {
-        static constexpr const char* NAME = "OctreeConfigsSSBO";
+        static constexpr const char* NAME = "MipPoolBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 10;
         static constexpr uint32_t COUNT = 1;
@@ -109,28 +100,37 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding12 {
-        static constexpr const char* NAME = "RayTraceBuffer";
+    struct Binding11 {
+        static constexpr const char* NAME = "OctreeConfigsSSBO";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 12;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadWrite;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
-    struct Binding17 {
-        static constexpr const char* NAME = "TierRefTableBuffer";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 17;
+        static constexpr uint32_t BINDING = 11;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding20 {
+    struct Binding13 {
+        static constexpr const char* NAME = "RayTraceBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 13;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct Binding18 {
+        static constexpr const char* NAME = "TierRefTableBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 18;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct Binding21 {
         static constexpr const char* NAME = "outputImage";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 20;
+        static constexpr uint32_t BINDING = 21;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -145,13 +145,13 @@ using BrickBuffer = Set0::Binding2;
 using BrickLookupBuffer = Set0::Binding3;
 using ChannelPoolBuffer = Set0::Binding4;
 using ESVOBuffer = Set0::Binding5;
-using InstanceSkipMaskBuffer = Set0::Binding7;
-using MaterialBuffer = Set0::Binding8;
-using MipPoolBuffer = Set0::Binding9;
-using OctreeConfigsSSBO = Set0::Binding10;
-using RayTraceBuffer = Set0::Binding12;
-using TierRefTableBuffer = Set0::Binding17;
-using outputImage = Set0::Binding20;
+using InstanceSkipMaskBuffer = Set0::Binding8;
+using MaterialBuffer = Set0::Binding9;
+using MipPoolBuffer = Set0::Binding10;
+using OctreeConfigsSSBO = Set0::Binding11;
+using RayTraceBuffer = Set0::Binding13;
+using TierRefTableBuffer = Set0::Binding18;
+using outputImage = Set0::Binding21;
 } // namespace Bind
 
 namespace Push {
@@ -291,13 +291,13 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"BrickLookupBuffer", false, 0, 3, 0, Access::ReadOnly, 0, nullptr},
     {"ChannelPoolBuffer", false, 0, 4, 0, Access::ReadOnly, 0, nullptr},
     {"ESVOBuffer", false, 0, 5, 0, Access::ReadOnly, 0, nullptr},
-    {"InstanceSkipMaskBuffer", false, 0, 7, 0, Access::ReadOnly, 0, nullptr},
-    {"MaterialBuffer", false, 0, 8, 0, Access::ReadOnly, 0, nullptr},
-    {"MipPoolBuffer", false, 0, 9, 0, Access::ReadOnly, 0, nullptr},
-    {"OctreeConfigsSSBO", false, 0, 10, 0, Access::ReadOnly, 0, nullptr},
-    {"RayTraceBuffer", false, 0, 12, 0, Access::ReadWrite, 0, nullptr},
-    {"TierRefTableBuffer", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
-    {"outputImage", false, 0, 20, 0, Access::WriteOnly, 0, nullptr},
+    {"InstanceSkipMaskBuffer", false, 0, 8, 0, Access::ReadOnly, 0, nullptr},
+    {"MaterialBuffer", false, 0, 9, 0, Access::ReadOnly, 0, nullptr},
+    {"MipPoolBuffer", false, 0, 10, 0, Access::ReadOnly, 0, nullptr},
+    {"OctreeConfigsSSBO", false, 0, 11, 0, Access::ReadOnly, 0, nullptr},
+    {"RayTraceBuffer", false, 0, 13, 0, Access::ReadWrite, 0, nullptr},
+    {"TierRefTableBuffer", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
+    {"outputImage", false, 0, 21, 0, Access::WriteOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},

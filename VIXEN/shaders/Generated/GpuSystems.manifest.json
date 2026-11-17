@@ -158,9 +158,9 @@
       ]
     },
     {
-      "id": "core:TileBinScatterSystem",
-      "class": "TileBinScatterSystem",
-      "glsl": "TileBinScatterSystem.comp",
+      "id": "core:TileBinPrepareSystem",
+      "class": "TileBinPrepareSystem",
+      "glsl": "TileBinPrepareSystem.comp",
       "relaxed": false,
       "axes": 2,
       "localSize": [
@@ -214,8 +214,8 @@
           "accessKind": "ComputeStorageRead"
         },
         {
-          "name": "counters",
-          "kind": "Vixen.Codegen.Gpu.TileBinCounter",
+          "name": "order",
+          "kind": "Vixen.Codegen.Gpu.InstanceOrder",
           "member": "*",
           "form": "storage",
           "access": "ref",
@@ -225,23 +225,12 @@
           "accessKind": "ComputeStorageReadWrite"
         },
         {
-          "name": "candidates",
-          "kind": "Vixen.Codegen.Gpu.TileCandidate",
+          "name": "words",
+          "kind": "Vixen.Codegen.Gpu.TileRankWord",
           "member": "*",
           "form": "storage",
           "access": "ref",
           "binding": 4,
-          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
-          "singleton": false,
-          "accessKind": "ComputeStorageReadWrite"
-        },
-        {
-          "name": "stats",
-          "kind": "Vixen.Codegen.Gpu.TileBinStats",
-          "member": "*",
-          "form": "storage",
-          "access": "ref",
-          "binding": 5,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
           "accessKind": "ComputeStorageReadWrite"
@@ -352,9 +341,9 @@
       ]
     },
     {
-      "id": "core:TileBinSortSystem",
-      "class": "TileBinSortSystem",
-      "glsl": "TileBinSortSystem.comp",
+      "id": "core:TileBinScatterSystem",
+      "class": "TileBinScatterSystem",
+      "glsl": "TileBinScatterSystem.comp",
       "relaxed": false,
       "axes": 2,
       "localSize": [
@@ -386,6 +375,17 @@
       },
       "arguments": [
         {
+          "name": "bounds",
+          "kind": "Vixen.Codegen.Gpu.InstanceBound",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 0,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
           "name": "view",
           "kind": "Vixen.Codegen.Gpu.TileBinView",
           "member": "*",
@@ -397,19 +397,8 @@
           "accessKind": "ComputeStorageRead"
         },
         {
-          "name": "counters",
-          "kind": "Vixen.Codegen.Gpu.TileBinCounter",
-          "member": "*",
-          "form": "storage",
-          "access": "ref",
-          "binding": 2,
-          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
-          "singleton": false,
-          "accessKind": "ComputeStorageReadWrite"
-        },
-        {
-          "name": "candidates",
-          "kind": "Vixen.Codegen.Gpu.TileCandidate",
+          "name": "order",
+          "kind": "Vixen.Codegen.Gpu.InstanceOrder",
           "member": "*",
           "form": "storage",
           "access": "in",
@@ -419,8 +408,8 @@
           "accessKind": "ComputeStorageRead"
         },
         {
-          "name": "tiles",
-          "kind": "Vixen.Codegen.Gpu.TileHeader",
+          "name": "words",
+          "kind": "Vixen.Codegen.Gpu.TileRankWord",
           "member": "*",
           "form": "storage",
           "access": "ref",
@@ -430,8 +419,8 @@
           "accessKind": "ComputeStorageReadWrite"
         },
         {
-          "name": "sortedCandidates",
-          "kind": "Vixen.Codegen.Gpu.TileSortedCandidate",
+          "name": "stats",
+          "kind": "Vixen.Codegen.Gpu.TileBinStats",
           "member": "*",
           "form": "storage",
           "access": "ref",
@@ -446,7 +435,7 @@
           "member": "ViewDepth",
           "form": "texture",
           "access": "in",
-          "binding": 0,
+          "binding": 2,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
           "format": "VK_FORMAT_R32_SFLOAT",
           "read": true,
@@ -470,24 +459,24 @@
       "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT"
     },
     {
-      "before": "core:TileBinScatterSystem",
-      "after": "core:TileBinSortSystem",
-      "resource": "TileBinCounter.$gpu-buffer",
-      "image": false,
-      "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
-      "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
-      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT",
-      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT"
-    },
-    {
-      "before": "core:TileBinScatterSystem",
-      "after": "core:TileBinSortSystem",
-      "resource": "TileCandidate.$gpu-buffer",
+      "before": "core:TileBinPrepareSystem",
+      "after": "core:TileBinScatterSystem",
+      "resource": "InstanceOrder.$gpu-buffer",
       "image": false,
       "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
       "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
       "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT",
       "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT"
+    },
+    {
+      "before": "core:TileBinPrepareSystem",
+      "after": "core:TileBinScatterSystem",
+      "resource": "TileRankWord.$gpu-buffer",
+      "image": false,
+      "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
+      "srcAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT",
+      "dstAccess": "VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT"
     }
   ],
   "transfers": [],

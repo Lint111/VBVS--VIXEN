@@ -199,13 +199,11 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "Nodes/StorageBufferNode.h"  // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17), extent-driven
 #include "Generated/InstanceBound.g.h"
 #include "Generated/TileBinView.g.h"
-#include "Generated/TileBinCounter.g.h"
-#include "Generated/TileCandidate.g.h"
+#include "Generated/TileRankWord.g.h"
+#include "Generated/InstanceOrder.g.h"
 #include "Generated/TileBinStats.g.h"
-#include "Generated/TileHeader.g.h"
-#include "Generated/TileSortedCandidate.g.h"
 #include "Nodes/MultiDispatchNode.h"  // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
-#include "Nodes/TileBinViewProjection.h"  // GB1 list capacity (kTileListCapacityLog2)
+#include "Nodes/TileBinViewProjection.h"  // GB1 rank-word capacity (kTileRankWordCapacity)
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/UIRenderNode.h"  // S0: composite-HUD render node (RmlUi) — AFTER BodyOctreeSceneNode.h
@@ -628,7 +626,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))->SetMotionGuidesEnabled(reconstructionInputsEnabled);
     bodyOctreeSceneNode_ = bodyOctreeSceneNode;      // store so SetBodyInstances() can forward to it
     NodeHandle tileBinViewNode = renderGraph->AddNode<TileBinViewNodeType>("tile_bin_view");
-    // GB1: the hand-authored march reads the two generated sort outputs through
+    // GB1: the hand-authored march reads the generated tile outputs through
     // the same declared buffer-hazard path as the generated writer stages.
     NodeHandle tileBinReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("tile_bin_read_gatherer");
 
@@ -674,11 +672,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // imgSize (imageSize(outputImage) in the shader) even under render-scale (<1.0) — the same
     // extent-follow cascade RenderTargetNode itself rides.
     NodeHandle hitRecordBufferNode = renderGraph->AddNode<StorageBufferNodeType>("hit_record_buffer");
-    NodeHandle tileBinCountersBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_counters_buffer");
-    NodeHandle tileBinCandidatesBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_candidates_buffer");
+    NodeHandle tileBinRankWordsBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_rank_words_buffer");
+    NodeHandle tileBinOrderBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_order_buffer");
     NodeHandle tileBinStatsBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_stats_buffer");
-    NodeHandle tileBinHeadersBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_headers_buffer");
-    NodeHandle tileBinSortedCandidatesBuffer = renderGraph->AddNode<StorageBufferNodeType>("tile_bin_sorted_candidates_buffer");
 
     // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode — the shading pass split out of
     // BodyInstanceRayMarch.comp (which is now traversal-only: writes HitRecord + the pick-ID
@@ -760,8 +756,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     };
     generatedSystems_.Instantiate(renderGraph, GpuSystemManifest::Load(generatedManifestPaths),
         [this, hdrExposureEnabled, exposureReference](const GpuSystemEntry& entry) {
-            const bool tileBinSystem = entry.className == "TileBinScatterSystem" ||
-                                       entry.className == "TileBinSortSystem";
+            const bool tileBinSystem = entry.className == "TileBinPrepareSystem" ||
+                                       entry.className == "TileBinScatterSystem";
             return tileBinSystem || (hdrExposureEnabled && !exposureReference &&
                                      AntiAliasingSystemEnabled(entry.className, selectedAntiAliasingProviderId_));
         });
@@ -1658,27 +1654,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* hitRecordBuffer = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitRecordBufferNode));
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
 
-    // GB1: the generated tile passes use one header/counter per 8x8 tile and a
-    // fixed candidate slab per tile (kTileListCapacityLog2, shared with the view
-    // record). The list capacity is independent of the scene's instance count.
+    // GB1 (z-bin): one header per 8x8 tile, kTileRankWordCapacity rank words per tile
+    // (word-major), and one InstanceOrder entry per rankable instance. Shared with the view
+    // record; independent of the scene's instance count up to the capacity.
     constexpr uint32_t kTileSize = 8u;
-    using Vixen::RenderGraph::kTileListCapacityLog2;
+    using Vixen::RenderGraph::kTileRankWordCapacity;
     const uint32_t tileCount = ((renderExtent.width + kTileSize - 1u) / kTileSize) *
                                 ((renderExtent.height + kTileSize - 1u) / kTileSize);
-    const uint32_t tileListCapacity = 1u << kTileListCapacityLog2;
     const auto setTileBufferBytes = [&](NodeHandle node, uint64_t bytes) {
         static_cast<StorageBufferNode*>(renderGraph->GetInstance(node))->SetParameter(
             StorageBufferNodeConfig::PARAM_SIZE_BYTES, static_cast<uint32_t>(bytes));
     };
-    setTileBufferBytes(tileBinCountersBuffer,
-                       static_cast<uint64_t>(tileCount) * sizeof(Vixen::Codegen::Gpu::TileBinCounter));
-    setTileBufferBytes(tileBinCandidatesBuffer,
-                       static_cast<uint64_t>(tileCount) * tileListCapacity * sizeof(Vixen::Codegen::Gpu::TileCandidate));
+    setTileBufferBytes(tileBinRankWordsBuffer,
+                       static_cast<uint64_t>(tileCount) * kTileRankWordCapacity * sizeof(Vixen::Codegen::Gpu::TileRankWord));
+    setTileBufferBytes(tileBinOrderBuffer,
+                       static_cast<uint64_t>(kTileRankWordCapacity) * 32u * sizeof(Vixen::Codegen::Gpu::InstanceOrder));
     setTileBufferBytes(tileBinStatsBuffer, sizeof(Vixen::Codegen::Gpu::TileBinStats));
-    setTileBufferBytes(tileBinHeadersBuffer,
-                       static_cast<uint64_t>(tileCount) * sizeof(Vixen::Codegen::Gpu::TileHeader));
-    setTileBufferBytes(tileBinSortedCandidatesBuffer,
-                       static_cast<uint64_t>(tileCount) * tileListCapacity * sizeof(Vixen::Codegen::Gpu::TileSortedCandidate));
 
     if (hdrExposureEnabled) {
         // ExposureHistogram.glsl: 16-byte ExposureMeterState, then 128 uint histogram bins.
@@ -3262,8 +3253,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (reservoirBufferA + reservoirBufferB — both physical buffers, see this block's own
     // declaration comment for why BOTH are declared regardless of which is "current").
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
-    // GB1: BodyInstanceRayMarch reads {headers, sortedCandidates}; the generated
-    // TileBinSortSystem registers the matching writes in GeneratedSystemStage.
+    // GB1: BodyInstanceRayMarch reads {rank words, order} (and the host-written view record);
+    // the generated tile systems register the matching writes in GeneratedSystemStage.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(tileBinReadGatherer))->PreRegisterBufferSlots(2);
     // SpatialReuseShade reads HitRecordBuffer plus, in the optional cell-resolve path,
     // {cellRadiance, hitAccumTable}. One gatherer feeds the stage's single BUFFER_READ_ARRAY.
@@ -4154,8 +4145,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   tileBinViewNode, TileBinViewNodeConfig::INSTANCE_COUNT);
 
     const NodeHandle tileBinStorageNodes[] = {
-        tileBinCountersBuffer, tileBinCandidatesBuffer, tileBinStatsBuffer,
-        tileBinHeadersBuffer, tileBinSortedCandidatesBuffer,
+        tileBinRankWordsBuffer, tileBinOrderBuffer, tileBinStatsBuffer,
     };
     for (NodeHandle storage : tileBinStorageNodes) {
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -4575,9 +4565,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // GB1 primary camera-ray candidate lists. The two bindings are declared only
     // in the primary march variant, so these providers are inert for other shader
     // families and keep the generated lists on the same frame-resource path.
-    sceneProviders.Provide("TileHeaderBuffer", tileBinHeadersBuffer,
+    sceneProviders.Provide("TileBinViewBuffer", tileBinViewNode,
+                           TileBinViewNodeConfig::VIEW_BUFFER, kSceneRoles);
+    sceneProviders.Provide("TileRankWordBuffer", tileBinRankWordsBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-    sceneProviders.Provide("TileSortedCandidateBuffer", tileBinSortedCandidatesBuffer,
+    sceneProviders.Provide("InstanceOrderBuffer", tileBinOrderBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     sceneProviders.Provide("ChannelPoolBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, kSceneRoles);
@@ -5235,15 +5227,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER, kSceneRoles);
         resources.Provide({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode,
                           TileBinViewNodeConfig::VIEW_BUFFER, kSceneRoles);
-        resources.Provide({"Vixen.Codegen.Gpu.TileBinCounter", "*"}, tileBinCountersBuffer,
+        resources.Provide({"Vixen.Codegen.Gpu.TileRankWord", "*"}, tileBinRankWordsBuffer,
                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-        resources.Provide({"Vixen.Codegen.Gpu.TileCandidate", "*"}, tileBinCandidatesBuffer,
+        resources.Provide({"Vixen.Codegen.Gpu.InstanceOrder", "*"}, tileBinOrderBuffer,
                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
         resources.Provide({"Vixen.Codegen.Gpu.TileBinStats", "*"}, tileBinStatsBuffer,
-                          StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-        resources.Provide({"Vixen.Codegen.Gpu.TileHeader", "*"}, tileBinHeadersBuffer,
-                          StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
-        resources.Provide({"Vixen.Codegen.Gpu.TileSortedCandidate", "*"}, tileBinSortedCandidatesBuffer,
                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
         resources.ProvideProducer({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode);
         resources.ProvideProducer({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode);
@@ -5355,7 +5343,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (!hdrExposureEnabled) {
         // The HDR block above is skipped in this mode, but the tile systems still need their
-        // descriptor/pipeline wiring and declared scatter-to-sort ordering.
+        // descriptor/pipeline wiring and declared prepare-scatter-header ordering.
         SchemaResourceRegistry tileResources;
         provideTileBinResources(tileResources);
         generatedSystems_.Allocate(renderGraph, batch, lightingCommon, tileResources);
@@ -5767,19 +5755,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                   computeDispatch, ComputeDispatchNodeConfig::BUFFER_WRITE, SlotRoleModifier(SlotRole::Execute));
 
-    // GB1: the generated tile-list sort writes the exact two buffers consumed by
+    // GB1: the generated tile systems write the two buffers consumed by
     // the march. Descriptor providers bind the handles, but only this gatherer
     // connection declares the cross-submit read hazard to FrameSyncScheduler.
-    batch.Connect(tileBinHeadersBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+    batch.Connect(tileBinRankWordsBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                   tileBinReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(tileBinSortedCandidatesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+    batch.Connect(tileBinOrderBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                   tileBinReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(tileBinReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::BUFFER_READ_ARRAY,
                   SlotRoleModifier(SlotRole::Execute));
-    if (const auto tileSortWriter = generatedSystems_.LastWriter({"Vixen.Codegen.Gpu.TileSortedCandidate", "*"})) {
+    if (const auto tileSortWriter = generatedSystems_.LastWriter({"Vixen.Codegen.Gpu.TileRankWord", "*"})) {
         // BUFFER_OUT is the first generated write buffer's handle and is used
-        // only to force the sort stage before the hand-authored march. The
+        // only to force the scatter (the last rank-word writer) before the hand-authored march. The
         // declared read/write resources above carry the actual memory barrier.
         batch.Connect(*tileSortWriter, ComputeStageNodeConfig::BUFFER_OUT,
                       computeDispatch, ComputeDispatchNodeConfig::ORDERING_WAIT_BUFFER);

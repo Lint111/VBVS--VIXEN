@@ -104,17 +104,8 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding16 {
-        static constexpr const char* NAME = "LightTreeBufferSSBO";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 16;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
     struct Binding17 {
-        static constexpr const char* NAME = "LightingConfigSSBO";
+        static constexpr const char* NAME = "LightTreeBufferSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 17;
         static constexpr uint32_t COUNT = 1;
@@ -122,18 +113,17 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding19 {
-        static constexpr const char* NAME = "MiningBeamBodyInstanceBuffer";
+    struct Binding18 {
+        static constexpr const char* NAME = "LightingConfigSSBO";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 19;
+        static constexpr uint32_t BINDING = 18;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 1;
-        static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
+        static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
     struct Binding20 {
-        static constexpr const char* NAME = "MiningBeamBufferSSBO";
+        static constexpr const char* NAME = "MiningBeamBodyInstanceBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 20;
         static constexpr uint32_t COUNT = 1;
@@ -143,7 +133,7 @@ namespace Set0 {
     };
 
     struct Binding21 {
-        static constexpr const char* NAME = "MiningBeamInstanceTransformBuffer";
+        static constexpr const char* NAME = "MiningBeamBufferSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 21;
         static constexpr uint32_t COUNT = 1;
@@ -152,27 +142,28 @@ namespace Set0 {
         static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
     };
 
-    struct Binding24 {
-        static constexpr const char* NAME = "OctreeConfigsSSBO";
+    struct Binding22 {
+        static constexpr const char* NAME = "MiningBeamInstanceTransformBuffer";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 24;
+        static constexpr uint32_t BINDING = 22;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 1;
         static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
     };
 
-    struct Binding26 {
-        static constexpr const char* NAME = "PrevCameraConfigSSBO";
+    struct Binding25 {
+        static constexpr const char* NAME = "OctreeConfigsSSBO";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 26;
+        static constexpr uint32_t BINDING = 25;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
     };
 
     struct Binding27 {
-        static constexpr const char* NAME = "ProbeGridConfigReadSSBO";
+        static constexpr const char* NAME = "PrevCameraConfigSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 27;
         static constexpr uint32_t COUNT = 1;
@@ -180,26 +171,26 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding31 {
-        static constexpr const char* NAME = "ReservoirConfigSSBO";
+    struct Binding28 {
+        static constexpr const char* NAME = "ProbeGridConfigReadSSBO";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 31;
+        static constexpr uint32_t BINDING = 28;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding35 {
-        static constexpr const char* NAME = "ShadowConfigSSBO";
+    struct Binding32 {
+        static constexpr const char* NAME = "ReservoirConfigSSBO";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 35;
+        static constexpr uint32_t BINDING = 32;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
     struct Binding36 {
-        static constexpr const char* NAME = "SpatialReservoirDebugBuffer";
+        static constexpr const char* NAME = "ShadowConfigSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 36;
         static constexpr uint32_t COUNT = 1;
@@ -207,17 +198,17 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding40 {
-        static constexpr const char* NAME = "probeIrradianceAtlasRead";
+    struct Binding37 {
+        static constexpr const char* NAME = "SpatialReservoirDebugBuffer";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 40;
+        static constexpr uint32_t BINDING = 37;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
     struct Binding41 {
-        static constexpr const char* NAME = "probeVisibilityAtlasRead";
+        static constexpr const char* NAME = "probeIrradianceAtlasRead";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 41;
         static constexpr uint32_t COUNT = 1;
@@ -225,26 +216,26 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding43 {
-        static constexpr const char* NAME = "sceneRadianceHistory";
+    struct Binding42 {
+        static constexpr const char* NAME = "probeVisibilityAtlasRead";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 43;
+        static constexpr uint32_t BINDING = 42;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
     struct Binding44 {
-        static constexpr const char* NAME = "sceneRadianceHistoryOutput";
+        static constexpr const char* NAME = "sceneRadianceHistory";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 44;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
     struct Binding45 {
-        static constexpr const char* NAME = "sceneRadianceImage";
+        static constexpr const char* NAME = "sceneRadianceHistoryOutput";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 45;
         static constexpr uint32_t COUNT = 1;
@@ -253,16 +244,16 @@ namespace Set0 {
     };
 
     struct Binding46 {
-        static constexpr const char* NAME = "skySphereImage";
+        static constexpr const char* NAME = "sceneRadianceImage";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 46;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
     struct Binding47 {
-        static constexpr const char* NAME = "worldPosHistoryImage";
+        static constexpr const char* NAME = "skySphereImage";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 47;
         static constexpr uint32_t COUNT = 1;
@@ -271,9 +262,18 @@ namespace Set0 {
     };
 
     struct Binding48 {
-        static constexpr const char* NAME = "worldPosHistoryOutput";
+        static constexpr const char* NAME = "worldPosHistoryImage";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 48;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct Binding49 {
+        static constexpr const char* NAME = "worldPosHistoryOutput";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 49;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -291,25 +291,25 @@ using HitAccumCellRadiance = Set0::Binding10;
 using HitAccumParamsSSBO = Set0::Binding11;
 using HitAccumTable = Set0::Binding12;
 using HitRecordBuffer = Set0::Binding13;
-using LightTreeBufferSSBO = Set0::Binding16;
-using LightingConfigSSBO = Set0::Binding17;
-using MiningBeamBodyInstanceBuffer = Set0::Binding19;
-using MiningBeamBufferSSBO = Set0::Binding20;
-using MiningBeamInstanceTransformBuffer = Set0::Binding21;
-using OctreeConfigsSSBO = Set0::Binding24;
-using PrevCameraConfigSSBO = Set0::Binding26;
-using ProbeGridConfigReadSSBO = Set0::Binding27;
-using ReservoirConfigSSBO = Set0::Binding31;
-using ShadowConfigSSBO = Set0::Binding35;
-using SpatialReservoirDebugBuffer = Set0::Binding36;
-using probeIrradianceAtlasRead = Set0::Binding40;
-using probeVisibilityAtlasRead = Set0::Binding41;
-using sceneRadianceHistory = Set0::Binding43;
-using sceneRadianceHistoryOutput = Set0::Binding44;
-using sceneRadianceImage = Set0::Binding45;
-using skySphereImage = Set0::Binding46;
-using worldPosHistoryImage = Set0::Binding47;
-using worldPosHistoryOutput = Set0::Binding48;
+using LightTreeBufferSSBO = Set0::Binding17;
+using LightingConfigSSBO = Set0::Binding18;
+using MiningBeamBodyInstanceBuffer = Set0::Binding20;
+using MiningBeamBufferSSBO = Set0::Binding21;
+using MiningBeamInstanceTransformBuffer = Set0::Binding22;
+using OctreeConfigsSSBO = Set0::Binding25;
+using PrevCameraConfigSSBO = Set0::Binding27;
+using ProbeGridConfigReadSSBO = Set0::Binding28;
+using ReservoirConfigSSBO = Set0::Binding32;
+using ShadowConfigSSBO = Set0::Binding36;
+using SpatialReservoirDebugBuffer = Set0::Binding37;
+using probeIrradianceAtlasRead = Set0::Binding41;
+using probeVisibilityAtlasRead = Set0::Binding42;
+using sceneRadianceHistory = Set0::Binding44;
+using sceneRadianceHistoryOutput = Set0::Binding45;
+using sceneRadianceImage = Set0::Binding46;
+using skySphereImage = Set0::Binding47;
+using worldPosHistoryImage = Set0::Binding48;
+using worldPosHistoryOutput = Set0::Binding49;
 } // namespace Bind
 
 namespace Push {
@@ -453,10 +453,10 @@ inline constexpr const char* const kFeatures_Set0_Binding1[] = {"VIXEN_SRS_CELL_
 inline constexpr const char* const kFeatures_Set0_Binding10[] = {"VIXEN_SRS_CELL_RESOLVE"};
 inline constexpr const char* const kFeatures_Set0_Binding11[] = {"VIXEN_SRS_CELL_RESOLVE"};
 inline constexpr const char* const kFeatures_Set0_Binding12[] = {"VIXEN_SRS_CELL_RESOLVE"};
-inline constexpr const char* const kFeatures_Set0_Binding19[] = {"VIXEN_MINING_BEAM"};
 inline constexpr const char* const kFeatures_Set0_Binding20[] = {"VIXEN_MINING_BEAM"};
 inline constexpr const char* const kFeatures_Set0_Binding21[] = {"VIXEN_MINING_BEAM"};
-inline constexpr const char* const kFeatures_Set0_Binding24[] = {"VIXEN_MINING_BEAM"};
+inline constexpr const char* const kFeatures_Set0_Binding22[] = {"VIXEN_MINING_BEAM"};
+inline constexpr const char* const kFeatures_Set0_Binding25[] = {"VIXEN_MINING_BEAM"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"AccumulationConfigSSBO", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
@@ -468,25 +468,25 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"HitAccumParamsSSBO", false, 0, 11, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding11},
     {"HitAccumTable", false, 0, 12, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding12},
     {"HitRecordBuffer", false, 0, 13, 0, Access::ReadOnly, 0, nullptr},
-    {"LightTreeBufferSSBO", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
-    {"LightingConfigSSBO", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
-    {"MiningBeamBodyInstanceBuffer", false, 0, 19, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding19},
-    {"MiningBeamBufferSSBO", false, 0, 20, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding20},
-    {"MiningBeamInstanceTransformBuffer", false, 0, 21, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding21},
-    {"OctreeConfigsSSBO", false, 0, 24, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding24},
-    {"PrevCameraConfigSSBO", false, 0, 26, 0, Access::ReadOnly, 0, nullptr},
-    {"ProbeGridConfigReadSSBO", false, 0, 27, 0, Access::ReadOnly, 0, nullptr},
-    {"ReservoirConfigSSBO", false, 0, 31, 0, Access::ReadOnly, 0, nullptr},
-    {"ShadowConfigSSBO", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
-    {"SpatialReservoirDebugBuffer", false, 0, 36, 0, Access::ReadOnly, 0, nullptr},
-    {"probeIrradianceAtlasRead", false, 0, 40, 0, Access::ReadOnly, 0, nullptr},
-    {"probeVisibilityAtlasRead", false, 0, 41, 0, Access::ReadOnly, 0, nullptr},
-    {"sceneRadianceHistory", false, 0, 43, 0, Access::ReadOnly, 0, nullptr},
-    {"sceneRadianceHistoryOutput", false, 0, 44, 0, Access::WriteOnly, 0, nullptr},
-    {"sceneRadianceImage", false, 0, 45, 0, Access::WriteOnly, 0, nullptr},
-    {"skySphereImage", false, 0, 46, 0, Access::ReadOnly, 0, nullptr},
-    {"worldPosHistoryImage", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
-    {"worldPosHistoryOutput", false, 0, 48, 0, Access::WriteOnly, 0, nullptr},
+    {"LightTreeBufferSSBO", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
+    {"LightingConfigSSBO", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
+    {"MiningBeamBodyInstanceBuffer", false, 0, 20, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding20},
+    {"MiningBeamBufferSSBO", false, 0, 21, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding21},
+    {"MiningBeamInstanceTransformBuffer", false, 0, 22, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding22},
+    {"OctreeConfigsSSBO", false, 0, 25, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding25},
+    {"PrevCameraConfigSSBO", false, 0, 27, 0, Access::ReadOnly, 0, nullptr},
+    {"ProbeGridConfigReadSSBO", false, 0, 28, 0, Access::ReadOnly, 0, nullptr},
+    {"ReservoirConfigSSBO", false, 0, 32, 0, Access::ReadOnly, 0, nullptr},
+    {"ShadowConfigSSBO", false, 0, 36, 0, Access::ReadOnly, 0, nullptr},
+    {"SpatialReservoirDebugBuffer", false, 0, 37, 0, Access::ReadOnly, 0, nullptr},
+    {"probeIrradianceAtlasRead", false, 0, 41, 0, Access::ReadOnly, 0, nullptr},
+    {"probeVisibilityAtlasRead", false, 0, 42, 0, Access::ReadOnly, 0, nullptr},
+    {"sceneRadianceHistory", false, 0, 44, 0, Access::ReadOnly, 0, nullptr},
+    {"sceneRadianceHistoryOutput", false, 0, 45, 0, Access::WriteOnly, 0, nullptr},
+    {"sceneRadianceImage", false, 0, 46, 0, Access::WriteOnly, 0, nullptr},
+    {"skySphereImage", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
+    {"worldPosHistoryImage", false, 0, 48, 0, Access::ReadOnly, 0, nullptr},
+    {"worldPosHistoryOutput", false, 0, 49, 0, Access::WriteOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},

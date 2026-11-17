@@ -128,17 +128,8 @@ namespace Set0 {
         static constexpr const char* FEATURES[1] = {"VIXEN_GPU_TRACE_HOOKS"};
     };
 
-    struct Binding12 {
-        static constexpr const char* NAME = "InstanceSkipMaskBuffer";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 12;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
     struct Binding13 {
-        static constexpr const char* NAME = "LightingConfigSSBO";
+        static constexpr const char* NAME = "InstanceSkipMaskBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 13;
         static constexpr uint32_t COUNT = 1;
@@ -147,7 +138,7 @@ namespace Set0 {
     };
 
     struct Binding14 {
-        static constexpr const char* NAME = "MaterialBuffer";
+        static constexpr const char* NAME = "LightingConfigSSBO";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 14;
         static constexpr uint32_t COUNT = 1;
@@ -156,7 +147,7 @@ namespace Set0 {
     };
 
     struct Binding15 {
-        static constexpr const char* NAME = "MipPoolBuffer";
+        static constexpr const char* NAME = "MaterialBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 15;
         static constexpr uint32_t COUNT = 1;
@@ -165,7 +156,7 @@ namespace Set0 {
     };
 
     struct Binding16 {
-        static constexpr const char* NAME = "OccupancyGridBuffer";
+        static constexpr const char* NAME = "MipPoolBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 16;
         static constexpr uint32_t COUNT = 1;
@@ -174,7 +165,7 @@ namespace Set0 {
     };
 
     struct Binding17 {
-        static constexpr const char* NAME = "OctreeConfigsSSBO";
+        static constexpr const char* NAME = "OccupancyGridBuffer";
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 17;
         static constexpr uint32_t COUNT = 1;
@@ -182,38 +173,47 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding19 {
+    struct Binding18 {
+        static constexpr const char* NAME = "OctreeConfigsSSBO";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 18;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    struct Binding20 {
         static constexpr const char* NAME = "RayTraceBuffer";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 19;
+        static constexpr uint32_t BINDING = 20;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding21 {
+    struct Binding22 {
         static constexpr const char* NAME = "RecipeTapeBuffer";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 21;
+        static constexpr uint32_t BINDING = 22;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 1;
         static constexpr const char* FEATURES[1] = {"VIXEN_UBER_RECIPE_MATERIAL"};
     };
 
-    struct Binding25 {
+    struct Binding26 {
         static constexpr const char* NAME = "ShadowConfigSSBO";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 25;
+        static constexpr uint32_t BINDING = 26;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct Binding26 {
+    struct Binding27 {
         static constexpr const char* NAME = "TierRefTableBuffer";
         static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 26;
+        static constexpr uint32_t BINDING = 27;
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -234,16 +234,16 @@ using HitAccumCellRadiance = Set0::Binding8;
 using HitAccumParamsSSBO = Set0::Binding9;
 using HitAccumTable = Set0::Binding10;
 using InstanceIterDebugBuffer = Set0::Binding11;
-using InstanceSkipMaskBuffer = Set0::Binding12;
-using LightingConfigSSBO = Set0::Binding13;
-using MaterialBuffer = Set0::Binding14;
-using MipPoolBuffer = Set0::Binding15;
-using OccupancyGridBuffer = Set0::Binding16;
-using OctreeConfigsSSBO = Set0::Binding17;
-using RayTraceBuffer = Set0::Binding19;
-using RecipeTapeBuffer = Set0::Binding21;
-using ShadowConfigSSBO = Set0::Binding25;
-using TierRefTableBuffer = Set0::Binding26;
+using InstanceSkipMaskBuffer = Set0::Binding13;
+using LightingConfigSSBO = Set0::Binding14;
+using MaterialBuffer = Set0::Binding15;
+using MipPoolBuffer = Set0::Binding16;
+using OccupancyGridBuffer = Set0::Binding17;
+using OctreeConfigsSSBO = Set0::Binding18;
+using RayTraceBuffer = Set0::Binding20;
+using RecipeTapeBuffer = Set0::Binding22;
+using ShadowConfigSSBO = Set0::Binding26;
+using TierRefTableBuffer = Set0::Binding27;
 } // namespace Bind
 
 namespace Push {
@@ -376,7 +376,7 @@ struct MemberInfo {
 };
 
 inline constexpr const char* const kFeatures_Set0_Binding11[] = {"VIXEN_GPU_TRACE_HOOKS"};
-inline constexpr const char* const kFeatures_Set0_Binding21[] = {"VIXEN_UBER_RECIPE_MATERIAL"};
+inline constexpr const char* const kFeatures_Set0_Binding22[] = {"VIXEN_UBER_RECIPE_MATERIAL"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"BodyInstanceBuffer", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
@@ -391,16 +391,16 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"HitAccumParamsSSBO", false, 0, 9, 0, Access::ReadOnly, 0, nullptr},
     {"HitAccumTable", false, 0, 10, 0, Access::ReadWrite, 0, nullptr},
     {"InstanceIterDebugBuffer", false, 0, 11, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding11},
-    {"InstanceSkipMaskBuffer", false, 0, 12, 0, Access::ReadOnly, 0, nullptr},
-    {"LightingConfigSSBO", false, 0, 13, 0, Access::ReadOnly, 0, nullptr},
-    {"MaterialBuffer", false, 0, 14, 0, Access::ReadOnly, 0, nullptr},
-    {"MipPoolBuffer", false, 0, 15, 0, Access::ReadOnly, 0, nullptr},
-    {"OccupancyGridBuffer", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
-    {"OctreeConfigsSSBO", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
-    {"RayTraceBuffer", false, 0, 19, 0, Access::ReadWrite, 0, nullptr},
-    {"RecipeTapeBuffer", false, 0, 21, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding21},
-    {"ShadowConfigSSBO", false, 0, 25, 0, Access::ReadOnly, 0, nullptr},
-    {"TierRefTableBuffer", false, 0, 26, 0, Access::ReadOnly, 0, nullptr},
+    {"InstanceSkipMaskBuffer", false, 0, 13, 0, Access::ReadOnly, 0, nullptr},
+    {"LightingConfigSSBO", false, 0, 14, 0, Access::ReadOnly, 0, nullptr},
+    {"MaterialBuffer", false, 0, 15, 0, Access::ReadOnly, 0, nullptr},
+    {"MipPoolBuffer", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
+    {"OccupancyGridBuffer", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
+    {"OctreeConfigsSSBO", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
+    {"RayTraceBuffer", false, 0, 20, 0, Access::ReadWrite, 0, nullptr},
+    {"RecipeTapeBuffer", false, 0, 22, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding22},
+    {"ShadowConfigSSBO", false, 0, 26, 0, Access::ReadOnly, 0, nullptr},
+    {"TierRefTableBuffer", false, 0, 27, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
