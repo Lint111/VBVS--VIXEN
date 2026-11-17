@@ -9,8 +9,17 @@
   whole recipe instance. Shadow-caused speckles 5 -> 0. Captures change by intent; the review
   package is ready; references are unchanged. The remaining 24 detector hits are not shadow-caused
   (two findings).
-- **GB1: not started.** vx10 (`ac5b6da09`) is not on `origin/wave/authoring-convergence` yet, and
-  the controller asked me to wait for it or ask first.
+- **Wave merge:** lane-rt6 `72a527a39` merges VIXEN wave `8c0bf73c3` (vx10, GB1 tile lists). Kernel pin
+  `cb9a4f5b7` = kernel main `5640985e2` + lane-glyph1 `0800a13e4` (clean merge; SG 1510/1510, CG 3874/0
+  failed, no NEW against the main baseline). RTL 1080p on the merged tree stays `8e83e9ac`.
+- **GB1 binning (in progress):** found that the landed vx10 tile sort loses the device in the load
+  scenario at tier 3 (base-reds #119). The guard (`lane-rt6-guard` `10c3406fd`, standalone for vx11) and
+  the parallel scatter (`6d0f8a23d`) fix it: the whole scenario runs, scatter 10-37 -> 0.2-1.4 ms, sort
+  200-720 -> 11-26 ms. The sort itself is next: owner R892.12 asks to measure both the kernel
+  `Sort(slice, comparator)` cooperative lowering and the z-bin alternative.
+- **Investigations reported:** R894 premise (no GPU tape interpreter in the march; only TAPE_OPERANDS in
+  the material variant), uber-march anatomy (glyph walk about 80% of march / 88% of wave; hit normal and
+  material about half of field evaluations), cold-compile "regression" = AMD driver shader cache.
 - Nothing pushed.
 
 | Repo | Branch / commit | Content |
@@ -204,11 +213,100 @@ findings above.
 ## LANDABLE NOW
 
 - VIXEN `2bd159789` (B6) on base `c2e97b00f`. Byte-identical; witnessed above.
-- VIXEN `11b45cde1` (speckle fix) + the reference commit: accepted (R892.9), for vx11.
+- VIXEN `11b45cde1` (speckle fix) + the reference commit `bbb51e518`: accepted (R892.9), for vx11.
+- VIXEN `lane-rt6-guard` `10c3406fd`: base-reds #119 guard, standalone on `02ac526f2` (witness above,
+  with the scatter).
+- VIXEN `6d0f8a23d` (scatter), after the RTL hash and the affected GPU set on it (running).
 
 ## GB1
 
-Not started: vx10 (`ac5b6da09`) has not landed on `origin/wave/authoring-convergence`; I ask the controller before GB1, as agreed. Measurement already in hand for it: after B1/B5/marchrule/B6 the 1080p RTL march is 38.5 ms = 54 Mrays/s (11.7% of the 461 Mrays/s budget), the wave 33 ms, and traversal is about 97% of the GPU. RTL has 3 instances, so the per-pixel instance loop GB1's tile lists remove is at most a few ms of it (fb-gpubudget1: about 1 ms per instance per 1080p frame). The rest of the RTL march is the glyph walk near the text (B4) and the per-body march itself (GB2). GB1's gain is in many-instance scenes (look-dev, the load scenario).
+### Anatomy before GB1 work (lane-rt6 `72a527a39`, shared runs, RTL 1080p)
+
+- Glyph walk share (probe P2: glyph walk returns "far", timing only): march 60.9 -> 12.5 ms (about 80%),
+  shadow wave 57.0 -> 6.6 ms (about 88%), same job, busy device.
+- `VIXEN_LEAF_COUNTERS`: camera steps per ray 0: 16%, 1: 6%, 2-3: 16%, 4-7: 43%, 8-15: 15%, 16-31: 3%,
+  32+: under 1% (mean about 5.9); candidates per pixel 1 (83%) or 2-3 (17%). Every hit adds 7 field
+  evaluations (6-tap gradient + material): about 12.2 M a frame, as many as the march loop's 12.3 M.
+- The RTL uber shaders carry all 15 registered recipes (13 look-dev + 2 glyph).
+- `VIXEN_RECIPE_BUCKETED_DISPATCH` (+ `BUCKETED_SHADE`): renders the reference only because no recipe
+  reaches the hotness threshold (4 instances); its march is a simplified prototype (128 steps, EPS 1e-3,
+  no refinement, grid, footprint, material or any-hit form).
+- R894: the GPU march runs per-recipe straight-line `sdfRecipe_<id>(vec3, float[6])` (SPIR-V of the RTL
+  and look-dev runs: no tapeBase argument, no `recipeTape`); the tape interpreter `RecipeTapeEval.g.glsl`
+  is used only by SVO tests. The material variant's `TAPE_OPERANDS` reads operands from a buffer
+  (lane plan below).
+- Compile time: a cold compile of the RTL uber pipelines is 60-70 s before and after the merge; 4.7 s
+  figures were AMD driver shader-cache hits (same binary and shaders: 67 s then 5 s, `cc-stock-again*`).
+
+### base-reds #119: the landed vx10 tile sort loses the device
+
+`vixen_load_scenario` 1080p on `72a527a39`: `TileBinSortSystem` 7 ms at tier 0, 80-340 ms at tiers 1-2,
+500-720 ms at tier 3 (GPU_SUBMIT_GUARD x6), then TDR (`WATCHDOG-20261117-1053.dmp`, reported at
+`[probe_gather] vkQueueSubmit2 failed: -4`). One invocation per tile sorts the tile's list serially in
+global memory.
+
+### Guard (`lane-rt6-guard` `10c3406fd`, one commit on `02ac526f2`)
+
+`kTileListCapacityLog2 = 6` (one constant for the view record and the buffers) bounds each tile's list,
+and so the serial sort, at 64. A tile offered more keeps an incomplete list (`StoredCount` already
+capped it) and reports demand > count; the camera march then marches the bounded instance loop for
+that tile (R861.1). RTL and look-dev tiles hold at most 15 candidates, so their lists are unchanged.
+
+### Parallel scatter (`6d0f8a23d`)
+
+Each instance gets `TileBinOps.ScatterLanes` invocations (up to 256) walking its tile rectangle in
+stride; the sorted lists are unchanged when no tile overflows. `TileBinStats.occluded` ->
+`occludedSlices` (unread buffer). Generator gap found: a callable in a hoisted leading guard is emitted
+with its block argument unindexed (SPT `63665642c7c8`); worked around in the facade.
+
+### Witness (guard + scatter, lane-rt6 `6d0f8a23d`)
+
+- CPU mirror (native ctest): 20/20 (`TileBinningMirror` 7 incl. lanes, overflow fallback and production
+  capacity tests; `TraceWorldShadowMirror`; `InstanceBound`). 1080p screen-sized instance: longest lane
+  127 tiles.
+- Load scenario 1080p, shared: all 11 legs through tier 3, no device loss, no submit guard.
+
+| Pass (sampled reads) | before (`72a527a39`) | after |
+|---|--:|--:|
+| TileBinScatterSystem | 10-37 ms | 0.18-1.4 ms |
+| TileBinSortSystem tier 0 | 0.3-7 ms | 0.2-0.6 ms |
+| TileBinSortSystem tiers 1-3 | 200-314 ms (720 at tier 3, then lost) | 11-26 ms |
+
+| Leg, render_ms p50 / max | before | after |
+|---|--:|--:|
+| warm-orbit-t0 | 44 / 243 | 32 / 207 |
+| flythrough-t0 | 93 / 179 | 43 / 94 |
+| fastpan-t1 | 340 / 398 | 71 / 119 |
+| view-switches-t1 | 85 / 139 | 59 / 142 |
+| closeup-t2 | 355 / 606 | 128 / 237 |
+| flythrough-t3 | 402 / 851, lost | 143 / 293 |
+| fastpan-t3, overview-orbit-t3, recipe-edits-t3, recipe-swap-t3, scale-down-t1 | not reached | 141/275, 63/86, 93/205, 174/348, 74/216 |
+
+The sort is still 11-26 ms against the 0.6 ms binning budget, and dense tiles fall back to the
+192-instance loop. Next (R892.12, owner: measure both): (1) kernel `Sort(slice, comparator)` lowered
+to a cooperative shared-memory sort per workgroup and to std::sort on the CPU face; (2) the z-bin
+alternative (fable-research1 B-A: instances sorted once by near depth, per-tile bit arrays, no
+per-tile sort; contract "same candidate set, deterministic nearest hit").
+
+### TAPE_OPERANDS lane plan (R894)
+
+The material variant (`RegistryRequiresMaterialVariant`, `UberShaderSplice.h:111`) emits each recipe's
+straight-line field with `YK_RECIPE_GPU_FIELD_TAPE_OPERANDS`: operands come from
+`recipeTape[recipeOperandBase + i].data[k]` (binding 53) instead of literals. Plan: (1) kernel: the
+GLSL_FIELD emitter keeps literal operands in the material variant too (the material id is a literal of
+the instruction, like every other operand); (2) VIXEN: drop binding 53 and `SetRecipeTape` from the
+render path; the editor's live edits use the CPU recipe evaluation until the bake recompiles (R894,
+R864); (3) witness: captures of material-carrying recipes byte-identical, SPIR-V without `recipeTape`.
+Size M, kernel + VIXEN.
+
+### R892.11 distance-only check
+
+In the RTL and look-dev scenes the march, shadow and gradient call `sdfRecipe_<id>(vec3, float[6])`,
+a distance-only function (no material out parameter, SPIR-V checked). The material variant (scenes with
+material-carrying recipes) calls `sdfRecipe_<id>(p, params, tapeBase, out materialId)` for every
+evaluation and discards the id through the 3-argument wrapper; whether the driver strips it there is
+not checked. The per-channel projection (distance-only function for traversal and gradient, property
+functions at hit resolution) belongs with the TAPE_OPERANDS lane and the analytic-gradient work (R892.10).
 
 ## REDS
 
