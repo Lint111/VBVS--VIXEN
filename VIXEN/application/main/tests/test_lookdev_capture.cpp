@@ -2690,13 +2690,20 @@ private:
         std::memcpy(records.data(), mapped, records.size() * sizeof(Record));
         vkUnmapMemory(device->device, snapshotMemory_);
 
-        std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)> lightingBytes{};
-        if (!Vixen::RenderGraph::LightingConfigNodeTestAccess::ReadMappedBytes(*lighting_, 0, lightingBytes)) {
-            captureError_ = "could not read LightingConfig for the pixel replay";
+        // The lights are static over a capture; a short capture has not written every ring slot,
+        // so take a slot that holds them.
+        Vixen::Gpu::LightingConfig lighting{};
+        for (uint32_t slot = 0; slot < Vixen::RenderGraph::LightingConfigNodeTestAccess::FrameCount(*lighting_); ++slot) {
+            std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)> lightingBytes{};
+            Vixen::Gpu::LightingConfig candidate{};
+            if (!Vixen::RenderGraph::LightingConfigNodeTestAccess::ReadMappedBytes(*lighting_, slot, lightingBytes)) continue;
+            std::memcpy(&candidate, lightingBytes.data(), sizeof(candidate));
+            if (candidate.lightCount > lighting.lightCount && candidate.lightCount <= 4U) lighting = candidate;
+        }
+        if (lighting.lightCount == 0U) {
+            captureError_ = "no LightingConfig ring slot holds a light for the pixel replay";
             return false;
         }
-        Vixen::Gpu::LightingConfig lighting{};
-        std::memcpy(&lighting, lightingBytes.data(), sizeof(lighting));
 
         const auto& camera = camera_->GetCurrentCameraData();
         const int height = static_cast<int>(std::lround(std::sqrt(static_cast<double>(records.size()) / camera.aspect)));
@@ -2934,7 +2941,7 @@ private:
             const int radius = 4;
             int compared = 0, hitAgree = 0, shadowCompared = 0, shadowAgree = 0;
             float worstT = 0.0f, worstNormal = 1.0f;
-            out << "  neighbourhood (gpu visibility bit of light 0 | cpu; '.' = no hit, '-' = not traced):\n";
+            out << "  neighbourhood (surface of the captured hit: W wall, T/P a +z face above/below this pixel's hit, = at its height; then light 0 as captured and as replayed, V visible, O occluded, - not traced):\n";
             for (int y = py - radius; y <= py + radius; ++y) {
                 out << "    ";
                 for (int x = px - radius; x <= px + radius; ++x) {
@@ -2942,6 +2949,12 @@ private:
                     const Record& other = records[static_cast<std::size_t>(y) * width + x];
                     Body otherBody;
                     if ((other.flags & 1U) == 0U || !bodyOf(other.pad0[0], otherBody)) { out << " .. "; continue; }
+                    // Surface of the capture hit: W wall (normal across z), else a +z face above (T),
+                    // below (P) or at (=) the height of this pixel's hit; ? other.
+                    const float otherZ = (other.worldPos.z - otherBody.translation.z) / otherBody.scale;
+                    const float hitZ = (record.worldPos.z - body.translation.z) / body.scale;
+                    out << (std::abs(other.worldNormal.z) < 0.5f ? 'W'
+                            : other.worldNormal.z < 0.9f ? '?' : otherZ > hitZ + 0.5f ? 'T' : otherZ < hitZ - 0.5f ? 'P' : '=');
                     const RecipeMarchReplay otherPrimary = replayPrimary(otherBody, x, y);
                     ++compared;
                     if (otherPrimary.hit) {
@@ -2954,11 +2967,11 @@ private:
                     const ShadowRay otherRay = lighting.lightCount > 0U
                         ? replayShadow(otherBody, other, lighting.lights[0]) : ShadowRay{};
                     const char gpuBit = (other.pad0[2] & 1U) ? 'V' : 'O';
-                    if (!otherRay.traced) { out << ' ' << gpuBit << "- "; continue; }
+                    if (!otherRay.traced) { out << gpuBit << "- "; continue; }
                     ++shadowCompared;
                     const char cpuBit = otherRay.occluded ? 'O' : 'V';
                     if (cpuBit == gpuBit) ++shadowAgree;
-                    out << ' ' << gpuBit << cpuBit << (cpuBit == gpuBit ? ' ' : '!');
+                    out << gpuBit << cpuBit << (cpuBit == gpuBit ? ' ' : '!');
                 }
                 out << '\n';
             }
