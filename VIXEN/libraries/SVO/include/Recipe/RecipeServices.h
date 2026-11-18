@@ -405,8 +405,18 @@ struct RecipeRowWalkingLeaves {
     std::span<const SdfInstruction> instructions,
     std::span<const Yeroket::Sdf::Kernels::PathInstance> pathRows = {}) {
     RecipeRowWalkingLeaves leaves;
+    bool trace = false;
+#if defined(_WIN32)
+    char* traceEnv = nullptr;
+    std::size_t traceEnvSize = 0;
+    if (_dupenv_s(&traceEnv, &traceEnvSize, "VIXEN_EDITOR_RECIPE_TRACE") == 0 && traceEnv != nullptr) {
+        trace = std::string_view(traceEnv) == "1";
+        std::free(traceEnv);
+    }
+#else
     const char* traceEnv = std::getenv("VIXEN_EDITOR_RECIPE_TRACE");
-    const bool trace = traceEnv != nullptr && std::string_view(traceEnv) == "1";
+    trace = traceEnv != nullptr && std::string_view(traceEnv) == "1";
+#endif
     const auto& services = GetRecipeServiceApis();
     if (!services.available || services.gpu.lower == nullptr || services.gpu.text == nullptr) return leaves;
     YkRecipeGpuRequest request{};
