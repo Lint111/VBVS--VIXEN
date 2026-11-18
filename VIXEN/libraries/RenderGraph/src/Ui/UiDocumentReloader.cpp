@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <iostream>
 
 namespace Vixen::RenderGraph {
 
@@ -37,18 +38,29 @@ void UiDocumentReloader::Stamp(UiDocumentWatch& watch) {
 
 Rml::ElementDocument* UiDocumentReloader::Load(Rml::Context& context, const std::string& path,
                                                UiDocumentWatch& watch, std::vector<std::string>& errors) {
+    const bool trace = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
+    const auto tracePhase = [trace, &path](const char* phase) {
+        if (trace) std::cout << "[UIDocumentLoadTrace] " << phase << " path=" << path << std::endl;
+    };
+    tracePhase("begin");
     system_.BeginCapture();
     files_.BeginTrack();
+    tracePhase("track-begin");
     if (prelude_) prelude_();
+    tracePhase("prelude-done");
     Rml::ElementDocument* document = context.LoadDocument(path);
+    tracePhase("load-document-done");
     const std::vector<std::string> opened = files_.EndTrack();
+    tracePhase("track-end");
     errors = system_.EndCapture();
+    tracePhase("capture-end");
 
     watch.path = path;
     watch.files.clear();
     watch.files.reserve(opened.size());
     for (const auto& file : opened) watch.files.push_back({std::filesystem::path(file), {}});
     Stamp(watch);
+    tracePhase("stamp-done");
     return document;
 }
 

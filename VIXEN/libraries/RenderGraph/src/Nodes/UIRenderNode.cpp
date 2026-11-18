@@ -490,8 +490,12 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
     if (context_ && !hudSuppressed) {
         // M-ui: realize any mount requested before the context existed (the first frame it's alive).
         // Must run BEFORE Update() so a freshly mounted fragment renders this same frame (spike §2).
-        RealizePendingMounts();
-        tracePhase("rml.mounts");
+        if (std::getenv("VIXEN_EDITOR_SKIP_PENDING_MOUNTS")) {
+            tracePhase("rml.mounts-skipped");
+        } else {
+            RealizePendingMounts();
+            tracePhase("rml.mounts");
+        }
         ApplyPlacements();
         tracePhase("rml.placements");
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
