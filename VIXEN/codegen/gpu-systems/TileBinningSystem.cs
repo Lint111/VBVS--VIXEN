@@ -108,7 +108,18 @@ public static class TileBinOps
     }
 }
 
+public static class TileBinningPhases
+{
+    [DispatchScope("core:tile-bin-prepare", Trigger = DispatchTrigger.EveryTick)]
+    public static class Prepare { }
+
+    [DispatchScope("core:tile-bin-scatter", Trigger = DispatchTrigger.EveryTick)]
+    [AfterSystem(typeof(Prepare))]
+    public static class Scatter { }
+}
+
 [KernelSystem]
+[InGroup(typeof(TileBinningPhases.Prepare))]
 public static class TileBinPrepareSystem
 {
     [GaiaQuery]
@@ -151,9 +162,8 @@ public static class TileBinPrepareSystem
     }
 }
 
-// Prepare clears the rank words and publishes instance ranks; Scatter consumes those ranks before setting tile bits.
 [KernelSystem]
-[AfterSystem(typeof(TileBinPrepareSystem))]
+[InGroup(typeof(TileBinningPhases.Scatter))]
 public static class TileBinScatterSystem
 {
     [GaiaQuery]
