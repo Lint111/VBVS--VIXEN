@@ -105,10 +105,15 @@ public:
             Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture;
         // R860.2/.7 shell tolerance in pixels: a recipe's certified shell (RL1) is marched once its
         // certified error projects under this many pixels (times its toleranceScale, R892.28).
-        // 0 is the exact preset: no shell is registered or selected. Capped at
-        // kMaxShellTolerancePx until the certificate bounds crease shading (STOP 1 of opus-rl0).
+        // 0 is the exact preset: no shell is registered or selected (native captures, R892.4).
+        // The application starts at kRealtimeShellTolerancePx; VIXEN_SHELL_TOLERANCE_PX overrides it,
+        // capped at that value until the certificate bounds crease shading (STOP 1 of opus-rl0).
         float shellTolerancePx = 0.0f;
     };
+    // R860 RL0 / R892.27: the real-time shell tolerance, witnessed invisible by the band-switch
+    // pairs (LookdevCapture.LodSwitch.T0p125) and by the lockstep load scenario (same 11 frame
+    // hashes as the exact preset).
+    static constexpr float kRealtimeShellTolerancePx = 0.125f;
     // Instantiable (AR#7): the former singleton (GetInstance + once_flag) is gone — a host
     // constructs and owns the application directly. Only main.cpp ever created it, and no
     // library code reached for the global instance, so there is nothing else to re-thread.

@@ -1717,8 +1717,10 @@ public:
         auto config = gRenderPathConfig;
         // The application constructor applied VIXEN_ANTI_ALIASING; keep that request.
         config.antiAliasing = GetRenderPathConfig().antiAliasing;
-        // R860 RL0: VIXEN_SHELL_TOLERANCE_PX applies unless --shell-tolerance-px= set one.
-        if (config.shellTolerancePx == 0.0f) config.shellTolerancePx = GetRenderPathConfig().shellTolerancePx;
+        // R860 RL0: native captures are the exact preset (R892.4) unless --shell-tolerance-px= or
+        // VIXEN_SHELL_TOLERANCE_PX asks for a tolerance.
+        if (config.shellTolerancePx == 0.0f && std::getenv("VIXEN_SHELL_TOLERANCE_PX") != nullptr)
+            config.shellTolerancePx = GetRenderPathConfig().shellTolerancePx;
         config.samplingPath = config.renderScale == 1.0f && config.upscaler == UpscalerKind::None &&
                 !PresentationSamplingRequested()
             ? Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture
