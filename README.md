@@ -105,6 +105,9 @@ bash tools/with-test-lock.sh --help        # the full queue manual
 It looks for the queue in this order: `UT_QUEUE_SCRIPT` (path to the wrapper), `UNDERTOW_ROOT`
 (an Undertow checkout), `with-test-lock.sh` on `PATH`, then `~/projects/undertow` and
 `~/Github/undertow`. A variable you set that points at nothing usable is an error, not a fallback.
+
+Lane report convention: commit Markdown reports only; keep raw logs and captures in the external
+`/home/liory/codeman-cases/undertow/reports/<lane>-evidence/` store.
 The forwarder holds no queue logic; admission, history and status all live in the Undertow copy.
 
 ## Architecture Overview

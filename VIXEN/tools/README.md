@@ -2,6 +2,12 @@
 
 ## Gates
 
+### `scripts/check-raw-evidence.sh` — raw evidence guard
+
+Rejects newly added logs, captures, CSV dumps, and temporary evidence directories; Markdown-linked
+report images are the only in-repository image exception. It is wired into the `raw_evidence_check`
+build target and stores lane evidence outside the repository.
+
 ### `check-no-new-mutex.sh` — no-new-mutex declaration gate
 
 Lock-free federation phase 0 (`Vixen-Docs/01-Architecture/2026-09-08-lockfree-federation-architecture.md`
