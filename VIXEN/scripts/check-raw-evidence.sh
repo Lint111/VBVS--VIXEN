@@ -60,8 +60,13 @@ for markdown in (path for path in tracked if path.endswith(".md")):
         end = text.find(")", start + 2)
         if end < 0:
             break
-        ref = text[start + 2:end].split(None, 1)[0].strip("<>").split("#", 1)[0].split("?", 1)[0]
+        raw_ref = text[start + 2:end].split(None, 1)
         start = end + 1
+        if not raw_ref:
+            # Code examples can contain C++/lambda syntax such as [](){} that resembles a
+            # Markdown link opener. It is not a link and must not make the guard fail to parse.
+            continue
+        ref = raw_ref[0].strip("<>").split("#", 1)[0].split("?", 1)[0]
         if not ref or ref.startswith(("/", "#")) or "://" in ref:
             continue
         target = posixpath.normpath(posixpath.join(posixpath.dirname(markdown), ref))
