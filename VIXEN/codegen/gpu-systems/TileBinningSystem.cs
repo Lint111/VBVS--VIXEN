@@ -152,6 +152,7 @@ public static class TileBinPrepareSystem
 }
 
 [KernelSystem]
+[AfterSystem(typeof(TileBinPrepareSystem), typeof(TileRankWord), "Prepare clears rank words and publishes instance ranks before Scatter sets tile bits")]
 public static class TileBinScatterSystem
 {
     [GaiaQuery]
