@@ -50,15 +50,23 @@
         </div>
         <ut-list class="fill">
             <div class="ut-row" data-for="row : layers">
-                <ut-toggle data-attr-id="row.elementId" data-attr-checked="row.isChecked"> </ut-toggle>
-                <ut-button variant="name" data-attr-id="row.selectId" data-attr-label="row.name" data-class-selected="row.isSelected"> </ut-button>
-                <span class="col-op" data-attr-title="row.opTitle">{{row.op}}</span>
-                <span class="dependency-mark" data-attr-title="row.dependencyTitle + (row.warningTitle == '' ? '' : ' - ' + row.warningTitle)">{{row.providesMark}} {{row.readsMark}} {{row.readByMark}} {{row.warningMark}}</span>
-                <ut-button class="layer-icon-button layer-provide" data-attr-id="row.provideId" icon="provide" data-attr-title="'provide ' + row.name"> </ut-button>
-                <ut-button class="layer-icon-button layer-solo" data-attr-id="row.soloId" icon="solo" data-class-selected="row.isSolo" data-attr-title="'solo ' + row.name"> </ut-button>
-                <ut-button class="layer-icon-button" data-attr-id="row.moveUpId" icon="up" data-attr-title="'move ' + row.name + ' up'"> </ut-button>
-                <ut-button class="layer-icon-button" data-attr-id="row.moveDownId" icon="down" data-attr-title="'move ' + row.name + ' down'"> </ut-button>
-                <ut-button class="layer-icon-button" data-attr-id="row.deleteId" icon="remove" data-attr-title="'remove ' + row.name"> </ut-button>
+                <div class="layer-row-main">
+                    <ut-toggle data-attr-id="row.elementId" data-attr-checked="row.isChecked"> </ut-toggle>
+                    <ut-button variant="name" data-attr-id="row.selectId" data-attr-label="row.name" data-class-selected="row.isSelected"> </ut-button>
+                    <span class="col-op" data-if="row.op != ''" data-attr-title="row.opTitle">{{row.op}}</span>
+                    <ut-button class="layer-icon-button layer-provide" data-attr-id="row.provideId" icon="provide" data-attr-title="'provide ' + row.name"> </ut-button>
+                    <ut-button class="layer-icon-button layer-solo" data-attr-id="row.soloId" icon="solo" data-class-selected="row.isSolo" data-attr-title="'solo ' + row.name"> </ut-button>
+                    <ut-button class="layer-icon-button" data-attr-id="row.moveUpId" icon="up" data-attr-title="'move ' + row.name + ' up'"> </ut-button>
+                    <ut-button class="layer-icon-button" data-attr-id="row.moveDownId" icon="down" data-attr-title="'move ' + row.name + ' down'"> </ut-button>
+                    <ut-button class="layer-icon-button" data-attr-id="row.deleteId" icon="remove" data-attr-title="'remove ' + row.name"> </ut-button>
+                </div>
+                <div class="layer-row-meta" data-attr-title="row.dependencyTitle + (row.warningTitle == '' ? '' : ' - ' + row.warningTitle)">
+                    <span class="layer-kind-chip" data-if="row.providesMark != ''">{{row.providesMark}}</span>
+                    <span class="layer-dependency" data-if="row.readsMark != ''">{{row.readsMark}}</span>
+                    <span class="layer-dependency" data-if="row.readByMark != ''">{{row.readByMark}}</span>
+                    <span class="layer-warning" data-if="row.warningMark != ''">{{row.warningMark}}</span>
+                    <span class="set-status" data-if="row.setStatus != ''" data-class-stale="row.setStatusStale">{{row.setStatus}}</span>
+                </div>
                 <div class="layer-diagnostic" data-if="row.diagnostic != ''">{{row.diagnostic}}</div>
             </div>
         </ut-list>
