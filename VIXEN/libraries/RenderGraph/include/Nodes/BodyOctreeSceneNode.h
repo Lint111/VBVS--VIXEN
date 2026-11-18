@@ -254,6 +254,13 @@ public:
     void SetRecipeBoundSpheres(RecipeBoundSpheres spheres);
 
     /**
+     * @brief Uploads the staged occupancy grid (SetOccupancyGrid) now, in place when it fits.
+     * Called at the procedural shader swap, with the device idle, so the grid layout always
+     * matches the gridOffset literals the live march was spliced with.
+     */
+    void PublishOccupancyGrid();
+
+    /**
      * @brief R860 RL0: the LOD band table (four rows per ladder slot and each recipe's slot, built
      * from the registry ladders and the preset's shell tolerance, RecipeLodBandTable.h). Called
      * from the same shader-splice callback as SetRecipeBoundSpheres, so every variant recipe a row
@@ -577,6 +584,7 @@ private:
     Vixen::SVO::RecipeEmitterShapes emitterShapes_;
     RecipeBoundSpheres              recipeBoundSpheres_;  // GB1 InstanceBound source
     RecipeLodBandTable              recipeLodBands_;      // RL0 band table rows + recipe slots
+    VkDeviceSize                    occupancyGridCapacity_ = 0;  // bytes of the occupancy grid SSBO
     uint64_t                        recipeLodBandGeneration_ = 1;
     Vixen::SVO::EmitterTable        emitterTable_;
     std::vector<float>              publishedEmitterRootPowers_;

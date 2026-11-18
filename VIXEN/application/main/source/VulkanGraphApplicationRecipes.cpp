@@ -1152,6 +1152,16 @@ void VulkanGraphApplication::MarkProceduralShaderLibsDirty() {
     }
     for (const auto handle : proceduralShaderLibNodes_)
         renderGraph->MarkNodeNeedsRecompile(handle);
+    // The swapped-in march bakes the occupancy-grid offsets of the registry it was spliced from;
+    // publish that splice's grid now, with the device idle, so the two never disagree. Without
+    // this the grid stayed at the last scene compile's layout, and a live registration whose id
+    // sorts before other recipes shifted their offsets onto another recipe's grid (opus-rl0: a
+    // swapped-in hull marched against a shell's grid rendered as a white blob).
+    if (bodyOctreeSceneNode_.IsValid()) {
+        if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                renderGraph->GetInstance(bodyOctreeSceneNode_)))
+            bodyScene->PublishOccupancyGrid();
+    }
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[VulkanGraphApplication::MarkProceduralShaderLibsDirty] marked " +
             std::to_string(proceduralShaderLibNodes_.size()) + " recipe source families dirty");

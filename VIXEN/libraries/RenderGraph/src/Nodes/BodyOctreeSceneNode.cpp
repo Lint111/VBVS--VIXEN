@@ -505,6 +505,38 @@ void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) 
                   std::to_string(occupancyGrid_.size()) + " floats staged");
 }
 
+void BodyOctreeSceneNode::PublishOccupancyGrid() {
+    VulkanDevice* device = GetDevice();
+    if (!device || occupancyGridBuffer_ == VK_NULL_HANDLE) return;  // the next compile uploads it
+    const VkDeviceSize size = std::max<VkDeviceSize>(occupancyGrid_.size() * sizeof(float), 1);
+    const VkDeviceSize capacity = occupancyGridCapacity_;
+    if (occupancyGridMemory_ != VK_NULL_HANDLE && size <= capacity) {
+        void* mapped = nullptr;
+        if (vkMapMemory(device->device, occupancyGridMemory_, 0, capacity, 0, &mapped) != VK_SUCCESS)
+            throw std::runtime_error("[BodyOctreeSceneNode] occupancy grid map failed");
+        std::memset(mapped, 0, static_cast<size_t>(capacity));
+        if (!occupancyGrid_.empty()) std::memcpy(mapped, occupancyGrid_.data(), occupancyGrid_.size() * sizeof(float));
+        vkUnmapMemory(device->device, occupancyGridMemory_);
+        RecordWholeBufferUpload(static_cast<uint64_t>(size));
+        return;
+    }
+    VkBuffer replacement = VK_NULL_HANDLE;
+    VkDeviceMemory replacementMemory = VK_NULL_HANDLE;
+    CreateHostBuffer(device, size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        occupancyGrid_.empty() ? nullptr : occupancyGrid_.data(),
+        replacement, replacementMemory, "occupancy grid SSBO refresh");
+    RetiredBufferGeneration retired;
+    retired.retiredAtFrame = executeFrameCounter_;
+    retired.buffers.emplace_back(occupancyGridBuffer_, occupancyGridMemory_);
+    pendingRetire_.push_back(std::move(retired));
+    occupancyGridBuffer_ = replacement;
+    occupancyGridMemory_ = replacementMemory;
+    occupancyGridCapacity_ = size;
+    if (Resource* output = GetOutput(BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER.index, 0))
+        output->SetHandle<VkBuffer>(VkBuffer(occupancyGridBuffer_));
+    RecordWholeBufferUpload(static_cast<uint64_t>(size));
+}
+
 void BodyOctreeSceneNode::SetRecipeChunkBoxes(
     std::vector<Vixen::SVO::Recipe::RecipeChunkAabb> boxes) {
     recipeChunkBoxes_ = std::move(boxes);
@@ -1714,6 +1746,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         occupancyGrid_.empty() ? nullptr : occupancyGrid_.data(),
         occupancyGridBuffer_, occupancyGridMemory_, "occupancy grid SSBO");
+    occupancyGridCapacity_ = occupancyGridSize;
 
     const VkDeviceSize recipeChunkSize = std::max<VkDeviceSize>(
         recipeChunkBoxes_.size() * sizeof(Vixen::SVO::Recipe::RecipeChunkAabb), 1);
