@@ -151,8 +151,9 @@ public static class TileBinPrepareSystem
     }
 }
 
+// Prepare clears the rank words and publishes instance ranks; Scatter consumes those ranks before setting tile bits.
 [KernelSystem]
-[AfterSystem(typeof(TileBinPrepareSystem), typeof(TileRankWord), "Prepare clears rank words and publishes instance ranks before Scatter sets tile bits")]
+[AfterSystem(typeof(TileBinPrepareSystem))]
 public static class TileBinScatterSystem
 {
     [GaiaQuery]
