@@ -18,6 +18,11 @@
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Nodes/CameraNode.h"
 #include "Nodes/InputNode.h"                  // camera input translation reads the live InputState
+#include "Nodes/StorageBufferNode.h"
+#include "Generated/InstanceOrder.g.h"
+#include "Generated/TileBinStats.g.h"
+#include "Generated/TileRankWord.g.h"
+#include "VulkanDevice.h"
 #include "Nodes/SwapChainNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
@@ -3749,6 +3754,66 @@ void EditorApplication::Update() {
 
 void EditorApplication::PostTick() {
     TraceEditorLatency("frame", "end", updateTick_ - 1);
+    // One-shot native viewport diagnosis: the generated tile passes write host-visible SSBOs,
+    // so wait for this rendered frame and report whether the camera tile lists contain the
+    // editor's body before the ray-march output is captured.
+    if (const char* trace = std::getenv("VIXEN_EDITOR_TILEBIN_READBACK");
+        trace && std::string(trace) == "1") {
+        static bool emitted = false;
+        if (!emitted) {
+            emitted = true;
+            auto* graph = GetRenderGraph();
+            auto* statsNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
+                graph->GetInstanceByName("tile_bin_stats_buffer")) : nullptr;
+            auto* wordsNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
+                graph->GetInstanceByName("tile_bin_rank_words_buffer")) : nullptr;
+            auto* orderNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
+                graph->GetInstanceByName("tile_bin_order_buffer")) : nullptr;
+            auto* device = statsNode ? statsNode->GetDevice() : nullptr;
+            if (!statsNode || !wordsNode || !orderNode || !device ||
+                vkDeviceWaitIdle(device->device) != VK_SUCCESS) {
+                logger_->Error("[EDITOR/tile-bin] readback unavailable after first rendered frame");
+            } else {
+                const auto* stats = static_cast<const Vixen::Codegen::Gpu::TileBinStats*>(
+                    statsNode->MapForReadback(device));
+                const auto* words = static_cast<const Vixen::Codegen::Gpu::TileRankWord*>(
+                    wordsNode->MapForReadback(device));
+                const auto* order = static_cast<const Vixen::Codegen::Gpu::InstanceOrder*>(
+                    orderNode->MapForReadback(device));
+                if (stats && words && order) {
+                    constexpr uint32_t kTileSize = 8u;
+                    const uint32_t renderWidth = static_cast<uint32_t>(std::max(1, this->width));
+                    const uint32_t renderHeight = static_cast<uint32_t>(std::max(1, this->height));
+                    const uint32_t tilesX = (renderWidth + kTileSize - 1u) / kTileSize;
+                    const uint32_t tilesY = (renderHeight + kTileSize - 1u) / kTileSize;
+                    const uint64_t tileCount = static_cast<uint64_t>(tilesX) * tilesY;
+                    uint64_t activeWords = 0;
+                    for (uint64_t i = 0; i < tileCount; ++i) activeWords += words[i].bits != 0u;
+                    const uint32_t centerTile = (tilesY / 2u) * tilesX + tilesX / 2u;
+                    std::ostringstream line;
+                    line << "[EDITOR/tile-bin] frame=" << (updateTick_ - 1)
+                         << " extent=" << renderWidth << 'x' << renderHeight
+                         << " tileExtent=" << tilesX << 'x' << tilesY
+                         << " instance0=" << order[0].instance
+                         << " rank0=" << order[0].rank
+                         << " depth0=" << order[0].depth
+                         << " listed=" << stats->listed
+                         << " behind=" << stats->behindCamera
+                         << " offscreen=" << stats->offScreen
+                         << " occluded=" << stats->occludedSlices
+                         << " overflow=" << stats->overflowed
+                         << " activeTiles=" << activeWords
+                         << " centerBits=0x" << std::hex << words[centerTile].bits;
+                    logger_->Info(line.str());
+                } else {
+                    logger_->Error("[EDITOR/tile-bin] host-visible buffer mapping failed");
+                }
+                if (stats) statsNode->UnmapReadback(device);
+                if (words) wordsNode->UnmapReadback(device);
+                if (order) orderNode->UnmapReadback(device);
+            }
+        }
+    }
     // VulkanApplicationBase::Tick calls this only after Render(), when compute_render_target
     // contains the completed scene image for the Update tick that scheduled the capture.
     if (!pendingCapturePath_.empty()) {
