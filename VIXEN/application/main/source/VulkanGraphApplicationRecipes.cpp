@@ -853,7 +853,11 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
         return result;
     }
 
+    if (mainLogger) mainLogger->Debug("[RecipeTrace] AnalyzeEntry begin recipeId=" + std::to_string(recipeId) +
+                                      " instructions=" + std::to_string(entry.bytecode.size()) +
+                                      " pathRows=" + std::to_string(entry.pathInstances.size()));
     const auto analysis = AnalyzeEntry(entry);
+    if (mainLogger) mainLogger->Debug("[RecipeTrace] AnalyzeEntry end recipeId=" + std::to_string(recipeId));
     if (mainLogger && mainLogger->IsEnabled()) {
         auto sourceName = [](Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource s) {
             switch (s) {
@@ -876,7 +880,9 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     // A glyph or path leaf that the generated field cannot guard is walked at every field sample.
     // That is a cost the author can remove (intersect the leaf with a box that bounds it), so it is
     // reported with the recipe and the instruction, never silently paid.
+    if (mainLogger) mainLogger->Debug("[RecipeTrace] row-leaf analysis begin recipeId=" + std::to_string(recipeId));
     const auto rowLeaves = Vixen::SVO::Recipe::RecipeGpuRowWalkingLeaves(entry.bytecode, entry.pathInstances);
+    if (mainLogger) mainLogger->Debug("[RecipeTrace] row-leaf analysis end recipeId=" + std::to_string(recipeId));
     if (rowLeaves.count != 0u && mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
                          std::to_string(recipeId) + " rowWalkingLeaves=" + std::to_string(rowLeaves.count) +
@@ -887,9 +893,14 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
                                 ": this glyph/path leaf is evaluated at every field sample; intersect it with a " +
                                 "bounding box and merge it with Subtract or Union so the field can skip it exactly");
     }
+    if (mainLogger) mainLogger->Debug("[RecipeTrace] registry insert begin recipeId=" + std::to_string(recipeId));
     const auto result = proceduralRecipes_.Register(recipeId, entry);
+    if (mainLogger) mainLogger->Debug("[RecipeTrace] registry insert end recipeId=" + std::to_string(recipeId) +
+                                      " result=" + std::to_string(static_cast<int>(result)));
     if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+        if (mainLogger) mainLogger->Debug("[RecipeTrace] content registration begin recipeId=" + std::to_string(recipeId));
         RegisterRecipeContent(recipeId, entry);
+        if (mainLogger) mainLogger->Debug("[RecipeTrace] content registration end recipeId=" + std::to_string(recipeId));
         AdvanceRecipeEditSerial();
     }
     return result;
