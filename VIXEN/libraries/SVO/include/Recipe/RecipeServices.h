@@ -13,7 +13,6 @@
 
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -405,18 +404,6 @@ struct RecipeRowWalkingLeaves {
     std::span<const SdfInstruction> instructions,
     std::span<const Yeroket::Sdf::Kernels::PathInstance> pathRows = {}) {
     RecipeRowWalkingLeaves leaves;
-    bool trace = false;
-#if defined(_WIN32)
-    char* traceEnv = nullptr;
-    std::size_t traceEnvSize = 0;
-    if (_dupenv_s(&traceEnv, &traceEnvSize, "VIXEN_EDITOR_RECIPE_TRACE") == 0 && traceEnv != nullptr) {
-        trace = std::string_view(traceEnv) == "1";
-        std::free(traceEnv);
-    }
-#else
-    const char* traceEnv = std::getenv("VIXEN_EDITOR_RECIPE_TRACE");
-    trace = traceEnv != nullptr && std::string_view(traceEnv) == "1";
-#endif
     const auto& services = GetRecipeServiceApis();
     if (!services.available || services.gpu.lower == nullptr || services.gpu.text == nullptr) return leaves;
     YkRecipeGpuRequest request{};
@@ -424,11 +411,6 @@ struct RecipeRowWalkingLeaves {
     request.backend = YK_RECIPE_GPU_BACKEND_GLSL_FIELD;
     YkRecipeGpuModule* module = nullptr;
     YkRecipeGpuDiagnostic diagnostic{};
-    if (trace) {
-        std::fprintf(stderr, "[RecipeTrace] gpu.lower begin instructions=%zu pathRows=%zu\n",
-                     instructions.size(), pathRows.size());
-        std::fflush(stderr);
-    }
     const auto status = services.gpu.lower(
         &request,
         reinterpret_cast<const YkRecipeGpuInstruction*>(instructions.data()),
@@ -436,26 +418,13 @@ struct RecipeRowWalkingLeaves {
         pathRows.empty() ? nullptr : pathRows.data(),
         static_cast<std::uint32_t>(pathRows.size()),
         sizeof(Yeroket::Sdf::Kernels::PathInstance), &module, &diagnostic);
-    if (trace) {
-        std::fprintf(stderr, "[RecipeTrace] gpu.lower end status=%u module=%p diagnostic=%s\n",
-                     static_cast<unsigned>(status), static_cast<void*>(module), diagnostic.message);
-        std::fflush(stderr);
-    }
     if (status != YK_RECIPE_GPU_OK || module == nullptr) return leaves;
     std::size_t length = 0;
     std::string manifest;
-    if (trace) {
-        std::fprintf(stderr, "[RecipeTrace] gpu.manifest text begin\n");
-        std::fflush(stderr);
-    }
     if (services.gpu.text(module, YK_RECIPE_GPU_PART_MANIFEST, nullptr, 0u, &length) == YK_RECIPE_GPU_OK) {
         std::vector<char> buffer(length + 1u, 0);
         if (services.gpu.text(module, YK_RECIPE_GPU_PART_MANIFEST, buffer.data(), buffer.size(), &length) == YK_RECIPE_GPU_OK)
             manifest.assign(buffer.data(), length);
-    }
-    if (trace) {
-        std::fprintf(stderr, "[RecipeTrace] gpu.manifest text end bytes=%zu\n", manifest.size());
-        std::fflush(stderr);
     }
     services.gpu.release(module);
     // The manifest carries this entry only for a recipe that has such leaves.

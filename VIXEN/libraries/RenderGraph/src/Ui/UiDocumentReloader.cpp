@@ -5,12 +5,10 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <RmlUi/Core/Factory.h>
-#include <RmlUi/Core/FileInterface.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
-#include <iostream>
 
 namespace Vixen::RenderGraph {
 
@@ -39,41 +37,18 @@ void UiDocumentReloader::Stamp(UiDocumentWatch& watch) {
 
 Rml::ElementDocument* UiDocumentReloader::Load(Rml::Context& context, const std::string& path,
                                                UiDocumentWatch& watch, std::vector<std::string>& errors) {
-    const bool trace = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
-    const auto tracePhase = [trace, &path](const char* phase) {
-        if (trace) std::cout << "[UIDocumentLoadTrace] " << phase << " path=" << path << std::endl;
-    };
-    tracePhase("begin");
     system_.BeginCapture();
     files_.BeginTrack();
-    tracePhase("track-begin");
     if (prelude_) prelude_();
-    tracePhase("prelude-done");
-    if (trace) {
-        auto* fileInterface = Rml::GetFileInterface();
-        std::cout << "[UIDocumentLoadTrace] file-interface=" << fileInterface
-                  << " expected=" << &files_ << std::endl;
-        if (fileInterface) {
-            std::cout << "[UIDocumentLoadTrace] probe-open.begin path=" << path << std::endl;
-            const Rml::FileHandle probe = fileInterface->Open(path);
-            std::cout << "[UIDocumentLoadTrace] probe-open.end ok=" << (probe != 0) << std::endl;
-            if (probe) fileInterface->Close(probe);
-            std::cout << "[UIDocumentLoadTrace] probe-close.done" << std::endl;
-        }
-    }
     Rml::ElementDocument* document = context.LoadDocument(path);
-    tracePhase("load-document-done");
     const std::vector<std::string> opened = files_.EndTrack();
-    tracePhase("track-end");
     errors = system_.EndCapture();
-    tracePhase("capture-end");
 
     watch.path = path;
     watch.files.clear();
     watch.files.reserve(opened.size());
     for (const auto& file : opened) watch.files.push_back({std::filesystem::path(file), {}});
     Stamp(watch);
-    tracePhase("stamp-done");
     return document;
 }
 

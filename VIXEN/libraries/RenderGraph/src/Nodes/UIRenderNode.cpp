@@ -25,7 +25,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <iostream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -450,15 +449,9 @@ void UIRenderNode::DrawTextShaderCapture(float timeSeconds) {
 }
 
 void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex) {
-    const bool trace = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
-    const auto tracePhase = [trace](const char* phase) {
-        if (trace) std::cout << "[UIExecTrace] " << phase << std::endl;
-    };
-    tracePhase("record.begin");
     ++renderedFrameCounter_;
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &bi);
-    tracePhase("command-buffer.begin");
 
     // M5.1: reset this frame-in-flight's query slot, then bracket the render pass with start/end
     // timestamps (mirrors ComputeDispatchNode's BeginFrame/RecordDispatchStart/RecordDispatchEnd).
@@ -477,10 +470,8 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
     rp.clearValueCount = 1;
     rp.pClearValues = &clear;
     vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-    tracePhase("render-pass.begin");
 
     renderInterface_.BeginFrame(cmd, extent_);
-    tracePhase("interface.begin-frame");
     // E10-T2: VIXEN_HUD_SUPPRESS skips the RmlUi document draw so image-evidence captures show
     // the underlying voxel scene unobstructed by HUD/inspector chrome. Only context_->Render() is
     // skipped -- the render pass still LOADs/STOREs the framebuffer (PARAM_COLOR_LOAD_OP=Load,
@@ -490,45 +481,28 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
     if (context_ && !hudSuppressed) {
         // M-ui: realize any mount requested before the context existed (the first frame it's alive).
         // Must run BEFORE Update() so a freshly mounted fragment renders this same frame (spike §2).
-        if (std::getenv("VIXEN_EDITOR_SKIP_PENDING_MOUNTS")) {
-            tracePhase("rml.mounts-skipped");
-        } else {
-            RealizePendingMounts();
-            tracePhase("rml.mounts");
-        }
+        RealizePendingMounts();
         ApplyPlacements();
-        tracePhase("rml.placements");
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
-        tracePhase("rml.dimensions");
         context_->Update();
-        tracePhase("rml.update");
         ApplyPendingRestores();  // scroll / focus / caret of a just-reloaded document, once its rows exist
         context_->Render();
-        tracePhase("rml.render");
     }
     const char* textCapture = std::getenv("VIXEN_TEXT_SHADER_CAPTURE");
     if (textCapture && *textCapture && std::string(textCapture) != "0")
         DrawTextShaderCapture(static_cast<float>(renderedFrameCounter_) / 60.0f);
 
     vkCmdEndRenderPass(cmd);
-    tracePhase("render-pass.end");
 
     if (gpuPerfLogger_) {
         gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, extent_.width, extent_.height);
     }
 
     vkEndCommandBuffer(cmd);
-    tracePhase("record.end");
 }
 
 void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
-    const bool trace = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
-    const auto tracePhase = [trace](const char* phase) {
-        if (trace) std::cout << "[UIExecTrace] " << phase << std::endl;
-    };
-    tracePhase("execute.begin");
     PollDocumentReload();  // an edited panel document or stylesheet swaps in before this frame's input and Update
-    tracePhase("document-reload.done");
     // Pointer, wheel, keys and text reach the Rml context before this frame's Update(); done ahead of
     // the early returns below so a skipped frame does not drop typed input.
     if (const InputStatePtr input = ctx.In(UIRenderNodeConfig::INPUT_STATE)) ForwardInput(*input);
@@ -563,9 +537,7 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
     // completion timeline wait; the framebuffer it renders into stays imageIndex-selected.
     VkCommandBuffer cmd = commandBuffers_[currentFrameIndex];
-    tracePhase("record.begin");
     RecordFrame(cmd, framebuffers[imageIndex], currentFrameIndex);
-    tracePhase("record.done");
     ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO)->SetImageLayout(
         imageIndex, GetOwningGraph()->GetRenderPassFinalLayout(renderPass_));
 
@@ -629,7 +601,6 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     si.pSignalSemaphoreInfos    = signals.data();
     // R715: this node's fence-owning submit goes through the graph's single submission point.
     auto record = SubmitRecord::FromSubmitInfo2(si, inFlightFence);
-    tracePhase("submit.begin");
     if (gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
         const uint64_t expectedNs = static_cast<uint64_t>(gpuPerfLogger_->GetLastDispatchMs() * 1'000'000.0f);
         record.commandCostMeanNs.push_back(expectedNs);
@@ -640,7 +611,6 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         GetOwningGraph()->ReportGpuFault("UIRenderNode::ExecuteImpl vkQueueSubmit2", result);
         return;
     }
-    tracePhase("submit.done");
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
@@ -673,11 +643,6 @@ void UIRenderNode::MarkViewDirty(const char* field) { if (viewModel_ && field) v
 // unmount, and drained/realized once the context exists (Mount may be called before the first compile).
 
 bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& documentPath) {
-    const bool trace = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
-    const auto tracePhase = [trace, handle](const char* phase) {
-        if (trace) std::cout << "[UIMountTrace] handle=" << handle << ' ' << phase << std::endl;
-    };
-    tracePhase("begin");
     // Precondition: context_ exists (caller-checked). Validate BEFORE mutating any state so a failed
     // mount leaves nothing partial (spike §4: RmlUi silently renders nothing on these — we catch them).
     const char* modelName = view.ModelName();
@@ -707,9 +672,7 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
     if (shared) {
         model = shared->model;
     } else if (Rml::DataModelConstructor c = context_->CreateDataModel(modelName)) {
-        tracePhase("model-created");
         view.Register(c);
-        tracePhase("view-registered");
         model = c.GetModelHandle();
     } else {
         std::fprintf(stderr, "[ui-host] mount failed: CreateDataModel('%s') returned null\n", modelName);
@@ -717,18 +680,15 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
     }
 
     const std::string docPath = ResolveUiAsset(documentPath);
-    if (trace) std::cout << "[UIMountTrace] handle=" << handle << " document=" << docPath << std::endl;
     UiDocumentWatch watch;
     std::vector<std::string> loadErrors;
     Rml::ElementDocument* doc = reloader_.Load(*context_, docPath, watch, loadErrors);
-    tracePhase("document-loaded");
     if (!doc) {
         std::fprintf(stderr, "[ui-host] mount failed: LoadDocument('%s') returned null\n", docPath.c_str());
         if (!shared) context_->RemoveDataModel(modelName);   // undo the half-mount
         return false;
     }
     doc->Show();
-    tracePhase("document-shown");
 
     // Degenerate-layout validation (spike §4): a body with only out-of-flow children collapses to 0×0
     // and every anchored child lands off-screen — RmlUi renders nothing, no warning. The document must
@@ -755,14 +715,11 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
 
 void UIRenderNode::RealizePendingMounts() {
     if (pendingMounts_.empty() || !context_) return;
-    if (std::getenv("VIXEN_EDITOR_EXEC_TRACE"))
-        std::cout << "[UIMountTrace] pending=" << pendingMounts_.size() << std::endl;
     for (auto& pending : pendingMounts_) {
         // A rejected mount just doesn't appear in mounts_.
         if (pending.view) MountNow(pending.handle, *pending.view, pending.documentPath);
     }
     pendingMounts_.clear();
-    if (std::getenv("VIXEN_EDITOR_EXEC_TRACE")) std::cout << "[UIMountTrace] all-mounted" << std::endl;
 }
 
 UIRenderNode::MountHandle UIRenderNode::Mount(IView& view) {

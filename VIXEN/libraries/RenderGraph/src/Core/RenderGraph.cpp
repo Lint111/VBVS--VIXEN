@@ -17,7 +17,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
-#include <iostream>
 #include <stdexcept>
 #include <unordered_set>
 #include <filesystem>
@@ -1833,7 +1832,6 @@ VkResult RenderGraph::RenderFrame() {
         frameResult = ExecuteLoweredFrame();
     } else {
         frameWaveStats_ = {};  // sequential path: no waves; rows = nodes executed
-        const bool traceNodeExec = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
         for (NodeInstance* node : executionOrder) {
             // Frame aborted mid-execution (e.g. swapchain OUT_OF_DATE at acquire): stop before the
             // next node — per-image state is invalid until the resize recompile runs. See
@@ -1859,11 +1857,7 @@ VkResult RenderGraph::RenderFrame() {
                                                                  : PhaseTiming::Clock::time_point{};
                 try {
                     VIXEN_FRAME_TRACE_SCOPE("node", node->GetInstanceName());
-                    if (traceNodeExec) std::cout << "[NodeExecTrace] begin frame=" << globalFrameIndex
-                                                 << " node=" << node->GetInstanceName() << std::endl;
                     node->Execute();  // Pass VK_NULL_HANDLE - nodes manage their own command buffers
-                    if (traceNodeExec) std::cout << "[NodeExecTrace] end frame=" << globalFrameIndex
-                                                 << " node=" << node->GetInstanceName() << std::endl;
                     if (PhaseTiming::Enabled())
                         PhaseTiming::AddExecute(node->GetInstanceName(), PhaseTiming::MsSince(executeStart));
                 } catch (const std::exception& e) {

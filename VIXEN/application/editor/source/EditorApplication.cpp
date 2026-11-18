@@ -18,11 +18,6 @@
 #include "Nodes/BodyOctreeSceneNode.h"
 #include "Nodes/CameraNode.h"
 #include "Nodes/InputNode.h"                  // camera input translation reads the live InputState
-#include "Nodes/StorageBufferNode.h"
-#include "Generated/InstanceOrder.g.h"
-#include "Generated/TileBinStats.g.h"
-#include "Generated/TileRankWord.g.h"
-#include "VulkanDevice.h"
 #include "Nodes/SwapChainNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
@@ -3754,80 +3749,6 @@ void EditorApplication::Update() {
 
 void EditorApplication::PostTick() {
     TraceEditorLatency("frame", "end", updateTick_ - 1);
-    // One-shot native viewport diagnosis: the generated tile passes write host-visible SSBOs,
-    // so wait for this rendered frame and report whether the camera tile lists contain the
-    // editor's body before the ray-march output is captured.
-    if (const char* trace = std::getenv("VIXEN_EDITOR_TILEBIN_READBACK");
-        trace && std::string(trace) == "1") {
-        static bool emitted = false;
-        if (!emitted) {
-            emitted = true;
-            auto* graph = GetRenderGraph();
-            auto* statsNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
-                graph->GetInstanceByName("tile_bin_stats_buffer")) : nullptr;
-            auto* wordsNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
-                graph->GetInstanceByName("tile_bin_rank_words_buffer")) : nullptr;
-            auto* orderNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
-                graph->GetInstanceByName("tile_bin_order_buffer")) : nullptr;
-            auto* hitNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
-                graph->GetInstanceByName("hit_record_buffer")) : nullptr;
-            auto* device = statsNode ? statsNode->GetDevice() : nullptr;
-            if (!statsNode || !wordsNode || !orderNode || !hitNode || !device ||
-                vkDeviceWaitIdle(device->device) != VK_SUCCESS) {
-                logger_->Error("[EDITOR/tile-bin] readback unavailable after first rendered frame");
-            } else {
-                const auto* stats = static_cast<const Vixen::Codegen::Gpu::TileBinStats*>(
-                    statsNode->MapForReadback(device));
-                const auto* words = static_cast<const Vixen::Codegen::Gpu::TileRankWord*>(
-                    wordsNode->MapForReadback(device));
-                const auto* order = static_cast<const Vixen::Codegen::Gpu::InstanceOrder*>(
-                    orderNode->MapForReadback(device));
-                const auto* hitWords = static_cast<const uint32_t*>(hitNode->MapForReadback(device));
-                if (stats && words && order && hitWords) {
-                    constexpr uint32_t kRankWordCapacity = 128u;
-                    const uint64_t tileCount = wordsNode->GetSizeBytes() /
-                        (kRankWordCapacity * sizeof(Vixen::Codegen::Gpu::TileRankWord));
-                    uint64_t activeWords = 0;
-                    uint64_t activeTiles = 0;
-                    for (uint64_t tile = 0; tile < tileCount; ++tile) {
-                        bool active = false;
-                        for (uint32_t rankWord = 0; rankWord < kRankWordCapacity; ++rankWord) {
-                            activeWords += words[static_cast<uint64_t>(rankWord) * tileCount + tile].bits != 0u;
-                            active |= words[static_cast<uint64_t>(rankWord) * tileCount + tile].bits != 0u;
-                        }
-                        activeTiles += active;
-                    }
-                    // HitRecord's std430 layout is reflection-checked at
-                    // test_hitrecord_sdi_parity.cpp: flags is word 11 of each 16-word record.
-                    uint64_t hitPixels = 0;
-                    const uint64_t recordCount = hitNode->GetSizeBytes() / 64u;
-                    for (uint64_t i = 0; i < recordCount; ++i)
-                        hitPixels += (hitWords[i * 16u + 11u] & 1u) != 0u;
-                    std::ostringstream line;
-                    line << "[EDITOR/tile-bin] frame=" << (updateTick_ - 1)
-                         << " tileCount=" << tileCount
-                         << " instance0=" << order[0].instance
-                         << " rank0=" << order[0].rank
-                         << " depth0=" << order[0].depth
-                         << " listed=" << stats->listed
-                         << " behind=" << stats->behindCamera
-                         << " offscreen=" << stats->offScreen
-                         << " occluded=" << stats->occludedSlices
-                         << " overflow=" << stats->overflowed
-                         << " activeWords=" << activeWords
-                         << " activeTiles=" << activeTiles
-                         << " hitPixels=" << hitPixels;
-                    logger_->Info(line.str());
-                } else {
-                    logger_->Error("[EDITOR/tile-bin] host-visible buffer mapping failed");
-                }
-                if (stats) statsNode->UnmapReadback(device);
-                if (words) wordsNode->UnmapReadback(device);
-                if (order) orderNode->UnmapReadback(device);
-                if (hitWords) hitNode->UnmapReadback(device);
-            }
-        }
-    }
     // VulkanApplicationBase::Tick calls this only after Render(), when compute_render_target
     // contains the completed scene image for the Update tick that scheduled the capture.
     if (!pendingCapturePath_.empty()) {
