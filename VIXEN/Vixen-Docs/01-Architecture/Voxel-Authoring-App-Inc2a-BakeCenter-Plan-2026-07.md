@@ -388,7 +388,7 @@ git status -sb
 ### Task 7: Update the design doc's Next-steps section
 
 **Files:**
-- Modify: `VIXEN/Vixen-Docs/01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07.md` (the `## 9. Next steps` section, item 2 — "Bake center-offset cleanup").
+- Modify: `VIXEN/Vixen-Docs/_archive/2026-11/01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07.md` (the `## 9. Next steps` section, item 2 — "Bake center-offset cleanup").
 
 **Interfaces:**
 - Consumes: nothing.
@@ -416,7 +416,7 @@ Change item 2 of `## 9. Next steps` from describing the bake center-offset issue
 - [x] **Step 2: Commit**
 
 ```bash
-git add VIXEN/Vixen-Docs/01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07.md
+git add VIXEN/Vixen-Docs/_archive/2026-11/01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07.md
 git commit -m "docs(authoring): record Inc2a bake-center fix, document Inc2b panel/auto-fit follow-up
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
