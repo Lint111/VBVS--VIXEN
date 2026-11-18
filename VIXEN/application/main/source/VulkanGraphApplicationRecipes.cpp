@@ -36,6 +36,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <string_view>
 #include <typeindex>
 
 void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
@@ -880,16 +881,18 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     // A glyph or path leaf that the generated field cannot guard is walked at every field sample.
     // That is a cost the author can remove (intersect the leaf with a box that bounds it), so it is
     // reported with the recipe and the instruction, never silently paid.
-    if (mainLogger) mainLogger->Debug("[RecipeTrace] row-leaf analysis begin recipeId=" + std::to_string(recipeId));
     Vixen::SVO::Recipe::RecipeRowWalkingLeaves rowLeaves;
-    const bool skipRowLeafTrace = std::getenv("VIXEN_EDITOR_SKIP_RECIPE_ROW_LEAF_TRACE") != nullptr;
-    if (!skipRowLeafTrace) {
+    // This kernel query is diagnostic only: its result emits an author warning and is not read by
+    // shader generation or runtime dispatch. Keep it out of the editor's synchronous registration
+    // path unless recipe tracing was explicitly requested; a set consumer can require a bounded
+    // plan expansion that is unavailable to the reporting-only query and stall registration.
+    const char* recipeTrace = std::getenv("VIXEN_EDITOR_RECIPE_TRACE");
+    const bool traceRowWalking = recipeTrace != nullptr && std::string_view(recipeTrace) == "1";
+    if (traceRowWalking) {
+        if (mainLogger) mainLogger->Debug("[RecipeTrace] row-leaf analysis begin recipeId=" + std::to_string(recipeId));
         rowLeaves = Vixen::SVO::Recipe::RecipeGpuRowWalkingLeaves(entry.bytecode, entry.pathInstances);
-    } else if (mainLogger) {
-        mainLogger->Debug("[RecipeTrace] row-leaf analysis skipped by diagnostic override recipeId=" +
-                          std::to_string(recipeId));
+        if (mainLogger) mainLogger->Debug("[RecipeTrace] row-leaf analysis end recipeId=" + std::to_string(recipeId));
     }
-    if (mainLogger) mainLogger->Debug("[RecipeTrace] row-leaf analysis end recipeId=" + std::to_string(recipeId));
     if (rowLeaves.count != 0u && mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
                          std::to_string(recipeId) + " rowWalkingLeaves=" + std::to_string(rowLeaves.count) +
