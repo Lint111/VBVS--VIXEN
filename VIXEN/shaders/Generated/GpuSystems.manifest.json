@@ -1,6 +1,7 @@
 {
   "schema": "yeroket-gpu-system-manifest/v1",
   "stackHash": "28accb45516c468d",
+  "planHash": "c1a813cfed79c6886e42a68b56ceb428f9507a1ef55c75420379619ba39fbd18",
   "systems": [
     {
       "id": "core:TemporalAntiAliasingSystem",
@@ -158,6 +159,94 @@
       ]
     },
     {
+      "id": "core:ExposureTonemapSystem",
+      "class": "ExposureTonemapSystem",
+      "glsl": "ExposureTonemapSystem.comp",
+      "relaxed": false,
+      "axes": 2,
+      "localSize": [
+        8,
+        8,
+        1
+      ],
+      "extent": {
+        "source": "presentation",
+        "kind": "frame_targets",
+        "member": "ResolvedRadiance"
+      },
+      "push": {
+        "size": 8,
+        "fields": [
+          {
+            "name": "_ExtentX",
+            "offset": 0,
+            "size": 4,
+            "source": "extent"
+          },
+          {
+            "name": "_ExtentY",
+            "offset": 4,
+            "size": 4,
+            "source": "extent"
+          }
+        ]
+      },
+      "arguments": [
+        {
+          "name": "meter",
+          "kind": "Vixen.Codegen.Gpu.ExposureMeterState",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 2,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "LightingConfigSSBO",
+          "kind": "Vixen.Gpu.LightingConfig",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 3,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "resolvedRadiance_current",
+          "kind": "frame_targets",
+          "member": "ResolvedRadiance",
+          "form": "texture",
+          "access": "in",
+          "binding": 0,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
+          "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
+          "read": true,
+          "write": false,
+          "slot": "current",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "outputImage_current",
+          "kind": "frame_targets",
+          "member": "OutputImage",
+          "form": "texture",
+          "access": "ref",
+          "binding": 1,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
+          "format": "VK_FORMAT_R8G8B8A8_UNORM",
+          "read": false,
+          "write": true,
+          "slot": "current",
+          "layout": "VK_IMAGE_LAYOUT_GENERAL",
+          "accessKind": "ComputeStorageWrite"
+        }
+      ]
+    },
+    {
       "id": "core:TileBinPrepareSystem",
       "class": "TileBinPrepareSystem",
       "glsl": "TileBinPrepareSystem.comp",
@@ -249,94 +338,6 @@
           "slot": "previous",
           "layout": "VK_IMAGE_LAYOUT_GENERAL",
           "accessKind": "ComputeStorageRead"
-        }
-      ]
-    },
-    {
-      "id": "core:ExposureTonemapSystem",
-      "class": "ExposureTonemapSystem",
-      "glsl": "ExposureTonemapSystem.comp",
-      "relaxed": false,
-      "axes": 2,
-      "localSize": [
-        8,
-        8,
-        1
-      ],
-      "extent": {
-        "source": "presentation",
-        "kind": "frame_targets",
-        "member": "ResolvedRadiance"
-      },
-      "push": {
-        "size": 8,
-        "fields": [
-          {
-            "name": "_ExtentX",
-            "offset": 0,
-            "size": 4,
-            "source": "extent"
-          },
-          {
-            "name": "_ExtentY",
-            "offset": 4,
-            "size": 4,
-            "source": "extent"
-          }
-        ]
-      },
-      "arguments": [
-        {
-          "name": "meter",
-          "kind": "Vixen.Codegen.Gpu.ExposureMeterState",
-          "member": "*",
-          "form": "storage",
-          "access": "in",
-          "binding": 2,
-          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
-          "singleton": false,
-          "accessKind": "ComputeStorageRead"
-        },
-        {
-          "name": "LightingConfigSSBO",
-          "kind": "Vixen.Gpu.LightingConfig",
-          "member": "*",
-          "form": "storage",
-          "access": "in",
-          "binding": 3,
-          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
-          "singleton": false,
-          "accessKind": "ComputeStorageRead"
-        },
-        {
-          "name": "resolvedRadiance_current",
-          "kind": "frame_targets",
-          "member": "ResolvedRadiance",
-          "form": "texture",
-          "access": "in",
-          "binding": 0,
-          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
-          "format": "VK_FORMAT_R16G16B16A16_SFLOAT",
-          "read": true,
-          "write": false,
-          "slot": "current",
-          "layout": "VK_IMAGE_LAYOUT_GENERAL",
-          "accessKind": "ComputeStorageRead"
-        },
-        {
-          "name": "outputImage_current",
-          "kind": "frame_targets",
-          "member": "OutputImage",
-          "form": "texture",
-          "access": "ref",
-          "binding": 1,
-          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE",
-          "format": "VK_FORMAT_R8G8B8A8_UNORM",
-          "read": false,
-          "write": true,
-          "slot": "current",
-          "layout": "VK_IMAGE_LAYOUT_GENERAL",
-          "accessKind": "ComputeStorageWrite"
         }
       ]
     },
@@ -461,7 +462,7 @@
     {
       "before": "core:TileBinPrepareSystem",
       "after": "core:TileBinScatterSystem",
-      "resource": "InstanceOrder.$gpu-buffer",
+      "resource": "InstanceOrder.*",
       "image": false,
       "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
       "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
@@ -471,7 +472,7 @@
     {
       "before": "core:TileBinPrepareSystem",
       "after": "core:TileBinScatterSystem",
-      "resource": "TileRankWord.$gpu-buffer",
+      "resource": "TileRankWord.*",
       "image": false,
       "oldLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
       "newLayout": "VK_IMAGE_LAYOUT_UNDEFINED",
