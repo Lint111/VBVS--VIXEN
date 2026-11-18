@@ -159,6 +159,16 @@ ivec2 g_primaryTilePixel = ivec2(0);
 ivec2 g_primaryTileImageSize = ivec2(0);
 bool g_usePrimaryTileCandidates = false;
 
+// R860 RL0: the registry recipe instance instIdx evaluates this frame: its LOD band's variant
+// where the translation unit binds the band buffer (the march and the shadow wave), its own
+// recipe elsewhere. Legacy analytic recipes 0/1 have no ladder.
+uint instanceFieldRecipe(int instIdx, uint recipeId) {
+#ifdef VIXEN_INSTANCE_LOD_BANDS
+    if (recipeId >= 2u) return instanceBands[instIdx].variantRecipeId;
+#endif
+    return recipeId;
+}
+
 // ============================================================================
 // getOctreeTraceBounds - conservative allocated-brick AABB, in local [0,1]^3 space
 // ============================================================================
@@ -486,8 +496,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
             else {
+                const uint fieldRecipe = instanceFieldRecipe(instIdx, inst.recipeId);
                 vec3  boundCenter; float boundRadius; float relaxation;
-                getRecipeBoundSphere(inst.recipeId, boundCenter, boundRadius, relaxation);
+                getRecipeBoundSphere(fieldRecipe, boundCenter, boundRadius, relaxation);
 
                 // Front-to-back early-reject (Task 12): mirrors the ESVO branch's own
                 // entryTWorld > bestT discipline below — skip the march entirely when this
@@ -550,7 +561,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pNormal = normalize(-instDir);  // local-space normal; transformed after the march
 #ifdef VIXEN_UBER_RECIPE_MATERIAL
                     g_lastRecipeMaterialId = recipeMaterialAt(
-                        inst.recipeId, instOrigin + instDir * entryT, uberParams);
+                        fieldRecipe, instOrigin + instDir * entryT, uberParams);
 #endif
                 } else {
                     uint pSteps;
@@ -559,7 +570,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     // SSBO once here and pass it down as a plain argument — same convention
                     // the legacy recipeId<2 branch above already uses for pParams, not a
                     // re-index inside the emitted field-function bodies.
-                    pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
+                    pHit = traceRecipeChunks(fieldRecipe, boundCenter, boundRadius, relaxation,
                                              instOrigin, instDir, conservativeSdfStepScale,
                                              VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
                                              0.0, bestT / worldUnitsPerInstUnit, false,
@@ -1187,8 +1198,9 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
             else {
+                const uint fieldRecipe = instanceFieldRecipe(instIdx, inst.recipeId);
                 vec3  boundCenter; float boundRadius; float relaxation;
-                getRecipeBoundSphere(inst.recipeId, boundCenter, boundRadius, relaxation);
+                getRecipeBoundSphere(fieldRecipe, boundCenter, boundRadius, relaxation);
                 uint pSteps;
                 // Recipe-Parameterization M2 Task 6: same inst.recipeParams[] threading as
                 // TraceWorld's primary call site above.
@@ -1201,7 +1213,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                 // 1 mm guard below also rejected real occluders that close, such as the wall
                 // of an embossed glyph beside the shaded plaque pixel, which read as isolated
                 // lit pixels inside its cast shadow.
-                pHit = traceRecipeChunks(inst.recipeId, boundCenter, boundRadius, relaxation,
+                pHit = traceRecipeChunks(fieldRecipe, boundCenter, boundRadius, relaxation,
                                          instOrigin, instDir, conservativeSdfStepScale,
                                          VIXEN_QUERY_RAY_SIZE_COEF, uberParams,
                                          tmin / worldUnitsPerInstUnit,

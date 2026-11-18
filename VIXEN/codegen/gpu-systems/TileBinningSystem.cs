@@ -5,6 +5,7 @@
 using System;
 using System.Threading;
 using Undertow.Modding.Schema;
+using Vixen.Lod;
 using Undertow.Sim.Systems;
 using Yeroket.Util.KernelFramework;
 
@@ -63,6 +64,23 @@ public static class TileBinOps
         return nearDepth <= view.nearPlane ? view.nearPlane : nearDepth;
     }
 
+    // RL0 (R860): the LOD footprint q of a bound, SVO ComputeLodQ's measure: the world size of one
+    // pixel at the bound's nearest distance from the camera (centre distance minus radius, never
+    // negative) over the bound's diameter. It grows with distance; a zero radius selects the finest
+    // band. The distance is euclidean, so an instance beside or behind the camera keeps the band
+    // its distance gives (its shadows and GI read the same band).
+    [KernelCallable]
+    public static float LodQ(float centerX, float centerY, float centerZ, float radius, TileBinView view)
+    {
+        if (radius <= 0.0f) return 0.0f;
+        float vx = view.viewXx * centerX + view.viewXy * centerY + view.viewXz * centerZ + view.viewXw;
+        float vy = view.viewYx * centerX + view.viewYy * centerY + view.viewYz * centerZ + view.viewYw;
+        float vz = view.viewZx * centerX + view.viewZy * centerY + view.viewZz * centerZ + view.viewZw;
+        float distance = (float)Math.Sqrt(vx * vx + vy * vy + vz * vz) - radius;
+        if (distance <= 0.0f) return 0.0f;
+        return distance / (2.0f * radius * view.focalY);
+    }
+
     // Zero is the ViewDepth history clear value: nothing has written depth yet (the
     // first frame) or this configuration has no ViewDepth producer (no reconstruction
     // module, e.g. the look-dev captures). Such a tile occludes nothing; comparing
@@ -111,6 +129,11 @@ public static class TileBinOps
 [KernelSystem]
 public static class TileBinPrepareSystem
 {
+    // Rows of RecipeLodBand per ladder slot (LodSelection.h kMaxLodBands).
+    public const int LodBandsPerRecipe = 4;
+    // A band row's variantRecipeId when the band marches the instance's own recipe.
+    public const uint SelfRecipe = 0xFFFFFFFFu;
+
     [GaiaQuery]
     public static QuerySpec Instances() => Gaia.Query()
         .All<InstanceBound>()
@@ -118,7 +141,8 @@ public static class TileBinPrepareSystem
 
     [Update]
     public static void Run(in InstanceBound[] bounds, in TileBinView[] view,
-        in Texture2D<R32f> viewDepth, ref InstanceOrder[] order, ref TileRankWord[] words, int i)
+        in Texture2D<R32f> viewDepth, in InstanceRecipe[] recipes, in RecipeLodBand[] lodBands,
+        ref InstanceOrder[] order, ref TileRankWord[] words, ref InstanceBand[] bands, int i)
     {
         // Clear this frame's tile rank sets, word-parallel across the dispatch.
         int clearLanes = TileBinOps.GuaranteedInvocations(view[0]);
@@ -128,6 +152,20 @@ public static class TileBinPrepareSystem
             for (int word = i; word < wordCount; word += clearLanes) words[word].bits = 0u;
         }
         if (i >= view[0].instanceCount) return;
+        // RL0 (R860): the instance's LOD band, before the rank's capacity check so every instance
+        // gets one. Stateless: q from this frame's bound only, no history (R860.2). The rows are
+        // read through `instance`, not the dispatch index: the emitter hoists an `[i]` row read
+        // (and a plain alias of i) into main() for every invocation of the view-depth extent,
+        // past the end of the instance rows. i < instanceCount here, so the remainder is i.
+        int instance = i % view[0].instanceCount;
+        float q = TileBinOps.LodQ(bounds[instance].centerX, bounds[instance].centerY,
+            bounds[instance].centerZ, bounds[instance].radius, view[0]);
+        int bandRow = (int)recipes[instance].lodSlot * LodBandsPerRecipe;
+        uint band = LodBandCallables.SelectLodBand(q, lodBands[bandRow].maxQ, lodBands[bandRow + 1].maxQ,
+            lodBands[bandRow + 2].maxQ, (uint)LodBandsPerRecipe);
+        uint variant = lodBands[bandRow + (int)band].variantRecipeId;
+        bands[instance].band = band;
+        bands[instance].variantRecipeId = variant == SelfRecipe ? recipes[instance].recipeId : variant;
         // More instances than the rank words hold: nothing is ranked (the order buffer holds
         // wordCapacity * 32 entries) and the march falls back for every tile (R861.1).
         if (view[0].instanceCount > view[0].wordCapacity * TileBinOps.RankBits) return;

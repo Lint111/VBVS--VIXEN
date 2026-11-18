@@ -1,5 +1,7 @@
 #include "Recipe/LodSelection.h"
 
+#include "Generated/LodBand.g.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -75,11 +77,29 @@ LodValidationError ValidateLodLadder(std::span<const LodBand> ladder) noexcept {
 
 std::size_t SelectLodBand(std::span<const LodBand> ladder, float q) noexcept {
     if (ladder.empty()) return 0;
-    const float safeQ = SafeQ(q);
-    for (std::size_t i = 0; i < ladder.size(); ++i) {
-        if (safeQ < ladder[i].maxQ) return i;
-    }
-    return ladder.size() - 1;
+    // R860 RL0 / R619.1: the band choice is the generated face of the one kernel callable the GPU
+    // binning pass (TileBinPrepareSystem) inlines, so both pick the same band for the same q. A
+    // validated ladder has at most four bands and its last threshold is +infinity, never read.
+    const auto threshold = [&](std::size_t band) {
+        return band < ladder.size() ? ladder[band].maxQ : std::numeric_limits<float>::infinity();
+    };
+    const std::size_t bandCount = std::min(ladder.size(), kMaxLodBands);
+    return static_cast<std::size_t>(Vixen::Lod::SelectLodBand(
+        q, threshold(0), threshold(1), threshold(2), static_cast<uint32_t>(bandCount)));
+}
+
+float ShellSwitchQ(float certifiedError, float shellBoundRadius, float tolerancePx,
+                   float toleranceScale) noexcept {
+    const float infinity = std::numeric_limits<float>::infinity();
+    if (!(tolerancePx > 0.0f) || !(shellBoundRadius > 0.0f) || !(toleranceScale > 0.0f) ||
+        !IsFiniteFloat(shellBoundRadius) || IsNaNFloat(certifiedError))
+        return infinity;
+    const double exact = static_cast<double>(std::max(certifiedError, 0.0f)) /
+        (2.0 * static_cast<double>(shellBoundRadius) * static_cast<double>(tolerancePx) *
+         static_cast<double>(toleranceScale));
+    float threshold = static_cast<float>(exact);
+    if (static_cast<double>(threshold) < exact) threshold = std::nextafter(threshold, infinity);
+    return threshold;
 }
 
 std::size_t SelectLodBandForRegime(

@@ -170,12 +170,21 @@ public:
         // A recipe offsets a glyph farther than any bake of its font is exact (R892.19).
         // GlyphDiagnostic() names the row, the band needed and the fix.
         GlyphBandUnavailable,
+        // R860 RL0: the id is in the range the registry allocates to derived shells
+        // (kFirstDerivedShellKey and above); callers never choose a shell's key.
+        ReservedId,
     };
+
+    // R860 RL0: keys of derived shells. A shell's identity is its content digest (R841.2); the
+    // registry gives each distinct digest the next key from this range, so no caller picks a
+    // shell id and two recipes whose shells are the same tape share one registered shell.
+    static constexpr uint32_t kFirstDerivedShellKey = 0xFF000000u;
 
     // Why the last Register() returned GlyphBandUnavailable.
     [[nodiscard]] const std::string& GlyphDiagnostic() const noexcept { return glyphDiagnostic_; }
 
     RegisterResult Register(uint32_t recipeId, const RecipeEntry& entry) {
+        if (recipeId >= kFirstDerivedShellKey && !registeringDerivedShell_) return RegisterResult::ReservedId;
         if (entries_.count(recipeId)) return RegisterResult::DuplicateId;
         if (entry.bytecode.empty())   return RegisterResult::EmptyProgram;
         // "0 = engine default" — anything nonzero must be a valid conservative value.
@@ -308,15 +317,52 @@ public:
         if (!entries_.count(recipeId)) return RegisterResult::MissingId;
         RecipeRegistry candidate = *this;
         candidate.entries_.erase(recipeId);
+        // R860 RL0: the shells were derived from the replaced program; the recipe marches itself
+        // until its new shells are registered.
+        candidate.shellVariants_.erase(recipeId);
         const RegisterResult result = candidate.Register(recipeId, entry);
         if (result != RegisterResult::Ok) return result;
         *this = std::move(candidate);
         return RegisterResult::Ok;
     }
 
+    // R860 RL0: registers one derived shell under the key of its content digest: the existing key
+    // when the digest is already registered, else the next key of the derived range. `key` is set
+    // on Ok. The entry is a complete recipe (its own bound and grid, analysed by the caller).
+    RegisterResult RegisterDerivedShell(const std::string& contentDigest, const RecipeEntry& entry,
+                                        uint32_t& key) {
+        if (contentDigest.empty()) return RegisterResult::MissingId;
+        if (const auto found = derivedShellKeys_.find(contentDigest); found != derivedShellKeys_.end()) {
+            key = found->second;
+            return RegisterResult::Ok;
+        }
+        if (nextDerivedShellKey_ == 0xFFFFFFFFu) return RegisterResult::ReservedId;
+        registeringDerivedShell_ = true;
+        const RegisterResult result = Register(nextDerivedShellKey_, entry);
+        registeringDerivedShell_ = false;
+        if (result != RegisterResult::Ok) return result;
+        key = nextDerivedShellKey_++;
+        derivedShellKeys_.emplace(contentDigest, key);
+        return RegisterResult::Ok;
+    }
+
+    // R860 RL0: the registered keys of a recipe's derived shells, in RecipeEntry::derivedShells
+    // order (finest first). The band table turns them into the recipe's per-instance ladder.
+    void SetShellVariants(uint32_t recipeId, std::vector<uint32_t> keys) {
+        shellVariants_[recipeId] = std::move(keys);
+        ++generation_;
+    }
+    [[nodiscard]] const std::vector<uint32_t>* ShellVariants(uint32_t recipeId) const {
+        const auto found = shellVariants_.find(recipeId);
+        return found == shellVariants_.end() ? nullptr : &found->second;
+    }
+
     // Drops every entry. The generation still advances so cached snapshots keyed on it are invalidated.
     void Clear() {
         entries_.clear();
+        derivedShellKeys_.clear();
+        shellVariants_.clear();
+        nextDerivedShellKey_ = kFirstDerivedShellKey;
         glyphOutlineBlob_.clear();
         glyphOutlineHashBuckets_.clear();
         glyphBakedBlob_.clear();
@@ -573,6 +619,10 @@ private:
     }
 
     std::map<uint32_t, RecipeEntry> entries_;
+    std::map<std::string, uint32_t> derivedShellKeys_;          // content digest -> key
+    std::map<uint32_t, std::vector<uint32_t>> shellVariants_;   // recipe id -> shell keys
+    uint32_t nextDerivedShellKey_ = kFirstDerivedShellKey;
+    bool registeringDerivedShell_ = false;
 };
 
 } // namespace Vixen::SVO

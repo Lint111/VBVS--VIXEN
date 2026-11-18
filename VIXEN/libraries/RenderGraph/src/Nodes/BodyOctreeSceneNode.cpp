@@ -728,6 +728,18 @@ void BodyOctreeSceneNode::SetRecipeBoundSpheres(RecipeBoundSpheres spheres) {
     recipeBoundSpheres_ = std::move(spheres);
 }
 
+void BodyOctreeSceneNode::SetRecipeLodBands(RecipeLodBandTable table) {
+    const auto sameRow = [](const Vixen::Codegen::Gpu::RecipeLodBand& a, const Vixen::Codegen::Gpu::RecipeLodBand& b) {
+        return std::memcmp(&a, &b, sizeof(a)) == 0;
+    };
+    if (table.slotByRecipe == recipeLodBands_.slotByRecipe &&
+        std::equal(table.rows.begin(), table.rows.end(), recipeLodBands_.rows.begin(),
+                   recipeLodBands_.rows.end(), sameRow))
+        return;
+    recipeLodBands_ = std::move(table);
+    ++recipeLodBandGeneration_;
+}
+
 const Vixen::SVO::EmitterTable& BodyOctreeSceneNode::GetEmitterTable() {
     if (emitterTableDirty_ || emitterTableMipData_ != concatenated_.mipPool.data() ||
         emitterTableMipSize_ != concatenated_.mipPool.size()) {
@@ -871,6 +883,9 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
         EnsureBoundsAllocated(devicePtr,
             std::max<VkDeviceSize>(instanceCount_ * sizeof(Vixen::Codegen::Gpu::InstanceBound),
                                    sizeof(Vixen::Codegen::Gpu::InstanceBound)));
+        EnsureLodBandTableAllocated(devicePtr, std::max<VkDeviceSize>(
+            recipeLodBands_.rows.size() * sizeof(Vixen::Codegen::Gpu::RecipeLodBand),
+            kLodBandsPerRecipe * sizeof(Vixen::Codegen::Gpu::RecipeLodBand)));
     }
 
     // 4) Publish outputs. Both stream handles start at ring slot 0;
@@ -882,6 +897,9 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,    materialPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,   transformPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER, boundPerFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_RECIPE_BUFFER, recipePerFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_LOD_BAND_BUFFER, lodBandTablePerFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER, bandPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_MOTION_BUFFER,
             motionGuidesEnabled_ ? motionPerFrame_.GetUniformBuffer(0) : VkBuffer(VK_NULL_HANDLE));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,              instanceCount_);
@@ -1089,6 +1107,39 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BOUND_BUFFER,
             boundPerFrame_.GetUniformBuffer(frameIndex));
+
+    // R860 RL0: the base recipe id and its ladder slot beside each bound, and the band table the
+    // binning pass indexes by the slot (slot 0, the one-band ladder, for every recipe without one).
+    static const bool reportLodBands = Vixen::Core::Env::Enabled("VIXEN_LOD_BAND_STATS");
+    if (reportLodBands) ReportLodBands(frameIndex);
+    if (recipeLodBands_.rows.empty()) AppendRecipeLodBandRows(recipeLodBands_.rows, {});
+    if (auto* recipeMapped = static_cast<Vixen::Codegen::Gpu::InstanceRecipe*>(
+            recipePerFrame_.GetUniformBufferMapped(frameIndex))) {
+        const size_t rows = std::min<size_t>(instances_.size(),
+            boundRingCapacity_ / sizeof(Vixen::Codegen::Gpu::InstanceBound));
+        const bool anyLadder = !recipeLodBands_.slotByRecipe.empty();
+        for (size_t i = 0; i < rows; ++i) {
+            const uint32_t recipeId = instances_[i].material.recipeId;
+            recipeMapped[i].recipeId = recipeId;
+            recipeMapped[i].lodSlot = anyLadder ? recipeLodBands_.SlotOf(recipeId) : 0u;
+        }
+        VIXEN_LEDGER_WRITTEN(recipeMapped, rows * sizeof(*recipeMapped));
+    }
+    const VkDeviceSize tableBytes = recipeLodBands_.rows.size() * sizeof(Vixen::Codegen::Gpu::RecipeLodBand);
+    if (tableBytes > lodBandTableCapacity_)
+        EnsureLodBandTableAllocated(GetDevice(), tableBytes);
+    if (frameIndex < lodBandTableSlotGeneration_.size() &&
+        lodBandTableSlotGeneration_[frameIndex] != recipeLodBandGeneration_) {
+        if (void* tableMapped = lodBandTablePerFrame_.GetUniformBufferMapped(frameIndex)) {
+            std::memcpy(tableMapped, recipeLodBands_.rows.data(), static_cast<size_t>(tableBytes));
+            VIXEN_LEDGER_WRITTEN(tableMapped, static_cast<size_t>(tableBytes));
+            lodBandTableSlotGeneration_[frameIndex] = recipeLodBandGeneration_;
+        }
+    }
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_RECIPE_BUFFER, recipePerFrame_.GetUniformBuffer(frameIndex));
+    ctx.Out(BodyOctreeSceneNodeConfig::RECIPE_LOD_BAND_BUFFER,
+            lodBandTablePerFrame_.GetUniformBuffer(frameIndex));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER, bandPerFrame_.GetUniformBuffer(frameIndex));
 
     // Clamp to the smaller stream capacity so no consumer can read a partial record.
     const int32_t transformCount = static_cast<int32_t>(
@@ -1846,10 +1897,62 @@ void BodyOctreeSceneNode::EnsureBoundsAllocated(VulkanDevice* device, VkDeviceSi
         boundRingCapacity_ = 0;
     }
     boundPerFrame_.Initialize(device, kRingSize);
+    // R860 RL0: InstanceRecipe and InstanceBand rows per instance at the bound ring's capacity.
+    const VkDeviceSize instanceRows = capacity / sizeof(Vixen::Codegen::Gpu::InstanceBound);
+    recipePerFrame_.Cleanup();
+    bandPerFrame_.Cleanup();
+    recipePerFrame_.Initialize(device, kRingSize);
+    bandPerFrame_.Initialize(device, kRingSize);
     for (uint32_t i = 0; i < kRingSize; ++i) {
         boundPerFrame_.CreateStorageBuffer(i, capacity);
+        recipePerFrame_.CreateStorageBuffer(i, instanceRows * sizeof(Vixen::Codegen::Gpu::InstanceRecipe));
+        bandPerFrame_.CreateStorageBuffer(i, instanceRows * sizeof(Vixen::Codegen::Gpu::InstanceBand));
     }
     boundRingCapacity_ = capacity;
+    lastReportedBands_.clear();
+}
+
+void BodyOctreeSceneNode::EnsureLodBandTableAllocated(VulkanDevice* device, VkDeviceSize capacity) {
+    if (lodBandTablePerFrame_.IsInitialized() && capacity <= lodBandTableCapacity_) return;
+    if (lodBandTablePerFrame_.IsInitialized()) {
+        vkDeviceWaitIdle(device->device);
+        lodBandTablePerFrame_.Cleanup();
+    }
+    lodBandTablePerFrame_.Initialize(device, kRingSize);
+    for (uint32_t i = 0; i < kRingSize; ++i) lodBandTablePerFrame_.CreateStorageBuffer(i, capacity);
+    lodBandTableCapacity_ = capacity;
+    lodBandTableSlotGeneration_.assign(kRingSize, 0u);
+}
+
+void BodyOctreeSceneNode::ReportLodBands(uint32_t frameIndex) {
+    // The slot's previous frame has completed (the ring is writable), so its bands are final.
+    const auto* bands = static_cast<const Vixen::Codegen::Gpu::InstanceBand*>(
+        bandPerFrame_.GetUniformBufferMapped(frameIndex));
+    const size_t rows = std::min<size_t>(instances_.size(),
+        boundRingCapacity_ / sizeof(Vixen::Codegen::Gpu::InstanceBound));
+    ++lodBandReportFrame_;
+    if (bands == nullptr || lodBandReportFrame_ <= kRingSize) {
+        lastReportedBands_.assign(rows, ~0u);
+        return;
+    }
+    uint32_t histogram[kLodBandsPerRecipe] = {};
+    uint32_t changed = 0;
+    uint32_t firstChanged = ~0u;
+    lastReportedBands_.resize(rows, ~0u);
+    for (size_t i = 0; i < rows; ++i) {
+        const uint32_t band = std::min(bands[i].band, kLodBandsPerRecipe - 1u);
+        ++histogram[band];
+        if (lastReportedBands_[i] != ~0u && lastReportedBands_[i] != band) {
+            ++changed;
+            if (firstChanged == ~0u) firstChanged = static_cast<uint32_t>(i);
+        }
+        lastReportedBands_[i] = band;
+    }
+    // stdout: the load scenario's run log keeps it (node logs do not reach it).
+    std::printf("[LOD_BANDS] report=%llu instances=%zu bands=%u/%u/%u/%u changed=%u first=%d\n",
+                static_cast<unsigned long long>(lodBandReportFrame_), rows, histogram[0], histogram[1],
+                histogram[2], histogram[3], changed, changed ? static_cast<int>(firstChanged) : -1);
+    std::fflush(stdout);
 }
 
 void BodyOctreeSceneNode::Rematerialize(
@@ -3031,6 +3134,12 @@ void BodyOctreeSceneNode::DestroyBuffers() {
     materialPerFrame_.Cleanup();
     motionPerFrame_.Cleanup();
     boundPerFrame_.Cleanup();
+    recipePerFrame_.Cleanup();
+    bandPerFrame_.Cleanup();
+    lodBandTablePerFrame_.Cleanup();
+    lodBandTableCapacity_ = 0;
+    lodBandTableSlotGeneration_.clear();
+    lastReportedBands_.clear();
     motionRingCapacity_ = 0;
     transformRingCapacity_ = 0;
     materialRingCapacity_ = 0;

@@ -1200,6 +1200,16 @@ layout(std430, binding = VXB_InstanceOrderBuffer) readonly buffer InstanceOrderB
 };
 #endif
 
+#ifdef VIXEN_INSTANCE_LOD_BANDS
+// R860 RL0: the LOD band the generated tile prepare pass chose for each instance this frame and
+// the recipe it marches (the recipe itself unless the band is a variant/shell). Stateless per
+// frame; the camera ray and the shadow wave read the same entry (R860.2).
+#include "Generated/InstanceBand.glsl"
+layout(std430, binding = VXB_InstanceBandBuffer) readonly buffer InstanceBandBuffer {
+    InstanceBand instanceBands[];
+};
+#endif
+
 vec3 instanceTransformPoint(vec4 rows[3], vec3 p) {
     vec4 hp = vec4(p, 1.0);
     return vec3(dot(rows[0], hp), dot(rows[1], hp), dot(rows[2], hp));

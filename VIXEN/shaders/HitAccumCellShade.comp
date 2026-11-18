@@ -54,6 +54,11 @@ layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridB
 #include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
+// R860 RL0 (R860.2): this pass's rays march the same LOD band as the camera ray. Fixtures that bind
+// their own descriptors and run no tile pass opt out with the GB1 test switch.
+#ifndef VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES
+#define VIXEN_INSTANCE_LOD_BANDS
+#endif
 #include "SceneBindings.glsl"   // scene SSBOs + TraceWorldShadow (the wave's own set)
 
 #include "Generated/LightingConfig.glsl"
@@ -130,10 +135,12 @@ void main() {
             bool haveField = false;
 #ifdef VIXEN_UBER_RECIPE_SPLICED
             if (inst.recipeId >= 2u) {
+                // R860.2: the cell's normal comes from the band the camera marched for this instance.
+                const uint fieldRecipe = instanceFieldRecipe(int(rep), inst.recipeId);
                 g = vec3(
-                    evalRecipeField(inst.recipeId, p + e.xyy, inst.recipeParams) - evalRecipeField(inst.recipeId, p - e.xyy, inst.recipeParams),
-                    evalRecipeField(inst.recipeId, p + e.yxy, inst.recipeParams) - evalRecipeField(inst.recipeId, p - e.yxy, inst.recipeParams),
-                    evalRecipeField(inst.recipeId, p + e.yyx, inst.recipeParams) - evalRecipeField(inst.recipeId, p - e.yyx, inst.recipeParams));
+                    evalRecipeField(fieldRecipe, p + e.xyy, inst.recipeParams) - evalRecipeField(fieldRecipe, p - e.xyy, inst.recipeParams),
+                    evalRecipeField(fieldRecipe, p + e.yxy, inst.recipeParams) - evalRecipeField(fieldRecipe, p - e.yxy, inst.recipeParams),
+                    evalRecipeField(fieldRecipe, p + e.yyx, inst.recipeParams) - evalRecipeField(fieldRecipe, p - e.yyx, inst.recipeParams));
                 haveField = true;
             }
 #endif

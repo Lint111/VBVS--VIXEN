@@ -201,6 +201,7 @@ namespace ExposureReferenceSdi = ShaderInterface::ExposureTonemapReference;
 #include "Generated/TileBinView.g.h"
 #include "Generated/TileRankWord.g.h"
 #include "Generated/InstanceOrder.g.h"
+#include "Nodes/RecipeLodBandTable.h"  // R860 RL0: per-recipe LOD band rows
 #include "Generated/TileBinStats.g.h"
 #include "Nodes/MultiDispatchNode.h"  // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
 #include "Nodes/TileBinViewProjection.h"  // GB1 rank-word capacity (kTileRankWordCapacity)
@@ -284,7 +285,9 @@ std::string SceneCostQualityProfile(const VulkanGraphApplication::RenderPathConf
         ";aa=" + std::string(config.antiAliasing) +
         ";history=" + std::to_string(config.antiAliasingHistoryWeight) +
         ";jitter=" + std::to_string(config.temporalJitter ? 1 : 0) +
-        ";sampling=" + std::to_string(static_cast<int>(config.samplingPath));
+        ";sampling=" + std::to_string(static_cast<int>(config.samplingPath)) +
+        // R860 RL0: shells change per-pass cost; the exact preset keeps its existing identity.
+        (config.shellTolerancePx > 0.0f ? ";shell=" + std::to_string(config.shellTolerancePx) : std::string{});
 }
 
 // Dynamic exposure config: the built-in scenes are the default SceneLook, so they contribute it as the
@@ -2132,6 +2135,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // GB1: the tile scatter bins each body by the bound sphere this splice bakes.
                 bodyScene->SetRecipeBoundSpheres(
                     Vixen::RenderGraph::CollectRecipeBoundSpheres(proceduralRecipes_));
+                // R860 RL0: the band table names only recipes this splice evaluates.
+                bodyScene->SetRecipeLodBands(Vixen::RenderGraph::BuildRecipeLodBandTable(
+                    proceduralRecipes_, renderPathConfig_.shellTolerancePx));
             }
 
             // Round 11 (far-field dispatch attribution): tag this shader as the
@@ -3255,16 +3261,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
     // GB1: BodyInstanceRayMarch reads {rank words, order} (and the host-written view record);
     // the generated tile systems register the matching writes in GeneratedSystemStage.
-    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(tileBinReadGatherer))->PreRegisterBufferSlots(2);
+    // R860 RL0: plus the per-instance LOD band the tile prepare pass writes.
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(tileBinReadGatherer))->PreRegisterBufferSlots(3);
     // SpatialReuseShade reads HitRecordBuffer plus, in the optional cell-resolve path,
     // {cellRadiance, hitAccumTable}. One gatherer feeds the stage's single BUFFER_READ_ARRAY.
+    // R860 RL0 (R860.2): plus the per-instance LOD band its shadow rays march, last.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReadGatherer))
-        ->PreRegisterBufferSlots(hitAccumResolveEnabled ? 3u : 1u);
+        ->PreRegisterBufferSlots(hitAccumResolveEnabled ? 4u : 2u);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReservoirWriteGatherer))->PreRegisterBufferSlots(2);
     // W1a: gather writes {requests, payloads}; wave reads {requests} writes {results};
     // apply reads {results, payloads}.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(probeGatherWriteGatherer))->PreRegisterBufferSlots(2);
-    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowRayTraceReadGatherer))->PreRegisterBufferSlots(1);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowRayTraceReadGatherer))->PreRegisterBufferSlots(2);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowRayTraceWriteGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(probeApplyReadGatherer))->PreRegisterBufferSlots(2);
     // W1b: the shadow wave reads {hitRecordBuffer} and writes {hitRecordBuffer}
@@ -3274,7 +3282,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // provider registration below), matching the buffer's own always-created, only-
     // exercised-under-VIXEN_POLICY_STENCIL_TILES no-op-when-idle shape (E11-T1 §7) — a
     // baked barrier on a buffer neither side touches this frame costs nothing observable.
-    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(2);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(3);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveWriteGatherer))->PreRegisterBufferSlots(1);
     // KI-052 fix (E12-T1): march-side write gatherer, 1 entry (policyStencilTileBuffer only
     // — HitRecordBuffer keeps using computeDispatch's original singular BUFFER_WRITE slot,
@@ -3304,7 +3312,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the shade's fold reads {cellRadiance, table} via SRS's first buffer
     // read gatherer (records were already its own).
     if (hitAccumResolveEnabled) {
-        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumCellShadeReadGatherer))->PreRegisterBufferSlots(1);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumCellShadeReadGatherer))->PreRegisterBufferSlots(2);
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumCellShadeWriteGatherer))->PreRegisterBufferSlots(1);
     }
     // W2a (reservoir path opt-in): gather reads {reservoirA, reservoirB,
@@ -4571,6 +4579,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     sceneProviders.Provide("InstanceOrderBuffer", tileBinOrderBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+    // R860 RL0: the band (variant recipe) each instance marches this frame; declared by the march
+    // and the shadow wave (VIXEN_INSTANCE_LOD_BANDS), written by the generated tile prepare pass.
+    sceneProviders.Provide("InstanceBandBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER, kSceneRoles);
     sceneProviders.Provide("ChannelPoolBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, kSceneRoles);
     sceneProviders.Provide("BrickLookupBuffer", bodyOctreeSceneNode,
@@ -5233,6 +5245,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
         resources.Provide({"Vixen.Codegen.Gpu.TileBinStats", "*"}, tileBinStatsBuffer,
                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+        // R860 RL0: the scene owns the instance recipe ids, the band table and the chosen bands.
+        resources.Provide({"instance_recipe", "*"}, bodyOctreeSceneNode,
+                          BodyOctreeSceneNodeConfig::INSTANCE_RECIPE_BUFFER, kSceneRoles);
+        resources.Provide({"recipe_lod_band", "*"}, bodyOctreeSceneNode,
+                          BodyOctreeSceneNodeConfig::RECIPE_LOD_BAND_BUFFER, kSceneRoles);
+        resources.Provide({"instance_band", "*"}, bodyOctreeSceneNode,
+                          BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER, kSceneRoles);
+        resources.ProvideProducer({"instance_recipe", "*"}, bodyOctreeSceneNode);
+        resources.ProvideProducer({"recipe_lod_band", "*"}, bodyOctreeSceneNode);
         resources.ProvideProducer({"Vixen.Codegen.Gpu.InstanceBound", "*"}, bodyOctreeSceneNode);
         resources.ProvideProducer({"Vixen.Codegen.Gpu.TileBinView", "*"}, tileBinViewNode);
         resources.ProvideExtent("presentation", 0, renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
@@ -5762,6 +5783,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   tileBinReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(tileBinOrderBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                   tileBinReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER,
+                  tileBinReadGatherer, 2, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(tileBinReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::BUFFER_READ_ARRAY,
                   SlotRoleModifier(SlotRole::Execute));
@@ -5786,6 +5809,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // gatherer gives FrameSyncScheduler the same Resource* as the march and wave gatherers.
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                   spatialReuseReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // R860 RL0 (R860.2): the shade's direct-light shadow rays march the instance's band.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER,
+                  spatialReuseReadGatherer, hitAccumResolveEnabled ? 3u : 1u,
+                  SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(spatialReuseReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   spatialReuseNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
@@ -6219,6 +6246,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // ahead on the shared Resource*; writes {cellRadiance}.
         batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                       hitAccumCellShadeReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER,
+                      hitAccumCellShadeReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(hitAccumCellShadeReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                       hitAccumCellShadeNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
         batch.Connect(hitAccumCellRadianceBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
@@ -6264,6 +6293,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   probeGatherNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
     batch.Connect(shadowRayRequestBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                   shadowRayTraceReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER,
+                  shadowRayTraceReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(shadowRayTraceReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   shadowRayTraceNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
     batch.Connect(shadowRayResultBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
@@ -6391,6 +6422,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // wave's read and FrameSyncScheduler bakes the previously-missing SyncEdge.
     batch.Connect(policyStencilTileBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                   shadowVisibilityWaveReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // R860 RL0 (R860.2): the wave's shadow rays march the same band as the camera ray.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BAND_BUFFER,
+                  shadowVisibilityWaveReadGatherer, 2, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(shadowVisibilityWaveReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   shadowVisibilityWaveNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,

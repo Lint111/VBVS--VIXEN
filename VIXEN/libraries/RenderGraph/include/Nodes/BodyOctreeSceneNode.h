@@ -18,6 +18,10 @@
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "RecipeEmitterTable.h" // R502.2: Vixen::SVO::{EmitterTable, RecipeEmitterShapes}
 #include "Generated/InstanceBound.g.h"
+#include "Generated/InstanceBand.g.h"
+#include "Generated/InstanceRecipe.g.h"
+#include "Generated/RecipeLodBand.g.h"
+#include "Nodes/RecipeLodBandTable.h"
 #include "Nodes/InstanceBoundDerivation.h"
 #include "WholesaleAvailability.h"
 #include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
@@ -250,6 +254,14 @@ public:
     void SetRecipeBoundSpheres(RecipeBoundSpheres spheres);
 
     /**
+     * @brief R860 RL0: the LOD band table (four rows per ladder slot and each recipe's slot, built
+     * from the registry ladders and the preset's shell tolerance, RecipeLodBandTable.h). Called
+     * from the same shader-splice callback as SetRecipeBoundSpheres, so every variant recipe a row
+     * names is one the current march shader evaluates. Uploaded once per ring slot when it changes.
+     */
+    void SetRecipeLodBands(RecipeLodBandTable table);
+
+    /**
      * @brief R502.2 — recipe + sparse emitter CDFs and EmitterTotals for the CURRENT instance
      * list and octree pool. Rebuilt lazily when instances, shapes or the mip stream change.
      */
@@ -395,6 +407,10 @@ private:
                              VkDeviceSize materialCapacity);           // allocate/grow both instance rings
     void EnsureBoundsAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
                                VkDeviceSize capacity);
+    void EnsureLodBandTableAllocated(Vixen::Vulkan::Resources::VulkanDevice* device, VkDeviceSize capacity);
+    // R860 RL0 measurement (VIXEN_LOD_BAND_STATS=1): reads the bands the GPU chose for the frame
+    // that last used this ring slot and prints the band histogram and the instances that changed.
+    void ReportLodBands(uint32_t frameIndex);
     void RefreshInstanceStreams();
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
@@ -560,6 +576,8 @@ private:
     // the concatenated mip stream it read the sparse power lanes from has been replaced.
     Vixen::SVO::RecipeEmitterShapes emitterShapes_;
     RecipeBoundSpheres              recipeBoundSpheres_;  // GB1 InstanceBound source
+    RecipeLodBandTable              recipeLodBands_;      // RL0 band table rows + recipe slots
+    uint64_t                        recipeLodBandGeneration_ = 1;
     Vixen::SVO::EmitterTable        emitterTable_;
     std::vector<float>              publishedEmitterRootPowers_;
     bool                            emitterTableDirty_ = true;
@@ -682,6 +700,15 @@ private:
     PerFrameResources materialPerFrame_;
     PerFrameResources motionPerFrame_;
     PerFrameResources boundPerFrame_;
+    // R860 RL0: InstanceRecipe and InstanceBand share the bound ring's instance capacity; the band
+    // table ring re-uploads a slot only when its generation is older than the table's.
+    PerFrameResources recipePerFrame_;
+    PerFrameResources bandPerFrame_;
+    PerFrameResources lodBandTablePerFrame_;
+    std::vector<uint64_t> lodBandTableSlotGeneration_;
+    VkDeviceSize lodBandTableCapacity_ = 0;
+    std::vector<uint32_t> lastReportedBands_;
+    uint64_t lodBandReportFrame_ = 0;
     std::vector<bool> materialDirty_;
     // Per ring slot: material rows [first, second) still to upload when the slot is not
     // wholly dirty. Empty when first >= second.
