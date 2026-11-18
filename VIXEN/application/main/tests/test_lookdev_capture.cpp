@@ -1855,11 +1855,18 @@ public:
             const float orbitCenterX = orbitCenter.x;
             const float orbitCenterY = orbitCenter.y;
             const float orbitCenterZ = orbitCenter.z;
-            const float orbitDistance = framedScene
+            // VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE=k moves the camera k times farther along the same
+            // line of sight (far-view witnesses of LOD shells, R892.23); CameraNode clamps the result.
+            float distanceScale = 1.0f;
+            if (const char* scaleText = std::getenv("VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE")) {
+                const float parsed = std::strtof(scaleText, nullptr);
+                if (std::isfinite(parsed) && parsed > 0.0f) distanceScale = parsed;
+            }
+            const float orbitDistance = distanceScale * (framedScene
                 ? (recipePreview
                     ? recipeFrame.distance
                     : FitOrbitDistance(glyphScene, GetWindowAspect()))
-                : 14.0f;
+                : 14.0f);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
@@ -2877,7 +2884,37 @@ private:
                 << record.worldPos.y << ',' << record.worldPos.z << ") normal=(" << record.worldNormal.x << ','
                 << record.worldNormal.y << ',' << record.worldNormal.z << ")\n";
             Body body;
-            if ((record.flags & 1U) == 0U || !bodyOf(record.pad0[0], body)) {
+            if ((record.flags & 1U) == 0U) {
+                // A pixel without a hit: replay the camera ray against every registry instance and
+                // say how each march ended (a hole in a solid shows here as a march that left its
+                // interval or used its budget).
+                for (std::uint32_t index = 0; index < instances.size(); ++index) {
+                    Body candidate;
+                    if (!bodyOf(index, candidate)) continue;
+                    const RecipeMarchReplay missed = replayPrimary(candidate, px, py);
+                    out << "  no hit recorded; cpu primary against instance " << index << ": " << exitName(missed.exit)
+                        << " steps=" << missed.samples.size() << " interval(local)=[" << missed.tNear << ',' << missed.tEnd
+                        << "] bound=(" << candidate.entry->boundCenter.x << ',' << candidate.entry->boundCenter.y << ','
+                        << candidate.entry->boundCenter.z << ") r=" << candidate.entry->boundRadius << " grid="
+                        << candidate.entry->occupancyGridDim << '\n';
+                    const std::size_t from = missed.samples.size() > 12 ? missed.samples.size() - 12 : 0;
+                    for (std::size_t i = from; i < missed.samples.size(); ++i)
+                        out << "    primary sample " << i << " t(local)=" << missed.samples[i].t << " d=" << missed.samples[i].d
+                            << " step=" << missed.samples[i].step << '\n';
+                    // The field along the ray, independent of the march.
+                    const glm::vec3 origin = (camera.cameraPos - candidate.translation) / candidate.scale;
+                    const glm::vec3 direction = cameraRay(static_cast<float>(px) + 0.5f, static_cast<float>(py) + 0.5f);
+                    auto field = fieldOf(candidate);
+                    double least = 1e30, leastT = 0.0;
+                    for (double t = missed.tNear; t <= missed.tEnd; t += 1e-3) {
+                        const float d = field(origin + direction * static_cast<float>(t));
+                        if (d < least) { least = d; leastT = t; }
+                    }
+                    out << "    scan: least field value " << least << " at t(local)=" << leastT << '\n';
+                }
+                continue;
+            }
+            if (!bodyOf(record.pad0[0], body)) {
                 out << "  not a registry recipe hit on an axis-aligned uniform instance: no replay\n";
                 continue;
             }
@@ -3568,7 +3605,9 @@ TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
-    if (std::getenv("VIXEN_GLYPHSDF_TEXT_INVARIANT")) {
+    // The invariant expects readable glyphs at the framed distance: not a far view, not a shell.
+    if (std::getenv("VIXEN_GLYPHSDF_TEXT_INVARIANT") && !std::getenv("VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE") &&
+        !std::getenv("VIXEN_RECIPE_FORCE_SHELL_LEVEL")) {
         ASSERT_TRUE(ValidateGlyphTextInvariant(
             outputDir / scenarios.front().filename, std::getenv("VIXEN_GLYPHSDF_RTL_PROOF") != nullptr, error))
             << error;

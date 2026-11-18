@@ -118,6 +118,26 @@ public:
         std::vector<Recipe::GlyphBakedRow> glyphBakedRows;
         // PathDistance indexes one complete PathInstance row the same way.
         std::vector<Yeroket::Sdf::Kernels::PathInstance> pathInstances;
+
+        // R860 / R892.23: the certified simpler tapes of this recipe (shells), finest first, as
+        // the kernel analysis derived them at registration (RecipeServices). A shell's surface
+        // stays within certifiedError (recipe units) of the recipe's; a glyph row leaves a shell
+        // when its leaf carries its inside distance (StampGlyphInsideDistances); a row that
+        // cuts through its ground never leaves (R892.27). The switch threshold is
+        // certifiedError / (2 * derivedShellBoundRadius * tolerance in pixels * toleranceScale)
+        // in units of q, the pixel footprint over the bound diameter (R860.7); nothing selects
+        // a shell per instance yet (lane RL0), so these are data until then.
+        struct DerivedShell {
+            std::vector<Recipe::SdfInstruction> bytecode;
+            float certifiedError = 0.0f;
+            std::uint32_t rules = 0;       // YK_RECIPE_ANALYSIS_RULE_*
+            std::uint32_t certificate = 0; // YK_RECIPE_ANALYSIS_CERTIFICATE_*
+            // The fraction of the pixel tolerance at which this shell switches: 0.4 for a shell
+            // that dropped a text row (R892.28), else 1.
+            float toleranceScale = 1.0f;
+        };
+        std::vector<DerivedShell> derivedShells;
+        float derivedShellBoundRadius = 0.0f;
     };
 
     enum class RegisterResult {

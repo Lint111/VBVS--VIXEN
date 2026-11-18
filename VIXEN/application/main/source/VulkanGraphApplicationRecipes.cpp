@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -742,7 +743,24 @@ Vixen::SVO::Recipe::RecipeRegistrationOptions RegistrationOptionsFor(
     Vixen::SVO::Recipe::RecipeRegistrationOptions options;
     options.preferDerivedBound = entry.boundRadius > 0.0f && !hasRuntimeParameters;
     options.occupancy = !hasRuntimeParameters;
+    // R892.23: a recipe with baked glyph rows gets its certified shells derived and stored with the
+    // entry (the glyph rows leave the coarse shell). Other recipes keep today's registration cost
+    // until a lane selects shells per instance (RL0).
+    options.shells = !hasRuntimeParameters &&
+        std::any_of(entry.glyphBakedRows.begin(), entry.glyphBakedRows.end(),
+                    [](const Vixen::SVO::Recipe::GlyphBakedRow& row) { return row.Baked(); });
     return options;
+}
+
+// Test switch (R892.23 witness; nothing selects a shell per instance yet): VIXEN_RECIPE_FORCE_SHELL_LEVEL=n
+// renders every recipe that has at least n derived shells from its shell n (1 = finest) instead of
+// its own tape. 0, unset or unparsable: off.
+std::uint32_t ForcedShellLevel() {
+    const char* text = std::getenv("VIXEN_RECIPE_FORCE_SHELL_LEVEL");
+    if (text == nullptr) return 0u;
+    char* end = nullptr;
+    const unsigned long level = std::strtoul(text, &end, 10);
+    return end != text && *end == '\0' && level <= 8ul ? static_cast<std::uint32_t>(level) : 0u;
 }
 
 // M6 Task 13: the kernel recipe analysis service finalizes the bound (authored, derived or engine
@@ -750,9 +768,34 @@ Vixen::SVO::Recipe::RecipeRegistrationOptions RegistrationOptionsFor(
 // prove leaves occupancyGridDim==0 (the splice emits a gridDim=0u case; the shader skips the
 // occupancy fast-path for it).
 Vixen::SVO::Recipe::RecipeRegistrationAnalysis AnalyzeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
-    return Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
-        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f, 64u, 16u,
-        RegistrationOptionsFor(entry));
+    Vixen::SVO::Recipe::RecipeRegistrationOptions options = RegistrationOptionsFor(entry);
+    auto analysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
+        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f, 64u, 16u, options);
+    const std::uint32_t forced = ForcedShellLevel();
+    if (forced != 0u) {
+        for (std::size_t level = 0; level < entry.derivedShells.size(); ++level)
+            std::printf("[RECIPE_SHELL] level=%zu records=%zu of %zu certified_error=%.9g bound_radius=%.9g rules=%u certificate=%u tolerance_scale=%.3g%s\n",
+                        level + 1, entry.derivedShells[level].bytecode.size(), entry.bytecode.size(),
+                        static_cast<double>(entry.derivedShells[level].certifiedError),
+                        static_cast<double>(entry.derivedShellBoundRadius), entry.derivedShells[level].rules,
+                        entry.derivedShells[level].certificate,
+                        static_cast<double>(entry.derivedShells[level].toleranceScale), level + 1 == forced ? " FORCED" : "");
+        if (entry.derivedShells.empty()) std::printf("[RECIPE_SHELL] none (records=%zu)\n", entry.bytecode.size());
+        std::fflush(stdout);
+    }
+    if (forced != 0u && forced <= entry.derivedShells.size()) {
+        // The shell is a recipe of its own: analyse it as one (bound and grid of the shell's tape),
+        // and keep the derived data of the recipe it stands for.
+        auto shells = std::move(entry.derivedShells);
+        const float shellBoundRadius = entry.derivedShellBoundRadius;
+        entry.bytecode = shells[forced - 1u].bytecode;
+        options.shells = false;
+        analysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
+            entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f, 64u, 16u, options);
+        entry.derivedShells = std::move(shells);
+        entry.derivedShellBoundRadius = shellBoundRadius;
+    }
+    return analysis;
 }
 
 }  // namespace
