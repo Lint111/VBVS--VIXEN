@@ -34,7 +34,9 @@ cd "$ROOT"
 mapfile -d '' -t added < <(
     {
         git diff --cached --name-only --diff-filter=A -z -- .
-        git diff-tree --no-commit-id --name-only --diff-filter=A -r -z HEAD
+        if git rev-parse --verify HEAD >/dev/null 2>&1; then
+            git diff-tree --no-commit-id --name-only --diff-filter=A -r -z HEAD
+        fi
     } | sort -zu
 )
 
