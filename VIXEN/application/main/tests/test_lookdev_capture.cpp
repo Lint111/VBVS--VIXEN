@@ -3883,6 +3883,7 @@ TEST(LookdevCapture, LodBandSwitchIsInvisible) {
 TEST(RecipeSwapReplay, SwappedInHullHasASolidBody) {
     const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
     if (outputEnv == nullptr) GTEST_SKIP() << "set VIXEN_LOOKDEV_CAPTURE_DIR for the replay images";
+    std::filesystem::create_directories(outputEnv);
     const auto& presets = Vixen::App::Lookdev::LightingPresets();
     const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(presets.front());
     const auto hull = std::find_if(recipes.begin(), recipes.end(), [](const auto& recipe) {
@@ -3943,8 +3944,8 @@ TEST(RecipeSwapReplay, SwappedInHullHasASolidBody) {
             }
             const std::string name = std::string(swapped ? "swapped" : "original") + "-hull-" +
                 (withGrid ? "own-grid" : "no-grid") + ".png";
-            stbi_write_png((std::filesystem::path(outputEnv) / name).string().c_str(), kWidth, kHeight, 4,
-                           rgba.data(), kWidth * 4);
+            EXPECT_TRUE(stbi_write_png((std::filesystem::path(outputEnv) / name).string().c_str(), kWidth, kHeight, 4,
+                           rgba.data(), kWidth * 4)) << name;
             std::printf("[RECIPE_SWAP_REPLAY] %s hits=%zu of %d bound_radius=%.6g grid_dim=%u\n", name.c_str(),
                         hits, kWidth * kHeight, static_cast<double>(entry.boundRadius), entry.occupancyGridDim);
             std::fflush(stdout);
