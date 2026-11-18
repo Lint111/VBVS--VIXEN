@@ -5,6 +5,7 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <RmlUi/Core/Factory.h>
+#include <RmlUi/Core/FileInterface.h>
 
 #include <algorithm>
 #include <cctype>
@@ -48,6 +49,18 @@ Rml::ElementDocument* UiDocumentReloader::Load(Rml::Context& context, const std:
     tracePhase("track-begin");
     if (prelude_) prelude_();
     tracePhase("prelude-done");
+    if (trace) {
+        auto* fileInterface = Rml::GetFileInterface();
+        std::cout << "[UIDocumentLoadTrace] file-interface=" << fileInterface
+                  << " expected=" << &files_ << std::endl;
+        if (fileInterface) {
+            std::cout << "[UIDocumentLoadTrace] probe-open.begin path=" << path << std::endl;
+            const Rml::FileHandle probe = fileInterface->Open(path);
+            std::cout << "[UIDocumentLoadTrace] probe-open.end ok=" << (probe != 0) << std::endl;
+            if (probe) fileInterface->Close(probe);
+            std::cout << "[UIDocumentLoadTrace] probe-close.done" << std::endl;
+        }
+    }
     Rml::ElementDocument* document = context.LoadDocument(path);
     tracePhase("load-document-done");
     const std::vector<std::string> opened = files_.EndTrack();
