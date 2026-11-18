@@ -3781,15 +3781,11 @@ void EditorApplication::PostTick() {
                 const auto* order = static_cast<const Vixen::Codegen::Gpu::InstanceOrder*>(
                     orderNode->MapForReadback(device));
                 if (stats && words && order) {
-                    constexpr uint32_t kTileSize = 8u;
-                    const uint32_t renderWidth = static_cast<uint32_t>(std::max(1, this->width));
-                    const uint32_t renderHeight = static_cast<uint32_t>(std::max(1, this->height));
-                    const uint32_t tilesX = (renderWidth + kTileSize - 1u) / kTileSize;
-                    const uint32_t tilesY = (renderHeight + kTileSize - 1u) / kTileSize;
-                    const uint64_t tileCount = static_cast<uint64_t>(tilesX) * tilesY;
+                    constexpr uint32_t kRankWordCapacity = 128u;
+                    const uint64_t tileCount = wordsNode->GetSizeBytes() /
+                        (kRankWordCapacity * sizeof(Vixen::Codegen::Gpu::TileRankWord));
                     uint64_t activeWords = 0;
                     uint64_t activeTiles = 0;
-                    constexpr uint32_t kRankWordCapacity = 128u;
                     for (uint64_t tile = 0; tile < tileCount; ++tile) {
                         bool active = false;
                         for (uint32_t rankWord = 0; rankWord < kRankWordCapacity; ++rankWord) {
@@ -3798,11 +3794,9 @@ void EditorApplication::PostTick() {
                         }
                         activeTiles += active;
                     }
-                    const uint32_t centerTile = (tilesY / 2u) * tilesX + tilesX / 2u;
                     std::ostringstream line;
                     line << "[EDITOR/tile-bin] frame=" << (updateTick_ - 1)
-                         << " extent=" << renderWidth << 'x' << renderHeight
-                         << " tileExtent=" << tilesX << 'x' << tilesY
+                         << " tileCount=" << tileCount
                          << " instance0=" << order[0].instance
                          << " rank0=" << order[0].rank
                          << " depth0=" << order[0].depth
@@ -3812,8 +3806,7 @@ void EditorApplication::PostTick() {
                          << " occluded=" << stats->occludedSlices
                          << " overflow=" << stats->overflowed
                          << " activeWords=" << activeWords
-                         << " activeTiles=" << activeTiles
-                         << " centerBits=0x" << std::hex << words[centerTile].bits;
+                         << " activeTiles=" << activeTiles;
                     logger_->Info(line.str());
                 } else {
                     logger_->Error("[EDITOR/tile-bin] host-visible buffer mapping failed");
