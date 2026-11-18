@@ -88,6 +88,12 @@ cache/
 /reports/**/*.png
 /reports/**/*.ppm
 /reports/**/*.exr
+/VIXEN/reports/**/*.log
+/VIXEN/reports/**/*.log.gz
+/VIXEN/reports/**/*.csv
+/VIXEN/reports/**/*.png
+/VIXEN/reports/**/*.ppm
+/VIXEN/reports/**/*.exr
 log.txt
 logs/
 

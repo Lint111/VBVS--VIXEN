@@ -5,7 +5,7 @@
 - Branch: lane-rjs2. The authoring-convergence wave was merged at 213d54f2 and updated again at 49dd9502. The generated-binding graph aliases are committed in f0306a82. The tracked YEROKET_KERNEL_SHA remains dc6c87b7262c6791c745f37e583ca12f2f8706fe; no per-build override remains.
 - Tone-map outputs were regenerated from that tracked pin. The generated shader and binding header content did not change. WSL and native Release all-check builds passed, including every default *_check target; the WSL shader golden check passed. glslangValidator is absent on WSL, so native Vulkan build is the shader compile witness.
 - Those full builds completed before merge 49dd9502. That merge only added case-tolerant glslang include lookup in VIXEN/CMakeLists.txt and removed the runtime-written cache manifest. Per instruction, the full builds were not repeated.
-- The 16-pair native parity sheet was recaptured at dc6c87b7. Every hand-written reference/generated-system pair is byte-identical at 500×500: zero changed pixels and zero channel delta. The sheet now records the tracked kernel SHA, PNG SHA-256 values, and each queued capture log in VIXEN/reports/rjs2-parity.csv.
+- The 16-pair native parity sheet was recaptured at dc6c87b7. Every hand-written reference/generated-system pair is byte-identical at 500×500: zero changed pixels and zero channel delta. The raw sheet is retained outside Git as `vixen-rjs2-parity.csv` in the external lane evidence store.
 - The midday look-dev A/B passed for all four angles: byte-identical PNGs and zero changed pixels at 500×500. I opened all four reference and all four generated images. The output images are under /mnt/c/vixen-native/rjs2/build/native/runtime-captures/lookdev-ab-dc6-midday/.
 - The focused editor capture producer passed. The full GPU split also completed all 172 unique selected tests, with 155 passes, 17 expected skips, and no unresolved failures.
 
@@ -40,7 +40,7 @@ Queue jobs: shards 1–6 are logs 1791947742, 1791947749, 1791947787, 1791948014
 ### Native parity, look-dev, and editor producer
 
 - Native parity compared VIXEN/shaders/Reference/ExposureTonemapReference.comp against VIXEN/shaders/Generated/ExposureTonemapSystem.comp on AMD Radeon(TM) 8060S Graphics, driver 32.0.22018.5. The source shader SHA-256 values are 8345143f968b09242866d2e323d458b5e9c7eaa5485e4224f87f0d2d266dc94c (reference) and 3381425f9a99aac6012e28abbed8a0e278077ae9e6090e1833deadaf17e45ee5 (generated).
-- Each reference/system state-angle capture was its own queued GPU job. Per-row queue IDs and PNG hashes are recorded in rjs2-parity.csv. The capture logs are under /home/liory/.local/state/undertow/undertow-box-logs/ with names beginning dc6-parity-.
+- Each reference/system state-angle capture was its own queued GPU job. Per-row queue IDs and PNG hashes are recorded in the external `vixen-rjs2-parity.csv` evidence file. The capture logs are under /home/liory/.local/state/undertow/undertow-box-logs/ with names beginning dc6-parity-.
 - Midday look-dev reference and system jobs passed separately (logs 1791949667 and 1791949685). The pixel comparator reported byte_equal=yes, pixel_diff=0, max_channel_delta=0 for all four angles. All eight images were opened.
 - Focused vixen_editor_capture_producer passed (queue log 1791949623). The split’s vixen_hud_capture_producer retry passed in queue log 1791949140.
 

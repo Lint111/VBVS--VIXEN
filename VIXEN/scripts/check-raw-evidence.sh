@@ -76,15 +76,16 @@ for markdown in (path for path in tracked if path.endswith(".md")):
             linked_images.add(target)
 
 violations = []
+report_roots = ("reports/", "VIXEN/reports/")
 for path in added:
     lower = path.lower()
     if path.startswith((".vs/", "temp_bench/", "gate-artifacts/", "VIXEN/gate-artifacts/")):
         violations.append((path, "temporary/build directory"))
     elif lower.endswith((".log", ".log.gz")):
         violations.append((path, "raw log"))
-    elif path.startswith("reports/") and lower.endswith(".csv"):
+    elif path.startswith(report_roots) and lower.endswith(".csv"):
         violations.append((path, "raw tabular dump"))
-    elif path.startswith("reports/") and lower.endswith((".png", ".ppm", ".exr")) and path not in linked_images:
+    elif path.startswith(report_roots) and lower.endswith((".png", ".ppm", ".exr")) and path not in linked_images:
         violations.append((path, "unlinked raw capture"))
 
 if violations:
