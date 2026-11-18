@@ -462,6 +462,13 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     endforeach()
     vixen_lock_gpu_tests(TESTS ${_lod_switch_tests})
 
+    # opus-rl0 STOP 2 (i): CPU replay of the swapped-in load-scenario hull (no GPU work).
+    _vixen_lookdev_add_exe_test("Application.RecipeSwapReplay" "--gtest_filter=RecipeSwapReplay.*")
+    set_tests_properties("Application.RecipeSwapReplay" PROPERTIES
+        LABELS "Application;RecipeSwapReplay"
+        TIMEOUT 600
+        ENVIRONMENT "VIXEN_LOOKDEV_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/recipe-swap-replay")
+
     # Scheduling cost and selection family of every look-dev capture. COST is the serial wall time in
     # seconds measured on Dozen (cl-glmdepth1 ctest -L gpu, 2026-11-07); it is a relative weight, not a
     # timing claim. The GPU shard planner (tools/shard-ctest-tests.py) packs longest-first by it, so the

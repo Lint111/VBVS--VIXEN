@@ -3873,6 +3873,86 @@ TEST(LookdevCapture, LodBandSwitchIsInvisible) {
     }
 }
 
+// opus-rl0 STOP 2 (i): CPU march replay of the load scenario's swapped-in hull (0x4c4f4144). The
+// swap registers the Hull recipe with its first primitive's half extents scaled by 0.85 after the
+// graph compiled. The vx11 references of the recipe-swap leg show only the red accent plates where
+// that hull stands; with the occupancy grid published at the swap the GPU draws a white box. This
+// replays the recipe's own march (RecipeMarchReplay, the 1:1 mirror of traceUberRecipeBodyImpl)
+// with the recipe's own grid and with no grid, on a 3/4 view, and writes both images: if the hull
+// body is solid there, the white box is right and the references lost the body.
+TEST(RecipeSwapReplay, SwappedInHullHasASolidBody) {
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    if (outputEnv == nullptr) GTEST_SKIP() << "set VIXEN_LOOKDEV_CAPTURE_DIR for the replay images";
+    const auto& presets = Vixen::App::Lookdev::LightingPresets();
+    const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(presets.front());
+    const auto hull = std::find_if(recipes.begin(), recipes.end(), [](const auto& recipe) {
+        return recipe.material == Vixen::App::Lookdev::Material::Hull;
+    });
+    ASSERT_NE(hull, recipes.end());
+    for (const bool swapped : {false, true}) {
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry = hull->entry;
+        if (swapped)  // test_load_scenario.cpp SwapInRecipe
+            for (int axis = 0; axis < 3; ++axis) entry.bytecode.front().data[axis] *= 0.85f;
+        // The application's registration analysis (VulkanGraphApplicationRecipes.cpp AnalyzeEntry).
+        Vixen::SVO::Recipe::RecipeRegistrationOptions options;
+        options.preferDerivedBound = entry.boundRadius > 0.0f;
+        options.occupancy = true;
+        (void)Vixen::SVO::Recipe::AnalyzeRecipeRegistration(entry, 24.0f, 0.9f, 64u, 16u, options);
+        ASSERT_GT(entry.boundRadius, 0.0f);
+        const glm::vec3 center = entry.boundCenter;
+        const glm::vec3 eye = center + glm::normalize(glm::vec3(0.8f, 0.5f, 1.0f)) * (entry.boundRadius * 2.6f);
+        const glm::vec3 forward = glm::normalize(center - eye);
+        const glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+        const glm::vec3 up = glm::cross(right, forward);
+        constexpr int kWidth = 160, kHeight = 120;
+        const float tanHalfFov = std::tan(glm::radians(22.5f));
+        for (const bool withGrid : {true, false}) {
+            std::vector<uint8_t> rgba(static_cast<size_t>(kWidth) * kHeight * 4u, 0u);
+            std::size_t hits = 0;
+            for (int y = 0; y < kHeight; ++y) {
+                for (int x = 0; x < kWidth; ++x) {
+                    Vixen::SVO::Recipe::RecipeMarchReplayInput in;
+                    in.boundCenter = entry.boundCenter;
+                    in.boundRadius = entry.boundRadius;
+                    in.relaxation = entry.stepRelaxation;
+                    if (withGrid && !entry.occupancyGridValues.empty()) {
+                        in.gridDim = entry.occupancyGridDim;
+                        in.gridAabbMin = entry.occupancyGridAabbMin;
+                        in.gridCellSize = entry.occupancyGridCellSize;
+                        in.grid = entry.occupancyGridValues;
+                    }
+                    const float nx = ((static_cast<float>(x) + 0.5f) / kWidth * 2.0f - 1.0f) * tanHalfFov *
+                        (static_cast<float>(kWidth) / kHeight);
+                    const float ny = -((static_cast<float>(y) + 0.5f) / kHeight * 2.0f - 1.0f) * tanHalfFov;
+                    in.ro = eye;
+                    in.rd = glm::normalize(forward + right * nx + up * ny);
+                    in.pixelAngle = 2.0f * tanHalfFov / kHeight;
+                    const auto march = Vixen::SVO::Recipe::ReplayRecipeMarch(in, [&](glm::vec3 p) {
+                        return Vixen::SVO::Recipe::evalRecipe(entry.bytecode.data(),
+                            static_cast<std::uint32_t>(entry.bytecode.size()), p);
+                    });
+                    uint8_t* pixel = &rgba[(static_cast<size_t>(y) * kWidth + x) * 4u];
+                    pixel[3] = 255u;
+                    if (!march.hit) { pixel[0] = 30u; pixel[1] = 30u; pixel[2] = 70u; continue; }
+                    ++hits;
+                    const glm::vec3 n = glm::length(march.gradient) > 0.0f ? glm::normalize(march.gradient)
+                                                                           : -in.rd;
+                    const float shade = 0.25f + 0.75f * std::max(0.0f, glm::dot(n, glm::normalize(glm::vec3(0.4f, 1.0f, 0.6f))));
+                    pixel[0] = pixel[1] = pixel[2] = static_cast<uint8_t>(std::min(255.0f, 230.0f * shade));
+                }
+            }
+            const std::string name = std::string(swapped ? "swapped" : "original") + "-hull-" +
+                (withGrid ? "own-grid" : "no-grid") + ".png";
+            stbi_write_png((std::filesystem::path(outputEnv) / name).string().c_str(), kWidth, kHeight, 4,
+                           rgba.data(), kWidth * 4);
+            std::printf("[RECIPE_SWAP_REPLAY] %s hits=%zu of %d bound_radius=%.6g grid_dim=%u\n", name.c_str(),
+                        hits, kWidth * kHeight, static_cast<double>(entry.boundRadius), entry.occupancyGridDim);
+            std::fflush(stdout);
+            EXPECT_GT(hits, static_cast<std::size_t>(kWidth * kHeight / 20)) << name << ": the hull body is missing";
+        }
+    }
+}
+
 TEST(LookdevCapture, RendersSdfFilterNonText) {
     ASSERT_NE(std::getenv("VIXEN_SDF_FILTER_NON_TEXT"), nullptr)
         << "CTest must enable the analytic and stored SDF sphere pair";
