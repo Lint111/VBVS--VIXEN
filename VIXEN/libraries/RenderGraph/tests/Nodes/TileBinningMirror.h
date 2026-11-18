@@ -9,7 +9,10 @@
 // exactly the tile's candidates ordered by (near depth, instance), which is the list the former
 // per-tile sort produced.
 
+#include "Generated/InstanceBand.g.h"
 #include "Generated/InstanceBound.g.h"
+#include "Generated/LodBand.g.hpp"
+#include "Generated/RecipeLodBand.g.h"
 #include "Generated/InstanceOrder.g.h"
 #include "Generated/TileBinStats.g.h"
 #include "Generated/TileBinView.g.h"
@@ -126,6 +129,35 @@ inline float MirrorRankDepth(const InstanceBound& bound, const TileBinView& view
     const float nearDepth = vz - bound.radius;
     if (vz + bound.radius <= view.nearPlane) return 3.402823e38f;
     return nearDepth <= view.nearPlane ? view.nearPlane : nearDepth;
+}
+
+// TileBinOps.LodQ (R860 RL0): pixel footprint at the bound's nearest distance over its diameter.
+inline float MirrorLodQ(const InstanceBound& bound, const TileBinView& view) {
+    if (bound.radius <= 0.0f) return 0.0f;
+    const float vx = view.viewXx * bound.centerX + view.viewXy * bound.centerY +
+                     view.viewXz * bound.centerZ + view.viewXw;
+    const float vy = view.viewYx * bound.centerX + view.viewYy * bound.centerY +
+                     view.viewYz * bound.centerZ + view.viewYw;
+    const float vz = view.viewZx * bound.centerX + view.viewZy * bound.centerY +
+                     view.viewZz * bound.centerZ + view.viewZw;
+    const float distance = std::sqrt(vx * vx + vy * vy + vz * vz) - bound.radius;
+    if (distance <= 0.0f) return 0.0f;
+    return distance / (2.0f * bound.radius * view.focalY);
+}
+
+// TileBinPrepareSystem's band step: four table rows per ladder slot, the generated band callable,
+// and the SelfRecipe row variant resolved to the instance's own recipe.
+inline Vixen::Codegen::Gpu::InstanceBand MirrorInstanceBand(
+    float q, uint32_t recipeId, uint32_t lodSlot, const std::vector<Vixen::Codegen::Gpu::RecipeLodBand>& table) {
+    constexpr uint32_t kRows = 4u;
+    constexpr uint32_t kSelfRecipe = 0xFFFFFFFFu;
+    const std::size_t row = static_cast<std::size_t>(lodSlot) * kRows;
+    MirrorRequire(row + kRows <= table.size(), "band table does not hold the instance's ladder slot");
+    const uint32_t band = Vixen::Lod::SelectLodBand(q, table[row].maxQ, table[row + 1].maxQ,
+                                                    table[row + 2].maxQ, kRows);
+    MirrorRequire(band < kRows, "band outside the ladder's rows");
+    const uint32_t variant = table[row + band].variantRecipeId;
+    return {variant == kSelfRecipe ? recipeId : variant, band};
 }
 
 // TileBinOps.ScatterLanes: invocations per instance in the generated scatter.
