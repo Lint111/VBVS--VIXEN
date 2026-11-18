@@ -3769,8 +3769,10 @@ void EditorApplication::PostTick() {
                 graph->GetInstanceByName("tile_bin_rank_words_buffer")) : nullptr;
             auto* orderNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
                 graph->GetInstanceByName("tile_bin_order_buffer")) : nullptr;
+            auto* hitNode = graph ? static_cast<Vixen::RenderGraph::StorageBufferNode*>(
+                graph->GetInstanceByName("hit_record_buffer")) : nullptr;
             auto* device = statsNode ? statsNode->GetDevice() : nullptr;
-            if (!statsNode || !wordsNode || !orderNode || !device ||
+            if (!statsNode || !wordsNode || !orderNode || !hitNode || !device ||
                 vkDeviceWaitIdle(device->device) != VK_SUCCESS) {
                 logger_->Error("[EDITOR/tile-bin] readback unavailable after first rendered frame");
             } else {
@@ -3780,7 +3782,8 @@ void EditorApplication::PostTick() {
                     wordsNode->MapForReadback(device));
                 const auto* order = static_cast<const Vixen::Codegen::Gpu::InstanceOrder*>(
                     orderNode->MapForReadback(device));
-                if (stats && words && order) {
+                const auto* hitWords = static_cast<const uint32_t*>(hitNode->MapForReadback(device));
+                if (stats && words && order && hitWords) {
                     constexpr uint32_t kRankWordCapacity = 128u;
                     const uint64_t tileCount = wordsNode->GetSizeBytes() /
                         (kRankWordCapacity * sizeof(Vixen::Codegen::Gpu::TileRankWord));
@@ -3794,6 +3797,12 @@ void EditorApplication::PostTick() {
                         }
                         activeTiles += active;
                     }
+                    // HitRecord's std430 layout is reflection-checked at
+                    // test_hitrecord_sdi_parity.cpp: flags is word 11 of each 16-word record.
+                    uint64_t hitPixels = 0;
+                    const uint64_t recordCount = hitNode->GetSizeBytes() / 64u;
+                    for (uint64_t i = 0; i < recordCount; ++i)
+                        hitPixels += (hitWords[i * 16u + 11u] & 1u) != 0u;
                     std::ostringstream line;
                     line << "[EDITOR/tile-bin] frame=" << (updateTick_ - 1)
                          << " tileCount=" << tileCount
@@ -3806,7 +3815,8 @@ void EditorApplication::PostTick() {
                          << " occluded=" << stats->occludedSlices
                          << " overflow=" << stats->overflowed
                          << " activeWords=" << activeWords
-                         << " activeTiles=" << activeTiles;
+                         << " activeTiles=" << activeTiles
+                         << " hitPixels=" << hitPixels;
                     logger_->Info(line.str());
                 } else {
                     logger_->Error("[EDITOR/tile-bin] host-visible buffer mapping failed");
@@ -3814,6 +3824,7 @@ void EditorApplication::PostTick() {
                 if (stats) statsNode->UnmapReadback(device);
                 if (words) wordsNode->UnmapReadback(device);
                 if (order) orderNode->UnmapReadback(device);
+                if (hitWords) hitNode->UnmapReadback(device);
             }
         }
     }
