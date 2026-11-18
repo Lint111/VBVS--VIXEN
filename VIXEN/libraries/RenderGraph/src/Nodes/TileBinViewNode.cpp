@@ -3,6 +3,9 @@
 #include "Core/NodeLogging.h"
 #include "Nodes/TileBinViewProjection.h"
 
+#include <cstdlib>
+#include <sstream>
+
 namespace Vixen::RenderGraph {
 
 using Vixen::Codegen::Gpu::TileBinView;
@@ -41,7 +44,23 @@ void TileBinViewNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     auto* view = static_cast<TileBinView*>(viewRing_.GetUniformBufferMapped(frame));
     if (!view) return;
 
-    *view = MakeTileBinView(camera, width, height, ctx.In(TileBinViewNodeConfig::INSTANCE_COUNT));
+    const int32_t instanceCount = ctx.In(TileBinViewNodeConfig::INSTANCE_COUNT);
+    *view = MakeTileBinView(camera, width, height, instanceCount);
+    if (const char* trace = std::getenv("VIXEN_EDITOR_TILEBIN_READBACK");
+        trace && std::string(trace) == "1") {
+        std::ostringstream line;
+        line << "[TileBinView] frame=" << frame << " extent=" << width << 'x' << height
+             << " instances=" << instanceCount
+             << " cameraPos=(" << camera.cameraPos.x << ',' << camera.cameraPos.y << ',' << camera.cameraPos.z << ')'
+             << " dir=(" << camera.cameraDir.x << ',' << camera.cameraDir.y << ',' << camera.cameraDir.z << ')'
+             << " up=(" << camera.cameraUp.x << ',' << camera.cameraUp.y << ',' << camera.cameraUp.z << ')'
+             << " right=(" << camera.cameraRight.x << ',' << camera.cameraRight.y << ',' << camera.cameraRight.z << ')'
+             << " fov=" << camera.fov << " aspect=" << camera.aspect
+             << " near=" << view->nearPlane << " focal=(" << view->focalX << ',' << view->focalY << ')'
+             << " center=(" << view->centerX << ',' << view->centerY << ')'
+             << " tileExtent=" << view->tilesX << 'x' << view->tilesY;
+        NODE_LOG_INFO(line.str());
+    }
     ctx.Out(TileBinViewNodeConfig::VIEW_BUFFER, viewRing_.GetUniformBuffer(frame));
 }
 
