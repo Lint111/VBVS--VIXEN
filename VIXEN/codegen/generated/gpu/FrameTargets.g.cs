@@ -13,6 +13,12 @@ namespace Vixen.Codegen.Gpu
         public override int GetHashCode() => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
         public static implicit operator ALL(FrameTargetsRef _) => default;
         public static implicit operator ALL(global::Undertow.Modding.KindRef<FrameTargetsRef> _) => default;
+        public static implicit operator ALL(InstanceBandRef _) => default;
+        public static implicit operator ALL(global::Undertow.Modding.KindRef<InstanceBandRef> _) => default;
+        public static implicit operator ALL(InstanceRecipeRef _) => default;
+        public static implicit operator ALL(global::Undertow.Modding.KindRef<InstanceRecipeRef> _) => default;
+        public static implicit operator ALL(RecipeLodBandRef _) => default;
+        public static implicit operator ALL(global::Undertow.Modding.KindRef<RecipeLodBandRef> _) => default;
     }
 
     /// <summary>Schema path for frame_targets; lowered before native dispatch.</summary>
@@ -33,9 +39,85 @@ namespace Vixen.Codegen.Gpu
         }
     }
 
+    /// <summary>Schema path for instance_band; lowered before native dispatch.</summary>
+    public struct InstanceBandRef
+    {
+        public const string SchemaKind = "instance_band";
+        public static implicit operator InstanceBandRef(global::Undertow.Modding.KindRef<InstanceBandRef> _) => default;
+        public uint VariantRecipeId
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+        public uint Band
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+    }
+
+    /// <summary>Schema path for instance_recipe; lowered before native dispatch.</summary>
+    public struct InstanceRecipeRef
+    {
+        public const string SchemaKind = "instance_recipe";
+        public static implicit operator InstanceRecipeRef(global::Undertow.Modding.KindRef<InstanceRecipeRef> _) => default;
+        public uint RecipeId
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+        public uint LodSlot
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+    }
+
+    /// <summary>Schema path for recipe_lod_band; lowered before native dispatch.</summary>
+    public struct RecipeLodBandRef
+    {
+        public const string SchemaKind = "recipe_lod_band";
+        public static implicit operator RecipeLodBandRef(global::Undertow.Modding.KindRef<RecipeLodBandRef> _) => default;
+        public float MaxQ
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+        public uint VariantRecipeId
+        {
+            get => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+            set => throw new System.InvalidOperationException("Kind paths are compile-time syntax only.");
+        }
+    }
+
+    public static partial class Make
+    {
+        public static InstanceBand InstanceBand(uint variantRecipeId = default, uint band = default) => new InstanceBand { variantRecipeId = variantRecipeId, band = band };
+        public static InstanceRecipe InstanceRecipe(uint recipeId = default, uint lodSlot = default) => new InstanceRecipe { recipeId = recipeId, lodSlot = lodSlot };
+        public static RecipeLodBand RecipeLodBand(float maxQ = default, uint variantRecipeId = default) => new RecipeLodBand { maxQ = maxQ, variantRecipeId = variantRecipeId };
+    }
+
     public struct FrameTargets
     {
         public uint presentationMode;
+    }
+
+    public struct InstanceBand
+    {
+        public uint variantRecipeId;
+        public uint band;
+    }
+
+    public struct InstanceRecipe
+    {
+        public uint recipeId;
+        public uint lodSlot;
+    }
+
+    public struct RecipeLodBand
+    {
+        public float maxQ;
+        public uint variantRecipeId;
     }
 }
 namespace Undertow.Modding
@@ -43,6 +125,33 @@ namespace Undertow.Modding
     public static partial class KernelOps
     {
         public static void PUBLISH<TEvent>(TEvent value) where TEvent : struct => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceBandRef ADD(global::Vixen.Codegen.Gpu.InstanceBand value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceBandRef ADD(global::Vixen.Codegen.Gpu.InstanceBandRef path, global::Vixen.Codegen.Gpu.InstanceBand value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceBandRef ADD(global::Vixen.Codegen.Gpu.InstanceBandRef path, global::Vixen.Codegen.Gpu.InstanceBandRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceBandRef ADD(global::Vixen.Codegen.Gpu.InstanceBandRef[] path, global::Vixen.Codegen.Gpu.InstanceBand value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceBandRef ADD(global::Vixen.Codegen.Gpu.InstanceBandRef[] path, global::Vixen.Codegen.Gpu.InstanceBandRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.InstanceBand instance) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.InstanceBandRef instance) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.InstanceBandRef path, global::Vixen.Codegen.Gpu.InstanceBandRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.InstanceBandRef[] path, global::Vixen.Codegen.Gpu.InstanceBandRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceRecipeRef ADD(global::Vixen.Codegen.Gpu.InstanceRecipe value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceRecipeRef ADD(global::Vixen.Codegen.Gpu.InstanceRecipeRef path, global::Vixen.Codegen.Gpu.InstanceRecipe value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceRecipeRef ADD(global::Vixen.Codegen.Gpu.InstanceRecipeRef path, global::Vixen.Codegen.Gpu.InstanceRecipeRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceRecipeRef ADD(global::Vixen.Codegen.Gpu.InstanceRecipeRef[] path, global::Vixen.Codegen.Gpu.InstanceRecipe value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.InstanceRecipeRef ADD(global::Vixen.Codegen.Gpu.InstanceRecipeRef[] path, global::Vixen.Codegen.Gpu.InstanceRecipeRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.InstanceRecipe instance) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.InstanceRecipeRef instance) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.InstanceRecipeRef path, global::Vixen.Codegen.Gpu.InstanceRecipeRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.InstanceRecipeRef[] path, global::Vixen.Codegen.Gpu.InstanceRecipeRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RecipeLodBandRef ADD(global::Vixen.Codegen.Gpu.RecipeLodBand value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RecipeLodBandRef ADD(global::Vixen.Codegen.Gpu.RecipeLodBandRef path, global::Vixen.Codegen.Gpu.RecipeLodBand value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RecipeLodBandRef ADD(global::Vixen.Codegen.Gpu.RecipeLodBandRef path, global::Vixen.Codegen.Gpu.RecipeLodBandRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RecipeLodBandRef ADD(global::Vixen.Codegen.Gpu.RecipeLodBandRef[] path, global::Vixen.Codegen.Gpu.RecipeLodBand value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static global::Vixen.Codegen.Gpu.RecipeLodBandRef ADD(global::Vixen.Codegen.Gpu.RecipeLodBandRef[] path, global::Vixen.Codegen.Gpu.RecipeLodBandRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RecipeLodBand instance) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RecipeLodBandRef instance) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RecipeLodBandRef path, global::Vixen.Codegen.Gpu.RecipeLodBandRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
+        public static void REMOVE(global::Vixen.Codegen.Gpu.RecipeLodBandRef[] path, global::Vixen.Codegen.Gpu.RecipeLodBandRef value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
         public static void ADD<TKind>(TKind instance, TKind value) => throw new System.InvalidOperationException("Kind commands are compile-time syntax only.");
     }
 }

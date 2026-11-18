@@ -214,12 +214,34 @@
           "accessKind": "ComputeStorageRead"
         },
         {
+          "name": "recipes",
+          "kind": "instance_recipe",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 3,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
+          "name": "lodBands",
+          "kind": "recipe_lod_band",
+          "member": "*",
+          "form": "storage",
+          "access": "in",
+          "binding": 4,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageRead"
+        },
+        {
           "name": "order",
           "kind": "Vixen.Codegen.Gpu.InstanceOrder",
           "member": "*",
           "form": "storage",
           "access": "ref",
-          "binding": 3,
+          "binding": 5,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
           "accessKind": "ComputeStorageReadWrite"
@@ -230,7 +252,18 @@
           "member": "*",
           "form": "storage",
           "access": "ref",
-          "binding": 4,
+          "binding": 6,
+          "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
+          "singleton": false,
+          "accessKind": "ComputeStorageReadWrite"
+        },
+        {
+          "name": "bands",
+          "kind": "instance_band",
+          "member": "*",
+          "form": "storage",
+          "access": "ref",
+          "binding": 7,
           "descriptor": "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER",
           "singleton": false,
           "accessKind": "ComputeStorageReadWrite"
