@@ -669,6 +669,11 @@ void UIRenderNode::MarkViewDirty(const char* field) { if (viewModel_ && field) v
 // unmount, and drained/realized once the context exists (Mount may be called before the first compile).
 
 bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& documentPath) {
+    const bool trace = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
+    const auto tracePhase = [trace, handle](const char* phase) {
+        if (trace) std::cout << "[UIMountTrace] handle=" << handle << ' ' << phase << std::endl;
+    };
+    tracePhase("begin");
     // Precondition: context_ exists (caller-checked). Validate BEFORE mutating any state so a failed
     // mount leaves nothing partial (spike §4: RmlUi silently renders nothing on these — we catch them).
     const char* modelName = view.ModelName();
@@ -698,7 +703,9 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
     if (shared) {
         model = shared->model;
     } else if (Rml::DataModelConstructor c = context_->CreateDataModel(modelName)) {
+        tracePhase("model-created");
         view.Register(c);
+        tracePhase("view-registered");
         model = c.GetModelHandle();
     } else {
         std::fprintf(stderr, "[ui-host] mount failed: CreateDataModel('%s') returned null\n", modelName);
@@ -706,15 +713,18 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
     }
 
     const std::string docPath = ResolveUiAsset(documentPath);
+    if (trace) std::cout << "[UIMountTrace] handle=" << handle << " document=" << docPath << std::endl;
     UiDocumentWatch watch;
     std::vector<std::string> loadErrors;
     Rml::ElementDocument* doc = reloader_.Load(*context_, docPath, watch, loadErrors);
+    tracePhase("document-loaded");
     if (!doc) {
         std::fprintf(stderr, "[ui-host] mount failed: LoadDocument('%s') returned null\n", docPath.c_str());
         if (!shared) context_->RemoveDataModel(modelName);   // undo the half-mount
         return false;
     }
     doc->Show();
+    tracePhase("document-shown");
 
     // Degenerate-layout validation (spike §4): a body with only out-of-flow children collapses to 0×0
     // and every anchored child lands off-screen — RmlUi renders nothing, no warning. The document must
@@ -741,11 +751,14 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
 
 void UIRenderNode::RealizePendingMounts() {
     if (pendingMounts_.empty() || !context_) return;
+    if (std::getenv("VIXEN_EDITOR_EXEC_TRACE"))
+        std::cout << "[UIMountTrace] pending=" << pendingMounts_.size() << std::endl;
     for (auto& pending : pendingMounts_) {
         // A rejected mount just doesn't appear in mounts_.
         if (pending.view) MountNow(pending.handle, *pending.view, pending.documentPath);
     }
     pendingMounts_.clear();
+    if (std::getenv("VIXEN_EDITOR_EXEC_TRACE")) std::cout << "[UIMountTrace] all-mounted" << std::endl;
 }
 
 UIRenderNode::MountHandle UIRenderNode::Mount(IView& view) {
