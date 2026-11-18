@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -449,9 +450,15 @@ void UIRenderNode::DrawTextShaderCapture(float timeSeconds) {
 }
 
 void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex) {
+    const bool trace = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
+    const auto tracePhase = [trace](const char* phase) {
+        if (trace) std::cout << "[UIExecTrace] " << phase << std::endl;
+    };
+    tracePhase("record.begin");
     ++renderedFrameCounter_;
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &bi);
+    tracePhase("command-buffer.begin");
 
     // M5.1: reset this frame-in-flight's query slot, then bracket the render pass with start/end
     // timestamps (mirrors ComputeDispatchNode's BeginFrame/RecordDispatchStart/RecordDispatchEnd).
@@ -470,8 +477,10 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
     rp.clearValueCount = 1;
     rp.pClearValues = &clear;
     vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+    tracePhase("render-pass.begin");
 
     renderInterface_.BeginFrame(cmd, extent_);
+    tracePhase("interface.begin-frame");
     // E10-T2: VIXEN_HUD_SUPPRESS skips the RmlUi document draw so image-evidence captures show
     // the underlying voxel scene unobstructed by HUD/inspector chrome. Only context_->Render() is
     // skipped -- the render pass still LOADs/STOREs the framebuffer (PARAM_COLOR_LOAD_OP=Load,
@@ -485,24 +494,34 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
         ApplyPlacements();
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         context_->Update();
+        tracePhase("rml.update");
         ApplyPendingRestores();  // scroll / focus / caret of a just-reloaded document, once its rows exist
         context_->Render();
+        tracePhase("rml.render");
     }
     const char* textCapture = std::getenv("VIXEN_TEXT_SHADER_CAPTURE");
     if (textCapture && *textCapture && std::string(textCapture) != "0")
         DrawTextShaderCapture(static_cast<float>(renderedFrameCounter_) / 60.0f);
 
     vkCmdEndRenderPass(cmd);
+    tracePhase("render-pass.end");
 
     if (gpuPerfLogger_) {
         gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, extent_.width, extent_.height);
     }
 
     vkEndCommandBuffer(cmd);
+    tracePhase("record.end");
 }
 
 void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
+    const bool trace = std::getenv("VIXEN_EDITOR_EXEC_TRACE") != nullptr;
+    const auto tracePhase = [trace](const char* phase) {
+        if (trace) std::cout << "[UIExecTrace] " << phase << std::endl;
+    };
+    tracePhase("execute.begin");
     PollDocumentReload();  // an edited panel document or stylesheet swaps in before this frame's input and Update
+    tracePhase("document-reload.done");
     // Pointer, wheel, keys and text reach the Rml context before this frame's Update(); done ahead of
     // the early returns below so a skipped frame does not drop typed input.
     if (const InputStatePtr input = ctx.In(UIRenderNodeConfig::INPUT_STATE)) ForwardInput(*input);
@@ -537,7 +556,9 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
     // completion timeline wait; the framebuffer it renders into stays imageIndex-selected.
     VkCommandBuffer cmd = commandBuffers_[currentFrameIndex];
+    tracePhase("record.begin");
     RecordFrame(cmd, framebuffers[imageIndex], currentFrameIndex);
+    tracePhase("record.done");
     ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO)->SetImageLayout(
         imageIndex, GetOwningGraph()->GetRenderPassFinalLayout(renderPass_));
 
@@ -601,6 +622,7 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     si.pSignalSemaphoreInfos    = signals.data();
     // R715: this node's fence-owning submit goes through the graph's single submission point.
     auto record = SubmitRecord::FromSubmitInfo2(si, inFlightFence);
+    tracePhase("submit.begin");
     if (gpuPerfLogger_ && gpuPerfLogger_->GetLastDispatchMs() > 0.0f) {
         const uint64_t expectedNs = static_cast<uint64_t>(gpuPerfLogger_->GetLastDispatchMs() * 1'000'000.0f);
         record.commandCostMeanNs.push_back(expectedNs);
@@ -611,6 +633,7 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         GetOwningGraph()->ReportGpuFault("UIRenderNode::ExecuteImpl vkQueueSubmit2", result);
         return;
     }
+    tracePhase("submit.done");
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
