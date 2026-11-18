@@ -3788,7 +3788,16 @@ void EditorApplication::PostTick() {
                     const uint32_t tilesY = (renderHeight + kTileSize - 1u) / kTileSize;
                     const uint64_t tileCount = static_cast<uint64_t>(tilesX) * tilesY;
                     uint64_t activeWords = 0;
-                    for (uint64_t i = 0; i < tileCount; ++i) activeWords += words[i].bits != 0u;
+                    uint64_t activeTiles = 0;
+                    constexpr uint32_t kRankWordCapacity = 128u;
+                    for (uint64_t tile = 0; tile < tileCount; ++tile) {
+                        bool active = false;
+                        for (uint32_t rankWord = 0; rankWord < kRankWordCapacity; ++rankWord) {
+                            activeWords += words[static_cast<uint64_t>(rankWord) * tileCount + tile].bits != 0u;
+                            active |= words[static_cast<uint64_t>(rankWord) * tileCount + tile].bits != 0u;
+                        }
+                        activeTiles += active;
+                    }
                     const uint32_t centerTile = (tilesY / 2u) * tilesX + tilesX / 2u;
                     std::ostringstream line;
                     line << "[EDITOR/tile-bin] frame=" << (updateTick_ - 1)
@@ -3802,7 +3811,8 @@ void EditorApplication::PostTick() {
                          << " offscreen=" << stats->offScreen
                          << " occluded=" << stats->occludedSlices
                          << " overflow=" << stats->overflowed
-                         << " activeTiles=" << activeWords
+                         << " activeWords=" << activeWords
+                         << " activeTiles=" << activeTiles
                          << " centerBits=0x" << std::hex << words[centerTile].bits;
                     logger_->Info(line.str());
                 } else {
