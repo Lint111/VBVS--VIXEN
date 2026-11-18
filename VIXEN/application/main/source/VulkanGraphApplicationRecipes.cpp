@@ -881,7 +881,14 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     // That is a cost the author can remove (intersect the leaf with a box that bounds it), so it is
     // reported with the recipe and the instruction, never silently paid.
     if (mainLogger) mainLogger->Debug("[RecipeTrace] row-leaf analysis begin recipeId=" + std::to_string(recipeId));
-    const auto rowLeaves = Vixen::SVO::Recipe::RecipeGpuRowWalkingLeaves(entry.bytecode, entry.pathInstances);
+    Vixen::SVO::Recipe::RecipeRowWalkingLeaves rowLeaves;
+    const bool skipRowLeafTrace = std::getenv("VIXEN_EDITOR_SKIP_RECIPE_ROW_LEAF_TRACE") != nullptr;
+    if (!skipRowLeafTrace) {
+        rowLeaves = Vixen::SVO::Recipe::RecipeGpuRowWalkingLeaves(entry.bytecode, entry.pathInstances);
+    } else if (mainLogger) {
+        mainLogger->Debug("[RecipeTrace] row-leaf analysis skipped by diagnostic override recipeId=" +
+                          std::to_string(recipeId));
+    }
     if (mainLogger) mainLogger->Debug("[RecipeTrace] row-leaf analysis end recipeId=" + std::to_string(recipeId));
     if (rowLeaves.count != 0u && mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
