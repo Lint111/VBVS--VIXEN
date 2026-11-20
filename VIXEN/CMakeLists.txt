@@ -108,8 +108,19 @@ endif()
 # sccache (better than nothing on the non-PCH majority of the build) rather than
 # failing the configure.
 option(USE_CCACHE "Use ccache/sccache for compilation caching" ON)
-set(VIXEN_COMPILER_CACHE_DIR "${CMAKE_BINARY_DIR}/_cache/compiler" CACHE PATH
-    "Directory for VIXEN compiler cache data")
+# On Windows the cache is shared by every tree (see VixenCompilerCache.cmake): the per-tree default
+# below counts as "not set", so only an explicit -DVIXEN_COMPILER_CACHE_DIR=<dir> moves it.
+set(_vixen_legacy_compiler_cache_dir "${CMAKE_BINARY_DIR}/_cache/compiler")
+set(VIXEN_COMPILER_CACHE_DIR "${_vixen_legacy_compiler_cache_dir}" CACHE PATH
+    "Directory for VIXEN compiler cache data (Windows: the default means the shared C:/ccache)")
+# ccache sloppiness for the Windows launcher. Empty on purpose: pch_defines,time_macros makes ccache
+# "use" MSVC /Yu compiles, but ccache 4.13.6 then compiles the preprocessed text and cl.exe fails with
+# C1010 (measured 11-12: 271 targets failed). Its manual documents PCH for GCC/Clang only.
+set(VIXEN_CCACHE_SLOPPINESS "" CACHE STRING "ccache sloppiness for the Windows launcher (comma list; empty = ccache default)")
+# A /Yu compile is uncacheable under ccache ("could not use precompiled header": 331 of 1027 calls of a
+# cold tree, 32%, each runs cl.exe uncached on every tree). With the compiler cache on, Windows builds
+# compile without precompiled headers so those units are cached and shared like the rest.
+option(VIXEN_CCACHE_DISABLE_PCH "Windows: build without precompiled headers when a compiler cache is active (PCH compiles are uncacheable)" ON)
 if(USE_CCACHE)
     # Self-provisioning (Windows only — see ProvisionCcache.cmake): auto-downloads ccache into a
     # project-local cache if not already on PATH, same contract as Vulkan/gdb/windowing-deps
@@ -139,12 +150,23 @@ if(USE_CCACHE)
     endif()
 
     if(_vixen_compiler_cache_program)
-        set(_vixen_compiler_cache_path "${VIXEN_COMPILER_CACHE_DIR}/${_vixen_compiler_cache_kind}")
-        set(_vixen_compiler_launcher
-            "${CMAKE_COMMAND};-E;env;${_vixen_compiler_cache_env}=${_vixen_compiler_cache_path};${_vixen_compiler_cache_program}")
-        if(NOT WIN32)
-            # Linux/macOS ccache discovery should honor the caller's environment
-            # and ccache configuration (generic sharing policy is owned by T-1584).
+        if(WIN32)
+            include("${VIXEN_ROOT}/cmake/VixenCompilerCache.cmake")
+            vixen_resolve_windows_compiler_cache_dir(${_vixen_compiler_cache_kind} _vixen_compiler_cache_path
+                "${VIXEN_COMPILER_CACHE_DIR}" "${_vixen_legacy_compiler_cache_dir}"
+                "$ENV{${_vixen_compiler_cache_env}}" "$ENV{SystemDrive}")
+            vixen_compiler_cache_base_dir(_vixen_compiler_cache_base "${VIXEN_ROOT}" "$ENV{CCACHE_BASEDIR}")
+            vixen_compiler_cache_launcher_env(_vixen_compiler_cache_env_list ${_vixen_compiler_cache_kind}
+                "${_vixen_compiler_cache_path}" "${_vixen_compiler_cache_base}" "$ENV{CCACHE_MAXSIZE}"
+                "${VIXEN_CCACHE_SLOPPINESS}")
+            set(_vixen_compiler_launcher
+                "${CMAKE_COMMAND};-E;env;${_vixen_compiler_cache_env_list};${_vixen_compiler_cache_program}")
+            if(VIXEN_CCACHE_DISABLE_PCH)
+                set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON)
+                message(STATUS "VIXEN compiler cache: precompiled headers off (VIXEN_CCACHE_DISABLE_PCH; /Yu compiles are uncacheable)")
+            endif()
+        else()
+            set(_vixen_compiler_cache_path "${VIXEN_COMPILER_CACHE_DIR}/${_vixen_compiler_cache_kind}")
             set(_vixen_compiler_launcher "${_vixen_compiler_cache_program}")
         endif()
         foreach(_language C CXX)
@@ -154,6 +176,7 @@ if(USE_CCACHE)
         endforeach()
         if(WIN32)
             message(STATUS "VIXEN compiler cache data: ${_vixen_compiler_cache_path}")
+            message(STATUS "VIXEN compiler cache base_dir: ${_vixen_compiler_cache_base} (shared by every tree under it)")
         endif()
     endif()
 else()
