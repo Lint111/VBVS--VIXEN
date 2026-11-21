@@ -56,7 +56,7 @@ ownership in `RecipeSimd.g.hpp` (`VIXEN/libraries/SVO/include/Recipe/generated/R
 the existing codegen/golden-check pipeline (`VIXEN/codegen/CMakeLists.txt:236-279`), the
 source-derived RenderGraph artifact manifest (`VIXEN/Vixen-Docs/01-Architecture/RenderGraph-System.md:434-440`),
 or sparse-mip/tiered-ESVO residency and streamed uploads
-(`VIXEN/Vixen-Docs/01-Architecture/Sparse-Mip-ESVO-LOD-Direction-2026-07.md:3-7`). Rows below
+(`VIXEN/Vixen-Docs/_archive/2026-11/01-Architecture/Sparse-Mip-ESVO-LOD-Direction-2026-07.md:3-7`). Rows below
 identify residue around those mechanisms and new cross-boundary copies.
 
 ## Path 1 — recipe/SDF declarations → materialized voxel state → shell → GPU
