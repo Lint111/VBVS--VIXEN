@@ -22,7 +22,9 @@
 # Knobs:
 #   -DVIXEN_AUTO_PROVISION_CCACHE=OFF   require a system ccache instead of auto-downloading
 #   -DVIXEN_CCACHE_VERSION=X.Y.Z        pin the ccache version to provision
-#   -DVIXEN_CCACHE_CACHE_DIR=<path>     where the provisioned ccache lives (default <src>/.ccache-deps)
+#   -DVIXEN_CCACHE_CACHE_DIR=<path>     where the provisioned ccache lives (default: ONE shared dir beside the
+#                                       shared compiler cache, <ccache dir>-deps, e.g. C:/ccache-deps; it was
+#                                       <src>/.ccache-deps, one copy per tree)
 #   build target  vixen-uninstall-ccache   remove the provisioned cache
 
 include_guard(GLOBAL)
@@ -34,7 +36,20 @@ endif()
 
 option(VIXEN_AUTO_PROVISION_CCACHE "Download a prebuilt ccache into a cache when none is found (Windows only)" ON)
 set(VIXEN_CCACHE_VERSION "4.13.6" CACHE STRING "ccache version to auto-provision")
-set(VIXEN_CCACHE_CACHE_DIR "${VIXEN_ROOT}/.ccache-deps" CACHE PATH "Persistent ccache provisioning cache")
+include("${CMAKE_CURRENT_LIST_DIR}/VixenCompilerCache.cmake")
+# The default shares the provisioned binary between all trees, on the same Windows drive as the cache.
+vixen_resolve_windows_compiler_cache_dir(ccache _vixen_shared_ccache_dir
+    "${VIXEN_COMPILER_CACHE_DIR}" "${CMAKE_BINARY_DIR}/_cache/compiler" "$ENV{CCACHE_DIR}" "$ENV{SystemDrive}")
+set(_vixen_legacy_ccache_deps "${VIXEN_ROOT}/.ccache-deps")
+set(VIXEN_CCACHE_CACHE_DIR "${_vixen_shared_ccache_dir}-deps" CACHE PATH "Persistent ccache provisioning cache (shared by every tree)")
+# Migration: a tree configured before the shared cache has the per-tree directory and the per-tree
+# ccache.exe cached; both count as unset so the next configure moves to the shared copy.
+if(VIXEN_CCACHE_CACHE_DIR STREQUAL _vixen_legacy_ccache_deps)
+    set(VIXEN_CCACHE_CACHE_DIR "${_vixen_shared_ccache_dir}-deps" CACHE PATH "Persistent ccache provisioning cache (shared by every tree)" FORCE)
+endif()
+if(VIXEN_PROVISIONED_CCACHE_PROGRAM MATCHES "/\\.ccache-deps/" AND NOT VIXEN_PROVISIONED_CCACHE_PROGRAM MATCHES "^${VIXEN_CCACHE_CACHE_DIR}/")
+    unset(VIXEN_PROVISIONED_CCACHE_PROGRAM CACHE)
+endif()
 
 # --- locate, or auto-provision ---
 # Precedence: an already-installed system ccache wins; only if absent do we touch the

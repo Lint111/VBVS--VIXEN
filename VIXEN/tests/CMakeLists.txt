@@ -97,6 +97,10 @@ add_test(NAME Native.CompilerCacheOff
             -P "${VIXEN_ROOT}/cmake/tests/test_compiler_cache_off.cmake")
 set_tests_properties(Native.CompilerCacheOff PROPERTIES LABELS "cpu")
 
+add_test(NAME Native.CompilerCacheShared
+    COMMAND "${CMAKE_COMMAND}" -P "${VIXEN_ROOT}/cmake/tests/test_compiler_cache_shared.cmake")
+set_tests_properties(Native.CompilerCacheShared PROPERTIES LABELS "cpu")
+
 add_test(NAME Native.KernelSnapshotReuse
     COMMAND "${CMAKE_COMMAND}" "-DVIXEN_SNAPSHOT_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/kernel-snapshot-reuse"
             -P "${VIXEN_ROOT}/cmake/tests/test_kernel_snapshot_reuse.cmake")
