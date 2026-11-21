@@ -192,6 +192,11 @@ bool VulkanGraphApplication::Render() {
             return false;
         }
 
+        // Panel documents are mounted one at a time after the graph frame has fully completed.
+        // Rml::Context::LoadDocument performs synchronous layout work, so this keeps it outside
+        // render-node execution and lets the application update run between successful mounts.
+        if (auto* ui = GetUiRenderNode()) ui->RealizePendingMountBetweenFrames();
+
         auto* submittedHistoryWriter = dynamic_cast<Vixen::RenderGraph::ComputeStageNode*>(
             renderGraph->GetInstanceByName("render_path/reconstruction_history/seed"));
         if (submittedHistoryWriter && submittedHistoryWriter->GetSubmissionSerial() > historySerial) {
@@ -805,6 +810,7 @@ void VulkanGraphApplication::Update() {
         if (renderGraph) {
             if (auto* ui = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiRenderNode_))) {
                 ui->PollHudHotReload();
+                ui->PollDocumentReload();
                 // R766: re-place the declared panels when the layout or the window size changed
                 // (a revision/extent compare otherwise; nothing is touched on a steady frame).
                 panelDock_->Update();

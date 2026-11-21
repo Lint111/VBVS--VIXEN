@@ -479,9 +479,6 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
     // untouched. Off-path (env unset) byte-identical: same Update()/Render() calls as before.
     const bool hudSuppressed = std::getenv("VIXEN_HUD_SUPPRESS") != nullptr;
     if (context_ && !hudSuppressed) {
-        // M-ui: realize any mount requested before the context existed (the first frame it's alive).
-        // Must run BEFORE Update() so a freshly mounted fragment renders this same frame (spike §2).
-        RealizePendingMounts();
         ApplyPlacements();
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         context_->Update();
@@ -502,7 +499,6 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
 }
 
 void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
-    PollDocumentReload();  // an edited panel document or stylesheet swaps in before this frame's input and Update
     // Pointer, wheel, keys and text reach the Rml context before this frame's Update(); done ahead of
     // the early returns below so a skipped frame does not drop typed input.
     if (const InputStatePtr input = ctx.In(UIRenderNodeConfig::INPUT_STATE)) ForwardInput(*input);
@@ -713,13 +709,25 @@ bool UIRenderNode::MountNow(MountHandle handle, IView& view, const std::string& 
     return true;
 }
 
-void UIRenderNode::RealizePendingMounts() {
+void UIRenderNode::RealizeNextPendingMount() {
     if (pendingMounts_.empty() || !context_) return;
-    for (auto& pending : pendingMounts_) {
-        // A rejected mount just doesn't appear in mounts_.
-        if (pending.view) MountNow(pending.handle, *pending.view, pending.documentPath);
-    }
-    pendingMounts_.clear();
+    PendingMount_ pending = std::move(pendingMounts_.front());
+    pendingMounts_.erase(pendingMounts_.begin());
+    // One document per completed frame gives the host's AppFlow update/render cycle a chance to
+    // progress between panel mounts. The caller runs outside RenderGraph::RenderFrame.
+    if (pending.view) MountNow(pending.handle, *pending.view, pending.documentPath);
+}
+
+bool UIRenderNode::RealizePendingMountBetweenFrames() {
+    // The first complete frame gives a client that connected as soon as the AppFlow descriptor was
+    // published one full application update to deliver its first readiness/list request.
+    if (!context_ || renderedFrameCounter_ < 2 || pendingMounts_.empty()) return false;
+    const PendingMount_& pending = pendingMounts_.front();
+    std::fprintf(stderr,
+        "[ui-host] realize queued document phase=between-frames after_frame=%u path='%s'\n",
+        renderedFrameCounter_, pending.documentPath.c_str());
+    RealizeNextPendingMount();
+    return true;
 }
 
 UIRenderNode::MountHandle UIRenderNode::Mount(IView& view) {
@@ -732,9 +740,9 @@ UIRenderNode::MountHandle UIRenderNode::Mount(IView& view, const char* documentP
     if (context_) {
         if (!MountNow(handle, view, path)) return 0;
     } else {
-        // Context not built yet (Mount called before the first CompileImpl) — park it; RealizePendingMounts
-        // in RecordFrame does the actual mount once the context exists. Report the handle optimistically
-        // (mirrors the HUD's SetView-before-compile deferral); IsMounted() reflects the real state later.
+        // Context not built yet (Mount called before the first CompileImpl) — park it for the host's
+        // between-frame realization pump. Report the handle optimistically (mirrors the HUD's
+        // SetView-before-compile deferral); IsMounted() reflects the real state later.
         pendingMounts_.push_back({handle, &view, path});
     }
     return handle;

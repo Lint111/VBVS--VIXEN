@@ -68,6 +68,10 @@ public:
     /// Hosts call this once at the top of their update tick, before rendering begins.
     void PollHudHotReload();
 
+    /// Realize one queued panel document after a completed RenderFrame and before the next one.
+    /// RmlUi document loading performs layout and must stay outside render-node execution/recording.
+    bool RealizePendingMountBetweenFrames();
+
     /// One document reload (watched edit or forced): which mount, the files involved, and the outcome. A failed
     /// reload keeps the old document; its `files` hold the located error.
     struct DocumentReloadReport {
@@ -80,7 +84,7 @@ public:
 
     /// Live reload of the UI documents (R772, R838.11): polls the mtime of every file each mounted (and the
     /// primary) document pulled in, at a low cadence and without allocating, and reloads a changed document in
-    /// place. Runs from Execute for every app; no flag, because the steady state is a stat per file per 15 ticks.
+    /// place. Hosts call this before RenderFrame; no flag, because the steady state is a stat per file per 15 ticks.
     void PollDocumentReload();
 
     /// Forces a reload now. `handle` 0 reloads every document, otherwise that mount (kPrimaryDocument = the
@@ -216,7 +220,8 @@ private:
     std::map<MountHandle, Mount_> mounts_;
     MountHandle nextMountHandle_ = 1;   // 0 is the invalid sentinel
     // Mount() can be called before the first CompileImpl (context_ still null); such requests park
-    // here and are realized on the first frame the context exists (RealizePendingMounts in RecordFrame).
+    // here and are realized one at a time by TypedExecuteImpl before frame recording. The first
+    // frame leaves them queued so the AppFlow channel gets its initial update.
     struct PendingMount_ {
         MountHandle handle = 0;
         IView* view = nullptr;
@@ -227,7 +232,7 @@ private:
     // (leaving no partial state) on a namespace/degenerate-layout failure. Requires context_ != null.
     // A view already mounted by another panel shares that panel's model (R766).
     bool MountNow(MountHandle handle, IView& view, const std::string& documentPath);
-    void RealizePendingMounts();   // drain pendingMounts_ once context_ exists
+    void RealizeNextPendingMount(); // realize at most one queued document between completed frames
 
     // R766 dock placements, keyed by mount handle (kPrimaryDocument for the primary document). Applied
     // to the document body before Context::Update() whenever a placement changed or its document appeared.
