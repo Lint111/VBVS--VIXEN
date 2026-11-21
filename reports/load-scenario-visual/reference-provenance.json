@@ -6,7 +6,7 @@
   "machine": "ws",
   "device": "AMD Radeon(TM) 8060S Graphics, AMD proprietary driver 25.20.18 (LLPC), native Windows Vulkan",
   "resolution": [1920, 1080],
-  "form": "reference-hashes.csv (frame,leg,file,fnv1a64); the frames are kept on ws in /home/liory/codeman-cases/undertow/reports/opus-rl0-evidence/regold/load-k8-t0, not in the repo",
+  "form": "reference-hashes.txt (frame,leg,file,fnv1a64); the frames are kept on ws in /home/liory/codeman-cases/undertow/reports/opus-rl0-evidence/regold/load-k8-t0, not in the repo",
   "count": 11,
   "previous": "rt7-ls2-zbin (vx11): frames 59-689 unchanged; 779 6f82098719a82bbc, 869 d1e97b5734a673c1, 959 6f6859b73e3cc3dd replaced",
   "changed_frames": {
