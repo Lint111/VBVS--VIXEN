@@ -4,7 +4,7 @@
 set -euo pipefail
 
 root="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null || true)"
-limit=11901
+limit=11247
 extra_lines=0
 self_test=0
 
