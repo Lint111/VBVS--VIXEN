@@ -144,9 +144,9 @@
       "max_channel_delta": 0,
       "device": "AMD Radeon(TM) 8060S Graphics",
       "driver": "32.0.22018.5",
-      "sheet": "VIXEN/reports/rjs2-parity.csv",
+      "sheet": "external evidence/vixen-rjs2-parity.csv",
       "queue_job_count": 32,
-      "per_pair_queue_logs_and_png_hashes": "VIXEN/reports/rjs2-parity.csv"
+      "per_pair_queue_logs_and_png_hashes": "external evidence/vixen-rjs2-parity.csv"
     },
     "midday_lookdev_ab": {
       "status": "passed",
@@ -274,7 +274,7 @@
       "max_channel_delta": 0,
       "device": "AMD Radeon(TM) 8060S Graphics",
       "driver": "32.0.22018.5",
-      "sheet": "VIXEN/reports/rjs2-parity.csv",
+      "sheet": "external evidence/vixen-rjs2-parity.csv",
       "images_opened": [
         "midday-angle-0",
         "late-afternoon-angle-0",
@@ -438,7 +438,7 @@
       "status": "passed",
       "pairs_byte_identical": 16,
       "pixel_diff": 0,
-      "sheet": "VIXEN/reports/rjs2-parity.csv"
+      "sheet": "external evidence/vixen-rjs2-parity.csv"
     },
     {
       "id": "midday-lookdev-ab-dc6",

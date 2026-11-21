@@ -38,13 +38,12 @@ VIXEN/gatherer_test.txt
 # binaryDir (build/wsl, build/ninja, build/wsl-debug, ...) so a NEW preset never needs a new
 # gitignore entry. Legacy VIXEN/build/ kept for any pre-consolidation local build dirs.
 /build/
+/.vs/
 
-# Live-gate capture PNGs (Sampled Lighting increments): the SHA256 hash of each capture is
-# committed in gate-artifacts/*-hashes.txt as the durable proof; the PNGs themselves stay
-# untracked (large, regenerable, one per milestone's before/after render). Gate artifacts
-# are captured under VIXEN/gate-artifacts/ in practice, so both locations are covered.
-/gate-artifacts/*.png
-/VIXEN/gate-artifacts/*.png
+# Live-gate captures and hash dumps are regenerable evidence; keep the entire gate-artifacts
+# directories out of the repository.
+/gate-artifacts/
+/VIXEN/gate-artifacts/
 /VIXEN/build/
 
 # Local dev helper scripts (machine-specific absolute paths)
@@ -81,8 +80,20 @@ cache/
 # Local settings
 *.local.json
 
-# Logs
+# Logs and raw lane evidence
 *.log
+/reports/**/*.log
+/reports/**/*.log.gz
+/reports/**/*.csv
+/reports/**/*.png
+/reports/**/*.ppm
+/reports/**/*.exr
+/VIXEN/reports/**/*.log
+/VIXEN/reports/**/*.log.gz
+/VIXEN/reports/**/*.csv
+/VIXEN/reports/**/*.png
+/VIXEN/reports/**/*.ppm
+/VIXEN/reports/**/*.exr
 log.txt
 logs/
 
@@ -102,9 +113,8 @@ NUL
 /.codex/
 .codex/config.toml
 
-# Windows-native capability bench rig: scripts tracked, outputs are not
-temp_bench/*
-!temp_bench/*.bat
+# Windows-native capability bench rig is local-only, including its helper scripts and outputs.
+/temp_bench/
 
 # runtime log whose filename literally contains a backslash (Windows path separator bug)
 *vulkan_app_log.txt

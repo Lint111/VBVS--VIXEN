@@ -874,6 +874,24 @@ if(VIXEN_NO_NEW_MUTEX_GATE)
     endif()
 endif()
 
+# Raw lane evidence guard: committed Markdown reports may retain linked explanatory images, but
+# logs, captures, CSV dumps, and temporary evidence directories must stay in the external evidence store.
+option(VIXEN_RAW_EVIDENCE_GATE "Reject newly committed raw logs and captures" ON)
+if(VIXEN_RAW_EVIDENCE_GATE)
+    find_program(VIXEN_RAW_EVIDENCE_PYTHON3 NAMES python3)
+    if(VIXEN_GATE_BASH AND VIXEN_RAW_EVIDENCE_PYTHON3)
+        vixen_add_checked_target(raw_evidence_check ALL
+            COMMAND ${VIXEN_GATE_BASH} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-raw-evidence.sh"
+                    --root "${CMAKE_CURRENT_SOURCE_DIR}/.."
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-raw-evidence.sh"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/../.gitignore"
+            COMMENT "raw lane evidence guard (scripts/check-raw-evidence.sh)"
+            VERBATIM)
+    else()
+        message(STATUS "raw evidence guard skipped: bash or python3 not found (run scripts/check-raw-evidence.sh from WSL/CI)")
+    endif()
+endif()
+
 # Keep the tracked Python tooling surface on the R878 shrink ratchet.  This is a source-only
 # check, so it remains useful on the WSL/CI side even when native C++ targets are unavailable.
 option(VIXEN_PYTHON_LINES_GATE "Reject growth of tracked Python tooling" ON)
