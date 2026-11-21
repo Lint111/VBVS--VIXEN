@@ -103,7 +103,17 @@ public:
         bool temporalJitter = false;
         Vixen::RenderGraph::ReconstructionSamplingPath samplingPath =
             Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture;
+        // R860.2/.7 shell tolerance in pixels: a recipe's certified shell (RL1) is marched once its
+        // certified error projects under this many pixels (times its toleranceScale, R892.28).
+        // 0 is the exact preset: no shell is registered or selected (native captures, R892.4).
+        // The application starts at kRealtimeShellTolerancePx; VIXEN_SHELL_TOLERANCE_PX overrides it,
+        // capped at that value until the certificate bounds crease shading (STOP 1 of opus-rl0).
+        float shellTolerancePx = 0.0f;
     };
+    // R860 RL0 / R892.27: the real-time shell tolerance, witnessed invisible by the band-switch
+    // pairs (LookdevCapture.LodSwitch.T0p125) and by the lockstep load scenario (same 11 frame
+    // hashes as the exact preset).
+    static constexpr float kRealtimeShellTolerancePx = 0.125f;
     // Instantiable (AR#7): the former singleton (GetInstance + once_flag) is gone — a host
     // constructs and owns the application directly. Only main.cpp ever created it, and no
     // library code reached for the global instance, so there is nothing else to re-thread.
@@ -826,6 +836,9 @@ public:
     // The registry the shader builders read: the entries as registered (bounds, occupancy grid,
     // glyph rows). Read-only; diagnostics replay a ray on the CPU against the same data.
     const Vixen::SVO::RecipeRegistry& ProceduralRecipes() const { return proceduralRecipes_; }
+    // R860 RL0: registers a recipe's derived shells (digest-keyed, registry-allocated keys) and
+    // records them as its LOD variants. Called after the recipe registered, when a shell tolerance is set.
+    void RegisterDerivedShells(uint32_t recipeId, const Vixen::SVO::RecipeRegistry::RecipeEntry& recipe);
     // Replaces a registered program under the same id; callers must recompile the procedural
     // shader after a successful bytecode change. Runtime parameter edits stay in recipeParams.
     Vixen::SVO::RecipeRegistry::RegisterResult ReplaceProceduralRecipe(

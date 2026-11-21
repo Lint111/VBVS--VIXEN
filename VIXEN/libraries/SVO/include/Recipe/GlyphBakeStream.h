@@ -41,7 +41,11 @@
 namespace Vixen::SVO::Recipe {
 
 inline constexpr std::uint32_t kGlyphBakeMagic = 0x42594C47u; // 'GLYB'
-inline constexpr std::uint32_t kGlyphBakeLayoutVersion = 3;
+inline constexpr std::uint32_t kGlyphBakeLayoutVersion = 5;
+// Since layout 4 (R892.23) the image ends with two floats per glyph, the facts a shell that drops the
+// glyph needs: an upper bound of the distance from a point inside the glyph to its outline (font
+// units) and the ink coverage of its bounds box (0..1).
+inline constexpr std::uint32_t kGlyphBakeFactWords = 2;
 inline constexpr std::uint32_t kGlyphBakeImageHeaderWords = 22;
 inline constexpr std::uint32_t kGlyphBakeExactBandWord = 19;
 inline constexpr std::uint32_t kGlyphBakeBlockHeaderWords = 12;
@@ -74,14 +78,15 @@ public:
                         std::to_string(kGlyphBakeLayoutVersion) + "; bake the font again");
         const std::uint64_t glyphCount = words[3];
         if (words[2] == 0 || std::uint64_t{words[21]} + kGlyphBakeImageHeaderWords != words.size() ||
-            kGlyphBakeImageHeaderWords + glyphCount * 2 > words.size())
+            kGlyphBakeImageHeaderWords + glyphCount * (2 + kGlyphBakeFactWords) > words.size())
             return fail("glyph bake image is truncated (a compressed .glyphbake file is not an image; "
                         "the build step writes the image with glyph-bake --image)");
         for (std::uint64_t glyphId = 0; glyphId < glyphCount; ++glyphId) {
             const std::uint64_t offset = words[kGlyphBakeImageHeaderWords + glyphId * 2];
             const std::uint64_t length = words[kGlyphBakeImageHeaderWords + glyphId * 2 + 1];
             if (length == 0) continue;
-            if (offset < kGlyphBakeImageHeaderWords + glyphCount * 2 || offset + length > words.size() ||
+            if (offset < kGlyphBakeImageHeaderWords + glyphCount * 2 ||
+                offset + length > words.size() - glyphCount * kGlyphBakeFactWords ||
                 !BlockIsSound(std::span<const std::uint32_t>(words).subspan(offset, length)))
                 return fail("glyph bake image: block of glyph " + std::to_string(glyphId) + " is malformed");
         }
@@ -119,6 +124,12 @@ public:
     [[nodiscard]] std::span<const std::uint32_t> Key() const noexcept {
         return std::span<const std::uint32_t>(words_).subspan(4, 8);
     }
+
+    // An upper bound of the distance from any point inside the glyph to its outline, font units;
+    // 0 for a glyph without an outline or outside the font.
+    [[nodiscard]] float InsideDistanceUnits(std::uint32_t glyphId) const noexcept { return Fact(glyphId, 0); }
+    // The part of the glyph's bounds box that is ink, 0..1.
+    [[nodiscard]] float InkCoverage(std::uint32_t glyphId) const noexcept { return Fact(glyphId, 1); }
 
     // The block of a glyph; empty for a glyph without an outline or outside the font.
     [[nodiscard]] std::span<const std::uint32_t> Block(std::uint32_t glyphId) const noexcept {
@@ -165,6 +176,12 @@ public:
 
 private:
     GlyphBakeImage() = default;
+    [[nodiscard]] float Fact(std::uint32_t glyphId, std::uint32_t which) const noexcept {
+        if (glyphId >= GlyphCount()) return 0.0f;
+        const std::size_t base = words_.size() - std::size_t{GlyphCount()} * kGlyphBakeFactWords;
+        const float value = std::bit_cast<float>(words_[base + std::size_t{glyphId} * kGlyphBakeFactWords + which]);
+        return std::isfinite(value) && value > 0.0f ? value : 0.0f;
+    }
     std::vector<std::uint32_t> words_;
 };
 

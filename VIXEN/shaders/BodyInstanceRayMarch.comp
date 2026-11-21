@@ -38,6 +38,8 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // contract; the production shader never defines that test-only switch.
 #ifndef VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES
 #define VIXEN_PRIMARY_TILE_CANDIDATES
+// R860 RL0: the camera ray marches each instance's LOD band (written by the tile prepare pass).
+#define VIXEN_INSTANCE_LOD_BANDS
 #endif
 #if defined(VIXEN_PRIMARY_JITTER) && !defined(VIXEN_RECONSTRUCTION_INPUTS)
 #error Primary jitter requires the declared reconstruction inputs

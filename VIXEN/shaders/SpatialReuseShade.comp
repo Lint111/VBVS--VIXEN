@@ -53,6 +53,11 @@ layout(binding = VXB_sceneRadianceImage) uniform writeonly image2D sceneRadiance
 layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
 #include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
+// R860 RL0 (R860.2): this pass's rays march the same LOD band as the camera ray. Fixtures that bind
+// their own descriptors and run no tile pass opt out with the GB1 test switch.
+#ifndef VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES
+#define VIXEN_INSTANCE_LOD_BANDS
+#endif
 #include "SceneBindings.glsl"   // scene SSBOs + traversal (KI-018) — debug arm traces inline
 #else
 #include "SceneCommon.glsl"     // pc + camera rays only — NO traversal machinery

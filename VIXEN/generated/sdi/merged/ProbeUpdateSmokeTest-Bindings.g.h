@@ -14,26 +14,27 @@ inline constexpr uint32_t BrickBuffer = 2u;
 inline constexpr uint32_t BrickLookupBuffer = 3u;
 inline constexpr uint32_t ChannelPoolBuffer = 4u;
 inline constexpr uint32_t ESVOBuffer = 5u;
-inline constexpr uint32_t InstanceIterDebugBuffer = 6u;
-inline constexpr uint32_t InstanceOrderBuffer = 7u;
-inline constexpr uint32_t InstanceSkipMaskBuffer = 8u;
-inline constexpr uint32_t MaterialBuffer = 9u;
-inline constexpr uint32_t MipPoolBuffer = 10u;
-inline constexpr uint32_t OctreeConfigsSSBO = 11u;
-inline constexpr uint32_t PolicyStencilTileBuffer = 12u;
-inline constexpr uint32_t RayTraceBuffer = 13u;
-inline constexpr uint32_t RecipeChunkAabbBuffer = 14u;
-inline constexpr uint32_t RtQueryProxyAabbBuffer = 15u;
-inline constexpr uint32_t SdfTraceProbeBuffer = 16u;
-inline constexpr uint32_t ShaderCountersBuffer = 17u;
-inline constexpr uint32_t TierRefTableBuffer = 18u;
-inline constexpr uint32_t TileBinViewBuffer = 19u;
-inline constexpr uint32_t TileRankWordBuffer = 20u;
-inline constexpr uint32_t outputImage = 21u;
-inline constexpr uint32_t rtQueryTlas = 22u;
+inline constexpr uint32_t InstanceBandBuffer = 6u;
+inline constexpr uint32_t InstanceIterDebugBuffer = 7u;
+inline constexpr uint32_t InstanceOrderBuffer = 8u;
+inline constexpr uint32_t InstanceSkipMaskBuffer = 9u;
+inline constexpr uint32_t MaterialBuffer = 10u;
+inline constexpr uint32_t MipPoolBuffer = 11u;
+inline constexpr uint32_t OctreeConfigsSSBO = 12u;
+inline constexpr uint32_t PolicyStencilTileBuffer = 13u;
+inline constexpr uint32_t RayTraceBuffer = 14u;
+inline constexpr uint32_t RecipeChunkAabbBuffer = 15u;
+inline constexpr uint32_t RtQueryProxyAabbBuffer = 16u;
+inline constexpr uint32_t SdfTraceProbeBuffer = 17u;
+inline constexpr uint32_t ShaderCountersBuffer = 18u;
+inline constexpr uint32_t TierRefTableBuffer = 19u;
+inline constexpr uint32_t TileBinViewBuffer = 20u;
+inline constexpr uint32_t TileRankWordBuffer = 21u;
+inline constexpr uint32_t outputImage = 22u;
+inline constexpr uint32_t rtQueryTlas = 23u;
 
-inline constexpr uint32_t COUNT = 23u;
-inline constexpr const char* NAMES[] = {"BodyInstanceBuffer", "BodyInstanceTransformBuffer", "BrickBuffer", "BrickLookupBuffer", "ChannelPoolBuffer", "ESVOBuffer", "InstanceIterDebugBuffer", "InstanceOrderBuffer", "InstanceSkipMaskBuffer", "MaterialBuffer", "MipPoolBuffer", "OctreeConfigsSSBO", "PolicyStencilTileBuffer", "RayTraceBuffer", "RecipeChunkAabbBuffer", "RtQueryProxyAabbBuffer", "SdfTraceProbeBuffer", "ShaderCountersBuffer", "TierRefTableBuffer", "TileBinViewBuffer", "TileRankWordBuffer", "outputImage", "rtQueryTlas"};
+inline constexpr uint32_t COUNT = 24u;
+inline constexpr const char* NAMES[] = {"BodyInstanceBuffer", "BodyInstanceTransformBuffer", "BrickBuffer", "BrickLookupBuffer", "ChannelPoolBuffer", "ESVOBuffer", "InstanceBandBuffer", "InstanceIterDebugBuffer", "InstanceOrderBuffer", "InstanceSkipMaskBuffer", "MaterialBuffer", "MipPoolBuffer", "OctreeConfigsSSBO", "PolicyStencilTileBuffer", "RayTraceBuffer", "RecipeChunkAabbBuffer", "RtQueryProxyAabbBuffer", "SdfTraceProbeBuffer", "ShaderCountersBuffer", "TierRefTableBuffer", "TileBinViewBuffer", "TileRankWordBuffer", "outputImage", "rtQueryTlas"};
 
 } // namespace Bindings
 } // namespace ProbeUpdateSmokeTest

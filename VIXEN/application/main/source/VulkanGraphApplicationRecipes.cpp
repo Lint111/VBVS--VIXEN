@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -737,22 +738,67 @@ bool HasRuntimeParameters(const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) 
 // occupancy grid: the grid samples one parameter value, so its cells could incorrectly cull a
 // changed field.
 Vixen::SVO::Recipe::RecipeRegistrationOptions RegistrationOptionsFor(
-    const Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
+    const Vixen::SVO::RecipeRegistry::RecipeEntry& entry, bool lodShells) {
     const bool hasRuntimeParameters = HasRuntimeParameters(entry);
     Vixen::SVO::Recipe::RecipeRegistrationOptions options;
     options.preferDerivedBound = entry.boundRadius > 0.0f && !hasRuntimeParameters;
     options.occupancy = !hasRuntimeParameters;
+    // R892.23: a recipe with baked glyph rows gets its certified shells derived and stored with the
+    // entry (the glyph rows leave the coarse shell). Other recipes keep today's registration cost
+    // until a lane selects shells per instance (RL0).
+    // R860 RL0: with a shell tolerance set, every recipe without runtime parameters gets its shells,
+    // which the registry then registers and the binning pass selects per instance.
+    options.shells = !hasRuntimeParameters && (lodShells ||
+        std::any_of(entry.glyphBakedRows.begin(), entry.glyphBakedRows.end(),
+                    [](const Vixen::SVO::Recipe::GlyphBakedRow& row) { return row.Baked(); }));
     return options;
+}
+
+// Test switch (R892.23 witness; nothing selects a shell per instance yet): VIXEN_RECIPE_FORCE_SHELL_LEVEL=n
+// renders every recipe that has at least n derived shells from its shell n (1 = finest) instead of
+// its own tape. 0, unset or unparsable: off.
+std::uint32_t ForcedShellLevel() {
+    const char* text = std::getenv("VIXEN_RECIPE_FORCE_SHELL_LEVEL");
+    if (text == nullptr) return 0u;
+    char* end = nullptr;
+    const unsigned long level = std::strtoul(text, &end, 10);
+    return end != text && *end == '\0' && level <= 8ul ? static_cast<std::uint32_t>(level) : 0u;
 }
 
 // M6 Task 13: the kernel recipe analysis service finalizes the bound (authored, derived or engine
 // default) and derives the coarse occupancy grid from that bound. A program the service cannot
 // prove leaves occupancyGridDim==0 (the splice emits a gridDim=0u case; the shader skips the
 // occupancy fast-path for it).
-Vixen::SVO::Recipe::RecipeRegistrationAnalysis AnalyzeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& entry) {
-    return Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
-        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f, 64u, 16u,
-        RegistrationOptionsFor(entry));
+Vixen::SVO::Recipe::RecipeRegistrationAnalysis AnalyzeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& entry,
+                                                             bool lodShells = false) {
+    Vixen::SVO::Recipe::RecipeRegistrationOptions options = RegistrationOptionsFor(entry, lodShells);
+    auto analysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
+        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f, 64u, 16u, options);
+    const std::uint32_t forced = ForcedShellLevel();
+    if (forced != 0u) {
+        for (std::size_t level = 0; level < entry.derivedShells.size(); ++level)
+            std::printf("[RECIPE_SHELL] level=%zu records=%zu of %zu certified_error=%.9g bound_radius=%.9g rules=%u certificate=%u tolerance_scale=%.3g%s\n",
+                        level + 1, entry.derivedShells[level].bytecode.size(), entry.bytecode.size(),
+                        static_cast<double>(entry.derivedShells[level].certifiedError),
+                        static_cast<double>(entry.derivedShellBoundRadius), entry.derivedShells[level].rules,
+                        entry.derivedShells[level].certificate,
+                        static_cast<double>(entry.derivedShells[level].toleranceScale), level + 1 == forced ? " FORCED" : "");
+        if (entry.derivedShells.empty()) std::printf("[RECIPE_SHELL] none (records=%zu)\n", entry.bytecode.size());
+        std::fflush(stdout);
+    }
+    if (forced != 0u && forced <= entry.derivedShells.size()) {
+        // The shell is a recipe of its own: analyse it as one (bound and grid of the shell's tape),
+        // and keep the derived data of the recipe it stands for.
+        auto shells = std::move(entry.derivedShells);
+        const float shellBoundRadius = entry.derivedShellBoundRadius;
+        entry.bytecode = shells[forced - 1u].bytecode;
+        options.shells = false;
+        analysis = Vixen::SVO::Recipe::AnalyzeRecipeRegistration(
+            entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f, 64u, 16u, options);
+        entry.derivedShells = std::move(shells);
+        entry.derivedShellBoundRadius = shellBoundRadius;
+    }
+    return analysis;
 }
 
 }  // namespace
@@ -853,7 +899,7 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
         return result;
     }
 
-    const auto analysis = AnalyzeEntry(entry);
+    const auto analysis = AnalyzeEntry(entry, renderPathConfig_.shellTolerancePx > 0.0f);
     if (mainLogger && mainLogger->IsEnabled()) {
         auto sourceName = [](Vixen::SVO::Recipe::RecipeRegistrationAnalysis::BoundSource s) {
             switch (s) {
@@ -897,9 +943,55 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     const auto result = proceduralRecipes_.Register(recipeId, entry);
     if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
         RegisterRecipeContent(recipeId, entry);
+        if (renderPathConfig_.shellTolerancePx > 0.0f) RegisterDerivedShells(recipeId, entry);
         AdvanceRecipeEditSerial();
     }
     return result;
+}
+
+// R860 RL0: each derived shell is a recipe of its own (its bound and grid analysed from its tape),
+// registered once per content digest under a key the registry allocates (R841.2). The recipe's
+// ladder then names those keys, finest first. A shell the registry refuses ends the ladder there:
+// a coarser shell is only reached through the finer ones.
+void VulkanGraphApplication::RegisterDerivedShells(uint32_t recipeId,
+                                                   const Vixen::SVO::RecipeRegistry::RecipeEntry& recipe) {
+    std::vector<uint32_t> keys;
+    for (const auto& shell : recipe.derivedShells) {
+        Vixen::SVO::RecipeRegistry::RecipeEntry shellEntry{};
+        shellEntry.bytecode = shell.bytecode;
+        shellEntry.parameterValues = recipe.parameterValues;
+        // A registered recipe must lower to a complete GPU tape: the operand refresh after a live edit
+        // concatenates every registered tape, and one that does not lower record for record makes it
+        // refuse the whole refresh (the march then reads stale operands). Such a shell ends the ladder.
+        const auto lowered = Vixen::SVO::Recipe::RecipeGpuTape(shellEntry.bytecode);
+        if (lowered.status != YK_RECIPE_GPU_OK || lowered.instructions.size() != shellEntry.bytecode.size()) {
+            std::printf("[LOD_SHELLS] recipe=%u shell %zu does not lower to a complete GPU tape (%zu of %zu): %s\n",
+                        recipeId, keys.size() + 1, lowered.instructions.size(), shellEntry.bytecode.size(),
+                        lowered.diagnostic.c_str());
+            break;
+        }
+        const std::string digest = Vixen::SVO::Recipe::RecipeContentDigest(shellEntry.bytecode);
+        (void)AnalyzeEntry(shellEntry, /*lodShells=*/false);
+        uint32_t key = 0u;
+        const std::size_t registeredBefore = proceduralRecipes_.Ids().size();
+        const auto result = proceduralRecipes_.RegisterDerivedShell(digest, shellEntry, key);
+        if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+            if (mainLogger)
+                mainLogger->Warning("[VulkanGraphApplication::RegisterDerivedShells] recipeId=" +
+                                    std::to_string(recipeId) + " shell " + std::to_string(keys.size() + 1) +
+                                    " was refused (status " + std::to_string(static_cast<int>(result)) +
+                                    "); the ladder stops at the finer shells");
+            break;
+        }
+        if (proceduralRecipes_.Ids().size() > registeredBefore)  // a new digest, not a shared shell
+            RegisterRecipeContent(key, *proceduralRecipes_.Get(key));
+        keys.push_back(key);
+    }
+    std::printf("[LOD_SHELLS] recipe=%u shells=%zu keys=", recipeId, keys.size());
+    for (const uint32_t key : keys) std::printf("%08x ", key);
+    std::printf("\n");
+    std::fflush(stdout);
+    proceduralRecipes_.SetShellVariants(recipeId, std::move(keys));
 }
 
 Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::ReplaceProceduralRecipe(
@@ -1067,6 +1159,16 @@ void VulkanGraphApplication::MarkProceduralShaderLibsDirty() {
     }
     for (const auto handle : proceduralShaderLibNodes_)
         renderGraph->MarkNodeNeedsRecompile(handle);
+    // The swapped-in march bakes the occupancy-grid offsets of the registry it was spliced from;
+    // publish that splice's grid now, with the device idle, so the two never disagree. Without
+    // this the grid stayed at the last scene compile's layout, and a live registration whose id
+    // sorts before other recipes shifted their offsets onto another recipe's grid (opus-rl0: a
+    // swapped-in hull marched against a shell's grid rendered as a white blob).
+    if (bodyOctreeSceneNode_.IsValid()) {
+        if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                renderGraph->GetInstance(bodyOctreeSceneNode_)))
+            bodyScene->PublishOccupancyGrid();
+    }
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[VulkanGraphApplication::MarkProceduralShaderLibsDirty] marked " +
             std::to_string(proceduralShaderLibNodes_.size()) + " recipe source families dirty");

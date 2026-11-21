@@ -33,6 +33,11 @@ layout(std430, binding = VXB_OccupancyGridBuffer) readonly buffer OccupancyGridB
 #include "RecipeEditBindings.glsl"  // R896: material-variant recipe tape
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
+// R860 RL0 (R860.2): this pass's rays march the same LOD band as the camera ray. Fixtures that bind
+// their own descriptors and run no tile pass opt out with the GB1 test switch.
+#ifndef VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES
+#define VIXEN_INSTANCE_LOD_BANDS
+#endif
 #include "SceneBindings.glsl"
 
 #include "ShadowRayQueue.glsl"   // the shared request layout (producer/consumer anti-drift)

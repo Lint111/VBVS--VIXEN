@@ -39,6 +39,9 @@
 #include "Recipe/RecipeIngest.h"
 #include "Recipe/RecipeMarchReplay.h"
 #include "Recipe/SdfRecipeEval.h"
+#include "Recipe/LodSelection.h"
+#include "Recipe/RecipeServices.h"
+#include "Nodes/RecipeLodBandTable.h"
 
 #include <gtest/gtest.h>
 #include <stb_image.h>
@@ -278,7 +281,67 @@ struct CaptureScenario {
     glm::vec3 eye{0.0f};
     glm::vec3 target{0.0f};
     float saturation = 1.0f;   // SceneLook saturation for this capture
+    // R860 RL0 band-switch fixture: the camera sits on the fixture's view axis at this multiple of
+    // the computed switch distance (the pose is filled in once the fixture recipe is analysed),
+    // and the band table of this capture uses this multiple of the shell tolerance.
+    bool lodSwitch = false;
+    float lodDistanceScale = 1.0f;
+    float lodToleranceScale = 1.0f;
 };
+
+// R860 RL0 witness 2 (R892.27): a fixture recipe (a sphere with four small bumps, the RL1 corpus's
+// multi:sphere-with-bumps) whose first kernel-certified shell (RL1) is the band the pair switches
+// into. The shells are registered by the registry itself (content digest, registry-allocated key). The switch pair holds the camera where q equals the switch threshold computed from the
+// shell's certified error and the shell tolerance (R860.7), and moves only the threshold across q
+// (tolerance x (1 -+ kLodSwitchStep)): the two frames differ by the band switch alone. The control
+// pair repeats the first frame (repeatability), and the reveal pair shows full vs shell at a fifth
+// of the switch distance for review (not gated: there the shell's error is about 5 px).
+bool LodSwitchRequested() { return std::getenv("VIXEN_LOOKDEV_LOD_SWITCH") != nullptr; }
+constexpr uint32_t kLodFixtureRecipeId = 0x4c4f4430u;  // LOD0 (the subject; its shells get registry keys)
+constexpr uint32_t kLodFixturePadRecipeId = 0x4c4f4450u;  // LODP
+constexpr float kLodSwitchStep = 1.0e-3f;  // relative threshold step across the pose's q
+const glm::vec3 kLodViewDirection = glm::normalize(glm::vec3(0.35f, 0.3f, 1.0f));
+
+std::vector<Vixen::SVO::Recipe::SdfInstruction> LodFixtureInstructions() {
+    using Vixen::SVO::Recipe::SdfInstruction;
+    using Vixen::SVO::Recipe::SdfOpCode;
+    auto sphere = [](float x, float y, float z, float radius) {
+        SdfInstruction op{};
+        op.opCode = static_cast<uint8_t>(SdfOpCode::Sphere);
+        op.data[0] = x;
+        op.data[1] = y;
+        op.data[2] = z;
+        op.data[3] = radius;
+        return op;
+    };
+    SdfInstruction join{};
+    join.opCode = static_cast<uint8_t>(SdfOpCode::Union);
+    return {sphere(0.0f, 0.0f, 0.0f, 1.0f),
+            sphere(0.95f, 0.0f, 0.0f, 0.04f), join, sphere(0.0f, 0.97f, 0.0f, 0.03f), join,
+            sphere(0.0f, 0.0f, 0.9f, 0.12f), join, sphere(-0.9f, 0.0f, 0.0f, 0.2f), join};
+}
+
+std::vector<CaptureScenario> BuildLodSwitchScenarios() {
+    const auto& presets = Vixen::App::Lookdev::LightingPresets();
+    const auto lighting = *std::find_if(presets.begin(), presets.end(),
+        [](const auto& preset) { return std::string_view(preset.name) == "midday"; });
+    std::vector<CaptureScenario> scenarios;
+    auto posed = [&](std::string filename, float distanceScale, float toleranceScale) {
+        CaptureScenario scenario{lighting, 0.0f, std::move(filename)};
+        scenario.posed = true;
+        scenario.lodSwitch = true;
+        scenario.lodDistanceScale = distanceScale;
+        scenario.lodToleranceScale = toleranceScale;
+        scenarios.push_back(std::move(scenario));
+    };
+    posed("lod-switch-before.png", 1.0f, 1.0f - kLodSwitchStep);
+    posed("lod-switch-after.png", 1.0f, 1.0f + kLodSwitchStep);
+    posed("lod-control-before.png", 1.0f, 1.0f - kLodSwitchStep);
+    posed("lod-control-after.png", 1.0f, 1.0f - kLodSwitchStep);
+    posed("lod-reveal-before.png", 0.2f, 1.0e-6f);
+    posed("lod-reveal-after.png", 0.2f, 1.0e6f);
+    return scenarios;
+}
 
 // Owner exposure acceptance scenes (2026-10-19): a closed room beside the look-dev stage, with a
 // doorway in its +Z wall and a window in its +X wall, on a pale stone pad. Midday sun lights the
@@ -421,6 +484,7 @@ std::vector<CaptureScenario> BuildScenarios() {
     }
     if (const ExposureRoomMode room = RequestedExposureRoom(); room != ExposureRoomMode::Off)
         return BuildExposureRoomScenarios(room);
+    if (LodSwitchRequested()) return BuildLodSwitchScenarios();
     std::vector<CaptureScenario> scenarios;
     if (std::getenv("VIXEN_GLYPHSDF_SCENE") || std::getenv("VIXEN_SDF_FILTER_NON_TEXT")) {
         const char* variant = std::getenv("VIXEN_GLYPHSDF_VARIANT");
@@ -1653,6 +1717,10 @@ public:
         auto config = gRenderPathConfig;
         // The application constructor applied VIXEN_ANTI_ALIASING; keep that request.
         config.antiAliasing = GetRenderPathConfig().antiAliasing;
+        // R860 RL0: native captures are the exact preset (R892.4) unless --shell-tolerance-px= or
+        // VIXEN_SHELL_TOLERANCE_PX asks for a tolerance.
+        if (config.shellTolerancePx == 0.0f && std::getenv("VIXEN_SHELL_TOLERANCE_PX") != nullptr)
+            config.shellTolerancePx = GetRenderPathConfig().shellTolerancePx;
         config.samplingPath = config.renderScale == 1.0f && config.upscaler == UpscalerKind::None &&
                 !PresentationSamplingRequested()
             ? Vixen::RenderGraph::ReconstructionSamplingPath::CanonicalCapture
@@ -1773,7 +1841,9 @@ public:
                 }
             }
         }
-        const bool exposureRoom = scenarios_.front().posed;
+        const bool lodSwitch = scenarios_.front().lodSwitch;
+        if (lodSwitch && !RegisterLodFixture()) return;
+        const bool exposureRoom = scenarios_.front().posed && !lodSwitch;
         if (exposureRoom) {
             Vixen::SVO::RecipeRegistry::RecipeEntry room{};
             room.bytecode = ExposureRoomInstructions();
@@ -1828,7 +1898,9 @@ public:
         // central displaced-sphere recipe (world center 64,64,64) for the capture.
         const bool storedSdfScene = std::getenv("VIXEN_BRICKMAP_SCENE") != nullptr;
         camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_FOV, kCaptureFovDegrees);
-        if (exposureRoom) {
+        if (lodSwitch) {
+            if (!PoseLodSwitchScenarios()) return;
+        } else if (exposureRoom) {
             // Posed per frame in Render(); no orbit parameter is set, so the camera stays fixed.
         } else if (storedSdfScene) {
             // The brickmap scene is authored at world-space centers near (64,64,64).
@@ -1855,11 +1927,18 @@ public:
             const float orbitCenterX = orbitCenter.x;
             const float orbitCenterY = orbitCenter.y;
             const float orbitCenterZ = orbitCenter.z;
-            const float orbitDistance = framedScene
+            // VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE=k moves the camera k times farther along the same
+            // line of sight (far-view witnesses of LOD shells, R892.23); CameraNode clamps the result.
+            float distanceScale = 1.0f;
+            if (const char* scaleText = std::getenv("VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE")) {
+                const float parsed = std::strtof(scaleText, nullptr);
+                if (std::isfinite(parsed) && parsed > 0.0f) distanceScale = parsed;
+            }
+            const float orbitDistance = distanceScale * (framedScene
                 ? (recipePreview
                     ? recipeFrame.distance
                     : FitOrbitDistance(glyphScene, GetWindowAspect()))
-                : 14.0f;
+                : 14.0f);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_X, orbitCenterX);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Y, orbitCenterY);
             camera_->SetParameter(Vixen::RenderGraph::CameraNodeConfig::PARAM_ORBIT_CENTER_Z, orbitCenterZ);
@@ -1890,7 +1969,21 @@ public:
             *lighting_,
             graph ? dynamic_cast<Vixen::RenderGraph::SkySphereNode*>(graph->GetInstanceByName("sky_sphere")) : nullptr,
             sceneLook_);
-        if (recipePreview) {
+        if (lodSwitch) {
+            std::vector<Vixen::SVO::BodyInstanceGpu> instances;
+            for (const auto& [recipeId, color] : {std::pair{kLodFixtureRecipeId, glm::vec3(0.62f, 0.22f, 0.08f)},
+                                                  std::pair{kLodFixturePadRecipeId, glm::vec3(0.45f, 0.45f, 0.42f)}}) {
+                Vixen::SVO::BodyInstanceGpu instance{};
+                Vixen::SVO::SetInstanceTransform(instance, glm::mat4(1.0f));
+                instance.material.color[0] = color.r;
+                instance.material.color[1] = color.g;
+                instance.material.color[2] = color.b;
+                instance.material.providerKind = 1u;
+                instance.material.recipeId = recipeId;
+                instances.push_back(instance);
+            }
+            SetBodyInstances(std::move(instances));
+        } else if (recipePreview) {
             Vixen::SVO::BodyInstanceGpu instance{};
             const glm::mat4 model = glm::translate(glm::mat4(1.0f), recipeScene.frameCenter) *
                 glm::scale(glm::mat4(1.0f), glm::vec3(recipeScene.scale));
@@ -1997,6 +2090,98 @@ public:
         }
     }
 
+    // R860 RL0: the fixture, its first certified shell as the only other band, and a pad that
+    // catches its shadow. The shell is registered first (the ladder names it).
+    bool RegisterLodFixture() {
+        Vixen::SVO::RecipeRegistry::RecipeEntry fixture{};
+        fixture.bytecode = LodFixtureInstructions();
+        if (const auto result = RegisterProceduralRecipe(kLodFixtureRecipeId, fixture);
+            result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+            captureError_ = "LOD fixture: the recipe was rejected (status " +
+                std::to_string(static_cast<int>(result)) + ")";
+            return false;
+        }
+        Vixen::SVO::RecipeRegistry::RecipeEntry pad{};
+        pad.bytecode = {RoomBox(glm::vec3(0.0f, -1.3f, 0.0f), glm::vec3(8.0f, 0.1f, 8.0f))};
+        if (RegisterProceduralRecipe(kLodFixturePadRecipeId, pad) != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+            captureError_ = "LOD fixture: the pad was rejected";
+            return false;
+        }
+        // The framing needs the first shell's certified error even on the exact preset, where nothing
+        // registers shells: analyse a copy of the fixture with shells on (registration-time analysis).
+        lodFixtureShells_ = LodFixtureInstructions();
+        Vixen::SVO::RecipeRegistry::RecipeEntry probe{};
+        probe.bytecode = lodFixtureShells_;
+        Vixen::SVO::Recipe::RecipeRegistrationOptions options;
+        options.shells = true;
+        (void)Vixen::SVO::Recipe::AnalyzeRecipeRegistration(probe, 24.0f, 0.9f, 64u, 16u, options);
+        if (probe.derivedShells.empty()) {
+            captureError_ = "LOD fixture: the kernel derived no certified shell for the fixture";
+            return false;
+        }
+        lodFixtureFirstShell_ = probe.derivedShells.front();
+        lodFixtureShellRadius_ = probe.derivedShellBoundRadius;
+        const auto* keys = ProceduralRecipes().ShellVariants(kLodFixtureRecipeId);
+        std::printf("[LOD_FIXTURE] shells=%zu level1 certifiedError=%.9g toleranceScale=%.3g rules=%u "
+                    "instructions=%zu->%zu registered_keys=%zu\n",
+                    probe.derivedShells.size(), static_cast<double>(lodFixtureFirstShell_.certifiedError),
+                    static_cast<double>(lodFixtureFirstShell_.toleranceScale), lodFixtureFirstShell_.rules,
+                    probe.bytecode.size(), lodFixtureFirstShell_.bytecode.size(), keys ? keys->size() : 0u);
+        std::fflush(stdout);
+        return true;
+    }
+
+    // The switch distance from the camera to the fixture's nearest bound point: q = d / (2 R f)
+    // reaches the derived threshold maxQ(0) = e / (2 R T) (TileBinOps.LodQ, DeriveLodThresholds).
+    bool PoseLodSwitchScenarios() {
+        const auto* entry = ProceduralRecipes().Get(kLodFixtureRecipeId);
+        if (entry == nullptr) {
+            captureError_ = "LOD fixture is not registered";
+            return false;
+        }
+        const float tolerance = GetRenderPathConfig().shellTolerancePx;
+        // The exact preset never switches; frame it where a 1/8 px tolerance would.
+        const float framingTolerance = tolerance > 0.0f ? tolerance : 0.125f;
+        const float threshold = Vixen::SVO::ShellSwitchQ(lodFixtureFirstShell_.certifiedError,
+            lodFixtureShellRadius_, framingTolerance, lodFixtureFirstShell_.toleranceScale);
+        const char* heightText = std::getenv("VIXEN_WINDOW_HEIGHT");
+        const float height = heightText && std::atoi(heightText) > 0 ? static_cast<float>(std::atoi(heightText)) : 500.0f;
+        const float focal = 0.5f * height * GetRenderPathConfig().renderScale /
+            std::tan(0.5f * kCaptureFovDegrees * 0.017453292519943295f);
+        // q uses the instance's bound (the recipe's), so the pose solves q = threshold for it.
+        const float switchNear = threshold * 2.0f * entry->boundRadius * focal;
+        const glm::vec3 center = entry->boundCenter;
+        for (auto& scenario : scenarios_) {
+            const float nearDistance = switchNear * scenario.lodDistanceScale;
+            scenario.eye = center + kLodViewDirection * (nearDistance + entry->boundRadius);
+            scenario.target = center;
+        }
+        std::printf("[LOD_FIXTURE] R=%.9g R_shell=%.9g T=%.9g switchQ=%.9g focal=%.9g switch_near=%.9g\n",
+                    static_cast<double>(entry->boundRadius), static_cast<double>(lodFixtureShellRadius_),
+                    static_cast<double>(tolerance), static_cast<double>(threshold), static_cast<double>(focal),
+                    static_cast<double>(switchNear));
+        std::fflush(stdout);
+        return true;
+    }
+
+    // The scene's band table for this capture: the preset tolerance times the scenario's multiple.
+    std::vector<Vixen::SVO::Recipe::SdfInstruction> lodFixtureShells_;
+    Vixen::SVO::RecipeRegistry::RecipeEntry::DerivedShell lodFixtureFirstShell_{};
+    float lodFixtureShellRadius_ = 0.0f;
+
+    void ApplyLodSwitchTolerance(const CaptureScenario& scenario) {
+        auto* scene = dynamic_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+            GetRenderGraph()->GetInstanceByName("body_octree_scene"));
+        if (scene == nullptr) {
+            captureError_ = "LOD fixture: the graph has no body_octree_scene";
+            return;
+        }
+        const float tolerance = GetRenderPathConfig().shellTolerancePx * scenario.lodToleranceScale;
+        scene->SetRecipeLodBands(Vixen::RenderGraph::BuildRecipeLodBandTable(ProceduralRecipes(), tolerance));
+        std::printf("[LOD_FIXTURE] capture=%s tolerance=%.9g\n", scenario.filename.c_str(), static_cast<double>(tolerance));
+        std::fflush(stdout);
+    }
+
     bool Render() override {
 #if UNDERSET_NATIVE_BENCHMARK
         const auto frameStart = CaptureClock::now();
@@ -2007,6 +2192,7 @@ public:
 #if UNDERSET_NATIVE_BENCHMARK
             firstFrameBeginMs_ = MsBetween(processStart_, frameStart);
 #endif
+            if (scenarios_[scenarioIndex_].lodSwitch) ApplyLodSwitchTolerance(scenarios_[scenarioIndex_]);
         }
         // The device record is written once, on the process's first frame; frameWallMs_ is only
         // filled in benchmark builds, so the first frame is scenario 0, frame 0.
@@ -2877,7 +3063,37 @@ private:
                 << record.worldPos.y << ',' << record.worldPos.z << ") normal=(" << record.worldNormal.x << ','
                 << record.worldNormal.y << ',' << record.worldNormal.z << ")\n";
             Body body;
-            if ((record.flags & 1U) == 0U || !bodyOf(record.pad0[0], body)) {
+            if ((record.flags & 1U) == 0U) {
+                // A pixel without a hit: replay the camera ray against every registry instance and
+                // say how each march ended (a hole in a solid shows here as a march that left its
+                // interval or used its budget).
+                for (std::uint32_t index = 0; index < instances.size(); ++index) {
+                    Body candidate;
+                    if (!bodyOf(index, candidate)) continue;
+                    const RecipeMarchReplay missed = replayPrimary(candidate, px, py);
+                    out << "  no hit recorded; cpu primary against instance " << index << ": " << exitName(missed.exit)
+                        << " steps=" << missed.samples.size() << " interval(local)=[" << missed.tNear << ',' << missed.tEnd
+                        << "] bound=(" << candidate.entry->boundCenter.x << ',' << candidate.entry->boundCenter.y << ','
+                        << candidate.entry->boundCenter.z << ") r=" << candidate.entry->boundRadius << " grid="
+                        << candidate.entry->occupancyGridDim << '\n';
+                    const std::size_t from = missed.samples.size() > 12 ? missed.samples.size() - 12 : 0;
+                    for (std::size_t i = from; i < missed.samples.size(); ++i)
+                        out << "    primary sample " << i << " t(local)=" << missed.samples[i].t << " d=" << missed.samples[i].d
+                            << " step=" << missed.samples[i].step << '\n';
+                    // The field along the ray, independent of the march.
+                    const glm::vec3 origin = (camera.cameraPos - candidate.translation) / candidate.scale;
+                    const glm::vec3 direction = cameraRay(static_cast<float>(px) + 0.5f, static_cast<float>(py) + 0.5f);
+                    auto field = fieldOf(candidate);
+                    double least = 1e30, leastT = 0.0;
+                    for (double t = missed.tNear; t <= missed.tEnd; t += 1e-3) {
+                        const float d = field(origin + direction * static_cast<float>(t));
+                        if (d < least) { least = d; leastT = t; }
+                    }
+                    out << "    scan: least field value " << least << " at t(local)=" << leastT << '\n';
+                }
+                continue;
+            }
+            if (!bodyOf(record.pad0[0], body)) {
                 out << "  not a registry recipe hit on an axis-aligned uniform instance: no replay\n";
                 continue;
             }
@@ -3568,7 +3784,9 @@ TEST(LookdevCapture, RendersGlyphSdfLocalizedSign) {
     const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
     ASSERT_NE(framesPerScenario, 0u) << error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
-    if (std::getenv("VIXEN_GLYPHSDF_TEXT_INVARIANT")) {
+    // The invariant expects readable glyphs at the framed distance: not a far view, not a shell.
+    if (std::getenv("VIXEN_GLYPHSDF_TEXT_INVARIANT") && !std::getenv("VIXEN_LOOKDEV_CAPTURE_DISTANCE_SCALE") &&
+        !std::getenv("VIXEN_RECIPE_FORCE_SHELL_LEVEL")) {
         ASSERT_TRUE(ValidateGlyphTextInvariant(
             outputDir / scenarios.front().filename, std::getenv("VIXEN_GLYPHSDF_RTL_PROOF") != nullptr, error))
             << error;
@@ -3606,6 +3824,138 @@ TEST(LookdevCapture, RendersGlyphSdfAnalyticVsVoxel) {
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
 }
 
+// R860 RL0 witness 2 (R892.27 "we don't want pops to be visible"): the frames either side of the
+// fixture's band switch differ by no more than 8 levels in any channel. A larger difference is a
+// defect to fix (tighten the tolerance, fold colour), never a threshold to raise. Both frames of a
+// pair share the camera; the switch pair moves only the threshold across the pose's q, and the
+// control pair (the same table twice) must be byte-identical.
+TEST(LookdevCapture, LodBandSwitchIsInvisible) {
+    ASSERT_TRUE(LodSwitchRequested()) << "CTest must set VIXEN_LOOKDEV_LOD_SWITCH";
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    ASSERT_NE(outputEnv, nullptr) << "CTest must configure the LOD switch capture directory";
+    const std::filesystem::path outputDir(outputEnv);
+    const std::vector<CaptureScenario> scenarios = BuildScenarios();
+    ASSERT_EQ(scenarios.size(), 6U);
+    std::string error;
+    const uint32_t framesPerScenario = CaptureFramesPerScenario(error);
+    ASSERT_NE(framesPerScenario, 0u) << error;
+    ASSERT_TRUE(CaptureSequence(outputDir, scenarios, framesPerScenario, error)) << error;
+    constexpr int kInvisibleLevels = 8;
+    for (const std::string pair : {"switch", "control", "reveal"}) {
+        const DecodedPng before = DecodePng(outputDir / ("lod-" + pair + "-before.png"));
+        const DecodedPng after = DecodePng(outputDir / ("lod-" + pair + "-after.png"));
+        ASSERT_FALSE(before.rgba.empty() || after.rgba.empty()) << pair << ": capture missing";
+        ASSERT_EQ(before.rgba.size(), after.rgba.size()) << pair;
+        int maxDelta = 0;
+        std::size_t changed = 0;
+        std::size_t visible = 0;
+        std::vector<uint8_t> diff(before.rgba.size(), 255u);
+        for (std::size_t pixel = 0; pixel < before.rgba.size() / 4u; ++pixel) {
+            int delta = 0;
+            for (std::size_t channel = 0; channel < 3u; ++channel)
+                delta = std::max(delta, std::abs(int(before.rgba[pixel * 4 + channel]) -
+                                                 int(after.rgba[pixel * 4 + channel])));
+            maxDelta = std::max(maxDelta, delta);
+            changed += delta > 0 ? 1u : 0u;
+            visible += delta > kInvisibleLevels ? 1u : 0u;
+            // Review image: black where equal, amplified x16 elsewhere, red above the threshold.
+            const uint8_t level = static_cast<uint8_t>(std::min(255, delta * 16));
+            diff[pixel * 4 + 0] = delta > kInvisibleLevels ? 255u : level;
+            diff[pixel * 4 + 1] = delta > kInvisibleLevels ? 0u : level;
+            diff[pixel * 4 + 2] = delta > kInvisibleLevels ? 0u : level;
+        }
+        stbi_write_png((outputDir / ("lod-" + pair + "-diff-x16.png")).string().c_str(), before.width,
+                       before.height, 4, diff.data(), before.width * 4);
+        std::printf("[LOD_SWITCH_PAIR] pair=%s max_delta=%d changed_pixels=%zu above_%d=%zu\n", pair.c_str(),
+                    maxDelta, changed, kInvisibleLevels, visible);
+        std::fflush(stdout);
+        if (pair == "reveal") continue;  // review only: full vs shell well inside the shell's band
+        EXPECT_LE(maxDelta, pair == "control" ? 0 : kInvisibleLevels) << pair << ": the band switch is visible ("
+            << visible << " pixels above " << kInvisibleLevels << " levels); see lod-" << pair << "-diff-x16.png";
+    }
+}
+
+// opus-rl0 STOP 2 (i): CPU march replay of the load scenario's swapped-in hull (0x4c4f4144). The
+// swap registers the Hull recipe with its first primitive's half extents scaled by 0.85 after the
+// graph compiled. The vx11 references of the recipe-swap leg show only the red accent plates where
+// that hull stands; with the occupancy grid published at the swap the GPU draws a white box. This
+// replays the recipe's own march (RecipeMarchReplay, the 1:1 mirror of traceUberRecipeBodyImpl)
+// with the recipe's own grid and with no grid, on a 3/4 view, and writes both images: if the hull
+// body is solid there, the white box is right and the references lost the body.
+TEST(RecipeSwapReplay, SwappedInHullHasASolidBody) {
+    const char* outputEnv = std::getenv("VIXEN_LOOKDEV_CAPTURE_DIR");
+    if (outputEnv == nullptr) GTEST_SKIP() << "set VIXEN_LOOKDEV_CAPTURE_DIR for the replay images";
+    std::filesystem::create_directories(outputEnv);
+    const auto& presets = Vixen::App::Lookdev::LightingPresets();
+    const auto recipes = Vixen::App::Lookdev::BuildMaterialRecipes(presets.front());
+    const auto hull = std::find_if(recipes.begin(), recipes.end(), [](const auto& recipe) {
+        return recipe.material == Vixen::App::Lookdev::Material::Hull;
+    });
+    ASSERT_NE(hull, recipes.end());
+    for (const bool swapped : {false, true}) {
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry = hull->entry;
+        if (swapped)  // test_load_scenario.cpp SwapInRecipe
+            for (int axis = 0; axis < 3; ++axis) entry.bytecode.front().data[axis] *= 0.85f;
+        // The application's registration analysis (VulkanGraphApplicationRecipes.cpp AnalyzeEntry).
+        Vixen::SVO::Recipe::RecipeRegistrationOptions options;
+        options.preferDerivedBound = entry.boundRadius > 0.0f;
+        options.occupancy = true;
+        (void)Vixen::SVO::Recipe::AnalyzeRecipeRegistration(entry, 24.0f, 0.9f, 64u, 16u, options);
+        ASSERT_GT(entry.boundRadius, 0.0f);
+        const glm::vec3 center = entry.boundCenter;
+        const glm::vec3 eye = center + glm::normalize(glm::vec3(0.8f, 0.5f, 1.0f)) * (entry.boundRadius * 2.6f);
+        const glm::vec3 forward = glm::normalize(center - eye);
+        const glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+        const glm::vec3 up = glm::cross(right, forward);
+        constexpr int kWidth = 160, kHeight = 120;
+        const float tanHalfFov = std::tan(glm::radians(22.5f));
+        for (const bool withGrid : {true, false}) {
+            std::vector<uint8_t> rgba(static_cast<size_t>(kWidth) * kHeight * 4u, 0u);
+            std::size_t hits = 0;
+            for (int y = 0; y < kHeight; ++y) {
+                for (int x = 0; x < kWidth; ++x) {
+                    Vixen::SVO::Recipe::RecipeMarchReplayInput in;
+                    in.boundCenter = entry.boundCenter;
+                    in.boundRadius = entry.boundRadius;
+                    in.relaxation = entry.stepRelaxation;
+                    if (withGrid && !entry.occupancyGridValues.empty()) {
+                        in.gridDim = entry.occupancyGridDim;
+                        in.gridAabbMin = entry.occupancyGridAabbMin;
+                        in.gridCellSize = entry.occupancyGridCellSize;
+                        in.grid = entry.occupancyGridValues;
+                    }
+                    const float nx = ((static_cast<float>(x) + 0.5f) / kWidth * 2.0f - 1.0f) * tanHalfFov *
+                        (static_cast<float>(kWidth) / kHeight);
+                    const float ny = -((static_cast<float>(y) + 0.5f) / kHeight * 2.0f - 1.0f) * tanHalfFov;
+                    in.ro = eye;
+                    in.rd = glm::normalize(forward + right * nx + up * ny);
+                    in.pixelAngle = 2.0f * tanHalfFov / kHeight;
+                    const auto march = Vixen::SVO::Recipe::ReplayRecipeMarch(in, [&](glm::vec3 p) {
+                        return Vixen::SVO::Recipe::evalRecipe(entry.bytecode.data(),
+                            static_cast<std::uint32_t>(entry.bytecode.size()), p);
+                    });
+                    uint8_t* pixel = &rgba[(static_cast<size_t>(y) * kWidth + x) * 4u];
+                    pixel[3] = 255u;
+                    if (!march.hit) { pixel[0] = 30u; pixel[1] = 30u; pixel[2] = 70u; continue; }
+                    ++hits;
+                    const glm::vec3 n = glm::length(march.gradient) > 0.0f ? glm::normalize(march.gradient)
+                                                                           : -in.rd;
+                    const float shade = 0.25f + 0.75f * std::max(0.0f, glm::dot(n, glm::normalize(glm::vec3(0.4f, 1.0f, 0.6f))));
+                    pixel[0] = pixel[1] = pixel[2] = static_cast<uint8_t>(std::min(255.0f, 230.0f * shade));
+                }
+            }
+            const std::string name = std::string(swapped ? "swapped" : "original") + "-hull-" +
+                (withGrid ? "own-grid" : "no-grid") + ".png";
+            EXPECT_TRUE(stbi_write_png((std::filesystem::path(outputEnv) / name).string().c_str(), kWidth, kHeight, 4,
+                           rgba.data(), kWidth * 4)) << name;
+            std::printf("[RECIPE_SWAP_REPLAY] %s hits=%zu of %d bound_radius=%.6g grid_dim=%u\n", name.c_str(),
+                        hits, kWidth * kHeight, static_cast<double>(entry.boundRadius), entry.occupancyGridDim);
+            std::fflush(stdout);
+            EXPECT_GT(hits, static_cast<std::size_t>(kWidth * kHeight / 20)) << name << ": the hull body is missing";
+        }
+    }
+}
+
 TEST(LookdevCapture, RendersSdfFilterNonText) {
     ASSERT_NE(std::getenv("VIXEN_SDF_FILTER_NON_TEXT"), nullptr)
         << "CTest must enable the analytic and stored SDF sphere pair";
@@ -3632,6 +3982,8 @@ int main(int argc, char** argv) {
         const std::string argument(argv[index]);
         if (argument.starts_with("--render-scale=")) {
             gRenderPathConfig.renderScale = std::stof(argument.substr(15));
+        } else if (argument.starts_with("--shell-tolerance-px=")) {
+            gRenderPathConfig.shellTolerancePx = std::stof(argument.substr(21));
         } else if (argument == "--upscaler=none") {
             gRenderPathConfig.upscaler = VulkanGraphApplication::UpscalerKind::None;
         } else if (argument == "--upscaler=linear") {

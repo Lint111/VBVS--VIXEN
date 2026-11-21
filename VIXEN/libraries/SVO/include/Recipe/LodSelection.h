@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -73,6 +74,13 @@ enum class LodValidationError : uint8_t {
 
 [[nodiscard]] std::size_t SelectLodBand(
     std::span<const LodBand> ladder, float q) noexcept;
+
+// R860.7 / R892.28 (RL0): the switch into a certified shell, in units of q: the shell is allowed
+// once its certified error (recipe units) projects under the tolerance, i.e. while
+// q >= certifiedError / (2 * shellBoundRadius * tolerancePx * toleranceScale), rounded up (the
+// kernel's shellLadder rule). +infinity when the tolerance, the radius or the scale is not positive.
+[[nodiscard]] float ShellSwitchQ(float certifiedError, float shellBoundRadius, float tolerancePx,
+                                 float toleranceScale) noexcept;
 
 // Regime-aware selection keeps the existing q result, then applies the regime's
 // conservative minimum band.  A four-band ladder can map one band to each regime;

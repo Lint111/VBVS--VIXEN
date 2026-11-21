@@ -223,7 +223,7 @@ endif()
 vixen_resolve_yeroket_root("${_home_candidates}" YEROKET_ROOT)
 # This is the standalone VIXEN pin. It is also the federation pin used by
 # Undertow main-wave and is known to accept implicit queue-delivery markers.
-set(_vixen_tracked_yeroket_kernel_sha "c7bc7a56205e1a3e35a82deadb81496b3f8f79ef")
+set(_vixen_tracked_yeroket_kernel_sha "bb283bcd3d8c535bd7eaebc8bc43cf0c7abb9476")
 if(NOT VIXEN_KERNEL_PROVIDER_REVISION STREQUAL "")
     set(_vixen_tracked_yeroket_kernel_sha "${VIXEN_KERNEL_PROVIDER_REVISION}")
 endif()
@@ -251,6 +251,8 @@ set(_schema_gpu_source "${_cg}/gpu-schemas")
 set(_schema_gpu_systems "${_cg}/gpu-systems")
 # AA kernel callables (R619.1): inlined into the GPU systems, C++ face for the resolve tests.
 set(_schema_aa_callables "${_cg}/aa-callables")
+# Recipe LOD band choice (R860 RL0, R619.1): inlined into TileBinPrepareSystem, C++ face for SVO.
+set(_schema_lod_callables "${_cg}/lod-callables")
 set(_schema_gpu_generated "${_cg}/generated/gpu")
 set(_schema_gpu_staged "${CMAKE_CURRENT_BINARY_DIR}/gpu-schema-source")
 set(_schema_kernel_runtime "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/Runtime")
@@ -277,6 +279,12 @@ endif()
 set(_schema_sim_framework "${_undertow_core_src}/Undertow.Sim.Framework")
 set(_out_gpu_schema_json "${_schema_gpu_generated}/frame-targets.schemas.json")
 set(_out_gpu_kind_cs "${_schema_gpu_generated}/FrameTargets.g.cs")
+# R879.4: the schema type manifest of the vixen: kinds; the GPU-system compilation reads it to treat
+# those row types as schema kinds (derived std430 facets), and the struct faces below are derived from it.
+set(_out_gpu_kind_manifest_cs "${_schema_gpu_generated}/SchemaTypeManifest.g.cs")
+# The vixen: kinds the GPU schema document carries: frame targets and the RL0 band rows (R860).
+set(_gpu_schema_closure_roots
+    "Vixen.Codegen.Gpu.FrameTargets,Vixen.Codegen.Gpu.InstanceRecipe,Vixen.Codegen.Gpu.RecipeLodBand,Vixen.Codegen.Gpu.InstanceBand")
 # The frame-target GPU composition emits one runner manifest and one GLSL file per
 # declared system. The runner reads the manifest; no C++ schedule header is generated.
 set(_out_gpu_systems_manifest "${VIXEN_ROOT}/shaders/Generated/GpuSystems.manifest.json")
@@ -430,6 +438,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_schema_gpu_staged}" _schema_gpu_staged_run)
         _codegen_to_wsl_path("${_schema_gpu_systems}" _schema_gpu_systems_run)
         _codegen_to_wsl_path("${_schema_aa_callables}" _schema_aa_callables_run)
+        _codegen_to_wsl_path("${_schema_lod_callables}" _schema_lod_callables_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/LodBand.g.hpp" _out_lod_band_hdr_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/TemporalResolve.g.hpp" _out_temporal_resolve_hdr_run)
         _codegen_to_wsl_path("${_schema_gpu_generated}" _schema_gpu_generated_run)
         _codegen_to_wsl_path("${_schema_kernel_runtime}" _schema_kernel_runtime_run)
@@ -448,6 +458,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         endif()
         _codegen_to_wsl_path("${_out_gpu_schema_json}" _out_gpu_schema_json_run)
         _codegen_to_wsl_path("${_out_gpu_kind_cs}" _out_gpu_kind_cs_run)
+        _codegen_to_wsl_path("${_out_gpu_kind_manifest_cs}" _out_gpu_kind_manifest_cs_run)
         _codegen_to_wsl_path("${_out_gpu_systems_manifest}" _out_gpu_systems_manifest_run)
         _codegen_to_wsl_path("${_out_gpu_systems_glsl_dir}" _out_gpu_systems_glsl_dir_run)
         # Undertow's schema catalogue exists only in the superproject layout. Engine-standalone
@@ -558,6 +569,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_gpu_staged_run "${_schema_gpu_staged}")
         set(_schema_gpu_systems_run "${_schema_gpu_systems}")
         set(_schema_aa_callables_run "${_schema_aa_callables}")
+        set(_schema_lod_callables_run "${_schema_lod_callables}")
+        set(_out_lod_band_hdr_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/LodBand.g.hpp")
         set(_out_temporal_resolve_hdr_run "${VIXEN_ROOT}/application/main/include/Generated/TemporalResolve.g.hpp")
         set(_schema_gpu_generated_run "${_schema_gpu_generated}")
         set(_schema_kernel_runtime_run "${_schema_kernel_runtime}")
@@ -565,6 +578,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_sim_framework_run "${_schema_sim_framework}")
         set(_out_gpu_schema_json_run "${_out_gpu_schema_json}")
         set(_out_gpu_kind_cs_run "${_out_gpu_kind_cs}")
+        set(_out_gpu_kind_manifest_cs_run "${_out_gpu_kind_manifest_cs}")
         set(_out_gpu_systems_manifest_run "${_out_gpu_systems_manifest}")
         set(_out_gpu_systems_glsl_dir_run "${_out_gpu_systems_glsl_dir}")
         # See the WSL-bridge block's engine-standalone caveat above.
@@ -1246,7 +1260,7 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             "${_yk_dll_run}" --schema-json-source
             --schema-source "${_schema_gpu_staged_run}"
             --schema-kernel-source "${_schema_kernel_schema_run}"
-            --schema-closure-root "Vixen.Codegen.Gpu.FrameTargets"
+            --schema-closure-root "${_gpu_schema_closure_roots}"
             --out-json "${_out_gpu_schema_json_run}")
         if(_frame_targets_campaign_lineage_run)
             list(APPEND _frame_targets_schema_args
@@ -1288,10 +1302,52 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             VERBATIM)
         add_dependencies(frame_targets_ref_regen frame_targets_schema_regen)
 
+        # R879.4: the kind manifest beside the generated rows, and the C++/GLSL faces of the RL0 band
+        # rows derived from their kinds (no [GpuStruct], no hand struct).
+        set(_gpu_kind_manifest_args
+            "${_yk_dll_run}" --schema-type-manifest-cs gpu
+            --schema-json "${_out_gpu_schema_json_run}"
+            --kind-namespace Vixen.Codegen.Gpu
+            --manifest-namespace Vixen.Codegen.Gpu.Generated
+            --out-cs "${_out_gpu_kind_manifest_cs_run}")
+        vixen_add_codegen_check(gpu_kind_manifest_check ALL
+            COMMAND ${_CODEGEN_RUNNER} ${_gpu_kind_manifest_args} --check
+            COMMENT "[codegen] golden check: the vixen: kind manifest matches the GPU schema document"
+            VERBATIM)
+        add_dependencies(gpu_kind_manifest_check frame_targets_schema_check)
+        add_custom_target(gpu_kind_manifest_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_gpu_kind_manifest_args}
+            COMMENT "[codegen] regenerate the vixen: kind manifest"
+            JOB_POOL msbuild
+            VERBATIM)
+        add_dependencies(gpu_kind_manifest_regen frame_targets_schema_regen)
+        set(_gpu_kind_face_regen)
+        foreach(_kind_face IN ITEMS InstanceRecipe RecipeLodBand InstanceBand)
+            set(_kind_face_args
+                "${_yk_dll_run}"
+                --schema "${_schema_gpu_generated_run}" --struct "Vixen.Codegen.Gpu.${_kind_face}"
+                --out-cpp "${_out_tile_binning_generated_dir}/${_kind_face}.g.h"
+                --out-glsl "${_out_tile_binning_shader_dir}/${_kind_face}.glsl")
+            string(TOLOWER "${_kind_face}" _kind_face_lc)
+            vixen_add_codegen_check(kind_${_kind_face_lc}_check ALL
+                COMMAND ${_CODEGEN_RUNNER} ${_kind_face_args} --check
+                COMMENT "[codegen] golden check: ${_kind_face}.g.h/.glsl match the vixen: kind's derived facet"
+                VERBATIM)
+            add_dependencies(kind_${_kind_face_lc}_check gpu_kind_manifest_check frame_targets_ref_check)
+            add_custom_target(kind_${_kind_face_lc}_regen
+                COMMAND ${_CODEGEN_RUNNER} ${_kind_face_args}
+                COMMENT "[codegen] regenerate ${_kind_face}.g.h/.glsl from its kind"
+                JOB_POOL msbuild
+                VERBATIM)
+            add_dependencies(kind_${_kind_face_lc}_regen gpu_kind_manifest_regen frame_targets_ref_regen)
+            list(APPEND _gpu_kind_face_regen kind_${_kind_face_lc}_regen)
+        endforeach()
+
         set(_gpu_systems_args
             "${_yk_dll_run}"
             --schema "${_schema_gpu_systems_run}"
             --schema "${_schema_aa_callables_run}"
+            --schema "${_schema_lod_callables_run}"
             --schema "${_schema_gpu_generated_run}"
             --schema "${_schema_kernel_runtime_run}"
             --schema "${_schema_sim_framework_run}"
@@ -1304,17 +1360,18 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
             COMMAND ${_CODEGEN_RUNNER} ${_gpu_systems_args} --check
             COMMENT "[codegen] golden check: GPU system manifest, shaders and schedule match their systems"
             VERBATIM)
-        add_dependencies(gpu_systems_check frame_targets_schema_check frame_targets_ref_check)
+        add_dependencies(gpu_systems_check frame_targets_schema_check frame_targets_ref_check gpu_kind_manifest_check)
         add_custom_target(gpu_systems_regen
             COMMAND ${_CODEGEN_RUNNER} ${_gpu_systems_args}
             COMMENT "[codegen] regenerate GPU system manifest, shaders and schedule"
             JOB_POOL msbuild
             VERBATIM)
-        add_dependencies(gpu_systems_regen frame_targets_ref_regen)
+        add_dependencies(gpu_systems_regen frame_targets_ref_regen gpu_kind_manifest_regen)
         # One supported refresh: schema, typed refs, composition outputs and UI SPIR-V.
         if(TARGET ui_shader_spirv_regen)
             add_custom_target(frame_targets_refresh)
-            add_dependencies(frame_targets_refresh gpu_systems_regen ui_shader_spirv_regen tile_binning_structs_regen)
+            add_dependencies(frame_targets_refresh gpu_systems_regen ui_shader_spirv_regen tile_binning_structs_regen
+                ${_gpu_kind_face_regen})
             # Merged SDI headers derive from the shaders just regenerated; without this step
             # runtime keeps stale layouts (T-5477, T-5585). A separate target, ordered after
             # the regens, so the standalone sdi_merged_regen keeps no codegen prerequisites.
@@ -1324,7 +1381,8 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
                     COMMENT "[codegen] regenerate merged SDI headers after shader regeneration"
                     VERBATIM)
-                add_dependencies(frame_targets_sdi_regen sdi_tool gpu_systems_regen ui_shader_spirv_regen tile_binning_structs_regen)
+                add_dependencies(frame_targets_sdi_regen sdi_tool gpu_systems_regen ui_shader_spirv_regen tile_binning_structs_regen
+                    ${_gpu_kind_face_regen})
                 add_dependencies(frame_targets_refresh frame_targets_sdi_regen)
             endif()
         endif()
@@ -1782,6 +1840,26 @@ exec \"${VIXEN_DOTNET}\" exec --runtimeconfig \"${_codegen_dotnet_cli_runtimecon
         COMMAND ${_CODEGEN_RUNNER} ${_material_color_cpp_args}
         COMMAND ${_CODEGEN_RUNNER} ${_material_color_glsl_args}
         COMMENT "[codegen] regenerate MaterialColor.g.hpp/.glsl"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- Recipe LOD band choice (R860 RL0, R619.1): the [KernelCallable] in codegen/lod-callables/ is
+    # inlined into TileBinPrepareSystem.comp by the GPU-system emitter above; this is the C++ face
+    # SVO's SelectLodBand calls, so the CPU ladder and the GPU per-instance band cannot drift.
+    set(_lod_band_cpp_args
+        "${_yk_dll_run}"
+        --schema "${_schema_lod_callables_run}" --callable-cpp
+        --out-header "${_out_lod_band_hdr_run}")
+    vixen_add_codegen_check(lod_band_cpp_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_lod_band_cpp_args} --check
+        COMMENT "[codegen] golden check: LodBand.g.hpp matches the LOD band callable"
+        VERBATIM)
+    if(TARGET SVO)
+        add_dependencies(SVO lod_band_cpp_check)
+    endif()
+    add_custom_target(lod_band_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_lod_band_cpp_args}
+        COMMENT "[codegen] regenerate LodBand.g.hpp"
         JOB_POOL msbuild
         VERBATIM)
 

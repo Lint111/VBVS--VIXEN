@@ -148,6 +148,27 @@ VulkanGraphApplication::VulkanGraphApplication()
         }
     }
 
+    // R860 RL0: the LOD shell tolerance rides the same process-configuration seam. The application
+    // starts at the real-time tolerance; VIXEN_SHELL_TOLERANCE_PX=0 selects the exact preset.
+    renderPathConfig_.shellTolerancePx = kRealtimeShellTolerancePx;
+    if (const char* env = std::getenv("VIXEN_SHELL_TOLERANCE_PX")) {
+        const float requested = std::strtof(env, nullptr);
+        // R892.27 / opus-rl0 STOP 1: shells switch invisibly at 1/8 px; above that a dropped bump's
+        // crease shading pops until the certificate bounds it (RL1 follow-up). Clamp, and say so.
+        constexpr float kMaxShellTolerancePx = kRealtimeShellTolerancePx;
+        if (requested > kMaxShellTolerancePx) {
+            if (mainLogger)
+                mainLogger->Warning("VIXEN_SHELL_TOLERANCE_PX='" + std::string(env) +
+                                    "' is above the invisible-switch cap of 1/8 px; using 1/8 px");
+            renderPathConfig_.shellTolerancePx = kMaxShellTolerancePx;
+        } else if (requested >= 0.0f) {
+            renderPathConfig_.shellTolerancePx = requested;
+        } else if (mainLogger) {
+            mainLogger->Warning("VIXEN_SHELL_TOLERANCE_PX='" + std::string(env) +
+                                "' is negative; keeping the exact preset");
+        }
+    }
+
     // Enable main logger for application-level logging
     if (mainLogger) {
         mainLogger->SetEnabled(true);

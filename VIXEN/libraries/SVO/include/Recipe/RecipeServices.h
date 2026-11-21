@@ -11,11 +11,14 @@
 #include "Recipe/generated/RecipeGlslLiterals.g.h"
 #include "VoxelChannelFormat.h"
 
+#include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <span>
 #include <string>
 #include <string_view>
@@ -128,6 +131,7 @@ struct RecipeRegistrationAnalysis {
     std::uint32_t occupancyExactCells = 0u;
     std::uint32_t occupancySampledCells = 0u;
     std::uint32_t status = YK_RECIPE_ANALYSIS_OK;
+    std::uint32_t shellCount = 0u;
     std::string diagnostic;
 };
 
@@ -138,7 +142,37 @@ struct RecipeRegistrationOptions {
     // False skips the occupancy grid (a runtime-parameter recipe must not inherit a grid sampled
     // at one parameter value) and leaves the entry's grid cleared.
     bool occupancy = true;
+    // True derives the recipe's certified shells (R860) into entry.derivedShells. Off by default:
+    // nothing selects a shell per instance yet, and the derivation costs time at registration.
+    bool shells = false;
 };
+
+// R892.23: a glyph leaf may leave a shell when it carries its largest inside distance. Writes that
+// distance, in the row's own units, into instruction-data slot 1 of every GlyphOutline instruction
+// whose row is baked (the slot the kernel declares for the vanishing-leaf relaxation; the walk and
+// the generated shader text do not read it). The value is the largest bound over the row's glyphs,
+// from the facts the font import stored. A row without a baked form keeps 0: its leaf never vanishes.
+// Returns the number of instructions stamped.
+inline std::uint32_t StampGlyphInsideDistances(RecipeRegistry::RecipeEntry& entry) {
+    std::uint32_t stamped = 0;
+    for (SdfInstruction& instruction : entry.bytecode) {
+        if (static_cast<SdfOpCode>(instruction.opCode) != SdfOpCode::GlyphOutline) continue;
+        const std::uint32_t row = std::bit_cast<std::uint32_t>(instruction.data[0]);
+        float inside = 0.0f;
+        if (row < entry.glyphBakedRows.size() && entry.glyphBakedRows[row].Baked()) {
+            const GlyphBakedRow& baked = entry.glyphBakedRows[row];
+            const GlyphBakeImage* image = baked.face->images.empty() ? nullptr : baked.face->images.front().get();
+            for (const GlyphBakePlacement& placement : baked.placements) {
+                const float units = image ? image->InsideDistanceUnits(placement.glyphId) : 0.0f;
+                if (!(units > 0.0f) || !(baked.fontUnitsPerRowUnit > 0.0f)) { inside = 0.0f; break; }
+                inside = std::max(inside, std::nextafter(units / baked.fontUnitsPerRowUnit, std::numeric_limits<float>::infinity()));
+            }
+        }
+        instruction.data[1] = inside;
+        stamped += inside > 0.0f ? 1u : 0u;
+    }
+    return stamped;
+}
 
 // Registration is intentionally one service call for the whole family.  In particular, the
 // authored sphere is supplied to the kernel as boundSupplied, so a service-side conservative
@@ -151,6 +185,9 @@ struct RecipeRegistrationOptions {
     std::uint32_t occupancyCoarse = 16u,
     RecipeRegistrationOptions options = {}) {
     RecipeRegistrationAnalysis summary;
+    entry.derivedShells.clear();
+    entry.derivedShellBoundRadius = 0.0f;
+    StampGlyphInsideDistances(entry);
     const auto& services = GetRecipeServiceApis();
     if (!services.available || services.analysis.analyze == nullptr) {
         entry.boundCenter = glm::vec3(0.0f);
@@ -187,7 +224,10 @@ struct RecipeRegistrationOptions {
 
     YkRecipeAnalysisRequest request{};
     request.structSize = sizeof(request);
-    request.flags = YK_RECIPE_ANALYSIS_BOUND | (options.occupancy ? YK_RECIPE_ANALYSIS_OCCUPANCY : 0u);
+    request.flags = YK_RECIPE_ANALYSIS_BOUND | (options.occupancy ? YK_RECIPE_ANALYSIS_OCCUPANCY : 0u) |
+        (options.shells ? YK_RECIPE_ANALYSIS_SHELLS : 0u);
+    // R860.2 draft tolerance for the ladder thresholds; the shells themselves do not depend on it.
+    request.shellTolerance = options.shells ? 1.0f : 0.0f;
     request.backend = YK_RECIPE_ANALYSIS_BACKEND_CPU_STRICT;
     request.parameterCount = static_cast<std::uint32_t>(entry.parameterValues.size());
     request.parameters = entry.parameterValues.empty() ? nullptr : entry.parameterValues.data();
@@ -262,6 +302,32 @@ struct RecipeRegistrationOptions {
         entry.occupancyGridAabbMin = glm::vec3(0.0f);
         entry.occupancyGridCellSize = 0.0f;
     }
+
+    if (options.shells && services.analysis.shellLadder != nullptr && services.analysis.shell != nullptr) {
+        YkRecipeAnalysisShellLadder ladder{};
+        ladder.structSize = sizeof(ladder);
+        if (services.analysis.shellLadder(result, &ladder) == YK_RECIPE_ANALYSIS_OK && ladder.available != 0u) {
+            entry.derivedShellBoundRadius = ladder.boundRadius;
+            for (std::uint32_t level = 1; level <= ladder.shellCount; ++level) {
+                YkRecipeAnalysisShell info{};
+                info.structSize = sizeof(info);
+                std::uint32_t count = 0;
+                if (services.analysis.shell(result, level, nullptr, 0u, &count, &info) != YK_RECIPE_ANALYSIS_OK || count == 0u) break;
+                RecipeRegistry::RecipeEntry::DerivedShell shell;
+                shell.bytecode.resize(count);
+                static_assert(sizeof(SdfInstruction) == sizeof(YkRecipeAnalysisInstruction), "one recipe record");
+                if (services.analysis.shell(result, level, reinterpret_cast<YkRecipeAnalysisInstruction*>(shell.bytecode.data()),
+                        count, &count, &info) != YK_RECIPE_ANALYSIS_OK) break;
+                shell.certifiedError = info.certifiedError;
+                shell.rules = info.rules;
+                shell.certificate = info.certificate;
+                shell.toleranceScale = (info.rules & YK_RECIPE_ANALYSIS_RULE_DROP_VANISHING_ROW) != 0u
+                    ? YK_RECIPE_ANALYSIS_VANISHING_ROW_TOLERANCE_SCALE : 1.0f;
+                entry.derivedShells.push_back(std::move(shell));
+            }
+        }
+    }
+    summary.shellCount = static_cast<std::uint32_t>(entry.derivedShells.size());
 
     services.analysis.release(result);
     return summary;

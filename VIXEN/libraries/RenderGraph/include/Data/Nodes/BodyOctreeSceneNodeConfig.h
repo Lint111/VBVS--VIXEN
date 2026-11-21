@@ -20,7 +20,7 @@ namespace BodyOctreeSceneNodeCounts {
     // + flattened runtime glyph-outline buffer (R631) + packed glyph words (R768).
     // + recipe chunk boxes, recipe tape, GB1 instance bound spheres (own slot 22: it shared
     //   slot 21 with the recipe tape, so whichever Out ran last fed both consumers).
-    static constexpr size_t OUTPUTS = 23;
+    static constexpr size_t OUTPUTS = 26;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -66,7 +66,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (21) =====
+    // ===== OUTPUTS (26) =====
     // Same names/types as VoxelGridNode's octree slots (so Task 8 can swap nodes).
     OUTPUT_SLOT(OCTREE_NODES_BUFFER, VkBuffer, 0,
         SlotNullability::Required,
@@ -192,6 +192,19 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // R860 RL0: the instance's base recipe id beside its bound, the per-recipe LOD band table
+    // (RecipeLodBand, four rows per recipe id) and the band the generated binning pass chooses
+    // per instance this frame (InstanceBand), which the march, shadows and GI read.
+    OUTPUT_SLOT(INSTANCE_RECIPE_BUFFER, VkBuffer, 23,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+    OUTPUT_SLOT(RECIPE_LOD_BAND_BUFFER, VkBuffer, 24,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+    OUTPUT_SLOT(INSTANCE_BAND_BUFFER, VkBuffer, 25,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Constructor: runtime descriptor initialization
     OUTPUT_SLOT(INSTANCE_MOTION_BUFFER, VkBuffer, 17,
         SlotNullability::Optional, SlotMutability::WriteOnly);
@@ -247,6 +260,9 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         INIT_OUTPUT_DESC(INSTANCE_TRANSFORM_BUFFER, "body_instance_transform_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
         INIT_OUTPUT_DESC(INSTANCE_MOTION_BUFFER, "body_instance_motion_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
         INIT_OUTPUT_DESC(INSTANCE_BOUND_BUFFER, "body_instance_bound_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
+        INIT_OUTPUT_DESC(INSTANCE_RECIPE_BUFFER, "body_instance_recipe_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
+        INIT_OUTPUT_DESC(RECIPE_LOD_BAND_BUFFER, "recipe_lod_band_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
+        INIT_OUTPUT_DESC(INSTANCE_BAND_BUFFER, "body_instance_band_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
 
         // Instance count — transient scalar value.
         BufferDescriptor instanceCountDesc{};
@@ -350,6 +366,9 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(RECIPE_CHUNK_BUFFER_Slot::index == 20, "RECIPE_CHUNK_BUFFER must be at index 20");
     static_assert(RECIPE_TAPE_BUFFER_Slot::index == 21, "RECIPE_TAPE_BUFFER must be at index 21");
     static_assert(INSTANCE_BOUND_BUFFER_Slot::index == 22, "INSTANCE_BOUND_BUFFER must be at index 22");
+    static_assert(INSTANCE_RECIPE_BUFFER_Slot::index == 23, "INSTANCE_RECIPE_BUFFER must be at index 23");
+    static_assert(RECIPE_LOD_BAND_BUFFER_Slot::index == 24, "RECIPE_LOD_BAND_BUFFER must be at index 24");
+    static_assert(INSTANCE_BAND_BUFFER_Slot::index == 25, "INSTANCE_BAND_BUFFER must be at index 25");
     // Output slot indices are positions in one storage array: two outputs on one index alias
     // (RECIPE_TAPE_BUFFER and INSTANCE_BOUND_BUFFER both sat at 21 until R896 found it).
     static_assert([] {
@@ -364,7 +383,8 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
             INSTANCE_TRANSFORM_BUFFER_Slot::index, INSTANCE_MOTION_BUFFER_Slot::index,
             GLYPH_OUTLINE_BUFFER_Slot::index, GLYPH_OUTLINE_FLAT_BUFFER_Slot::index,
             RECIPE_CHUNK_BUFFER_Slot::index, RECIPE_TAPE_BUFFER_Slot::index,
-            INSTANCE_BOUND_BUFFER_Slot::index};
+            INSTANCE_BOUND_BUFFER_Slot::index, INSTANCE_RECIPE_BUFFER_Slot::index,
+            RECIPE_LOD_BAND_BUFFER_Slot::index, INSTANCE_BAND_BUFFER_Slot::index};
         static_assert(std::size(indices) == BodyOctreeSceneNodeCounts::OUTPUTS,
                       "list every output slot here");
         bool seen[BodyOctreeSceneNodeCounts::OUTPUTS] = {};
@@ -399,6 +419,9 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<PROXY_AABB_COUNT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<RECIPE_CHUNK_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<RECIPE_TAPE_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<INSTANCE_RECIPE_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<RECIPE_LOD_BAND_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<INSTANCE_BAND_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

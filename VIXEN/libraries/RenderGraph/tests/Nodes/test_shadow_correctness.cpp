@@ -592,7 +592,8 @@ protected:
         // tile-list producer. Keep the march on the full-instance stream contract
         // (the same opt-out test_baked_vs_virtual_parity and the precompiled
         // fixtures in test_critical_nodes.cmake use); production stays tile-driven.
-        if (std::string_view(filename) == "BodyInstanceRayMarch.comp") {
+        if (std::string_view(filename) == "BodyInstanceRayMarch.comp" ||
+            std::string_view(filename) == "ShadowVisibilityWave.comp") {
             const size_t versionEnd = text.find('\n');
             if (versionEnd != std::string::npos)
                 text.insert(versionEnd + 1, "#define VIXEN_TEST_DISABLE_PRIMARY_TILE_CANDIDATES 1\n");

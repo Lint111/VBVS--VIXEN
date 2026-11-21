@@ -439,6 +439,36 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_lock_gpu_tests(TESTS ${_glyphsdf_capture_tests} ${_stored_sdf_isolation_tests})
     message(STATUS "[Application Tests] Added: glyph and non-text SDF comparisons at 128^3/256^3 from 0/30 degree yaws")
 
+    # R860 RL0 witness 2 (R892.27): the frames either side of the LOD fixture's band switch (same
+    # camera, the threshold moved across the pose's q) must differ by at most 8 levels. Tolerance 0
+    # is the exact preset (no switch). The fixture's switch is invisible at 1/8 px only: at 1/4, 1/2
+    # and 1 px the dropped bump's crease shading pops (opus-rl0 report, owner question), so those
+    # tolerances are evidence runs, not registered gates.
+    set(_lod_switch_tests)
+    foreach(_tolerance IN ITEMS 0 0.125)
+        string(REPLACE "." "p" _tolerance_name "${_tolerance}")
+        set(_lod_switch_test "Application.LookdevCapture.LodSwitch.T${_tolerance_name}")
+        set(_lod_switch_dir "${VIXEN_CAPTURE_DEFAULT_ROOT}/lod-switch/t${_tolerance_name}")
+        _vixen_lookdev_add_exe_test("${_lod_switch_test}"
+                    "--gtest_filter=LookdevCapture.LodBandSwitchIsInvisible")
+        set_tests_properties("${_lod_switch_test}" PROPERTIES
+            LABELS "Application;LodSwitch"
+            TIMEOUT 1200
+            ENVIRONMENT
+                "${_lookdev_test_environment};VIXEN_LOOKDEV_LOD_SWITCH=1;VIXEN_SHELL_TOLERANCE_PX=${_tolerance};VIXEN_LOD_BAND_STATS=1;VIXEN_LOOKDEV_CAPTURE_STATE=midday;VIXEN_LOOKDEV_CAPTURE_FRAMES=4;VIXEN_LOOKDEV_CAPTURE_BUDGET_MS=900000;VIXEN_LOOKDEV_CAPTURE_DIR=${_lod_switch_dir}"
+            ENVIRONMENT_MODIFICATION
+                "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1;VIXEN_DDGI_CORNELL_BAKED_DEMO=unset:;VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=unset:;VIXEN_DDGI_CORNELL_HYBRID_DEMO=unset:;VIXEN_GLYPHSDF_SCENE=unset:;VIXEN_GLYPHSDF_COMPARE=unset:;VIXEN_BRICKMAP_SCENE=unset:;VIXEN_SDF_FILTER_NON_TEXT=unset:;VIXEN_LOOKDEV_EXPOSURE_ROOM=unset:;VIXEN_POLICY_STENCIL=unset:;VIXEN_POLICY_STENCIL_TILES=unset:")
+        list(APPEND _lod_switch_tests "${_lod_switch_test}")
+    endforeach()
+    vixen_lock_gpu_tests(TESTS ${_lod_switch_tests})
+
+    # opus-rl0 STOP 2 (i): CPU replay of the swapped-in load-scenario hull (no GPU work).
+    _vixen_lookdev_add_exe_test("Application.RecipeSwapReplay" "--gtest_filter=RecipeSwapReplay.*")
+    set_tests_properties("Application.RecipeSwapReplay" PROPERTIES
+        LABELS "Application;RecipeSwapReplay"
+        TIMEOUT 600
+        ENVIRONMENT "VIXEN_LOOKDEV_CAPTURE_DIR=${VIXEN_CAPTURE_DEFAULT_ROOT}/recipe-swap-replay")
+
     # Scheduling cost and selection family of every look-dev capture. COST is the serial wall time in
     # seconds measured on Dozen (cl-glmdepth1 ctest -L gpu, 2026-11-07); it is a relative weight, not a
     # timing claim. The GPU shard planner (tools/shard-ctest-tests.py) packs longest-first by it, so the
@@ -453,6 +483,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         "^Application\\.LookdevCapture\\.ExposureRoom\\.@lookdev-exposure"
         "^Application\\.LookdevCapture\\.GlyphSdf\\.@lookdev-glyphsdf"
         "^Application\\.LookdevCapture\\.(StoredSdf|SdfFilter)\\.@lookdev-sdf-bake"
+        "^Application\\.LookdevCapture\\.LodSwitch\\.@lookdev-lod-switch"
         "^Application\\.(ReconstructionInputs\\.|LookdevCapture\\.(NoNullAcceleration|StorageImageLayouts))@lookdev-reconstruction")
     set(_lookdev_costs
         "Application.LookdevCapture.Presentation.night-service=526"
