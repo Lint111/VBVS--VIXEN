@@ -9,7 +9,7 @@ file(MAKE_DIRECTORY "${source}")
 file(WRITE "${source}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.15)
 project(pin_override NONE)
 include([==[${vixen_root}/cmake/VixenKernelSnapshot.cmake]==])
-vixen_select_kernel_sha(\"\${TRACKED_PIN}\" selected)
+vixen_select_kernel_sha(\"\${TRACKED_PIN}\" selected \"\${KERNEL_ROOT}\")
 vixen_record_kernel_pin(\"\${CMAKE_BINARY_DIR}/pin.json\" \"\${TRACKED_PIN}\" \"\${selected}\")
 message(STATUS \"selected=\${selected}\")
 ")
@@ -57,4 +57,37 @@ configure_tree("${pin_b}" "clearing stale kernel pin override ${override}" -DTRA
 configure_tree("${pin_b}" "using tracked Yeroket kernel pin" -DTRACKED_PIN=${pin_b})
 configure_tree("${override}" "using per-build-tree kernel pin override"
     -DTRACKED_PIN=${pin_b} -DVIXEN_YEROKET_KERNEL_SHA_OVERRIDE=${override})
+# HEAD resolves against the kernel clone to a full SHA; a moved HEAD re-resolves, a bad root fails clearly.
+find_program(git_exe NAMES git REQUIRED)
+set(kernel_repo "${VIXEN_PIN_TEST_ROOT}/kernel")
+file(MAKE_DIRECTORY "${kernel_repo}")
+function(git_in)
+    execute_process(COMMAND "${git_exe}" -C "${kernel_repo}" -c user.name=t -c user.email=t@t
+        -c commit.gpgsign=false ${ARGN} RESULT_VARIABLE r OUTPUT_VARIABLE o ERROR_VARIABLE e
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT r EQUAL 0)
+        message(FATAL_ERROR "git ${ARGN} failed: ${e}")
+    endif()
+    set(git_out "${o}" PARENT_SCOPE)
+endfunction()
+git_in(init -q)
+git_in(commit -q --allow-empty -m one)
+git_in(rev-parse HEAD)
+set(head_one "${git_out}")
+configure_tree("${head_one}" "resolved in .*: ${head_one}"
+    -DTRACKED_PIN=${pin_a} -DKERNEL_ROOT=${kernel_repo} -DVIXEN_YEROKET_KERNEL_SHA_OVERRIDE=HEAD)
+git_in(commit -q --allow-empty -m two)
+git_in(rev-parse HEAD)
+set(head_two "${git_out}")
+if(head_one STREQUAL head_two)
+    message(FATAL_ERROR "test setup: HEAD did not move")
+endif()
+configure_tree("${head_two}" "resolved in .*: ${head_two}"
+    -DTRACKED_PIN=${pin_a} -DKERNEL_ROOT=${kernel_repo})
+execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${binary}" -DTRACKED_PIN=${pin_a}
+    -DVIXEN_YEROKET_KERNEL_SHA_OVERRIDE=HEAD -DKERNEL_ROOT=
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+if(result EQUAL 0 OR NOT "${output}${error}" MATCHES "no kernel root is known")
+    message(FATAL_ERROR "expected a clear failure for HEAD without a root: ${output}${error}")
+endif()
 message(STATUS "A stale kernel pin override is cleared when the tracked pin moves")

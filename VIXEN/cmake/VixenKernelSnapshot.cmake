@@ -124,7 +124,10 @@ endfunction()
 # it is recorded together with the tracked pin it was set against; once the tracked pin moves
 # (a merge, a new lane base) a carried-over override is cleared instead of keeping the tree on a
 # snapshot the source no longer pins.
+# The override may also be a revision of the kernel clone at `root` (HEAD, a branch, a tag): resolve
+# it with git rev-parse on every configure so a paired worktree needs no duplicated SHA.
 function(vixen_select_kernel_sha tracked out_sha)
+    set(_root "${ARGV2}")
     set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
         "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
     set(_override "${VIXEN_YEROKET_KERNEL_SHA_OVERRIDE}")
@@ -139,8 +142,28 @@ function(vixen_select_kernel_sha tracked out_sha)
     if(_override)
         set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE_RECORDED "${_override}@${tracked}" CACHE INTERNAL
             "Kernel pin override and the tracked pin it was set against" FORCE)
-        message(STATUS "[codegen] using per-build-tree kernel pin override: ${_override}")
-        set(${out_sha} "${_override}" PARENT_SCOPE)
+        set(_selected "${_override}")
+        if(NOT _override MATCHES "^[0-9a-fA-F]+$" OR _override STREQUAL "HEAD")
+            if(_root STREQUAL "")
+                message(FATAL_ERROR "[codegen] VIXEN_YEROKET_KERNEL_SHA_OVERRIDE=${_override} is a revision, "
+                    "not a hex SHA, and no kernel root is known to resolve it; pass a SHA or set YEROKET_ROOT")
+            endif()
+            find_program(_vixen_pin_git NAMES git REQUIRED)
+            vixen_trust_wsl_git_directory("${_root}")
+            execute_process(COMMAND "${_vixen_pin_git}" -C "${_root}" rev-parse --verify --quiet
+                "${_override}^{commit}"
+                RESULT_VARIABLE _rev_result OUTPUT_VARIABLE _rev_sha ERROR_VARIABLE _rev_error
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(NOT _rev_result EQUAL 0 OR _rev_sha STREQUAL "")
+                message(FATAL_ERROR "[codegen] VIXEN_YEROKET_KERNEL_SHA_OVERRIDE=${_override} does not name a "
+                    "commit in ${_root} (from YEROKET_ROOT): ${_rev_error}. Use a full SHA, or point "
+                    "YEROKET_ROOT at the kernel checkout to resolve it")
+            endif()
+            set(_selected "${_rev_sha}")
+            message(STATUS "[codegen] kernel pin override ${_override} resolved in ${_root}: ${_selected}")
+        endif()
+        message(STATUS "[codegen] using per-build-tree kernel pin override: ${_selected}")
+        set(${out_sha} "${_selected}" PARENT_SCOPE)
     else()
         set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE_RECORDED "" CACHE INTERNAL
             "Kernel pin override and the tracked pin it was set against" FORCE)

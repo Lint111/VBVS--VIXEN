@@ -230,7 +230,7 @@ endif()
 set(VIXEN_KERNEL_YEROKET_KERNEL_TRACKED_SHA "${_vixen_tracked_yeroket_kernel_sha}" CACHE INTERNAL
     "Tracked Yeroket kernel SHA retained by the codegen cache janitor" FORCE)
 unset(YEROKET_KERNEL_SHA CACHE)
-vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA)
+vixen_select_kernel_sha("${_vixen_tracked_yeroket_kernel_sha}" YEROKET_KERNEL_SHA "${YEROKET_ROOT}")
 vixen_record_kernel_pin("${CMAKE_BINARY_DIR}/vixen-kernel-pin.json"
     "${_vixen_tracked_yeroket_kernel_sha}" "${YEROKET_KERNEL_SHA}")
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
