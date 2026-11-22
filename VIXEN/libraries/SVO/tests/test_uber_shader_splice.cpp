@@ -209,7 +209,10 @@ TEST(UberShaderSplice, NeutralRecipeKeepsPreMaterialShaderDigest) {
     // the neutral, non-active-variant text while the active macro remains absent here.
     // R896 re-pinned: the source now spells bindings VXB_<Name> and includes the generated
     // bindings file and RecipeEditBindings.glsl (a text change only; the neutral variant is unchanged).
-    EXPECT_EQ(Fnv1a(spliced), 0x8f9f0e9d66fa4363ull)
+    // R860 RL0 re-pinned: the march defines VIXEN_INSTANCE_LOD_BANDS and reads each instance band
+    // (two source lines). A text change: the exact-preset captures stay byte-identical (look-dev 16,
+    // GlyphSdf 20), and at T = 0 every instance marches its own recipe.
+    EXPECT_EQ(Fnv1a(spliced), 0xaa5573ba9697ca0bull)
         << "digest=" << std::hex << Fnv1a(spliced);
     EXPECT_EQ(spliced.find("#define VIXEN_UBER_RECIPE_MATERIAL 1"), std::string::npos);
 }
