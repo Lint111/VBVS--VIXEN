@@ -155,9 +155,8 @@ if(USE_CCACHE)
             vixen_resolve_windows_compiler_cache_dir(${_vixen_compiler_cache_kind} _vixen_compiler_cache_path
                 "${VIXEN_COMPILER_CACHE_DIR}" "${_vixen_legacy_compiler_cache_dir}"
                 "$ENV{${_vixen_compiler_cache_env}}" "$ENV{SystemDrive}")
-            vixen_compiler_cache_base_dir(_vixen_compiler_cache_base "${VIXEN_ROOT}" "$ENV{CCACHE_BASEDIR}")
             vixen_compiler_cache_launcher_env(_vixen_compiler_cache_env_list ${_vixen_compiler_cache_kind}
-                "${_vixen_compiler_cache_path}" "${_vixen_compiler_cache_base}" "$ENV{CCACHE_MAXSIZE}"
+                "${_vixen_compiler_cache_path}" "$ENV{CCACHE_MAXSIZE}"
                 "${VIXEN_CCACHE_SLOPPINESS}")
             set(_vixen_compiler_launcher
                 "${CMAKE_COMMAND};-E;env;${_vixen_compiler_cache_env_list};${_vixen_compiler_cache_program}")
